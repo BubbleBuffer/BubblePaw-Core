@@ -1,0 +1,1985 @@
+#[cfg(feature = "bench")]
+mod chapter_bench_cli;
+mod host_attach;
+mod host_lifetime;
+mod session_host;
+
+use anyhow::{Context, Result, bail, ensure};
+use bubblepaw_core::{
+    ApprovalState, AutoApprovalConfig, CancellationToken, ContextStrategy, Decision, EventKind,
+    ExecutionMode, Harness, HarnessConfig, HarnessEvent, MessageOrigin, RunOptions, Store,
+    StoreOptions, ToolRegistry,
+};
+use bubblepaw_mcp::McpHost;
+use bubblepaw_runner::{
+    agent_handles::register_agent_handles,
+    agents::{AgentRegistry, AgentTools},
+    artifacts::ArtifactStore,
+    codemode::CodeMode,
+    config::{EffectiveConfig, LoadOptions, Override, Settings, selected_main_provider},
+    episode_background::{EpisodeBackground, EpisodeTemplate},
+    episode_models::{EpisodeModelConfig, HttpEpisodeModels},
+    episode_worker::EpisodeWorker,
+    input_files::InputLimits,
+    live_config::{LiveConfig, approval_policy},
+    model_roles::{RoleDecisionProvider, approver_prompt},
+    pricing::PriceTable,
+    profiles::child_agent_host_live,
+    provider::LiveProviderConfig,
+    question::QuestionTools,
+    register_native_tools_with_exec,
+    root_prompt::root_system_prompt,
+    runtime_note::RuntimeNotes,
+    session_control::{SessionControl, SlashCommand},
+    sessions::title as session_title,
+    summarization::{SummarizingContext, SummaryConfig, cached_context_window},
+    tools::{ProcessTools, register_history_tools},
+    trace::{JsonlTrace, TraceConfig, read_report},
+    usage::{UsageContext, UsageSettings, session_usage},
+    usage_report,
+    wake::WakeCoordinator,
+};
+use bubblepaw_runner::{cli_output::Output, session_scope::SessionScope};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use host_attach::PreparedRequest;
+use host_lifetime::HostLifetime;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{path::PathBuf, sync::Arc, time::Duration};
+use tokio::sync::mpsc;
+
+#[derive(Parser, Clone, Serialize, Deserialize)]
+#[command(
+    name = "bubblepaw",
+    version,
+    about = "Small Rust agent harness",
+    subcommand_precedence_over_arg = true
+)]
+struct Cli {
+    /// Replace the user and project configuration files with this file.
+    #[arg(long, global = true)]
+    config: Option<PathBuf>,
+    /// Override any configuration key with a TOML value (or plain string).
+    #[arg(long = "set", global = true)]
+    settings: Vec<String>,
+    #[arg(long, global = true, default_value = ".")]
+    workspace: PathBuf,
+    #[arg(long, global = true)]
+    db: Option<PathBuf>,
+    /// Directory containing catalog.db, serving.db and chats/<root-session>.db.
+    #[arg(long, global = true, conflicts_with = "db")]
+    data_dir: Option<PathBuf>,
+    #[arg(long, global = true, value_enum, default_value = "codex")]
+    provider: ProviderChoice,
+    #[arg(long, global = true, default_value = "gpt-6-luna")]
+    model: String,
+    #[arg(long, global = true)]
+    auth_file: Option<PathBuf>,
+    #[arg(long, global = true)]
+    base_url: Option<String>,
+    /// JSON file of out-of-process provider extensions, `[{"id","command","args","cwd"?}]`.
+    /// Their models are addressed as `<id>/<model>`; --provider stays the default.
+    #[arg(long, global = true)]
+    extensions: Option<PathBuf>,
+    #[arg(long, global = true)]
+    read_only: bool,
+    /// Enable native web search and page fetching (off by default).
+    #[arg(long, global = true)]
+    web: bool,
+    /// Search backend: deepseek, ddg, searxng:<url>, or brave (named API-key environment).
+    /// Sets one backend; for an ordered fallback list use
+    /// --set 'web.search=["deepseek", "ddg"]' (the configuration default).
+    #[arg(long, global = true)]
+    web_search: Option<String>,
+    /// Web methods exposed to this agent: fetch and search.
+    #[arg(
+        long,
+        global = true,
+        num_args = 1,
+        value_delimiter = ',',
+        default_value = "fetch,search"
+    )]
+    web_expose: Vec<String>,
+    /// Tools whose calls wait for approval (docs/approvals.md).
+    #[arg(long, global = true, value_delimiter = ',')]
+    confirm: Vec<String>,
+    /// Allow tools that declare Confirm without asking.
+    #[arg(long, global = true)]
+    approve_all: bool,
+    /// Check Confirm calls with the approver role before asking a person.
+    #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", conflicts_with = "approve_all")]
+    auto_approve: Option<String>,
+    /// Tools checked by the approver role before asking a person.
+    #[arg(long, global = true, value_delimiter = ',')]
+    confirm_auto: Vec<String>,
+    /// Decision model for episode subject splits (adapter/model).
+    #[arg(long, global = true)]
+    decider: Option<String>,
+    /// Decision model for automatic approval checks (adapter/model).
+    #[arg(long, global = true)]
+    approver: Option<String>,
+    /// Override model capacity when it is not available in local model metadata.
+    #[arg(long, global = true)]
+    context_window_tokens: Option<usize>,
+    /// Compact at the smaller of this cap and the model window minus the configured output reserve.
+    #[arg(long, global = true, default_value_t = 200_000)]
+    compact_threshold_tokens: usize,
+    #[arg(long, global = true)]
+    no_auto_summarize: bool,
+    /// Context strategy for a new session; an existing session keeps its saved selection.
+    #[arg(long, global = true, value_enum)]
+    context_strategy: Option<ContextStrategyChoice>,
+    /// Episode chat-completions base URL; an empty value uses the main provider.
+    #[arg(long, global = true)]
+    episode_summary_base_url: Option<String>,
+    #[arg(long = "summary-model", alias = "episode-summary-model", global = true)]
+    episode_summary_model: Option<String>,
+    /// Environment variable containing the episode summary API key.
+    #[arg(long, global = true)]
+    episode_summary_key_env: Option<String>,
+    /// JSON object containing chat-completions reasoning fields.
+    #[arg(long, global = true)]
+    episode_summary_reasoning_fields: Option<String>,
+    /// Base delay for the episode model calls' exponential retry backoff.
+    #[arg(long, global = true)]
+    episode_retry_base_ms: Option<u64>,
+    /// Maximum Unicode characters in ordinary prompt text; large web pastes become files.
+    #[arg(long, global = true, default_value_t = 32_000)]
+    max_prompt_chars: usize,
+    /// Maximum bytes in one uploaded input file.
+    #[arg(long, global = true, default_value_t = 16 * 1024 * 1024)]
+    max_attachment_bytes: u64,
+    /// Maximum combined attachment bytes in one accepted message.
+    #[arg(long, global = true, default_value_t = 32 * 1024 * 1024)]
+    max_attachment_total_bytes: u64,
+    /// Estimated tokens available for the complete attachment envelope, including text.
+    #[arg(long, global = true, default_value_t = 10_000)]
+    attachment_inline_tokens: usize,
+    #[arg(long, global = true)]
+    json: bool,
+    /// Opt in to disposable behavior traces, separate from the session archive.
+    #[arg(long, global = true)]
+    trace_file: Option<PathBuf>,
+    /// Contents mode captures bounded prompts, code, commands and tool results.
+    #[arg(long, global = true, value_enum, default_value = "metadata")]
+    trace_mode: TraceMode,
+    /// Name this build/configuration for later comparisons.
+    #[arg(long, global = true)]
+    trace_label: Option<String>,
+    /// Maximum size of each rotated trace file in MiB.
+    #[arg(long, global = true, default_value_t = 32)]
+    trace_max_mib: u64,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
+enum ProviderChoice {
+    Codex,
+    Api,
+    Demo,
+}
+
+#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
+enum LoginProvider {
+    Opencode,
+}
+
+#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
+enum TranscriptFormat {
+    ClaudeCode,
+    Codex,
+}
+
+#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
+enum TraceMode {
+    Metadata,
+    Contents,
+}
+
+#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
+enum ContextStrategyChoice {
+    Lcm,
+    Classical,
+}
+
+impl From<ContextStrategyChoice> for ContextStrategy {
+    fn from(value: ContextStrategyChoice) -> Self {
+        match value {
+            ContextStrategyChoice::Lcm => Self::Lcm,
+            ContextStrategyChoice::Classical => Self::Classical,
+        }
+    }
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize)]
+enum Command {
+    /// Print effective TOML configuration and its sources; never reads credentials.
+    Config,
+    /// Run a prompt, optionally continuing a saved session.
+    Run {
+        #[arg(
+            required_unless_present = "prompt_file",
+            conflicts_with = "prompt_file"
+        )]
+        prompt: Option<String>,
+        /// Read the task from a UTF-8 file, relative to the invoking directory.
+        #[arg(long, required_unless_present = "prompt", conflicts_with = "prompt")]
+        prompt_file: Option<PathBuf>,
+        #[arg(long)]
+        session: Option<String>,
+        /// Title of this new session.
+        #[arg(long, conflicts_with = "session")]
+        name: Option<String>,
+        /// Use a private temporary store, removed when the process exits.
+        #[arg(long, conflicts_with = "session")]
+        no_session: bool,
+    },
+    /// Run a js file as a model-less run and print its result.
+    Script {
+        file: PathBuf,
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long, conflicts_with = "session")]
+        name: Option<String>,
+        #[arg(long, conflicts_with = "session")]
+        no_session: bool,
+    },
+    /// Resume interrupted or pending work explicitly.
+    Resume { session: String },
+    /// Bidirectional JSON-RPC records over stdin/stdout; no HTTP server.
+    Stdio,
+    /// List saved sessions without contacting a provider.
+    Sessions,
+    /// Print the authoritative conversation.
+    History { session: String },
+    /// Export one session as JSONL, with complete message content and child links.
+    Export {
+        session: String,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Request usage and cost by session, model, provider and day, read from retained
+    /// records without contacting a provider. `usage export` writes one JSONL line per request.
+    Usage {
+        /// Only requests at or after this RFC 3339 time.
+        #[arg(long)]
+        since: Option<String>,
+        /// Only this session's requests.
+        #[arg(long)]
+        session: Option<String>,
+        #[command(subcommand)]
+        command: Option<UsageCommand>,
+    },
+    /// Sign in to a provider console that BubblePaw reads quota from. Only
+    /// `opencode` (OpenCode Console device login) exists. Tokens are stored in
+    /// a user-only file under the data directory and never printed.
+    Login {
+        #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
+        provider: LoginProvider,
+        /// Quota account; default: the opencode provider entry's account.
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Delete a stored console login.
+    Logout {
+        #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
+        provider: LoginProvider,
+        #[arg(long)]
+        account: Option<String>,
+    },
+    /// Latest subscription and rate-limit readings, without contacting providers.
+    Quota {
+        #[command(subcommand)]
+        command: Option<QuotaCommand>,
+    },
+    /// Import a local coding-agent transcript without contacting a provider.
+    Import {
+        #[arg(value_enum)]
+        format: TranscriptFormat,
+        file: PathBuf,
+        #[arg(long)]
+        title: Option<String>,
+        /// Additional native child transcripts; descendants share the root chat file.
+        #[arg(long = "child")]
+        children: Vec<PathBuf>,
+    },
+    /// Compress a whole idle chat, including its child sessions.
+    Archive { chat: String },
+    /// Restore an archived chat to its ordinary SQLite file.
+    Unarchive { chat: String },
+    /// Search indexed text across chats; fetch only hit messages for snippets.
+    Search {
+        query: String,
+        #[arg(long)]
+        chat: Option<String>,
+    },
+    /// Delete a session and its descendants; deleting a root removes its chat file.
+    Delete { session: String },
+    /// Rebuild the small session catalog from authoritative chat files.
+    Catalog {
+        #[command(subcommand)]
+        command: CatalogCommand,
+    },
+    /// Manage disposable operational storage.
+    Serving {
+        #[command(subcommand)]
+        command: ServingCommand,
+    },
+    /// Show archive size and write counters.
+    Stats,
+    /// Summarize disposable JSONL traces without contacting a provider.
+    TraceReport { path: PathBuf },
+    /// Run one delegated assignment (Markdown with TOML front matter): the worker turn,
+    /// harness-run checks and reworks, one ledger row per attempt, then a result record.
+    Delegate {
+        assignment: PathBuf,
+        /// Seed the explore draw, for reproducible routing.
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Title of the worker session.
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Query the delegation outcome ledger (delegations.db beside the store).
+    Delegations {
+        #[command(subcommand)]
+        command: DelegationsCommand,
+    },
+    #[cfg(feature = "bench")]
+    /// Compare chapter selection on recorded chats without executing their tools.
+    ChapterBench(chapter_bench_cli::Args),
+    #[cfg(feature = "bench")]
+    /// Replay a recorded chat into a fresh isolated SQLite archive and report.
+    Replay {
+        /// Canonical corpus JSON (an object with "messages"); other formats are rejected.
+        #[arg(long)]
+        chat: String,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        threshold: Option<usize>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long, requires = "plan_probes")]
+        probes: Option<PathBuf>,
+        /// Probe after the complete typed-user turn K, before user turn K+1.
+        #[arg(long, value_delimiter = ',')]
+        checkpoints_at_turns: Vec<usize>,
+        /// Build both scripted arms once, or derive a smaller existing plan.
+        #[arg(long)]
+        plan_probes: bool,
+        /// Consume the pinned common probe lists; no per-arm list overrides.
+        #[arg(long)]
+        probe_plan: Option<PathBuf>,
+        #[arg(long)]
+        probe_limit: Option<usize>,
+        #[arg(long)]
+        max_cost_usd: Option<f64>,
+    },
+    /// Serve the local workbench, embedding the harness in this process.
+    #[cfg(feature = "web")]
+    Web {
+        #[arg(long, default_value_t = 8788)]
+        port: u16,
+        /// Built frontend directory containing index.html (required).
+        #[arg(long)]
+        assets: PathBuf,
+    },
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize)]
+enum UsageCommand {
+    /// One JSONL object per request (schema bubblepaw.usage.v1), ordered by time.
+    Export {
+        /// Only requests at or after this RFC 3339 time, inclusive.
+        #[arg(long)]
+        since: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize)]
+enum QuotaCommand {
+    /// Change-only quota history as bubblepaw.quota.v1 JSONL.
+    Export {
+        #[arg(long)]
+        since: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize)]
+enum CatalogCommand {
+    Rebuild,
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize)]
+enum DelegationsCommand {
+    /// Cost per accepted outcome by category, class, model and route reason.
+    Report,
+}
+
+#[derive(Subcommand, Clone, Serialize, Deserialize)]
+enum ServingCommand {
+    Wipe,
+}
+
+fn config_overrides(
+    cli: &Cli,
+    arguments: &[String],
+    selected_provider: &str,
+) -> Result<Vec<Override>> {
+    use toml::Value as T;
+    let mut overrides = Vec::new();
+    let mut args = arguments.iter().skip(1).peekable();
+    while let Some(argument) = args.next() {
+        if argument == "--" {
+            break;
+        }
+        let (flag, inline) = argument
+            .split_once('=')
+            .map_or((argument.as_str(), None), |(flag, value)| {
+                (flag, Some(value))
+            });
+        let mut value = || -> Result<String> {
+            inline
+                .map(str::to_owned)
+                .or_else(|| args.next().cloned())
+                .context("Missing CLI value")
+        };
+        let entry = match flag {
+            "--set" => Some(Override::set(&value()?)?),
+            "--data-dir" => Some(Override::value("storage.data_dir", T::String(value()?))),
+            "--model" => Some(Override::value("model.main", T::String(value()?))),
+            "--provider" => Some(Override::value("model.provider", T::String(value()?))),
+            "--base-url" => Some(Override::value(
+                format!("providers.{selected_provider}.base_url"),
+                T::String(value()?),
+            )),
+            "--auth-file" => Some(Override::value(
+                format!("providers.{selected_provider}.auth_file"),
+                T::String(value()?),
+            )),
+            "--context-strategy" => Some(Override::value("context.strategy", T::String(value()?))),
+            "--compact-threshold-tokens"
+            | "--context-window-tokens"
+            | "--episode-retry-base-ms" => {
+                let key = match flag {
+                    "--compact-threshold-tokens" => "context.compact_threshold_tokens",
+                    "--context-window-tokens" => "context.window_tokens",
+                    _ => "context.retry_base_ms",
+                };
+                Some(Override::value(
+                    key,
+                    T::Integer(value()?.parse().context("Invalid integer CLI setting")?),
+                ))
+            }
+            "--no-auto-summarize" => {
+                Some(Override::value("context.auto_summarize", T::Boolean(false)))
+            }
+            "--web" => Some(Override::value("web.enabled", T::Boolean(true))),
+            "--web-search" => Some(Override::value("web.search", T::String(value()?))),
+            "--web-expose" => {
+                let methods: Vec<String> =
+                    value()?.split(',').map(|s| s.trim().to_owned()).collect();
+                ensure!(
+                    methods
+                        .iter()
+                        .all(|m| matches!(m.as_str(), "fetch" | "search")),
+                    "web-expose accepts fetch and search"
+                );
+                for method in ["fetch", "search"] {
+                    overrides.push(Override::value(
+                        format!("web.expose.{method}"),
+                        T::Boolean(methods.iter().any(|m| m == method)),
+                    ));
+                }
+                None
+            }
+            "--read-only" => Some(Override::value("approvals.read_only", T::Boolean(true))),
+            "--approve-all" => Some(Override::value(
+                "approvals.confirm",
+                T::String("allow".into()),
+            )),
+            "--auto-approve" => {
+                let model = inline.map(str::to_owned).or_else(|| {
+                    let has_model = args.peek().is_some_and(|next| {
+                        !next.starts_with('-')
+                            && !matches!(
+                                next.as_str(),
+                                "run"
+                                    | "script"
+                                    | "resume"
+                                    | "stdio"
+                                    | "sessions"
+                                    | "history"
+                                    | "stats"
+                                    | "trace-report"
+                                    | "web"
+                                    | "config"
+                                    | "export"
+                                    | "usage"
+                                    | "delete"
+                                    | "catalog"
+                                    | "serving"
+                            )
+                            && !(cfg!(feature = "bench")
+                                && matches!(next.as_str(), "replay" | "chapter-bench"))
+                    });
+                    has_model.then(|| args.next().unwrap().clone())
+                });
+                if let Some(model) = model.filter(|model| !model.is_empty()) {
+                    overrides.push(decision_override("approver", model));
+                }
+                Some(Override::value(
+                    "approvals.confirm",
+                    T::String("auto".into()),
+                ))
+            }
+            "--confirm" | "--confirm-auto" => {
+                let mode = if flag == "--confirm" { "ask" } else { "auto" };
+                for name in value()?.split(',') {
+                    overrides.push(Override::value(
+                        format!("approvals.tools.{}", name.trim()),
+                        T::String(mode.into()),
+                    ));
+                }
+                None
+            }
+            "--summary-model" | "--episode-summary-model" => {
+                let model = value()?;
+                let model = if model.contains('/') {
+                    model
+                } else {
+                    format!("opencode/{model}")
+                };
+                Some(Override::value(
+                    "roles.summary",
+                    T::Array(vec![T::String(model), T::String("main".into())]),
+                ))
+            }
+            "--decider" => Some(decision_override("decider", value()?)),
+            "--approver" => Some(decision_override("approver", value()?)),
+            "--episode-summary-base-url" => Some(Override::value(
+                "providers.opencode.base_url",
+                T::String(value()?),
+            )),
+            "--episode-summary-key-env" => Some(Override::value(
+                "providers.opencode.key_env",
+                T::String(value()?),
+            )),
+            "--episode-summary-reasoning-fields" => {
+                let fields: Value = serde_json::from_str(&value()?).map_err(|_| {
+                    anyhow::anyhow!("Provider reasoning fields must be a JSON object")
+                })?;
+                Some(Override::replace(
+                    "providers.opencode.reasoning",
+                    T::try_from(fields).map_err(|_| {
+                        anyhow::anyhow!("Provider reasoning fields must be a JSON object")
+                    })?,
+                ))
+            }
+            "--extensions" => Some(Override::extensions_json(value()?)?),
+            // Consume other option values, so their contents cannot become config flags.
+            "--config"
+            | "--workspace"
+            | "--db"
+            | "--max-prompt-chars"
+            | "--max-attachment-bytes"
+            | "--max-attachment-total-bytes"
+            | "--attachment-inline-tokens"
+            | "--trace-file"
+            | "--trace-mode"
+            | "--trace-label"
+            | "--trace-max-mib"
+            | "--session"
+            | "--since"
+            | "--name"
+            | "--chat"
+            | "--out"
+            | "--gold"
+            | "--arm"
+            | "--max-cost-usd"
+            | "--threshold"
+            | "--port"
+            | "--assets" => {
+                value()?;
+                None
+            }
+            _ => None,
+        };
+        if let Some(entry) = entry {
+            overrides.push(entry);
+        }
+    }
+    let _ = cli; // The parsed CLI already checked flag syntax and value bounds.
+    Ok(overrides)
+}
+
+fn decision_override(role: &str, model: String) -> Override {
+    Override::value(
+        format!("roles.{role}"),
+        toml::Value::Array(
+            [model, "llm/summary".into(), "llm/main".into()]
+                .into_iter()
+                .map(toml::Value::String)
+                .collect(),
+        ),
+    )
+}
+
+fn load_config(cli: &Cli, arguments: &[String]) -> Result<EffectiveConfig> {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from);
+    let env: Vec<_> = std::env::vars().collect();
+    let load = |provider: &str| {
+        EffectiveConfig::layer(LoadOptions {
+            workspace: cli.workspace.clone(),
+            home: home.clone(),
+            custom_file: cli.config.clone(),
+            env: env.clone(),
+            cli: config_overrides(cli, arguments, provider)?,
+        })
+    };
+    let config = load(match cli.provider {
+        ProviderChoice::Codex => "codex",
+        ProviderChoice::Api => "api",
+        ProviderChoice::Demo => "demo",
+    })?;
+    let config = if cli.base_url.is_some() || cli.auth_file.is_some() {
+        let provider = config
+            .value("model.provider")
+            .and_then(toml::Value::as_str)
+            .context("model.provider must be a string")?;
+        load(provider)?
+    } else {
+        config
+    };
+    let mut config = config;
+    config.anchor_paths(&std::env::current_dir()?);
+    config.settings()?;
+    Ok(config)
+}
+
+fn episode_model_config(settings: &Settings) -> EpisodeModelConfig {
+    EpisodeModelConfig {
+        roles: settings.roles.clone(),
+        retry_base_delay: Duration::from_millis(settings.retry_base_ms),
+    }
+}
+
+fn print_json(value: &impl serde::Serialize) -> Result<()> {
+    use std::io::Write;
+    let mut output = std::io::stdout().lock();
+    serde_json::to_writer(&mut output, value)?;
+    writeln!(output)?;
+    output.flush()?;
+    Ok(())
+}
+
+fn run_prompt(prompt: Option<&str>, prompt_file: Option<&std::path::Path>) -> Result<String> {
+    match (prompt, prompt_file) {
+        (Some(prompt), None) => Ok(prompt.to_owned()),
+        (None, Some(path)) => std::fs::read_to_string(path)
+            .with_context(|| format!("read UTF-8 prompt file {}", path.display())),
+        _ => bail!("run requires either a prompt or --prompt-file, but not both"),
+    }
+}
+
+/// Data directory, legacy database, and whether the data directory is the
+/// central default (only that store imports its legacy siblings).
+fn storage_paths(cli: &Cli, settings: &Settings) -> Result<(PathBuf, PathBuf, bool)> {
+    if let Some(db) = &cli.db {
+        let data_dir = Store::legacy_data_dir(db);
+        eprintln!(
+            "--db is a legacy alias: storage now uses {}; normal startup migrates existing {} once and preserves it",
+            data_dir.display(),
+            db.display()
+        );
+        return Ok((data_dir, db.clone(), false));
+    }
+    let central = settings.storage.data_dir.as_os_str().is_empty();
+    let data_dir = if central {
+        bubblepaw_runner::legacy_import::default_data_dir()?
+    } else {
+        settings.storage.data_dir.clone()
+    };
+    let legacy = if settings.storage.legacy_db.as_os_str().is_empty() {
+        data_dir.join("archive.sqlite")
+    } else {
+        settings.storage.legacy_db.clone()
+    };
+    Ok((data_dir, legacy, central))
+}
+
+fn source_fingerprint() -> String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    for source in [
+        include_str!("main.rs"),
+        include_str!("root_prompt.rs"),
+        include_str!("host_attach.rs"),
+        include_str!("host_lifetime.rs"),
+        include_str!("host_attach/io.rs"),
+        include_str!("host_transport.rs"),
+        include_str!("session_host.rs"),
+        include_str!("session_scope.rs"),
+        include_str!("cli_output.rs"),
+        include_str!("config.rs"),
+        include_str!("codemode.rs"),
+        include_str!("input_files.rs"),
+        include_str!("agents.rs"),
+        include_str!("agent_handles.rs"),
+        include_str!("episodes.rs"),
+        include_str!("episode_models.rs"),
+        include_str!("episode_fork.rs"),
+        include_str!("history_snapshot.rs"),
+        include_str!("model_roles.rs"),
+        include_str!("provider/registry.rs"),
+        include_str!("provider/live_provider.rs"),
+        include_str!("images.rs"),
+        include_str!("provider/endpoints.rs"),
+        include_str!("provider/decisions.rs"),
+        include_str!("provider/chat.rs"),
+        include_str!("episode_worker.rs"),
+        include_str!("episode_background.rs"),
+        include_str!("summary_prompt_v2.txt"),
+        include_str!("chapter_prompt_v1.txt"),
+        include_str!("summarization.rs"),
+        include_str!("summary_prompt.md"),
+        include_str!("runtime_note.rs"),
+        include_str!("command_template.rs"),
+        include_str!("trace.rs"),
+        include_str!("todo.rs"),
+        include_str!("question.rs"),
+        include_str!("tools/process.rs"),
+        include_str!("../../bubblepaw-core/src/lib.rs"),
+        include_str!("../../bubblepaw-core/src/runtime.rs"),
+        include_str!("../../bubblepaw-core/src/dispatch.rs"),
+        include_str!("../../bubblepaw-core/src/decision.rs"),
+        include_str!("../../bubblepaw-core/src/approvals/mod.rs"),
+        include_str!("../../bubblepaw-core/src/approvals/modes.rs"),
+        include_str!("../../bubblepaw-core/src/approvals/rules.rs"),
+        include_str!("../../bubblepaw-core/src/observation.rs"),
+        include_str!("../../bubblepaw-core/src/host_state.rs"),
+    ] {
+        digest.update(source.len().to_le_bytes());
+        digest.update(source.as_bytes());
+    }
+    format!("{:x}", digest.finalize())
+}
+
+fn validate_trace_path(
+    path: &std::path::Path,
+    data_dir: &std::path::Path,
+    legacy: &std::path::Path,
+) -> Result<()> {
+    let parent = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
+    let data_dir = data_dir.canonicalize()?;
+    let mut archives = vec![
+        data_dir.join("catalog.db"),
+        data_dir.join("serving.db"),
+        data_dir.join("store.lock"),
+    ];
+    if legacy.exists() {
+        archives.push(legacy.canonicalize()?);
+    } else if let Some(parent) = legacy
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty() && p.exists())
+    {
+        archives.push(
+            parent.canonicalize()?.join(
+                legacy
+                    .file_name()
+                    .context("Legacy database requires a file name")?,
+            ),
+        );
+    } else {
+        archives.push(std::env::current_dir()?.join(legacy));
+    }
+    let protected: Vec<_> = archives
+        .iter()
+        .flat_map(|archive| {
+            let archive = archive.to_string_lossy();
+            [
+                archive.to_string(),
+                format!("{archive}-wal"),
+                format!("{archive}-shm"),
+            ]
+        })
+        .collect();
+    for suffix in ["", ".1", ".2"] {
+        let mut name = path
+            .file_name()
+            .context("Trace path requires a file name")?
+            .to_os_string();
+        name.push(suffix);
+        let candidate = parent.canonicalize()?.join(name);
+        let candidate = if candidate.exists() {
+            candidate.canonicalize()?
+        } else {
+            candidate
+        };
+        ensure!(
+            !candidate.starts_with(data_dir.join("chats")),
+            "Trace files and rotations must be separate from the archive and its SQLite sidecars"
+        );
+        let candidate = candidate.to_string_lossy();
+        ensure!(
+            !protected.iter().any(|p| if cfg!(windows) {
+                candidate.eq_ignore_ascii_case(p)
+            } else {
+                candidate == p.as_str()
+            }),
+            "Trace files and rotations must be separate from the archive and its SQLite sidecars"
+        );
+    }
+    Ok(())
+}
+
+fn main() -> std::process::ExitCode {
+    #[cfg(windows)]
+    {
+        // Heap-pinning bounds future moves, but MSVC debug poll frames can
+        // still exceed the Windows entry thread's 1 MiB stack. Match the
+        // ordinary Linux main-stack allowance without changing worker tasks.
+        match std::thread::Builder::new()
+            .name("bubblepaw-runtime".into())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(run_runtime)
+        {
+            Ok(thread) => match thread.join() {
+                Ok(code) => code,
+                Err(panic) => std::panic::resume_unwind(panic),
+            },
+            Err(error) => {
+                eprintln!("Error: cannot start runtime thread: {error}");
+                std::process::ExitCode::FAILURE
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    run_runtime()
+}
+
+#[tokio::main]
+async fn run_runtime() -> std::process::ExitCode {
+    bubblepaw_runner::logging::install();
+    // The Windows entry thread has a 1 MiB stack, including debug-mode
+    // temporaries created while constructing and polling the CLI future.
+    match Box::pin(run_cli()).await {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(error) => {
+            if error.downcast_ref::<host_attach::RemoteFailure>().is_none() {
+                eprintln!("Error: {error:?}");
+            }
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+async fn run_cli() -> Result<()> {
+    let arguments: Vec<String> = std::env::args().collect();
+    let command = Cli::command();
+    // Optional values must yield to subcommands, but required global values
+    // such as `--web-expose search` must remain values. Keep the original
+    // arguments for the ordered configuration overrides below.
+    let required_values: std::collections::HashSet<_> = command
+        .get_arguments()
+        .filter(|arg| {
+            arg.get_action().takes_values()
+                && arg
+                    .get_num_args()
+                    .is_none_or(|range| range.min_values() > 0)
+        })
+        .filter_map(|arg| arg.get_long().map(|name| format!("--{name}")))
+        .collect();
+    let mut parse_arguments = Vec::with_capacity(arguments.len());
+    let mut argument_iter = arguments.iter().peekable();
+    while let Some(argument) = argument_iter.next() {
+        if required_values.contains(argument)
+            && argument_iter
+                .peek()
+                .is_some_and(|value| !value.starts_with('-'))
+        {
+            parse_arguments.push(format!("{argument}={}", argument_iter.next().unwrap()));
+        } else {
+            parse_arguments.push(argument.clone());
+        }
+    }
+    let matches = command.get_matches_from(parse_arguments);
+    let mut cli = Cli::from_arg_matches(&matches)?;
+    let mut effective = load_config(&cli, &arguments)?;
+    // A delegation picks its model before anything else reads the configuration;
+    // the choice is applied as the last CLI override so every role follows it.
+    let delegation = if let Command::Delegate {
+        assignment, seed, ..
+    } = &cli.command
+    {
+        let text = std::fs::read_to_string(assignment)
+            .with_context(|| format!("read assignment {}", assignment.display()))?;
+        let assignment = bubblepaw_runner::delegate::assignment::Assignment::parse(&text)?;
+        let mut rng = seed.map_or_else(
+            bubblepaw_runner::delegate::routing::Rng::from_entropy,
+            bubblepaw_runner::delegate::routing::Rng::seeded,
+        );
+        let route = bubblepaw_runner::delegate::routing::choose(
+            &assignment,
+            &effective.settings()?.delegate,
+            &mut rng,
+        )?;
+        let mut routed = arguments.clone();
+        let at = routed
+            .iter()
+            .position(|a| a == "--")
+            .unwrap_or(routed.len());
+        routed.insert(
+            at,
+            format!(
+                "--set=model.main={}",
+                toml::Value::String(route.model.clone())
+            ),
+        );
+        // The route override must be layered on the same config, not replace it.
+        effective = load_config(&cli, &routed)?;
+        Some((assignment, route))
+    } else {
+        None
+    };
+    if matches!(cli.command, Command::Config) {
+        use std::io::Write;
+        std::io::stdout()
+            .lock()
+            .write_all(effective.render()?.as_bytes())?;
+        return Ok(());
+    }
+    if let Command::TraceReport { path } = &cli.command {
+        return print_json(&read_report(path)?);
+    }
+    let settings = effective.settings()?;
+    // Resolve once before creating storage or registering providers. Both inputs
+    // follow the same ordinary prompt limits and command handling below.
+    let task_prompt = match &cli.command {
+        Command::Run {
+            prompt,
+            prompt_file,
+            ..
+        } => Some(run_prompt(prompt.as_deref(), prompt_file.as_deref())?),
+        _ => None,
+    };
+    cli.model = settings.main_model.clone();
+    cli.read_only = settings.approvals.read_only;
+    cli.context_window_tokens = settings.context_window_tokens;
+    cli.compact_threshold_tokens = settings.compact_threshold_tokens;
+    cli.no_auto_summarize = !settings.auto_summarize;
+    #[cfg(feature = "bench")]
+    if let Command::ChapterBench(args) = &cli.command {
+        return print_json(&chapter_bench_cli::run(args, &settings).await?);
+    }
+    #[cfg(feature = "bench")]
+    if let Command::Replay {
+        chat,
+        out,
+        threshold,
+        dry_run,
+        probes,
+        checkpoints_at_turns,
+        plan_probes,
+        probe_plan,
+        probe_limit,
+        max_cost_usd,
+    } = &cli.command
+    {
+        // Replay consumes recorded assistant turns. An explicitly selected
+        // Messages primary still supplies concrete `main` role references;
+        // the replay pricing/allow-list boundary validates those references.
+        let main = if settings
+            .providers
+            .get(selected_main_provider(&settings))
+            .is_some_and(|provider| provider.kind.as_deref() == Some("anthropic-messages"))
+        {
+            None
+        } else {
+            Some("replay/no-main-provider")
+        };
+        let settings = effective.settings_for_main(main)?;
+        let config = episode_model_config(&settings);
+        let report = bubblepaw_runner::replay::run_with_context_config(
+            bubblepaw_runner::replay::ReplayOptions {
+                prices: PriceTable::shared(),
+                agents: settings.agents.clone(),
+                chat: chat.clone(),
+                out: out.clone(),
+                threshold: *threshold,
+                dry_run: *dry_run,
+                context_strategy: settings.context_strategy,
+                probes: probes.clone(),
+                checkpoints_at_turns: checkpoints_at_turns.clone(),
+                probe_plan: probe_plan.clone(),
+                plan_probes: *plan_probes,
+                capture_turn_frontiers: false,
+                probe_limit: *probe_limit,
+                max_cost_usd: *max_cost_usd,
+            },
+            config,
+            settings.endpoints.clone(),
+            SummaryConfig {
+                threshold_cap: settings.compact_threshold_tokens,
+                context_window: settings.context_window_tokens,
+                verbatim_user_tokens: settings.verbatim_user_tokens,
+                lcm: settings.lcm.clone(),
+                ..SummaryConfig::default()
+            },
+        )
+        .await?;
+        return print_json(
+            &serde_json::json!({"report":out.join("report.md"),"status":report["status"],"totals":report["totals"]}),
+        );
+    }
+    let workspace = cli
+        .workspace
+        .canonicalize()
+        .context("workspace must exist")?;
+    ensure!(workspace.is_dir(), "workspace must be a directory");
+    let usage_settings = UsageSettings::from_effective(&effective)?;
+    // Choose isolation before migration, opening, or touching the real store.
+    // Declared before all store handles so normal/error returns drop them first.
+    let ephemeral = matches!(
+        &cli.command,
+        Command::Run {
+            no_session: true,
+            ..
+        } | Command::Script {
+            no_session: true,
+            ..
+        }
+    )
+    .then(|| {
+        tempfile::Builder::new()
+            .prefix("bubblepaw-ephemeral-")
+            .tempdir()
+    })
+    .transpose()?;
+    let (data_dir, legacy_db, central_store) = if let Some(directory) = &ephemeral {
+        (
+            directory.path().join("data"),
+            directory.path().join("no-legacy.sqlite"),
+            false,
+        )
+    } else {
+        storage_paths(&cli, &settings)?
+    };
+    let data_dir = std::path::absolute(data_dir)?;
+    let legacy_db = std::path::absolute(legacy_db)?;
+    if let Command::Login { provider, account } | Command::Logout { provider, account } =
+        &cli.command
+    {
+        use bubblepaw_runner::opencode_console;
+        let LoginProvider::Opencode = provider;
+        let account = account.clone().unwrap_or_else(|| {
+            settings
+                .providers
+                .get("opencode")
+                .and_then(|provider| provider.account.clone())
+                .unwrap_or_else(|| "opencode".into())
+        });
+        let path = opencode_console::credential_path(&data_dir, &account)?;
+        if matches!(cli.command, Command::Logout { .. }) {
+            let existed = opencode_console::delete_credential(&path)?;
+            let _ = std::fs::remove_file(path.with_extension("lock"));
+            println!(
+                "{}",
+                if existed {
+                    format!("Signed out of OpenCode Console for account {account}.")
+                } else {
+                    format!("No OpenCode Console login was stored for account {account}.")
+                }
+            );
+            return Ok(());
+        }
+        let client = opencode_console::ConsoleClient::new()?;
+        let credential = client
+            .device_login(&mut std::io::stdout(), &opencode_console::tokio_sleeper())
+            .await?;
+        opencode_console::write_credential(&path, &credential)?;
+        println!("Signed in to OpenCode Console for account {account}.");
+        return Ok(());
+    }
+    if let Command::Delegations {
+        command: DelegationsCommand::Report,
+    } = &cli.command
+    {
+        let ledger =
+            bubblepaw_runner::delegate::ledger::Ledger::open(&data_dir.join("delegations.db"))?;
+        return print_json(&ledger.report()?);
+    }
+    // Export opens only the authoritative chat read-only: no migration, cleanup,
+    // workspace binding, credential access or provider registration.
+    if let Command::Export { session, out } = &cli.command {
+        use std::io::Write;
+        if let Some(path) = out {
+            ensure!(
+                !path.exists(),
+                "export output {} must not already exist",
+                path.display()
+            );
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(std::path::Path::new("."));
+            let mut writer = tempfile::NamedTempFile::new_in(parent)?;
+            Store::export_data_dir_jsonl(&data_dir, session, &mut writer)?;
+            writer.flush()?;
+            writer.persist_noclobber(path).with_context(|| {
+                format!(
+                    "create export {} (output must not already exist)",
+                    path.display()
+                )
+            })?;
+        } else {
+            let mut writer = std::io::stdout().lock();
+            Store::export_data_dir_jsonl(&data_dir, session, &mut writer)?;
+            writer.flush()?;
+        }
+        return Ok(());
+    }
+    // Usage reads the authoritative records directly, like export: no migration,
+    // cleanup, workspace binding, credential access or provider registration.
+    if let Command::Usage {
+        since,
+        session,
+        command,
+    } = &cli.command
+    {
+        let (since, session, export) = match command {
+            Some(UsageCommand::Export { since }) => (since.as_deref(), None, true),
+            None => (since.as_deref(), session.as_deref(), false),
+        };
+        let since = since.map(usage_report::since_rfc3339).transpose()?;
+        let rows = usage_report::load(&data_dir, session, since.as_deref())?;
+        let prices = PriceTable::shared();
+        if export {
+            use std::io::Write;
+            let mut writer = std::io::stdout().lock();
+            usage_report::write_jsonl(&rows, prices, &mut writer)?;
+            writer.flush()?;
+        } else {
+            return print_json(&usage_report::report(
+                &rows,
+                prices,
+                since.as_deref(),
+                session,
+            ));
+        }
+        return Ok(());
+    }
+    if let Command::Quota { command } = &cli.command {
+        use bubblepaw_runner::quota_report;
+        use std::io::Write;
+        let (latest, since) = match command {
+            Some(QuotaCommand::Export { since }) => (false, since.as_deref()),
+            None => (true, None),
+        };
+        let since = since.map(usage_report::since_rfc3339).transpose()?;
+        let rows = quota_report::load(&data_dir, latest, since.as_deref())?;
+        let mut writer = std::io::stdout().lock();
+        if latest {
+            let balances = Store::read_quota_balances_data_dir(&data_dir)?;
+            quota_report::write_latest_with_balances(
+                &rows,
+                &balances,
+                chrono::Utc::now(),
+                &mut writer,
+            )?;
+        } else {
+            quota_report::write_jsonl(&rows, &mut writer)?;
+        }
+        writer.flush()?;
+        return Ok(());
+    }
+    let input_limits = InputLimits {
+        prompt_chars: cli.max_prompt_chars,
+        max_file_bytes: cli.max_attachment_bytes,
+        max_total_bytes: cli.max_attachment_total_bytes,
+        inline_tokens: cli.attachment_inline_tokens,
+        ..Default::default()
+    };
+    let one_shot = matches!(
+        cli.command,
+        Command::Sessions
+            | Command::History { .. }
+            | Command::Stats
+            | Command::Catalog { .. }
+            | Command::Serving { .. }
+            | Command::Delete { .. }
+            | Command::Import { .. }
+            | Command::Archive { .. }
+            | Command::Unarchive { .. }
+            | Command::Search { .. }
+    );
+    if !one_shot {
+        input_limits.validate()?;
+        if let Some(prompt) = task_prompt.as_deref() {
+            input_limits.validate_prompt(prompt)?;
+        }
+    }
+    let mut election_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let store = loop {
+        let opened = Store::migrate_legacy(&legacy_db, &data_dir).and_then(|()| {
+            Store::open_with_options(
+                &data_dir,
+                StoreOptions {
+                    finished_event_retention_hours: settings.storage.finished_event_retention_hours,
+                    telemetry_retention_days: settings.storage.telemetry_retention_days,
+                    archive_after_days: settings.storage.archive_after_days,
+                    cold_tail_messages: settings.storage.cold_tail_messages,
+                    cold_min_messages: settings.storage.cold_min_messages,
+                    cold_min_bytes: settings.storage.cold_min_bytes,
+                    cold_row_min_bytes: settings.storage.cold_row_min_bytes,
+                },
+            )
+        });
+        match opened {
+            Ok(store) => break store,
+            Err(error) if host_attach::is_owned(&error) => {
+                if matches!(cli.command, Command::Run { .. } | Command::Delegate { .. }) {
+                    match bubblepaw_runner::host_transport::connect(
+                        &data_dir,
+                        Duration::from_millis(100),
+                    )
+                    .await
+                    {
+                        Ok(connection) => {
+                            let request = PreparedRequest {
+                                cli: cli.clone(),
+                                effective: effective.clone(),
+                                delegation: delegation.clone(),
+                                task_prompt: task_prompt.clone(),
+                                workspace: workspace.clone(),
+                                data_dir: data_dir.clone(),
+                                legacy_db: legacy_db.clone(),
+                            };
+                            match host_attach::attach(request, connection).await {
+                                // A one-shot host imported legacy stores and
+                                // stopped without reading the request.
+                                Err(error) if error.is::<host_attach::HostRetry>() => {
+                                    election_deadline =
+                                        tokio::time::Instant::now() + Duration::from_secs(5);
+                                    continue;
+                                }
+                                result => return result,
+                            }
+                        }
+                        Err(error) if tokio::time::Instant::now() >= election_deadline => {
+                            return Err(error.context(
+                                "could not attach to owning host; request was not submitted",
+                            ));
+                        }
+                        Err(_) => continue,
+                    }
+                }
+                return Err(host_attach::ownership_error(&data_dir, error));
+            }
+            Err(error) => return Err(error),
+        }
+    };
+    let data_dir = store
+        .data_dir()
+        .context("host has no data directory")?
+        .to_owned();
+    // The host imports legacy per-workspace stores once, before serving work.
+    // It publishes its endpoint first, so attaching clients wait instead of
+    // timing out; a one-shot command releases them to elect again.
+    let mut importing = None;
+    if central_store && bubblepaw_runner::legacy_import::import_pending(&store)? {
+        importing = Some(host_attach::import_legacy_stores(&store, &data_dir).await?);
+    }
+    if one_shot && let Some(importing) = importing.take() {
+        importing.release().await;
+    }
+    bubblepaw_runner::spill::SpillStore::new(&data_dir)?.attach(&store);
+    bubblepaw_runner::sessions::prune_archives(&store, settings.storage.archived_retention_days)?;
+    for report in bubblepaw_runner::worktrees::cleanup_inactive(&store)? {
+        eprintln!("Child worktree {}: {}", report.session_id, report.note);
+    }
+    match &cli.command {
+        Command::Sessions => return print_json(&store.list_visible_sessions()?),
+        Command::History { session } => {
+            use std::io::Write;
+            let mut writer = std::io::stdout().lock();
+            writer.write_all(b"[\n")?;
+            let mut first = true;
+            store.for_each_message_range(session, 0, i64::MAX, |_, message| {
+                if !first {
+                    writer.write_all(b",\n")?;
+                }
+                first = false;
+                serde_json::to_writer(&mut writer, &message)?;
+                Ok(())
+            })?;
+            writer.write_all(b"\n]\n")?;
+            writer.flush()?;
+            return Ok(());
+        }
+        Command::Stats => {
+            let mut stats = serde_json::to_value(store.storage_stats()?)?;
+            stats["sessions"] = serde_json::to_value(
+                store
+                    .list_visible_sessions()?
+                    .iter()
+                    .map(|session| session_with_usage(&store, session, &usage_settings))
+                    .collect::<Result<Vec<_>>>()?,
+            )?;
+            return print_json(&stats);
+        }
+        Command::Import {
+            format,
+            file,
+            title,
+            children,
+        } => {
+            let format = match format {
+                TranscriptFormat::ClaudeCode => bubblepaw_core::ImportFormat::Claude,
+                TranscriptFormat::Codex => bubblepaw_core::ImportFormat::Codex,
+            };
+            return print_json(&bubblepaw_core::import_file(
+                &store,
+                file,
+                format,
+                &bubblepaw_core::ImportOptions {
+                    title: title.clone(),
+                    adjacent_agent_paths: children.clone(),
+                    ..Default::default()
+                },
+            )?);
+        }
+        Command::Archive { chat } => {
+            let (changed, worktrees) = bubblepaw_runner::worktrees::archive_chat(&store, chat)?;
+            return print_json(&json!({"chat":chat,"changed":changed,"worktrees":worktrees}));
+        }
+        Command::Unarchive { chat } => {
+            store.session(chat)?;
+            return print_json(&json!({"chat":chat,"storage_state":"active"}));
+        }
+        Command::Search { query, chat } => {
+            while !store.reindex_search(chat.as_deref(), 512)?.complete {}
+            let hits: Vec<_> = store
+                .search_messages(query, chat.as_deref(), 50)?
+                .into_iter()
+                .filter(|hit| {
+                    chat.is_some()
+                        || store
+                            .session(&hit.session_id)
+                            .is_ok_and(|session| !session.hidden)
+                })
+                .collect();
+            return print_json(&hits);
+        }
+        Command::Catalog {
+            command: CatalogCommand::Rebuild,
+        } => {
+            return print_json(&json!({"sessions":store.catalog_rebuild()?}));
+        }
+        Command::Serving {
+            command: ServingCommand::Wipe,
+        } => {
+            store.serving_wipe()?;
+            return print_json(&json!({"wiped":true}));
+        }
+        Command::Delete { session } => {
+            let worktrees = bubblepaw_runner::worktrees::delete_session(&store, session)?;
+            return print_json(&json!({"deleted":session,"worktrees":worktrees}));
+        }
+        _ => {}
+    }
+    let request = PreparedRequest {
+        cli,
+        effective,
+        delegation,
+        task_prompt,
+        workspace,
+        data_dir,
+        legacy_db,
+    };
+    Box::pin(host_attach::serve(request, store, importing)).await
+}
+
+fn session_with_usage(
+    store: &Store,
+    session: &bubblepaw_core::Session,
+    settings: &UsageSettings,
+) -> Result<Value> {
+    let mut value = serde_json::to_value(session)?;
+    value["usage"] = if store.active_session_metadata(&session.id)?.is_some() {
+        serde_json::to_value(session_usage(store, &session.id, settings)?)?
+    } else {
+        Value::Null
+    };
+    Ok(value)
+}
+
+const UNATTENDED: &str = "no client to approve; use --approve-all";
+
+/// Without a client, an approval that would wait is denied at once.
+fn deny_unattended(
+    harness: Arc<Harness>,
+    store: Store,
+    mut events: tokio::sync::broadcast::Receiver<HarnessEvent>,
+    scope: SessionScope,
+) -> tokio::task::JoinHandle<()> {
+    let deny = Decision::Deny {
+        reason: Some(UNATTENDED.into()),
+    };
+    tokio::spawn(async move {
+        loop {
+            match events.recv().await {
+                Ok(HarnessEvent {
+                    kind: EventKind::ApprovalRequested { approval },
+                    ..
+                }) if approval.state == ApprovalState::Pending
+                    && scope.contains(&store, &approval.session_id) =>
+                {
+                    let _ = harness.decide(&approval.id, deny.clone());
+                }
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                    for session in store
+                        .list_sessions()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|session| scope.contains(&store, &session.id))
+                    {
+                        for approval in harness.pending_approvals(&session.id).unwrap_or_default() {
+                            let _ = harness.decide(&approval.id, deny.clone());
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+}
+
+async fn run_once(
+    harness: Arc<Harness>,
+    session: &str,
+    prompt: Option<&str>,
+    json_output: bool,
+    output: Output,
+    cancellation: CancellationToken,
+    scope: SessionScope,
+) -> Result<()> {
+    run_once_with(
+        harness,
+        session,
+        prompt,
+        RunOptions::default(),
+        json_output,
+        output,
+        cancellation,
+        scope,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_once_with(
+    harness: Arc<Harness>,
+    session: &str,
+    prompt: Option<&str>,
+    options: RunOptions,
+    json_output: bool,
+    output: Output,
+    cancellation: CancellationToken,
+    scope: SessionScope,
+) -> Result<()> {
+    let script = options.script.is_some();
+    let mut events = harness.subscribe();
+    output.stderr(format!("session: {session}\n"))?;
+    ensure!(
+        !cancellation.is_cancelled(),
+        "run cancelled before admission"
+    );
+    scope.admit(harness.store(), session, true, || match prompt {
+        Some(text) => harness.start(session, text, options),
+        None => harness.start_resume(session, options),
+    })?;
+    let target = session.to_owned();
+    let display_output = output.clone();
+    let mut display = tokio::spawn(async move {
+        while let Ok(event) = events.recv().await {
+            if event.session_id != target {
+                continue;
+            }
+            display_output.event(&event, json_output)?;
+            if matches!(event.kind, EventKind::SessionSettled {}) {
+                break;
+            }
+        }
+        Ok::<_, anyhow::Error>(())
+    });
+    let run = harness.wait_for_idle(session);
+    tokio::pin!(run);
+    let result = tokio::select! {
+        biased;
+        result = &mut run => result,
+        _ = cancellation.cancelled() => { harness.cancel(session); run.await }
+    };
+    match tokio::time::timeout(Duration::from_secs(2), &mut display).await {
+        Ok(task) => task??,
+        Err(_) => {
+            display.abort();
+            let _ = display.await;
+            output.stderr("presentation ended before all events were displayed\n")?;
+        }
+    }
+    let result = result?;
+    if json_output {
+        output.json(&json!({"type":"result","session_id":session,"run":result}))?;
+    } else if script && result.status == "completed" {
+        output.stdout(format!("{}\n", result.text.as_deref().unwrap_or_default()))?;
+    }
+    if result.status != "completed" {
+        bail!(
+            "run {}: {}",
+            result.status,
+            result.error.unwrap_or_default()
+        );
+    }
+    Ok(())
+}
+
+fn read_record(reader: &mut impl std::io::BufRead) -> Result<Option<Vec<u8>>> {
+    let mut record = Vec::new();
+    loop {
+        let buffer = reader.fill_buf()?;
+        if buffer.is_empty() {
+            return Ok((!record.is_empty()).then_some(record));
+        }
+        let end = buffer
+            .iter()
+            .position(|b| *b == b'\n')
+            .map(|i| i + 1)
+            .unwrap_or(buffer.len());
+        ensure!(
+            record.len() + end <= 1024 * 1024,
+            "protocol record exceeds 1 MiB"
+        );
+        let complete = buffer[end - 1] == b'\n';
+        record.extend_from_slice(&buffer[..end]);
+        reader.consume(end);
+        if complete {
+            return Ok(Some(record));
+        }
+    }
+}
+
+struct StdioServices {
+    scope: SessionScope,
+    storage_policy: bubblepaw_core::RootStoragePolicy,
+    usage: UsageSettings,
+    workspace: PathBuf,
+    questions: Arc<QuestionTools>,
+    live_config: Arc<LiveConfig>,
+    repl: Arc<CodeMode>,
+    processes: Arc<ProcessTools>,
+    context_strategy: ContextStrategy,
+    agents: Arc<AgentTools>,
+    control: SessionControl,
+}
+
+async fn run_stdio(
+    harness: Arc<Harness>,
+    store: Store,
+    services: StdioServices,
+    input_limits: InputLimits,
+    cancellation: CancellationToken,
+) -> Result<()> {
+    let wake = services.agents.wake_coordinator();
+    services.processes.set_wake(wake.clone());
+    services.processes.set_store(store.clone());
+    let wake_registration = wake.register_harness_scoped(harness.clone(), services.scope.clone());
+    let wake_driver = wake.start_driver();
+    let (output, mut records) = mpsc::channel::<Value>(128);
+    // Console/anonymous-pipe IO can block forever on Windows. Dedicated OS
+    // threads keep it out of Tokio's blocking pool so shutdown remains bounded.
+    let writer = std::thread::spawn(move || {
+        use std::io::Write;
+        let mut stdout = std::io::stdout().lock();
+        while let Some(record) = records.blocking_recv() {
+            serde_json::to_writer(&mut stdout, &record)?;
+            writeln!(stdout)?;
+            stdout.flush()?;
+        }
+        Ok::<_, anyhow::Error>(())
+    });
+    let mut events = harness.subscribe();
+    let notifications = output.clone();
+    let start = harness.last_sequence();
+    let event_store = store.clone();
+    let event_scope = services.scope.clone();
+    let event_forwarder = tokio::spawn(async move {
+        let mut skipped = 0u64;
+        // The last durable sequence forwarded; a gap is recovered with events.after from it.
+        let mut forwarded = start;
+        loop {
+            let event: HarnessEvent = match events.recv().await {
+                Ok(event) => event,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                    skipped += count;
+                    continue;
+                }
+                Err(_) => break,
+            };
+            if !event_scope.contains(&event_store, &event.session_id)
+                || !event_store
+                    .session(&event.session_id)
+                    .is_ok_and(|session| !session.hidden)
+            {
+                if event.durable && skipped == 0 {
+                    forwarded = forwarded.max(event.sequence);
+                }
+                continue;
+            }
+            if skipped > 0 {
+                if notifications.try_send(json!({"jsonrpc":"2.0","method":"events.gap","params":{"skipped":skipped,"after":forwarded,"recover_with":"events.after"}})).is_err() { skipped += 1; continue; }
+                skipped = 0;
+            }
+            let (durable, sequence) = (event.durable, event.sequence);
+            if notifications
+                .try_send(json!({"jsonrpc":"2.0","method":"event","params":event}))
+                .is_err()
+            {
+                skipped += 1;
+            } else if durable {
+                forwarded = forwarded.max(sequence);
+            }
+        }
+    });
+    let (input, mut incoming) = mpsc::channel(16);
+    std::thread::spawn(move || {
+        let mut stdin = std::io::stdin().lock();
+        loop {
+            let record = read_record(&mut stdin);
+            let terminal = !matches!(&record, Ok(Some(_)));
+            if input.blocking_send(record).is_err() || terminal {
+                break;
+            }
+        }
+    });
+    let loop_result = tokio::select! {
+        biased;
+        _ = cancellation.cancelled() => Ok(()),
+        result = async {
+        loop {
+            let record = tokio::select! {
+                _ = cancellation.cancelled() => break,
+                record = incoming.recv() => match record { Some(record) => record?, None => break },
+                _ = tokio::signal::ctrl_c() => break,
+            };
+            let Some(record) = record else { break; };
+            let request: Value = match serde_json::from_slice(&record) {
+                Ok(request) => request,
+                Err(_) => { output.send(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"invalid JSON"}})).await?; continue; }
+            };
+            let id = request.get("id").cloned();
+            if request["jsonrpc"] != "2.0" || !request["method"].is_string() || id.as_ref().is_some_and(|v| !v.is_string() && !v.is_number() && !v.is_null()) {
+                output.send(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"invalid request"}})).await?;
+                continue;
+            }
+            let method = request["method"].as_str().unwrap();
+            let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
+            let quit = method == "shutdown";
+            let response = tokio::select! {
+                _ = cancellation.cancelled() => break,
+                response = command(&harness, &store, &services, &input_limits, method, &params) => response,
+            };
+            if let Some(id) = id {
+                let record = match response {
+                    Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
+                    Err(error) => json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":error.to_string()}}),
+                };
+                output.send(record).await?;
+            }
+            if quit { break; }
+        }
+        Ok::<_, anyhow::Error>(())
+        } => result,
+    };
+    drop(incoming);
+    wake_driver.shutdown().await;
+    drop(wake_registration);
+    event_forwarder.abort();
+    let _ = event_forwarder.await;
+    drop(output);
+    let until = tokio::time::Instant::now() + Duration::from_secs(2);
+    while !writer.is_finished() && tokio::time::Instant::now() < until {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    if writer.is_finished() {
+        writer
+            .join()
+            .map_err(|_| anyhow::anyhow!("stdout writer panicked"))??;
+    }
+    loop_result
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn command(
+    harness: &Arc<Harness>,
+    store: &Store,
+    services: &StdioServices,
+    input_limits: &InputLimits,
+    method: &str,
+    params: &Value,
+) -> Result<Value> {
+    let repl = &services.repl;
+    let context_strategy = services.context_strategy;
+    let control = &services.control;
+    let session_id = || {
+        let session = params["session_id"]
+            .as_str()
+            .context("session_id is required")?;
+        control.ensure_workspace(session)?;
+        Ok::<_, anyhow::Error>(session)
+    };
+    let client = || bubblepaw_core::client_param(params.get("client"));
+    let text = || {
+        let text = params["text"].as_str().context("text is required")?;
+        input_limits.validate_prompt(text)?;
+        Ok::<_, anyhow::Error>(text)
+    };
+    Ok(match method {
+        "config.reload" => {
+            serde_json::to_value(services.live_config.reload(params["server"].as_str()).await)?
+        }
+        "initialize" => {
+            json!({"protocol_version":"0.1","features":["sessions","tools","paragraphs","steer","follow_up","cancel","codemode","environments","outputs","approvals","events","processes","config_reload","compact","todo","question","rewind"],"transport":"stdio","input_limits":input_limits})
+        }
+        "session.open" => {
+            let parent = params["parent_session_id"]
+                .as_str()
+                .or_else(|| params["parent_id"].as_str());
+            let title = session_title(
+                params["title"].as_str().or_else(|| params["name"].as_str()),
+                "New session",
+            )?;
+            let session = match params["session_id"].as_str() {
+                Some(_) => store.session(session_id()?)?,
+                None => match parent {
+                    Some(parent) => {
+                        if let Some(bound) = store.session_workspace(parent)? {
+                            ensure!(
+                                bound == services.workspace,
+                                "Parent belongs to another workspace: {}",
+                                bound.display()
+                            );
+                        }
+                        store.create_session_with_parent(title, context_strategy, Some(parent))?
+                    }
+                    None => store.create_session_with_policy(
+                        title,
+                        context_strategy,
+                        &services.workspace,
+                        services.storage_policy,
+                    )?,
+                },
+            };
+            if params["session_id"].is_null() {
+                services.scope.adopt_idle_root(&session.id);
+            }
+            serde_json::to_value(session)?
+        }
+        "session.list" => serde_json::to_value(
+            store
+                .list_visible_sessions()?
+                .iter()
+                .map(|session| session_with_usage(store, session, &services.usage))
+                .collect::<Result<Vec<_>>>()?,
+        )?,
+        "session.rename" => {
+            let title = params["title"].as_str().context("title is required")?;
+            control
+                .execute(Some(session_id()?), SlashCommand::Rename(title))
+                .await?
+        }
+        "session.rewind" => {
+            let message = params["message_id"]
+                .as_str()
+                .context("message_id is required")?;
+            control
+                .execute(Some(session_id()?), SlashCommand::Rewind(message))
+                .await?
+        }
+        "session.compact" => {
+            let focus = match params.get("focus") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(focus)) => Some(focus.as_str()),
+                _ => bail!("focus must be a string"),
+            };
+            control
+                .execute(Some(session_id()?), SlashCommand::Compact(focus))
+                .await?
+        }
+        "session.delete" => {
+            services.agents.wake_coordinator().suppress(session_id()?);
+            let worktrees = bubblepaw_runner::worktrees::delete_session(store, session_id()?)?;
+            services.processes.cancel_owner(session_id()?).await;
+            json!({"deleted":session_id()?,"worktrees":worktrees})
+        }
+        "session.state" => {
+            // Store reads only inside: `seq` is the last durable event they reflect.
+            let id = session_id()?;
+            let (mut state, position) = harness.snapshot_with(id, || {
+                Ok(json!({"session":store.session(id)?,"messages":store.messages(id)?,"runs":store.runs(id)?,"inputs":store.queued_inputs(id)?,"outputs":store.outputs(id,128)?,"pending_effects":store.pending_effects(id)?,"todo":bubblepaw_runner::todo::list(store,id)?,"question":services.questions.pending(id)?,"usage":session_usage(store,id,&services.usage)?}))
+            })?;
+            state["repl"] = repl.status(id);
+            state["seq"] = json!(position.seq);
+            state["streaming_text"] = json!(position.streaming_text);
+            state
+        }
+        "events.after" => {
+            let after = match params.get("after") {
+                None | Some(Value::Null) => 0,
+                Some(value) => value.as_u64().context("after must be a sequence number")?,
+            };
+            let limit = match params.get("limit") {
+                None | Some(Value::Null) => bubblepaw_core::EVENTS_AFTER_LIMIT,
+                Some(value) => value.as_u64().context("limit must be a number")? as usize,
+            };
+            let events: Vec<_> = harness
+                .events_after(after, params["session_id"].as_str(), limit)?
+                .into_iter()
+                .filter(|event| {
+                    params["session_id"].is_string()
+                        || store
+                            .session(&event.session_id)
+                            .is_ok_and(|session| !session.hidden)
+                })
+                .collect();
+            // resync: events after `after` were pruned, so reload session.state instead.
+            json!({"events":events,"last_seq":harness.last_sequence(),"resync":!harness.can_resume_from(after)})
+        }
+        "environment.inspect" => {
+            store.session(session_id()?)?;
+            repl.status(session_id()?)
+        }
+        "environment.control" => {
+            store.session(session_id()?)?;
+            repl.control(
+                session_id()?,
+                params
+                    .get("control")
+                    .cloned()
+                    .unwrap_or_else(|| json!({"action":"inspect"})),
+            )?
+        }
+        "run.start" => {
+            let text = text()?;
+            if let Some(value) = control.run_command(Some(session_id()?), text).await? {
+                return Ok(value);
+            }
+            let mut options: RunOptions = serde_json::from_value(
+                params.get("options").cloned().unwrap_or_else(|| json!({})),
+            )?;
+            options.origin = MessageOrigin::Typed;
+            if let Some(script) = params["script"].as_str() {
+                options.script = Some(script.into());
+            }
+            options.client = client()?;
+            let run = services.scope.admit(store, session_id()?, false, || {
+                harness.start(session_id()?, text, options)
+            })?;
+            services.agents.wake_coordinator().user_input(session_id()?);
+            serde_json::to_value(run)?
+        }
+        "run.resume" => {
+            let mut options: RunOptions = serde_json::from_value(
+                params.get("options").cloned().unwrap_or_else(|| json!({})),
+            )?;
+            options.client = client()?;
+            let run = services.scope.admit(store, session_id()?, false, || {
+                harness.start_resume(session_id()?, options)
+            })?;
+            serde_json::to_value(run)?
+        }
+        "run.steer" => {
+            let text = text()?;
+            if let Some(value) = control.run_command(Some(session_id()?), text).await? {
+                return Ok(value);
+            }
+            let input = harness.steer_from(session_id()?, text, client()?)?;
+            services.agents.wake_coordinator().user_input(session_id()?);
+            serde_json::to_value(input)?
+        }
+        "run.follow_up" => {
+            let text = text()?;
+            if let Some(value) = control.run_command(Some(session_id()?), text).await? {
+                return Ok(value);
+            }
+            let input = harness.followup_from(session_id()?, text, client()?)?;
+            services.agents.wake_coordinator().user_input(session_id()?);
+            serde_json::to_value(input)?
+        }
+        "run.cancel" => {
+            let requested = control.cancel(session_id()?, client()?).await?;
+            json!({"requested":requested})
+        }
+        "process.background" => {
+            store.session(session_id()?)?;
+            services.processes.background(
+                session_id()?,
+                params["handle"].as_str().context("handle is required")?,
+            )?
+        }
+        "process.list" => {
+            store.session(session_id()?)?;
+            services.processes.jobs(session_id()?)?
+        }
+        "approval.list" => serde_json::to_value(harness.pending_approvals(session_id()?)?)?,
+        "question.answer" => {
+            let id = session_id()?;
+            ensure!(
+                store.session(id)?.parent_session_id.is_none(),
+                "Child questions must be answered by their direct parent through agent_send"
+            );
+            let origin = client()?;
+            let question_id = params["question_id"]
+                .as_str()
+                .context("question_id is required")?;
+            let answer = services
+                .questions
+                .answer(harness, id, question_id, text()?)?;
+            if !answer.live {
+                bubblepaw_runner::question::continue_answer(harness, store, id, &answer, origin)?;
+            }
+            json!({"question":answer.question,"live":answer.live})
+        }
+        "approval.decide" => serde_json::to_value(
+            harness.decide_from(
+                params["approval_id"]
+                    .as_str()
+                    .context("approval_id is required")?,
+                Decision::parse(
+                    params["decision"]
+                        .as_str()
+                        .context("decision is required")?,
+                    params["reason"].as_str().map(str::to_owned),
+                )?,
+                client()?,
+            )?,
+        )?,
+        "storage.stats" => serde_json::to_value(store.storage_stats()?)?,
+        // The stdio loop exits after this reply; request cleanup drains its own
+        // sessions. Shared runtime shutdown belongs to HostLifetime.
+        "shutdown" => json!({"stopped":true}),
+        _ => bail!("unknown method: {method}"),
+    })
+}
+
+#[cfg(test)]
+mod role_cli_tests;

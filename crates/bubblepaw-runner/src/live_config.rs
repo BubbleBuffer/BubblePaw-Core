@@ -1,0 +1,540 @@
+//! Host-owned config refresh. Disk edits are checked once at each turn boundary.
+use crate::{
+    agents::AgentTools,
+    config::{EffectiveConfig, Settings},
+    memory_files::MemoryFiles,
+    net::{NetClient, register_sources},
+    provider::LiveProviderConfig,
+    skills::Skills,
+    tools::ProcessTools,
+};
+use anyhow::{Result, anyhow};
+use async_trait::async_trait;
+use bubblepaw_core::{
+    ApprovalMode, ApprovalPolicy, CancellationToken, Store, ToolRegistry, TurnStart,
+};
+use bubblepaw_mcp::McpHost;
+use serde::Serialize;
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Mutex, RwLock, Weak},
+    time::SystemTime,
+};
+
+mod reload_tool;
+mod turn_start;
+pub(crate) use reload_tool::register_reload_tool;
+use turn_start::ConfigTurnStart;
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ReloadReport {
+    pub applied: bool,
+    pub changed: Vec<String>,
+    pub errors: Vec<String>,
+    pub restart_needed: bool,
+    pub active_main: String,
+}
+impl ReloadReport {
+    pub fn summary(&self) -> String {
+        let mut parts = self.changed.clone();
+        parts.extend(self.errors.iter().map(|error| format!("! {error}")));
+        if parts.is_empty() {
+            return "Config unchanged".into();
+        }
+        let mut text = format!("Config changed: {}", parts.join("; "));
+        // A notice is a small diff, never an effective config dump.
+        if text.len() > 4096 {
+            let mut end = 4050;
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            text.truncate(end);
+            text.push_str("; further changes omitted (see reload result)");
+        }
+        text
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct FileStamp {
+    pub(crate) path: PathBuf,
+    modified: Option<SystemTime>,
+    pub(crate) size: Option<u64>,
+}
+struct State {
+    stamps: Vec<FileStamp>,
+    accepted: EffectiveConfig,
+    notices: Vec<String>,
+    consumed: HashMap<String, usize>,
+    last_error: Option<String>,
+    last_warning: Option<String>,
+}
+
+#[path = "live_reminders.rs"]
+mod reminder_notices;
+
+pub struct LiveConfig {
+    memory: MemoryFiles,
+    skills: Skills,
+    providers: Arc<LiveProviderConfig>,
+    mcp: Arc<McpHost>,
+    processes: Arc<ProcessTools>,
+    store: Store,
+    base: RwLock<ToolRegistry>,
+    tools: RwLock<ToolRegistry>,
+    removed: Mutex<HashMap<String, String>>,
+    web_client: Mutex<Option<NetClient>>,
+    agents: Mutex<Weak<AgentTools>>,
+    state: Mutex<State>,
+    updates: tokio::sync::Mutex<()>,
+}
+impl LiveConfig {
+    pub fn new(
+        effective: EffectiveConfig,
+        providers: Arc<LiveProviderConfig>,
+        mcp: Arc<McpHost>,
+        processes: Arc<ProcessTools>,
+        store: Store,
+    ) -> Result<Arc<Self>> {
+        let stamps = stamps(&effective)?;
+        let options = providers.load_options();
+        let memory = MemoryFiles::new(
+            store.clone(),
+            options.workspace.clone(),
+            options.home.as_ref().map(|home| home.join(".bubblepaw")),
+            effective.settings()?.memory_files,
+        );
+        let skills = Skills::new(
+            store.clone(),
+            options.workspace.clone(),
+            options
+                .home
+                .as_ref()
+                .map(|home| home.join(".config/bubblepaw/skills")),
+        );
+        Ok(Arc::new(Self {
+            memory,
+            skills,
+            providers,
+            mcp,
+            processes,
+            store,
+            base: RwLock::default(),
+            tools: RwLock::default(),
+            removed: Mutex::default(),
+            web_client: Mutex::default(),
+            agents: Mutex::new(Weak::new()),
+            state: Mutex::new(State {
+                stamps,
+                accepted: effective,
+                notices: Vec::new(),
+                consumed: HashMap::new(),
+                last_error: None,
+                last_warning: None,
+            }),
+            updates: tokio::sync::Mutex::new(()),
+        }))
+    }
+    /// Install the ordinary host tools once. MCP and web capabilities are rebuilt
+    /// separately, and child resolvers hold only a weak link to this host.
+    pub fn bind(self: &Arc<Self>, mut base: ToolRegistry, agents: &Arc<AgentTools>) -> Result<()> {
+        register_reload_tool(&mut base, Arc::downgrade(self))?;
+        *self.agents.lock().unwrap() = Arc::downgrade(agents);
+        *self.base.write().unwrap() = base;
+        self.publish_tools()?;
+        Ok(())
+    }
+    pub fn registry(&self) -> ToolRegistry {
+        self.tools.read().unwrap().clone()
+    }
+    pub fn configure_harness(self: &Arc<Self>, config: &mut bubblepaw_core::HarnessConfig) {
+        let weak = Arc::downgrade(self);
+        config.system_prompt_resolver = Some(Arc::new(move |session, base| match weak.upgrade() {
+            Some(live) => {
+                if !live.skills.initialized(session) {
+                    live.check_skills(session, &live.providers.snapshot().settings)?;
+                }
+                let base = live.system_prompt(session, base)?;
+                Ok(live.skills.system_prompt(session, &base))
+            }
+            None => Ok(base.to_owned()),
+        }));
+        let weak = Arc::downgrade(self);
+        config.registry_resolver = Some(Arc::new(move || {
+            weak.upgrade()
+                .map(|live| live.registry())
+                .unwrap_or_default()
+        }));
+        config.turn_start = Some(Arc::new(ConfigTurnStart(Arc::downgrade(self))));
+        let weak = Arc::downgrade(self);
+        config.approval_resolver = Some(Arc::new(move |_| {
+            weak.upgrade()
+                .map(|live| live.approval())
+                .unwrap_or_default()
+        }));
+        // A session's exec tool runs in its worktree, or in the host workspace
+        // when it has none; the hardline workspace checks follow that directory.
+        let store = self.store.clone();
+        config.workspace_resolver = Some(Arc::new(move |session| {
+            let host = store.session_workspace(session).ok().flatten()?;
+            crate::worktrees::workspace(&store, session, &host).ok()
+        }));
+    }
+    pub fn approval(&self) -> ApprovalPolicy {
+        approval_policy(&self.providers.snapshot().settings)
+            .expect("published approval config is validated")
+    }
+    /// Shared with provider setup writes so a file save cannot overtake a reload.
+    pub async fn lock_update(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.updates.lock().await
+    }
+    pub async fn reload(&self, server: Option<&str>) -> ReloadReport {
+        let _guard = self.lock_update().await;
+        self.check_locked(true, server).await
+    }
+    pub async fn check(&self) -> ReloadReport {
+        let _guard = self.lock_update().await;
+        self.check_locked(false, None).await
+    }
+    pub async fn check_locked(&self, force: bool, server: Option<&str>) -> ReloadReport {
+        let old = self.state.lock().unwrap().accepted.clone();
+        let mut report = ReloadReport {
+            applied: true,
+            changed: Vec::new(),
+            errors: Vec::new(),
+            restart_needed: old.restart_needed(self.providers.startup_config()),
+            active_main: self.providers.main_model(),
+        };
+        let current_stamps = match stamps(&old) {
+            Ok(stamps) => stamps,
+            Err(error) => return self.failed(report, error),
+        };
+        let disk_changed = current_stamps != self.state.lock().unwrap().stamps;
+        if force || disk_changed {
+            let candidate = (|| {
+                let candidate = self.providers.startup_config().reload()?;
+                let prepared = self.providers.prepare(candidate.clone())?;
+                let settings = candidate.settings()?;
+                approval_policy(&settings)?;
+                Ok::<_, anyhow::Error>((candidate, prepared, settings))
+            })();
+            let (candidate, prepared, settings) = match candidate {
+                Ok(candidate) => candidate,
+                Err(error) => {
+                    // Remember rejected versions, but never acknowledge an edit
+                    // before an awaited reload can be cancelled.
+                    self.state.lock().unwrap().stamps = current_stamps;
+                    return self.failed(report, error);
+                }
+            };
+            let mcp = match self.mcp.reload(&settings.mcp, server).await {
+                Ok(diff) => diff,
+                Err(error) => {
+                    self.state.lock().unwrap().stamps = current_stamps;
+                    return self.failed(report, error);
+                }
+            };
+            // No await between lifecycle publication, registry publication,
+            // notice recording and acknowledgement of the observed file stamp.
+            report.changed = config_diff(&old, &candidate);
+            add_mcp_diff(&mut report, &mcp);
+            report.restart_needed = candidate.restart_needed(self.providers.startup_config());
+            if !self
+                .providers
+                .snapshot()
+                .effective
+                .same_provider_config(&candidate)
+            {
+                let _update = self.providers.lock_update().expect("provider update lock");
+                self.providers.apply_prepared(prepared);
+            }
+            self.processes.apply_config(settings.exec.clone());
+            if let Some(agents) = self.agents.lock().unwrap().upgrade() {
+                agents.apply_limits(&settings.agents);
+            }
+            {
+                let mut state = self.state.lock().unwrap();
+                state.accepted = candidate;
+                state.stamps = current_stamps;
+                state.last_error = None;
+            }
+            if let Err(error) = self.publish_and_notice(&mut report) {
+                return self.failed(report, error);
+            }
+        }
+        // A cancelled notified-list fetch keeps its dirty flag armed. A config
+        // already applied above has its registry and pending notice committed.
+        let mcp = self.mcp.refresh_tools().await;
+        if !mcp.is_empty() {
+            let mut refresh = ReloadReport {
+                applied: true,
+                changed: Vec::new(),
+                errors: Vec::new(),
+                restart_needed: report.restart_needed,
+                active_main: self.providers.main_model(),
+            };
+            add_mcp_diff(&mut refresh, &mcp);
+            if let Err(error) = self.publish_and_notice(&mut refresh) {
+                refresh = self.failed(refresh, error);
+            }
+            report.applied &= refresh.applied;
+            report.changed.extend(refresh.changed);
+            report.errors.extend(refresh.errors);
+        }
+        report.active_main = self.providers.main_model();
+        report
+    }
+    fn publish_and_notice(&self, report: &mut ReloadReport) -> Result<()> {
+        if !report.changed.is_empty() {
+            self.publish_tools()?;
+        }
+        report.active_main = self.providers.main_model();
+        let mut state = self.state.lock().unwrap();
+        let warning = (!report.errors.is_empty()).then(|| report.errors.join("; "));
+        if !report.changed.is_empty() || warning.is_some() && warning != state.last_warning {
+            state.notices.push(report.summary());
+        }
+        state.last_warning = warning;
+        Ok(())
+    }
+    fn failed(&self, mut report: ReloadReport, error: anyhow::Error) -> ReloadReport {
+        report.applied = false;
+        let error = error.to_string();
+        report.errors.push(error.clone());
+        let mut state = self.state.lock().unwrap();
+        if state.last_error.as_ref() != Some(&error) {
+            state.notices.push(report.summary());
+            state.last_error = Some(error);
+        }
+        report
+    }
+    fn publish_tools(&self) -> Result<()> {
+        let mut tools = self.base.read().unwrap().clone();
+        let settings = self.providers.snapshot();
+        if let Some(agents) = self.agents.lock().unwrap().upgrade() {
+            // Profile availability changes the input schema as well as its
+            // description. Compile validators from the new definition.
+            for name in ["agent", "agent_send", "agent_status"] {
+                tools.remove(name, "refreshing agent settings");
+            }
+            agents.register(&mut tools)?;
+            tools.show_always(["agent"]);
+        }
+        if let Some(web) = settings
+            .settings
+            .web
+            .net_config_with_env(&|name| settings.effective.environment(name))?
+        {
+            let mut slot = self.web_client.lock().unwrap();
+            if slot.is_none() {
+                *slot = Some(NetClient::with_store_live(
+                    &web,
+                    &self.store,
+                    self.providers.clone(),
+                )?);
+            }
+            register_sources(
+                &mut tools,
+                slot.as_ref().expect("web client").clone(),
+                web.expose.fetch,
+                web.expose.search,
+            )?;
+        }
+        self.mcp.register_tools(&mut tools)?;
+        if settings.settings.approvals.read_only {
+            let mut filtered = tools.read_only();
+            // Read-only workspace access still permits child orchestration and
+            // cancellation, as at startup. Child tool views inherit the filter.
+            for name in ["agent", "agent_send", "cancel"] {
+                if let Some(tool) = tools.get_host(name) {
+                    filtered.register_host(tool)?;
+                    if tools.is_shown_always(name) {
+                        filtered.show_always([name]);
+                    }
+                }
+            }
+            tools = filtered;
+        }
+        let previous = self.tools.read().unwrap().clone();
+        let mut removed = self.removed.lock().unwrap();
+        for definition in previous.capabilities() {
+            if tools.get(&definition.name).is_none() {
+                removed.insert(
+                    definition.name,
+                    "removed by live configuration or the server's current tool list".into(),
+                );
+            }
+        }
+        removed.retain(|name, _| tools.get(name).is_none());
+        for (name, reason) in removed.iter() {
+            tools.remove(name, reason);
+        }
+        *self.tools.write().unwrap() = tools.with_generation(previous.generation() + 1);
+        Ok(())
+    }
+    fn check_skills(&self, session: &str, settings: &Settings) -> Result<()> {
+        self.skills
+            .check(session, settings.skills.enabled, &settings.skills.dirs)?;
+        self.processes
+            .set_skill_read_roots(session, self.skills.read_roots(session))
+    }
+}
+
+fn stamps(config: &EffectiveConfig) -> Result<Vec<FileStamp>> {
+    file_stamps(config.config_paths())
+}
+
+pub(crate) fn file_stamps(paths: Vec<PathBuf>) -> Result<Vec<FileStamp>> {
+    paths
+        .into_iter()
+        .map(|path| match std::fs::metadata(&path) {
+            Ok(metadata) => Ok(FileStamp {
+                path,
+                modified: metadata.modified().ok(),
+                size: Some(metadata.len()),
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(FileStamp {
+                path,
+                modified: None,
+                size: None,
+            }),
+            Err(_) => Err(anyhow!("Cannot stat file {}", path.display())),
+        })
+        .collect()
+}
+
+pub fn approval_policy(settings: &Settings) -> Result<ApprovalPolicy> {
+    let mode = |value: &str| match value {
+        "ask" => Ok(ApprovalMode::Ask),
+        "auto" => Ok(ApprovalMode::Auto),
+        "allow" => Ok(ApprovalMode::Allow),
+        "deny" => Ok(ApprovalMode::Deny),
+        _ => Err(anyhow!("Invalid approval mode")),
+    };
+    Ok(ApprovalPolicy {
+        confirm: mode(&settings.approvals.confirm)?,
+        tools: settings
+            .approvals
+            .tools
+            .iter()
+            .map(|(name, value)| Ok((name.clone(), mode(value)?)))
+            .collect::<Result<_>>()?,
+        deny: settings.approvals.deny.clone(),
+        timeout_secs: None,
+        hardline: settings.approvals.hardline,
+    })
+}
+fn config_diff(old: &EffectiveConfig, new: &EffectiveConfig) -> Vec<String> {
+    let mut diff = Vec::new();
+    for section in [
+        "model",
+        "providers",
+        "roles",
+        "web",
+        "agents",
+        "exec",
+        "mcp",
+        "skills",
+    ] {
+        if old.value(section) != new.value(section) {
+            diff.push(format!("{section} updated"));
+        }
+    }
+    if old.value("approvals") != new.value("approvals") {
+        let before = old.settings().expect("accepted config").approvals;
+        let after = new.settings().expect("validated config").approvals;
+        if before.confirm != after.confirm {
+            diff.push(format!(
+                "approval default: {} → {}",
+                before.confirm, after.confirm
+            ));
+        }
+        let names: std::collections::BTreeSet<_> =
+            before.tools.keys().chain(after.tools.keys()).collect();
+        for name in names {
+            let from = before
+                .tools
+                .get(name)
+                .map(String::as_str)
+                .unwrap_or("default");
+            let to = after
+                .tools
+                .get(name)
+                .map(String::as_str)
+                .unwrap_or("default");
+            if from != to {
+                diff.push(format!("approval for {name}: {from} → {to}"));
+            }
+        }
+        if before.deny != after.deny {
+            diff.push(format!(
+                "approval deny rules: {} → {}",
+                before.deny.join(", "),
+                after.deny.join(", ")
+            ));
+        }
+        if before.read_only != after.read_only {
+            diff.push("approval read-only setting updated".into());
+        }
+        if before.hardline != after.hardline {
+            let label = |on: bool| if on { "on" } else { "off" };
+            diff.push(format!(
+                "approval hardline floor: {} → {}",
+                label(before.hardline),
+                label(after.hardline)
+            ));
+        }
+    }
+    for section in ["storage", "context", "extensions"] {
+        if old.value(section) != new.value(section) {
+            diff.push(format!("{section} updated (restart needed)"));
+        }
+    }
+    diff
+}
+fn add_mcp_diff(report: &mut ReloadReport, diff: &bubblepaw_mcp::McpDiff) {
+    report
+        .changed
+        .extend(diff.added.iter().map(|name| format!("+ {name}")));
+    report
+        .changed
+        .extend(diff.removed.iter().map(|name| format!("− {name}")));
+    report
+        .changed
+        .extend(diff.changed.iter().map(|name| format!("~ {name}")));
+    report.changed.extend(
+        diff.started
+            .iter()
+            .map(|name| format!("server {name} started")),
+    );
+    report.changed.extend(
+        diff.stopped
+            .iter()
+            .map(|name| format!("server {name} stopped: config removed or disabled")),
+    );
+    report.changed.extend(
+        diff.restarted
+            .iter()
+            .map(|name| format!("server {name} restarted")),
+    );
+    report.errors.extend(diff.warnings.iter().cloned());
+    report.changed.extend(
+        diff.filtered
+            .iter()
+            .map(|name| format!("server {name} tool visibility settings updated")),
+    );
+}
+
+/// Recognize only an exact host command; ordinary prompts keep their contents.
+pub fn reload_command(text: &str) -> Option<Option<&str>> {
+    let mut words = text.split_whitespace();
+    if words.next()? != "/reload" {
+        return None;
+    }
+    let server = words.next();
+    if words.next().is_some() {
+        return None;
+    }
+    Some(server)
+}

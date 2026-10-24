@@ -1,0 +1,59 @@
+# Credentials are inherited from OPENCODE_API_KEY; never put a key in this file.
+[model]
+main = "opencode-free/deepseek-v4.1-flash-free"
+fallbacks = ["opencode/deepseek-v4.1-flash"]
+
+[agent]
+system_prompt = "Complete the assigned workspace task using the supplied context and available tools. For source questions, search exact identifiers or literals first, then read the relevant ranges; avoid speculative file-header reads and overlapping searches. Call independent tools together in one message and keep observations compact. Correct errors using their diagnostics. Once the requested outcome is established, return a concise answer with decisive evidence and any unfinished work; avoid incidental investigations and a transcript of the search. Follow workspace instructions."
+
+[providers.opencode]
+kind = "chat-completions"
+base_url = "https://opencode.ai/zen/go/v1"
+key_env = "OPENCODE_API_KEY"
+reasoning = { thinking = { type = "enabled" }, reasoning_effort = "low" }
+models = [{ id = "deepseek-v4.1-flash", reasoning_replay = "all" }]
+
+[providers.opencode-free]
+kind = "chat-completions"
+base_url = "https://opencode.ai/inference/openai/v1"
+key_env = "OPENCODE_API_KEY"
+reasoning = { thinking = { type = "enabled" }, reasoning_effort = "low" }
+models = [{ id = "deepseek-v4.1-flash-free", reasoning_replay = "all" }]
+
+[providers.opencode-decisions]
+kind = "opencode-decisions"
+base_url = "https://opencode.ai/inference/systemone/v1/systemone"
+key_env = "OPENCODE_API_KEY"
+
+# Decision roles try the two Jev routes in order, then use Flash through the LLM adapter.
+[roles]
+summary = { models = ["main"], repeats = 1, threshold = 0.0, reasoning_effort = "low" }
+chapter = { models = ["summary"], repeats = 1, threshold = 0.0, reasoning_effort = "low" }
+decider = { models = ["opencode-decisions/jev-1.13-free", "opencode-decisions/jev-1.13", "llm/opencode/deepseek-v4.1-flash"], repeats = 1, threshold = 0.0, reasoning_effort = "low" }
+approver = { models = ["opencode-decisions/jev-1.13-free", "opencode-decisions/jev-1.13", "llm/opencode/deepseek-v4.1-flash"], reasoning_effort = "low" }
+
+[context]
+strategy = "lcm"
+compact_threshold_tokens = 200000
+window_tokens = 200000
+
+[context.lcm]
+summary_input = "fork"
+source_target_tokens = 24000
+source_max_tokens = 32000
+summary_target_tokens = 2000
+chapter_summary_max_tokens = 8000
+chapter_description_tokens = 300
+chapter_rollover_tokens = 0
+child_compact_threshold_tokens = 100000
+output_reserve_tokens = 16000
+
+[web]
+enabled = true
+deepseek_key_env = "DEEPSEEK_MODEL_API_KEY"
+search = ["deepseek", "ddg"]
+
+# Unattended worker: the caller authorizes the workspace task before launching.
+# For research without commands or edits, add --read-only.
+[approvals]
+confirm = "allow"

@@ -1,0 +1,152 @@
+# Copy to ~/.bubblepaw/config.toml or <workspace>/.bubblepaw/config.toml.
+# --config <path> replaces both implicit files. Never put credentials here.
+[agent]
+execution_mode = "native" # New-chat default. Use "js" for the JavaScript wrapper.
+
+[model]
+main = "gpt-6-luna"
+provider = "codex" # Used for bare model names.
+
+[storage]
+data_dir = ""
+legacy_db = ""
+finished_event_retention_hours = 24
+telemetry_retention_days = 30
+archive_after_days = 30 # 0 disables idle whole-chat archiving.
+cold_tail_messages = 128
+cold_min_messages = 1024
+cold_min_bytes = 8388608
+cold_row_min_bytes = 256
+
+[exec]
+sync_timeout_secs = 120 # Sync commands move to background after this; 0 backgrounds at once.
+# max_jobs_per_session = 4 # Optional cap; unset means no limit.
+# max_jobs = 16 # Optional host-wide cap; unset means no limit.
+max_output_bytes = 8388608 # Per-job output spool cap.
+
+[providers.opencode]
+kind = "chat-completions"
+base_url = "https://opencode.ai/zen/go/v1"
+key_env = "OPENCODE_API_KEY"
+reasoning = { thinking = { type = "enabled" }, reasoning_effort = "low" }
+
+[providers.opencode-messages]
+kind = "anthropic-messages"
+base_url = "https://opencode.ai/zen/go/v1"
+key_env = "OPENCODE_API_KEY"
+# Thinking is always adaptive; role reasoning_effort defaults to low.
+# Set effort on roles, not this provider's reasoning object.
+# To select Haiku without changing defaults:
+# --set 'roles.summary=["opencode-messages/claude-haiku-5-5"]'
+
+[providers.openai]
+kind = "decisions"
+# account = "work-openai" # Defaults to this entry name; use the same label for aliases of this login.
+base_url = "https://api.openai.com"
+key_env = "OPENAI_API_KEY"
+
+[providers.openrouter]
+kind = "openrouter-decisions"
+base_url = "https://openrouter.ai/api/alpha/decisions"
+key_env = "OPENROUTER_API_KEY"
+
+[roles]
+summary = { models = ["opencode/deepseek-v4.1-flash", "main"], reasoning_effort = "low" }
+chapter = { models = ["summary"], reasoning_effort = "low" }
+# No built-in decider: this example names its decider chain explicitly. Without it, episode decisions fail with an error naming roles.decider.
+decider = { models = ["openai/gpt-6-luna", "llm/summary", "llm/main"], reasoning_effort = "low" }
+# The approver makes one yes/no decision per call: no repeats or threshold.
+approver = { models = ["openai/gpt-6-luna", "llm/summary", "llm/main"], reasoning_effort = "low" }
+# Effort: low | medium | high | xhigh | max. Never disabled/none.
+# --set roles.summary.reasoning_effort=high
+# For Haiku decisions: --set 'roles.decider=["llm/opencode-messages/claude-haiku-5-5"]'
+
+[context]
+strategy = "lcm" # lcm | classical
+compact_threshold_tokens = 256000
+auto_summarize = true
+retry_base_ms = 500
+# window_tokens = 400000 # Otherwise use local model metadata when available.
+
+[context.lcm]
+decider_enabled = true # false skips semantic decisions; summary gathering still runs.
+chapter_rollover_tokens = 0 # Positive values close chapters at this summary-token size.
+
+[context.classical]
+verbatim_user_tokens = 20000
+
+[approvals]
+confirm = "ask" # ask | allow | deny | auto
+read_only = false
+tools = {} # e.g. { bash = "auto", write = "ask" }
+# auto_prompt = "..." # Approver prompt template; unset uses the built-in default (docs/approvals.md).
+
+[agents]
+# All caps are unset by default: no limit, including recursive child sessions.
+# Optional caps are available against runaway recursion.
+# max_depth = 3 # Root is depth 0; 1 permits children, 2 permits grandchildren.
+# max_active_per_parent = 8
+# max_active_total = 32 # Shared by all depths in this host.
+# max_retained = 64 # In-memory handles only; sessionId survives eviction/restart.
+stale_reminder_secs = 7200 # Remind the parent about untouched running children; 0 disables.
+auto_wake = true # Deliver child/command completions to an idle parent.
+wake_debounce_ms = 1500 # Batch nearby completions; 0 admits immediately when idle.
+
+[web]
+enabled = false # --web enables the same setting.
+search = "ddg" # ddg | searxng:<url> | brave
+key_env = "BRAVE_API_KEY" # Only read when enabled Brave tools are constructed.
+allow_private = false
+user_agent = "BubblePaw/0.1"
+cache_ttl_secs = 86400 # 24 hours; 0 disables caching.
+cache_max_bytes = 67108864 # 64 MiB response-data bound in disposable web-cache.db.
+# max_searches = 100 # Optional per-client miss budget; unset means unlimited.
+# max_fetches = 200 # Clones share counters; cache hits do not count.
+
+[web.expose]
+fetch = true
+search = true
+
+[quota]
+max_wait_seconds = 21600 # Maximum automatic quota wait; 0 fails exhaustion immediately.
+
+[extensions]
+# Claude Code on a Claude subscription, one instance per account (docs/providers.md,
+# "Claude subscriptions"). Each config dir is logged in once with Claude Code itself.
+# [extensions.claude-code]
+# account = "work-claude" # Defaults to the extension name; aliases share this identity.
+# command = "bun"
+# args = ["run", "src/main.ts"]
+# cwd = "../extensions/claude-code" # Relative to this config file.
+# env = { CLAUDE_CONFIG_DIR = "/home/user/.claude", BUBBLEPAW_CC_SYSTEM_PROMPT = "replace" }
+# [extensions.claude-code-b]
+# account = "personal-claude"
+# command = "bun"
+# args = ["run", "src/main.ts"]
+# cwd = "../extensions/claude-code"
+# env = { CLAUDE_CONFIG_DIR = "/home/user/.claude-b", BUBBLEPAW_CC_SYSTEM_PROMPT = "replace" }
+# Inherited ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN never reach Claude Code unless an
+# instance's env sets them. Native quota handling waits for exhausted windows;
+# configured model fallbacks remain available for other eligible failures.
+
+# MCP client tools over stdio; servers start only for session commands.
+# [mcp.servers.github]
+# command = "github-mcp-server"
+# args = ["stdio"]
+# cwd = "." # Relative to the workspace.
+# env = { LOG_LEVEL = "warn" } # Plain values only, never secrets.
+# env_from = { GITHUB_PERSONAL_ACCESS_TOKEN = "GITHUB_TOKEN" } # Host env name only.
+# enabled = true
+# approval = "confirm" # confirm (default) | none
+# startup_timeout_secs = 30
+# call_timeout_secs = 120
+# include = [] # Empty means all tools; entries use server tool names.
+# exclude = []
+# [mcp.servers.github.tools]
+# get_issue = { approval = "none" }
+
+# Model classes for `bubblepaw delegate` (docs/delegation-bridge.md). A class route
+# runs `default`; 15% of class routes go to another listed candidate. List a model
+# only once BubblePaw can reach it.
+[delegate.classes]
+small = { default = "opencode/deepseek-v4.1-flash", candidates = ["opencode-messages/claude-haiku-5-5"] }

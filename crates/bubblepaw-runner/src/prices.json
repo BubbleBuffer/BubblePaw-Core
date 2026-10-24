@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "checked": "2026-10-19",
+  "unit": "USD per million tokens",
+  "source": "worker bench price table (list prices only)",
+  "models": {
+    "deepseek-v4.1-flash": {
+      "billing": "list_price",
+      "periods": {
+        "peak": { "uncached_input": 0.3, "cache_read": 0.006, "cache_write": null, "output": 1.2 },
+        "off_peak": { "uncached_input": 0.15, "cache_read": 0.003, "cache_write": null, "output": 0.6 }
+      },
+      "peak_hours_utc": { "weekdays": [0, 1, 2, 3, 4], "hours": [[1, 4], [6, 10]] }
+    },
+    "claude-haiku-5-5": {
+      "billing": "list_price",
+      "periods": {
+        "off_peak": { "uncached_input": 0.1, "cache_read": 0.01, "cache_write": 0.125, "output": 0.5 }
+      },
+      "long_prompt": {
+        "over_tokens": 100000,
+        "rates": { "uncached_input": 0.5, "cache_read": 0.05, "cache_write": 0.625, "output": 2.5 }
+      }
+    },
+    "gpt-6-luna": {
+      "billing": "list_price",
+      "periods": {
+        "off_peak": { "uncached_input": 0.1, "cache_read": 0.1, "cache_write": 0.1, "output": 0.0 }
+      }
+    },
+    "jev-1.13": { "billing": "unpriced" }
+  }
+}

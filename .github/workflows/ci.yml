@@ -1,0 +1,101 @@
+# CI for the public BubblePaw-Core repo, on GitHub-hosted runners.
+#
+# This file lives in BubblePaw-base under .github/public/ so it never runs
+# there; scripts/publish-public.sh moves it to .github/workflows/ci.yml in the
+# export. Pushes to main and every pull request run all jobs; nothing here
+# calls a paid model.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  linux:
+    name: linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain
+        run: rustup toolchain install stable --profile minimal -c rustfmt,clippy && rustup default stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-${{ hashFiles('Cargo.lock') }}
+          restore-keys: linux-
+      - name: cargo fmt
+        run: cargo fmt --all --check
+      # Later gates run even when an earlier one fails, so one run reports all of them.
+      - name: cargo clippy
+        if: ${{ !cancelled() }}
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings -A deprecated
+      - name: cargo clippy (web, bench)
+        if: ${{ !cancelled() }}
+        run: cargo clippy -p bubblepaw-runner --features web,bench --all-targets --locked -- -D warnings -A deprecated
+      - name: core, mcp and process tests
+        if: ${{ !cancelled() }}
+        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked --no-fail-fast
+      - name: runner tests (default features)
+        if: ${{ !cancelled() }}
+        run: cargo test -p bubblepaw-runner --locked --no-fail-fast
+      - name: runner tests (web, bench)
+        if: ${{ !cancelled() }}
+        run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
+
+  windows:
+    name: windows
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-${{ hashFiles('Cargo.lock') }}
+          restore-keys: windows-
+      - name: core, mcp and process tests
+        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked --no-fail-fast
+      - name: runner tests (web, bench)
+        if: ${{ !cancelled() }}
+        run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
+
+  claude-code-extension:
+    name: claude-code extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: extensions/claude-code
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: install
+        run: bun install --frozen-lockfile
+      - name: typecheck
+        run: bun run typecheck
+      - name: test
+        if: ${{ !cancelled() }}
+        run: bun test

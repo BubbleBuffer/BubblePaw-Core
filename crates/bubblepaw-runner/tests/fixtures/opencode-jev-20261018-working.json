@@ -1,0 +1,35 @@
+{
+  "request": {
+    "model": "jev-1.13-free",
+    "state": "Synthetic check: the word is apple.",
+    "questions": {
+      "choice": {
+        "type": "choice",
+        "instructions": "Select the stated word.",
+        "criteria": {
+          "apple": "The stated word is apple.",
+          "pear": "The stated word is pear."
+        }
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "model": "jev-1.13-free",
+    "answers": {
+      "choice": {
+        "type": "choice",
+        "choice": "apple",
+        "confidence": 1,
+        "probabilities": {
+          "apple": 1,
+          "pear": 0
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 325,
+      "output_tokens": 31
+    }
+  }
+}

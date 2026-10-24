@@ -1,0 +1,24 @@
+[
+  {
+    "requested_model": "jev-1.13-free",
+    "status": 400,
+    "response_keys": [
+      "detail"
+    ],
+    "model": null,
+    "answers": null,
+    "usage": null,
+    "error": null
+  },
+  {
+    "requested_model": "jev-1.13",
+    "status": 400,
+    "response_keys": [
+      "detail"
+    ],
+    "model": null,
+    "answers": null,
+    "usage": null,
+    "error": null
+  }
+]

@@ -1,0 +1,81 @@
+[package]
+name = "bubblepaw-runner"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+web = ["dep:axum", "dep:tower-http", "dep:toml_edit"]
+# Episode-replay and probe benchmark code.
+bench = []
+# Builds the fake extension and MCP fixture binaries the integration tests spawn.
+test-fixtures = []
+
+[lib]
+name = "bubblepaw_runner"
+
+[[bin]]
+name = "bubblepaw"
+path = "src/main.rs"
+
+# Test fixture for the out-of-process provider extension host.
+[[bin]]
+name = "bubblepaw-fake-extension"
+path = "src/bin/fake_extension.rs"
+required-features = ["test-fixtures"]
+
+# Reuse the MCP crate's fixture so runner tests also build it when run alone.
+[[bin]]
+name = "bubblepaw-runner-fake-mcp"
+path = "../bubblepaw-mcp/src/bin/fake_mcp.rs"
+required-features = ["test-fixtures"]
+
+[dependencies]
+bubblepaw-core = { path = "../bubblepaw-core" }
+bubblepaw-mcp = { path = "../bubblepaw-mcp" }
+bubblepaw-process = { path = "../bubblepaw-process" }
+anyhow.workspace = true
+base64 = "0.22"
+async-trait.workspace = true
+chrono.workspace = true
+fs2 = "0.4"
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml = "0.9"
+toml = "0.8"
+toml_edit = { version = "0.22", optional = true, features = ["serde"] }
+tokio = { workspace = true, features = ["net"] }
+uuid.workspace = true
+rusqlite.workspace = true
+tempfile.workspace = true
+futures-util = "0.3"
+httpdate = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+sha2 = "0.10"
+regex = "1"
+html2text = "=0.16.4"
+rquickjs = "0.14"
+clap = { version = "4", features = ["derive"] }
+tiktoken-rs = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+axum = { version = "0.8", optional = true }
+tower-http = { version = "0.6", features = ["fs"], optional = true }
+
+[dev-dependencies]
+axum = "0.8"
+# Enables the fixture binaries for this crate's own tests.
+bubblepaw-runner = { path = ".", features = ["test-fixtures"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Pipes", "Win32_System_Threading"] }
+
+[lints]
+workspace = true

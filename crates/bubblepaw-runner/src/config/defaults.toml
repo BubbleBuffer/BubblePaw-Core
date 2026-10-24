@@ -1,0 +1,114 @@
+[model]
+main = "gpt-6-luna"
+provider = "codex"
+fallbacks = []
+[agent]
+execution_mode = "native"
+[storage]
+data_dir = ""
+legacy_db = ""
+finished_event_retention_hours = 24
+telemetry_retention_days = 30
+archive_after_days = 30
+cold_tail_messages = 128
+cold_min_messages = 1024
+cold_min_bytes = 8388608
+cold_row_min_bytes = 256
+[exec]
+sync_timeout_secs = 300
+max_output_bytes = 8388608
+[quota]
+max_wait_seconds = 21600
+[providers.codex]
+kind = "codex"
+base_url = "https://chatgpt.com/backend-api/codex"
+[providers.api]
+kind = "responses"
+base_url = "https://api.openai.com/v1"
+key_env = "OPENAI_API_KEY"
+[providers.demo]
+kind = "scripted"
+[providers.opencode]
+kind = "chat-completions"
+base_url = "https://opencode.ai/zen/go/v1"
+key_env = "OPENCODE_API_KEY"
+reasoning = { thinking = { type = "enabled" }, reasoning_effort = "low" }
+[providers.opencode-messages]
+kind = "anthropic-messages"
+base_url = "https://opencode.ai/zen/go/v1"
+key_env = "OPENCODE_API_KEY"
+[providers.openai]
+kind = "decisions"
+base_url = "https://api.openai.com"
+key_env = "OPENAI_API_KEY"
+[providers.openrouter]
+kind = "openrouter-decisions"
+base_url = "https://openrouter.ai/api/alpha/decisions"
+key_env = "OPENROUTER_API_KEY"
+[roles]
+summary = { models = ["opencode/deepseek-v4.1-flash", "main"], repeats = 1, threshold = 0.0, reasoning_effort = "low" }
+chapter = { models = ["summary"], repeats = 1, threshold = 0.0, reasoning_effort = "low" }
+# No built-in decider or approver models: set roles.decider and roles.approver explicitly.
+decider = { models = [], reasoning_effort = "low" }
+approver = { models = [], reasoning_effort = "low" }
+[context]
+strategy = "lcm"
+memory_files = true
+compact_threshold_tokens = 200000
+auto_summarize = true
+retry_base_ms = 500
+[context.lcm]
+summary_input = "fork"
+decider_enabled = true
+source_target_tokens = 24000
+source_max_tokens = 32000
+summary_target_tokens = 2000
+chapter_summary_max_tokens = 8000
+chapter_description_tokens = 300
+chapter_rollover_tokens = 0
+decision_context_tokens = 4000
+tool_evidence_tokens = 0
+raw_tail_tokens = 32000
+closed_summary_tokens = 16000
+open_summary_tokens = 16000
+index_tokens = 2000
+task_anchor_tokens = 8000
+output_reserve_tokens = 16000
+child_compact_threshold_tokens = 100000
+[context.classical]
+verbatim_user_tokens = 20000
+[skills]
+enabled = true
+dirs = []
+[approvals]
+confirm = "ask"
+read_only = false
+tools = {}
+deny = []
+hardline = true
+[agents]
+stale_reminder_secs = 7200
+auto_wake = true
+wake_debounce_ms = 1500
+worker_retention_days = 7
+worker_keep_all = false
+[web]
+enabled = false
+search = ["deepseek", "ddg"]
+fetch_backend = ["direct"]
+key_env = "BRAVE_API_KEY"
+deepseek_key_env = "DEEPSEEK_API_KEY"
+deepseek_base_url = "https://api.deepseek.com/v1/tools"
+provider_key_envs = []
+allow_private = false
+user_agent = "BubblePaw/0.1"
+cache_ttl_secs = 86400
+cache_max_bytes = 67108864
+cooldown_secs = 300
+[web.expose]
+fetch = true
+search = true
+[mcp]
+[extensions]
+[delegate]
+[delegate.classes]

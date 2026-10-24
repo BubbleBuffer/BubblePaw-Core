@@ -1,0 +1,39 @@
+[package]
+name = "bubblepaw-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# Builds the fake MCP server binary the integration tests spawn.
+test-fixtures = []
+
+[[bin]]
+name = "bubblepaw-fake-mcp"
+path = "src/bin/fake_mcp.rs"
+required-features = ["test-fixtures"]
+
+[dependencies]
+bubblepaw-core = { path = "../bubblepaw-core" }
+bubblepaw-process = { path = "../bubblepaw-process" }
+anyhow.workspace = true
+async-trait.workspace = true
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+tokio = { workspace = true, features = ["net"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+libc = "0.2"
+# Enables the fixture binary for this crate's own tests.
+bubblepaw-mcp = { path = ".", features = ["test-fixtures"] }
+
+[lints]
+workspace = true

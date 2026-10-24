@@ -1,0 +1,100 @@
+//! Optional provider and workspace adapters used by the thin BubblePaw runner.
+//!
+//! Register the host's native capabilities with [`register_native_tools_with_exec`]
+//! and its JavaScript adapter with [`codemode::CodeMode::register`]. Configure
+//! [`bubblepaw_core::HarnessConfig::execution_mode`] to choose JavaScript
+//! composition explicitly. Native capabilities are the default model surface.
+//!
+//! Embedders can advertise exactly the harness's effective tool definitions with
+//! [`bubblepaw_core::Harness::effective_tool_definitions`] and invoke one of them
+//! without a model turn using [`bubblepaw_core::Harness::call_tool`]. Both APIs
+//! preserve session restrictions and the normal dispatch/approval policy. A
+//! single-tool call refuses an approval that needs an interactive decision.
+pub mod agent_handles;
+pub mod agents;
+pub mod artifacts;
+#[cfg(feature = "bench")]
+pub mod chapter_bench;
+mod child_workspaces;
+pub mod cli_output;
+pub mod codemode;
+pub mod command_template;
+pub mod config;
+mod context_routes;
+pub mod context_strategies;
+pub mod delegate;
+pub mod environments;
+pub mod episode_background;
+pub mod episode_models;
+pub mod episode_worker;
+pub mod episodes;
+pub mod execution_mode;
+mod history_snapshot;
+pub mod host_transport;
+pub mod images;
+pub mod input_files;
+pub mod legacy_import;
+pub mod live_config;
+pub mod logging;
+pub mod memory_files;
+pub mod model_roles;
+pub mod net;
+pub mod opencode_console;
+pub mod pricing;
+#[cfg(feature = "bench")]
+pub mod probes;
+mod process_output;
+pub mod profiles;
+pub mod provider;
+pub mod question;
+pub mod quota;
+pub mod quota_recovery;
+pub mod quota_report;
+pub mod quota_sources;
+#[cfg(feature = "bench")]
+pub mod replay;
+pub mod research;
+pub mod rewind;
+pub mod root_prompt;
+pub mod runtime_note;
+pub mod session_control;
+pub mod session_scope;
+pub mod sessions;
+pub mod skills;
+pub mod spill;
+pub mod summarization;
+pub mod todo;
+pub mod tools;
+pub mod trace;
+pub mod usage;
+pub mod usage_report;
+pub mod wake;
+#[cfg(feature = "web")]
+pub mod web;
+#[cfg(feature = "web")]
+pub mod web_providers;
+pub mod worktrees;
+
+/// Register the native pack with the runner's process settings and data directory.
+pub fn register_native_tools_with_exec(
+    registry: &mut bubblepaw_core::ToolRegistry,
+    root: impl AsRef<std::path::Path>,
+    read_only: bool,
+    exec: config::ExecConfig,
+    data_dir: impl AsRef<std::path::Path>,
+) -> anyhow::Result<std::sync::Arc<tools::ProcessTools>> {
+    registry.show_always(tools::ALWAYS_SHOWN_TOOLS.iter().copied());
+    registry.show_always(["jobs"]);
+    let spills = spill::SpillStore::new(data_dir.as_ref())?;
+    spills.register(registry);
+    let workspace =
+        tools::WorkspaceTools::new(root)?.with_spill_data_dir(data_dir.as_ref().canonicalize()?);
+    workspace.register(registry, read_only)?;
+    let processes =
+        std::sync::Arc::new(tools::ProcessTools::with_config(workspace, exec, data_dir)?);
+    processes.register_wait(registry)?;
+    if !read_only {
+        processes.register(registry)?;
+    }
+    Ok(processes)
+}
