@@ -74,7 +74,9 @@ is selected before legacy migration or opening any configured data directory.
 The real store is neither opened nor changed, even when `--data-dir` or `--db`
 is supplied. `--session` conflicts with `--no-session`; `--name` may label a
 temporary run. Ordinary completion, handled cancellation and errors drop the
-temporary directory. Abrupt process termination cannot run cleanup destructors.
+temporary directory, retrying for up to five seconds while a file in it is still
+briefly open (on Windows a closing handle or a virus scan blocks the removal).
+Abrupt process termination cannot run cleanup destructors.
 This mode does not change tool access to the working directory.
 
 ## Todo and questions (built 2026-10-15)

@@ -1,5 +1,6 @@
 #[cfg(feature = "bench")]
 mod chapter_bench_cli;
+mod ephemeral_dir;
 mod host_attach;
 mod host_lifetime;
 mod session_host;
@@ -1058,11 +1059,7 @@ async fn run_cli() -> Result<()> {
             ..
         }
     )
-    .then(|| {
-        tempfile::Builder::new()
-            .prefix("bubblepaw-ephemeral-")
-            .tempdir()
-    })
+    .then(ephemeral_dir::EphemeralDir::new)
     .transpose()?;
     let (data_dir, legacy_db, central_store) = if let Some(directory) = &ephemeral {
         (

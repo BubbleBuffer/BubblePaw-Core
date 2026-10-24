@@ -221,7 +221,7 @@ pub fn workspace(store: &Store, session: &str, fallback: &Path) -> Result<PathBu
             None => {
                 return Ok(store
                     .session_workspace(session)?
-                    .unwrap_or_else(|| fallback.to_path_buf()));
+                    .map_or_else(|| fallback.to_path_buf(), |path| plain(&path)));
             }
         }
     }
@@ -1179,7 +1179,7 @@ mod tests {
         assert_eq!(workspace(&store, &grandchild.id, host.path())?, info.path);
         assert_eq!(
             store.session_workspace(&grandchild.id)?,
-            Some(canonical(client.path())?)
+            Some(client.path().canonicalize()?)
         );
         Ok(())
     }

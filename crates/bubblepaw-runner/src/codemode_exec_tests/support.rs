@@ -1,5 +1,24 @@
 use super::*;
 
+/// The fixture's shortened idle limit. Every test duration that must
+/// outlast it is a multiple of it. Windows gets more room because starting
+/// a background PowerShell job alone can take longer than 30 ms there.
+pub(super) const IDLE: Duration = if cfg!(windows) {
+    Duration::from_millis(500)
+} else {
+    Duration::from_millis(30)
+};
+
+/// A command that runs for `IDLE * factor`.
+pub(super) fn sleep_command(factor: u32) -> String {
+    let millis = (IDLE * factor).as_millis();
+    if cfg!(windows) {
+        format!("Start-Sleep -Milliseconds {millis}")
+    } else {
+        format!("sleep {}", millis as f64 / 1000.0)
+    }
+}
+
 pub(super) struct Fixture {
     pub(super) _root: tempfile::TempDir,
     pub(super) processes: Arc<ProcessTools>,
@@ -41,7 +60,7 @@ impl Fixture {
         let mode = Arc::new(
             CodeMode::new(root.path().to_owned(), artifacts)
                 .unwrap()
-                .with_idle_limit(Duration::from_millis(30)),
+                .with_idle_limit(IDLE),
         );
         mode.register(&mut registry).unwrap();
         let provider = Arc::new(ScriptedProvider::with_steps(

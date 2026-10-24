@@ -244,7 +244,8 @@ because nothing was submitted. `Store::import_legacy_stores` in core:
    `catalog.db` (after the user opens it with `--data-dir`).
 3. Byte-copies the source's top-level databases except `serving.db` and
    `web-cache.db`, and its `chats/*.db` and `*.db.zst`, each with a non-empty WAL,
-   into the private `<central>/legacy-import/<name>/` staging directory. The
+   into a private numbered staging directory, `<central>/legacy-import/<n>/`
+   (receipt names such as `central:<parent>/store` are no Windows file names). The
    lease is then released. Sources are never written, moved, lock-broken or
    deleted; no SQLite connection is opened on a source file.
 4. For each staged root chat (archives are unpacked and installed active, so idle

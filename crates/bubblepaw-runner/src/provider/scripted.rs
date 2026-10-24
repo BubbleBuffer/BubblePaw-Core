@@ -47,7 +47,7 @@ impl ScriptedProvider {
                 "const path={}; const content='BubblePaw base executed a native tool.\\n';\n\
                  await tools.write({{path,content}}); const read=await tools.read({{path}});\n\
                  if(read.content!==content) throw new Error('Demo file content mismatch'); text(read.content);\n\
-                 const job=await tools.exec({{command:{},yieldMs:1000,timeoutMs:5000}});\n\
+                 const job=await tools.exec({{command:{},yieldMs:1000,timeoutMs:30000}});\n\
                  const result=job.status==='running'?await wait({{handle:job.handle}}):job;\n\
                  if(result.status!=='exited'||result.exitCode!==0) throw new Error(result.diagnostic||'Demo command failed');\n",
                 serde_json::to_string(&path).unwrap(),
@@ -78,7 +78,7 @@ impl ScriptedProvider {
             calls.extend([
                 call("write", serde_json::json!({"path":path,"content":"BubblePaw base executed a native tool.\n"})),
                 call("read", serde_json::json!({"path":path})),
-                call("exec", serde_json::json!({"command":command,"yieldMs":30000,"timeoutMs":5000})),
+                call("exec", serde_json::json!({"command":command,"yieldMs":30000,"timeoutMs":30000})),
             ]);
         }
         // This fixed sequence needs no result-dependent planning. Native dispatch

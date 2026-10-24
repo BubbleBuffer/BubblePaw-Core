@@ -1,9 +1,9 @@
 //! One-time import of legacy per-workspace stores into the central store.
 //!
 //! Sources are only read: under a shared lease on their `store.lock`, their
-//! record files are byte-copied into a private staging directory inside the
-//! central store. Everything else works on those copies. A source whose lease
-//! is held by a running process is skipped and retried on the next start.
+//! record files are byte-copied into numbered staging folders (receipt names are no Windows
+//! file names) inside the central store. Everything else works on those copies. A source
+//! whose lease is held by a running process is skipped and retried on the next start.
 use super::*;
 use rusqlite::OpenFlags;
 use std::collections::BTreeMap;
@@ -461,7 +461,7 @@ impl Store {
                 summary.sources.push(report);
                 continue;
             }
-            match take_snapshot(&source, &staging.join(&name)) {
+            match take_snapshot(&source, &staging.join(summary.sources.len().to_string())) {
                 Ok(Snapshot::Ready(snapshot)) => {
                     report.status = LegacyImportStatus::Imported;
                     snapshots.push((name, snapshot, summary.sources.len()));

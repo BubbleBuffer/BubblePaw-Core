@@ -24,7 +24,7 @@ async fn background_exit_is_listed_until_its_result_is_polled() {
     assert!(running.contains(&handle), "{running}");
     assert!(!running.contains("unread"), "{running}");
     // Let the job exit without polling it.
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             let exited = fixture.processes.continuation_status(&fixture.session)["entries"]
                 .as_array()
@@ -44,7 +44,7 @@ async fn background_exit_is_listed_until_its_result_is_polled() {
     assert!(unread.contains("exited, unread, exit=0"), "{unread}");
     assert!(!unread.contains("private-command-output"));
     // Polling until the terminal status returns it to the model.
-    let polled = tokio::time::timeout(Duration::from_secs(5), async {
+    let polled = tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             let value: Value = serde_json::from_str(
                 &fixture

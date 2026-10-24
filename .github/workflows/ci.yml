@@ -18,9 +18,13 @@ concurrency:
 permissions:
   contents: read
 
+# No debug info in test builds. Debug info makes up most of each test binary,
+# and the runner alone has about 140 integration-test binaries per feature set;
+# with it, the hosted runner's disk filled.
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
 
 jobs:
   linux:
@@ -28,17 +32,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
+      # The image ships about 30 GB of SDKs this job never uses.
+      - name: free disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
       - uses: actions/checkout@v4
       - name: toolchain
         run: rustup toolchain install stable --profile minimal -c rustfmt,clippy && rustup default stable
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: linux-${{ hashFiles('Cargo.lock') }}
-          restore-keys: linux-
+      # Caches the registry and compiled dependencies only, not workspace
+      # build output, so the cache cannot grow from run to run.
+      - uses: Swatinem/rust-cache@v2
       - name: cargo fmt
         run: cargo fmt --all --check
       # Later gates run even when an earlier one fails, so one run reports all of them.
@@ -54,9 +58,17 @@ jobs:
       - name: runner tests (default features)
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-runner --locked --no-fail-fast
+      # Drop the default-feature runner test binaries before building the
+      # web,bench set, so only one set is on disk at a time.
+      - name: clean runner build output
+        if: ${{ !cancelled() }}
+        run: cargo clean -p bubblepaw-runner && df -h /
       - name: runner tests (web, bench)
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
+      - name: disk use
+        if: ${{ always() }}
+        run: df -h / && du -sh target
 
   windows:
     name: windows
@@ -66,14 +78,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: toolchain
         run: rustup toolchain install stable --profile minimal && rustup default stable
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-${{ hashFiles('Cargo.lock') }}
-          restore-keys: windows-
+      - uses: Swatinem/rust-cache@v2
       - name: core, mcp and process tests
         run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked --no-fail-fast
       - name: runner tests (web, bench)

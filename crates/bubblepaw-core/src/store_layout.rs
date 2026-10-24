@@ -3356,14 +3356,14 @@ mod checkpoint_prune_tests {
             Ok(())
         });
         let failures = store.on_chat_open("test.partial", hook)?;
-        assert_eq!(
-            calls.load(Ordering::SeqCst),
-            2,
-            "every cached chat ran the hook"
-        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "both chats ran the hook");
         assert_eq!(failures.len(), 1);
         assert!(format!("{:#}", failures[0].error).contains("first chat is broken"));
-        assert!(failures[0].chat.starts_with(directory.path()));
+        assert!(
+            failures[0]
+                .chat
+                .starts_with(directory.path().canonicalize()?)
+        );
         Ok(())
     }
 }

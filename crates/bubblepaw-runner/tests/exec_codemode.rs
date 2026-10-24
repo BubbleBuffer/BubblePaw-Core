@@ -138,7 +138,7 @@ impl Fixture {
     }
     async fn settle(&self) {
         tokio::time::timeout(
-            Duration::from_secs(8),
+            Duration::from_secs(60),
             self.harness.wait_for_idle(&self.session),
         )
         .await
@@ -146,7 +146,7 @@ impl Fixture {
         .unwrap();
     }
     async fn until_env(&self, what: &str, ready: impl Fn(&Value) -> bool) {
-        tokio::time::timeout(Duration::from_secs(8), async {
+        tokio::time::timeout(Duration::from_secs(60), async {
             loop {
                 if ready(&self.manager.status(&self.session)["environments"][0]) {
                     break;
@@ -159,7 +159,7 @@ impl Fixture {
     }
     /// Barrier: the sync exec is foreground and has captured `bytes` of stdout.
     async fn foreground_handle(&self, bytes: u64) -> String {
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 let jobs = self.processes.jobs(&self.session).unwrap();
                 let found = jobs["jobs"]
@@ -186,7 +186,7 @@ impl Fixture {
     async fn cancel_process(&self, handle: &str) {
         self.call("cancel", json!({"handle": handle})).await;
         let done = self
-            .call("wait", json!({"handle": handle, "timeoutMs": 5000}))
+            .call("wait", json!({"handle": handle, "timeoutMs": 60000}))
             .await;
         assert_eq!(done["status"], "cancelled", "{done}");
     }
@@ -195,7 +195,7 @@ impl Fixture {
     async fn close(self) {
         self.harness.cancel(&self.session);
         let _ = tokio::time::timeout(
-            Duration::from_secs(8),
+            Duration::from_secs(60),
             self.harness.wait_for_idle(&self.session),
         )
         .await;
@@ -259,7 +259,7 @@ fn concurrent_cell() -> String {
 
 #[tokio::test]
 async fn explicit_wait_release_returns_ordinary_js_result_and_command_keeps_running() {
-    let f = Fixture::new(5);
+    let f = Fixture::new(20);
     f.start(&exec_cell());
     let handle = f.foreground_handle(READY_BYTES).await;
     f.harness.steer(&f.session, "new input").unwrap();
@@ -302,7 +302,7 @@ async fn explicit_wait_release_returns_ordinary_js_result_and_command_keeps_runn
 
 #[tokio::test]
 async fn cell_awaiting_sync_exec_and_timer_backgrounds_with_receipt_then_wake_completes_it() {
-    let f = Fixture::new(5);
+    let f = Fixture::new(20);
     f.start(&concurrent_cell());
     let handle = f.foreground_handle(READY_BYTES).await;
     f.until_env("timer registered", |e| e["time_waiting"] == 1)
@@ -351,7 +351,7 @@ async fn cell_awaiting_sync_exec_and_timer_backgrounds_with_receipt_then_wake_co
 
 #[tokio::test]
 async fn cancelling_backgrounded_concurrent_cell_releases_timer_and_stops_owned_command() {
-    let f = Fixture::new(5);
+    let f = Fixture::new(20);
     f.start(&concurrent_cell());
     let handle = f.foreground_handle(READY_BYTES).await;
     f.until_env("timer registered", |e| e["time_waiting"] == 1)
@@ -371,7 +371,7 @@ async fn cancelling_backgrounded_concurrent_cell_releases_timer_and_stops_owned_
     })
     .await;
     let done = f
-        .call("wait", json!({"handle": handle, "timeoutMs": 5000}))
+        .call("wait", json!({"handle": handle, "timeoutMs": 60000}))
         .await;
     assert_eq!(done["status"], "cancelled", "{done}");
     f.close().await;
@@ -379,7 +379,7 @@ async fn cancelling_backgrounded_concurrent_cell_releases_timer_and_stops_owned_
 
 #[tokio::test]
 async fn user_background_returns_ordinary_js_result_without_cell_receipt() {
-    let f = Fixture::new(5);
+    let f = Fixture::new(20);
     f.start(&exec_cell());
     let handle = f.foreground_handle(READY_BYTES).await;
     let snapshot = f.processes.background(&f.session, &handle).unwrap();
@@ -401,7 +401,7 @@ async fn user_background_returns_ordinary_js_result_without_cell_receipt() {
 
 #[tokio::test]
 async fn js_cell_classifies_background_and_zero_or_short_yield_as_running_without_reason() {
-    let f = Fixture::new(5);
+    let f = Fixture::new(20);
     f.start(&format!(
         "const started = await Promise.all([\
          tools.exec({{command:{hold}, background:true}}),\
@@ -410,7 +410,7 @@ async fn js_cell_classifies_background_and_zero_or_short_yield_as_running_withou
          const report = started.map(job => ({{status: job.status, handle: job.handle, reason: job.reason === undefined ? null : job.reason}}));\
          for (const job of started) await tools.cancel({{handle: job.handle}});\
          const ends = [];\
-         for (const job of started) ends.push((await wait({{handle: job.handle, timeoutMs: 5000}})).status);\
+         for (const job of started) ends.push((await wait({{handle: job.handle, timeoutMs: 60000}})).status);\
          return {{report, ends}};",
         hold = json!(HOLD)
     ));
@@ -444,7 +444,7 @@ async fn js_cell_classifies_background_and_zero_or_short_yield_as_running_withou
 
 #[tokio::test]
 async fn cancelling_cell_during_sync_exec_stops_command_and_resets_environment() {
-    let f = Fixture::new(5);
+    let f = Fixture::new(20);
     f.start(&exec_cell());
     let handle = f.foreground_handle(READY_BYTES).await;
     f.harness.cancel(&f.session);
@@ -457,7 +457,7 @@ async fn cancelling_cell_during_sync_exec_stops_command_and_resets_environment()
     })
     .await;
     let done = f
-        .call("wait", json!({"handle": handle, "timeoutMs": 5000}))
+        .call("wait", json!({"handle": handle, "timeoutMs": 60000}))
         .await;
     assert_eq!(done["status"], "cancelled", "{done}");
     f.close().await;

@@ -34,7 +34,7 @@ async fn live_exec_output_cap_applies_only_to_new_jobs() {
                 &fixture.registry,
                 "owner",
                 "wait",
-                json!({"handle":receipt["handle"],"timeoutMs":5000})
+                json!({"handle":receipt["handle"],"timeoutMs":60000})
             )
             .await["status"],
             "exited"

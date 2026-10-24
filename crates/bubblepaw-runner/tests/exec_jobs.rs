@@ -74,7 +74,7 @@ const SLEEP: &str = "Start-Sleep -Seconds 30";
 const SLEEP: &str = "sleep 30";
 
 async fn foreground(processes: &ProcessTools, owner: &str) -> String {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             let jobs = processes.jobs(owner).unwrap();
             if let Some(job) = jobs["jobs"]
@@ -183,7 +183,7 @@ async fn default_process_wait_waits_for_five_second_command_to_exit() {
     )
     .await;
     let result = tokio::time::timeout(
-        Duration::from_secs(10),
+        Duration::from_secs(60),
         call(
             &fixture.registry,
             "owner",
@@ -204,7 +204,7 @@ async fn explicit_exec_waits_can_exceed_the_configured_sync_timeout() {
         sync_timeout_secs: 1,
         ..ExecConfig::default()
     });
-    for options in [json!({"timeoutMs":5000}), json!({"yieldMs":5000})] {
+    for options in [json!({"timeoutMs":30000}), json!({"yieldMs":30000})] {
         let mut input = options;
         input["command"] = json!(DELAYED);
         let result = call(&fixture.registry, "owner", "exec", input).await;
@@ -349,7 +349,7 @@ async fn configured_sync_timeout_backgrounds_without_killing_and_notifies_once()
         &fixture.registry,
         "owner",
         "wait",
-        json!({"handle":result["handle"],"timeoutMs":5000}),
+        json!({"handle":result["handle"],"timeoutMs":60000}),
     )
     .await;
     assert_eq!(done["status"], "exited");
@@ -402,7 +402,7 @@ async fn explicit_background_zero_sync_timeout_and_hard_deadline_are_distinct() 
         &fixture.registry,
         "owner",
         "wait",
-        json!({"handle":result["handle"],"timeoutMs":5000}),
+        json!({"handle":result["handle"],"timeoutMs":60000}),
     )
     .await;
     assert_eq!(done["status"], "timed_out");
@@ -436,7 +436,7 @@ async fn user_background_and_steer_release_only_the_owned_sync_wait() {
             assert_eq!(fixture.processes.interrupt_waits("owner"), 0);
         }
         let result: Value = serde_json::from_str(
-            &tokio::time::timeout(Duration::from_secs(3), pending)
+            &tokio::time::timeout(Duration::from_secs(30), pending)
                 .await
                 .unwrap()
                 .unwrap()
@@ -486,7 +486,7 @@ async fn dropped_foreground_wait_keeps_job_observable_and_delivers_completion_no
         &fixture.registry,
         "owner",
         "wait",
-        json!({"handle":handle,"timeoutMs":5000}),
+        json!({"handle":handle,"timeoutMs":60000}),
     )
     .await;
     assert_eq!(done["status"], "exited");
@@ -596,7 +596,7 @@ async fn spool_is_capped_across_streams_and_removed_on_reap_and_restart() {
         &fixture.registry,
         "owner",
         "wait",
-        json!({"handle":result["handle"],"timeoutMs":5000}),
+        json!({"handle":result["handle"],"timeoutMs":60000}),
     )
     .await;
     assert_eq!(done["status"], "exited");
@@ -713,11 +713,11 @@ async fn idle_completion_notice_is_durable_once_and_chatty_output_has_no_chunk_t
         &registry,
         &session.id,
         "wait",
-        json!({"handle":handle,"timeoutMs":10000}),
+        json!({"handle":handle,"timeoutMs":60000}),
     )
     .await;
     assert_eq!(done["status"], "exited");
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         while !store.pending_effects(&session.id).unwrap().is_empty() {
             tokio::task::yield_now().await;
         }
@@ -855,7 +855,7 @@ async fn second_host_on_same_data_dir_keeps_live_spool() {
     )
     .await;
     let jobs = fixture.data.path().join("jobs");
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while spool_size(&jobs) == 0 && std::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
@@ -997,7 +997,7 @@ async fn backgrounded_cd_gets_note_only_on_the_final_wait_and_poll() {
         &fixture.registry,
         "owner",
         "wait",
-        json!({"handle": handle, "timeoutMs": 5000}),
+        json!({"handle": handle, "timeoutMs": 60000}),
     )
     .await;
     assert_eq!(waited["status"], "exited");
@@ -1110,7 +1110,7 @@ mod windows {
         }
 
         async fn assert_stopped(&self) {
-            tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::time::timeout(Duration::from_secs(30), async {
                 while self.running() {
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
@@ -1222,7 +1222,7 @@ mod windows {
 
         async fn observe(&self) -> [OwnedProcess; 3] {
             async fn process(path: &Path) -> OwnedProcess {
-                tokio::time::timeout(Duration::from_secs(10), async {
+                tokio::time::timeout(Duration::from_secs(40), async {
                     loop {
                         if let Ok(text) = std::fs::read_to_string(path)
                             && let Ok(pid) = text.trim().parse()
@@ -1238,7 +1238,7 @@ mod windows {
             let root = process(&self.root_pid).await;
             let child = process(&self.child_pid).await;
             let grandchild = process(&self.grandchild_pid).await;
-            tokio::time::timeout(Duration::from_secs(10), async {
+            tokio::time::timeout(Duration::from_secs(40), async {
                 while !self.ready.exists() {
                     tokio::time::sleep(Duration::from_millis(20)).await;
                 }
@@ -1279,7 +1279,7 @@ mod windows {
             &fixture.registry,
             "owner",
             "wait",
-            json!({"handle":started["handle"],"timeoutMs":10000}),
+            json!({"handle":started["handle"],"timeoutMs":60000}),
         )
         .await;
         assert_eq!(done["status"], "cancelled");
@@ -1353,7 +1353,7 @@ mod windows {
             &fixture.registry,
             "owner",
             "exec",
-            json!({"command":scripts.command,"background":true,"timeoutMs":15000}),
+            json!({"command":scripts.command,"background":true,"timeoutMs":45000}),
         )
         .await;
         let owned = scripts.observe().await;
@@ -1361,7 +1361,7 @@ mod windows {
             &fixture.registry,
             "owner",
             "wait",
-            json!({"handle":started["handle"],"timeoutMs":20000}),
+            json!({"handle":started["handle"],"timeoutMs":90000}),
         )
         .await;
         assert_eq!(done["status"], "timed_out");
@@ -1388,7 +1388,7 @@ mod windows {
             &fixture.registry,
             "owner",
             "wait",
-            json!({"handle":started["handle"],"timeoutMs":10000}),
+            json!({"handle":started["handle"],"timeoutMs":60000}),
         )
         .await;
         assert_eq!(done["status"], "exited");
@@ -1622,7 +1622,7 @@ mod windows {
             &fixture.registry,
             "owner",
             "wait",
-            json!({"handle":started["handle"],"timeoutMs":10000}),
+            json!({"handle":started["handle"],"timeoutMs":60000}),
         )
         .await;
         assert_eq!(waited["status"], "exited");

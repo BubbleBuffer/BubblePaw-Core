@@ -108,21 +108,21 @@ impl Tool for StalledHost {
         }
     }
     async fn invoke(&self, _: ToolContext, _: Value) -> Result<ToolResult> {
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        tokio::time::sleep(support::IDLE * 8).await;
         Ok(ToolResult::text("{}"))
     }
 }
 
 #[path = "codemode_exec_tests/support.rs"]
 mod support;
-use support::Fixture;
+use support::{Fixture, IDLE, sleep_command};
 
 #[tokio::test]
 async fn real_sync_exec_outlasts_both_shortened_idle_deadlines() {
     #[cfg(windows)]
-    let command = "Start-Sleep -Milliseconds 200; [Console]::Out.Write('long-exec')";
+    let command = format!("{}; [Console]::Out.Write('long-exec')", sleep_command(7));
     #[cfg(not(windows))]
-    let command = "sleep 0.2; printf long-exec";
+    let command = format!("{}; printf long-exec", sleep_command(7));
     let fixture = Fixture::new(format!("await tools.exec({})", json!({"command":command})));
     let result = fixture.result().await;
     assert!(!result.is_error, "{}", result.content);
@@ -144,17 +144,18 @@ const CONTROLLED_POLL_COMMAND: &str =
 async fn real_yielding_poll_outlasts_idle_deadlines_and_preserves_cell_state_and_cursors() {
     let fixture = Fixture::new(format!(
         "state.marker='preserved'; const p=await tools.exec({start}); \
-         const before=Date.now(); const first=await tools.poll({{handle:p.handle,yieldMs:200}}); \
-         const elapsed=Date.now()-before; await wait({{handle:p.handle,timeoutMs:5000}}); \
+         const before=Date.now(); const first=await tools.poll({{handle:p.handle,yieldMs:{yield_ms}}}); \
+         const elapsed=Date.now()-before; await wait({{handle:p.handle,timeoutMs:60000}}); \
          const final=await tools.poll({{handle:p.handle,cursor:{{stdout:0,stderr:0}}}}); \
          return {{marker:state.marker,firstStatus:first.status,elapsed,final}};",
-        start = json!({"command":CONTROLLED_POLL_COMMAND,"yieldMs":1})
+        start = json!({"command":CONTROLLED_POLL_COMMAND,"yieldMs":1}),
+        yield_ms = (IDLE * 7).as_millis()
     ));
     let mut events = fixture.harness.subscribe();
     // The command cannot complete before the first poll's requested timeout:
     // release only when JS has advanced from that poll to its explicit wait.
     let release = async {
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 if let EventKind::ToolStarted { call } = events.recv().await.unwrap().kind
                     && call.name == "wait"
@@ -173,7 +174,8 @@ async fn real_yielding_poll_outlasts_idle_deadlines_and_preserves_cell_state_and
         serde_json::from_str(result.content.split("\n[---]\n").next().unwrap()).unwrap();
     assert_eq!(result["marker"], "preserved");
     assert_eq!(result["firstStatus"], "running");
-    assert!(result["elapsed"].as_u64().unwrap() >= 100, "{result}");
+    let elapsed = u128::from(result["elapsed"].as_u64().unwrap());
+    assert!(elapsed >= (IDLE * 3).as_millis(), "{result}");
     assert_eq!(result["final"]["status"], "exited");
     assert_eq!(result["final"]["exitCode"], 0);
     assert_eq!(result["final"]["stdout"], "readypoll-finished");
@@ -418,15 +420,15 @@ async fn real_web_calls_outlast_shortened_idle_deadlines() {
         let server = pending_web_response(search).await;
         let fixture = waiting_web_fixture(&server.url, search);
         let control = async {
-            tokio::time::timeout(Duration::from_secs(2), server.started)
+            tokio::time::timeout(IDLE * 70, server.started)
                 .await
                 .unwrap()
                 .unwrap();
             // The request remains pending for five times the fixture's idle limit.
-            tokio::time::sleep(Duration::from_millis(150)).await;
+            tokio::time::sleep(IDLE * 5).await;
             server.release.send(()).unwrap();
         };
-        let (result, ()) = tokio::time::timeout(Duration::from_secs(3), async {
+        let (result, ()) = tokio::time::timeout(IDLE * 100, async {
             tokio::join!(fixture.result(), control)
         })
         .await
@@ -453,24 +455,21 @@ async fn real_web_calls_cancel_cleanly_after_outlasting_idle_deadlines() {
             .harness
             .start(&fixture.session, "execute", RunOptions::default())
             .unwrap();
-        tokio::time::timeout(Duration::from_secs(2), server.started)
+        tokio::time::timeout(IDLE * 70, server.started)
             .await
             .unwrap()
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        tokio::time::sleep(IDLE * 5).await;
         assert!(
             fixture.harness.cancel(&fixture.session),
             "web call must still be running"
         );
-        let run = tokio::time::timeout(
-            Duration::from_secs(2),
-            fixture.harness.wait_for_idle(&fixture.session),
-        )
-        .await
-        .unwrap()
-        .unwrap();
+        let run = tokio::time::timeout(IDLE * 70, fixture.harness.wait_for_idle(&fixture.session))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(run.status, "cancelled", "{:?}", run.error);
-        tokio::time::timeout(Duration::from_secs(2), server.closed)
+        tokio::time::timeout(IDLE * 70, server.closed)
             .await
             .unwrap()
             .unwrap();
@@ -482,10 +481,7 @@ async fn real_web_calls_cancel_cleanly_after_outlasting_idle_deadlines() {
 
 #[tokio::test]
 async fn process_handle_wait_suspends_both_shortened_idle_deadlines() {
-    #[cfg(windows)]
-    let command = "Start-Sleep -Milliseconds 200";
-    #[cfg(not(windows))]
-    let command = "sleep 0.2";
+    let command = sleep_command(7);
     let fixture = Fixture::new(format!(
         "const p=await tools.exec({}); return await wait({{handle:p.handle}});",
         json!({"command":command,"background":true})

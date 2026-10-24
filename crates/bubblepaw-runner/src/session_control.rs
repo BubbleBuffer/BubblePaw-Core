@@ -117,11 +117,16 @@ impl SessionControl {
 
     /// A missing session fails as not found (`QueryReturnedNoRows`); a
     /// session bound to another workspace fails with [`WorkspaceMismatch`].
-    /// Neither opens or restores the chat.
+    /// Neither opens or restores the chat. Sessions store canonical paths
+    /// (verbatim `\\?\` ones on Windows), so the host's is canonicalized too.
     pub fn ensure_workspace(&self, session: &str) -> Result<()> {
         self.store.session_root_id(session)?;
+        let host = self
+            .workspace
+            .canonicalize()
+            .unwrap_or_else(|_| self.workspace.clone());
         if let Some(bound) = self.store.session_workspace(session)?
-            && bound != self.workspace
+            && bound != host
         {
             return Err(WorkspaceMismatch(bound).into());
         }
