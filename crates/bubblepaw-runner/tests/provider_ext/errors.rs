@@ -1,7 +1,7 @@
 //! Extension error text: typed kinds keep fixed messages, fatal keeps a
-//! redacted line, and child stderr is logged at warn, never in the error.
+//! redacted line, and child stderr never reaches the error (its warn-level
+//! log is tested in `extension_stderr_log.rs`).
 use super::*;
-use std::io::Write;
 
 #[tokio::test]
 async fn extension_rpc_error_messages_hide_raw_text_and_keep_option_names() {
@@ -100,54 +100,4 @@ async fn extension_fatal_error_keeps_a_redacted_first_line() {
         ProviderError::of(&empty).unwrap().message,
         "extension request failed"
     );
-}
-
-#[derive(Clone, Default)]
-struct Captured(Arc<Mutex<Vec<u8>>>);
-impl Write for Captured {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-#[tokio::test]
-async fn extension_stderr_is_logged_at_warn_with_secrets_redacted() {
-    let captured = Captured::default();
-    let writer = captured.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
-        .with_ansi(false)
-        .with_writer(move || writer.clone())
-        .finish();
-    let _guard = tracing::subscriber::set_default(subscriber);
-    let provider = fake_with_env("fake", &[("FAKE_API_TOKEN", "configured-secret-value")]);
-    let _ = call(
-        &provider,
-        ext_step(
-            "direct-model",
-            "stderr-exit STDERR_LINE configured-secret-value Bearer bearer-secret",
-            "e1",
-            None,
-        ),
-    )
-    .await
-    .unwrap_err();
-    let mut logged = String::new();
-    for _ in 0..200 {
-        logged = String::from_utf8_lossy(&captured.0.lock().unwrap()).into_owned();
-        if logged.contains("STDERR_LINE") {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    assert!(logged.contains(" WARN "), "{logged}");
-    assert!(
-        logged.contains("extension stderr: STDERR_LINE [redacted] Bearer [redacted]"),
-        "{logged}"
-    );
-    assert!(!logged.contains("configured-secret-value") && !logged.contains("bearer-secret"));
 }
