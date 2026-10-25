@@ -40,9 +40,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: toolchain
         run: rustup toolchain install stable --profile minimal -c rustfmt,clippy && rustup default stable
-      # Caches the registry and compiled dependencies only, not workspace
-      # build output, so the cache cannot grow from run to run.
-      - uses: Swatinem/rust-cache@v2
+      # Caches the cargo registry and git sources only, not build output, so
+      # the cache cannot grow from run to run. Only GitHub-owned and verified
+      # actions are allowed in this repo.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: cargo fmt
         run: cargo fmt --all --check
       # Later gates run even when an earlier one fails, so one run reports all of them.
@@ -78,7 +85,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: toolchain
         run: rustup toolchain install stable --profile minimal && rustup default stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: core, mcp and process tests
         run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked --no-fail-fast
       - name: runner tests (web, bench)
