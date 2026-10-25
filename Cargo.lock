@@ -232,7 +232,7 @@ dependencies = [
 
 [[package]]
 name = "bubblepaw-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -253,7 +253,7 @@ dependencies = [
 
 [[package]]
 name = "bubblepaw-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -272,7 +272,7 @@ dependencies = [
 
 [[package]]
 name = "bubblepaw-process"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "libc",
  "tokio",
@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "bubblepaw-runner"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -316,6 +316,19 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "bubblepaw-sdk"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bubblepaw-core",
+ "bubblepaw-runner",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]

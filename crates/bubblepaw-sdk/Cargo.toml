@@ -1,0 +1,30 @@
+[package]
+name = "bubblepaw-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+# The optional local web host, re-exported from bubblepaw-runner.
+web = ["bubblepaw-runner/web"]
+
+[lib]
+name = "bubblepaw_sdk"
+
+[dependencies]
+bubblepaw-core = { path = "../bubblepaw-core" }
+bubblepaw-runner = { path = "../bubblepaw-runner" }
+anyhow.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

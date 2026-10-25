@@ -304,6 +304,8 @@ declared directly in the default native mode. To opt into JS, register the runne
 The core remains independent of JavaScript.
 `Store::in_memory()` is
 available for ephemeral applications; `Store::open(path)` provides durability.
+Outside programs can take one dependency, `bubblepaw-sdk`, which re-exports this
+surface and adds `HostBuilder`; see [the Rust SDK](docs/sdk.md).
 
 `Harness::effective_tool_definitions(session_id, &options)` gives an embedder the
 same initial tool declarations as a model turn, including session/run

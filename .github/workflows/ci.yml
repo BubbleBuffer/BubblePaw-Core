@@ -59,9 +59,9 @@ jobs:
       - name: cargo clippy (web, bench)
         if: ${{ !cancelled() }}
         run: cargo clippy -p bubblepaw-runner --features web,bench --all-targets --locked -- -D warnings -A deprecated
-      - name: core, mcp and process tests
+      - name: core, mcp, process and sdk tests
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked --no-fail-fast
+        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
       - name: runner tests (default features)
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-runner --locked --no-fail-fast
@@ -92,8 +92,8 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-      - name: core, mcp and process tests
-        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked --no-fail-fast
+      - name: core, mcp, process and sdk tests
+        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
       - name: runner tests (web, bench)
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast

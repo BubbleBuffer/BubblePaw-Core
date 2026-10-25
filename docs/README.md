@@ -26,6 +26,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 - [host-context](host-context.md) — Built 2026-10-21: the host preparation hook and `ContextWriter`, where static, derived and live host context goes, and how frozen-tier edits and resolver changes are classified.
 - [host-attach](host-attach.md) — 2026-10-21: local run/delegate attachment to the central store's host, per-chat workspaces, request config and host lifetime; verification status and Windows smoke commands.
+- [sdk](sdk.md) — Built 2026-10-24 in 0.2.0: the `bubblepaw-sdk` facade crate for Rust embedders, the `HostBuilder` wiring, the Claude Code helper and the stability policy.
 - [storage-model](storage-model.md) — Built through 2026-10-21: one central store per machine with a one-time read-only import of legacy per-workspace stores (chats, spill and artifacts, quota, ledger; legacy dirs deletable afterwards except in-use worktrees), lean chats, worker visibility and guarded transient deletion, import, archives and buffered serving; root-chat source mappings are authoritative, shared web-cache.db is disposable.
 - [session-api](session-api.md) — Built; current 2026-10-24: how several clients snapshot a session and follow its durable event stream, with every event kind and stdio method.
 - [usage tracking](usage-tracking.md) - Durable per-request tokens and SDK-reported model IDs, one dated price table, grouped reports and the fixed `bubblepaw.usage.v1` JSONL export.
