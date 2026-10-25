@@ -17,6 +17,7 @@ fn invalid_step_result_retains_valid_sdk_quota() {
 fn sdk_warning_and_rejection_survive_typed_rpc_error() {
     let error = rpc_error(
         &json!({"message":"raw SDK text must not survive","data":{"kind":"rate_limit","resets_at":"2026-10-21T00:00:00Z","limit_type":"seven_day","quota_events":[{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.72},{"status":"rejected","rateLimitType":"seven_day","resetsAt":1792540800}]}}),
+        &[],
     );
     assert_eq!(error.quota.len(), 2);
     assert_eq!(error.quota[0].used_percent, 72.0);
@@ -31,6 +32,7 @@ fn sdk_warning_and_rejection_survive_typed_rpc_error() {
 fn terminal_sdk_billing_signal_stays_fatal() {
     let error = rpc_error(
         &json!({"message":"private SDK diagnostic","data":{"kind":"fatal","terminal_quota":true}}),
+        &[],
     );
     assert!(super::super::is_terminal_quota_error(&error));
     assert!(!error.retryable());

@@ -315,6 +315,8 @@ async fn call(provider: &ExtensionProvider, request: ModelRequest) -> Result<Mod
         .generate(request, Arc::new(|_| {}), CancellationToken::new())
         .await
 }
+#[path = "provider_ext/errors.rs"]
+mod errors;
 #[path = "provider_ext/in_flight.rs"]
 mod in_flight;
 #[path = "provider_ext/submission.rs"]
@@ -475,7 +477,7 @@ async fn extension_error_kinds_map() {
         (
             "fatal",
             ProviderErrorKind::Fatal,
-            "extension request failed",
+            "extension request failed: fake fatal",
         ),
     ] {
         let (result, rows) = bubblepaw_core::capture_request_usage(
@@ -607,77 +609,6 @@ async fn extension_concurrent_text_batches_stay_with_their_request() {
     assert_eq!(b.unwrap().text, "右🦀");
     assert_eq!(*left.lock().unwrap(), "左猫");
     assert_eq!(*right.lock().unwrap(), "右🦀");
-}
-
-#[tokio::test]
-async fn extension_rpc_error_messages_hide_raw_text_and_keep_option_names() {
-    let provider = fake();
-    for (command, expected) in [
-        (
-            "raw-error auth|RAW_RPC_ERROR_SENTINEL",
-            "extension authentication failed",
-        ),
-        (
-            "raw-error rate_limit|RAW_RPC_ERROR_SENTINEL",
-            "extension rate limit reached",
-        ),
-        (
-            "raw-error context|RAW_RPC_ERROR_SENTINEL",
-            "extension context limit exceeded",
-        ),
-        (
-            "raw-error transient|RAW_RPC_ERROR_SENTINEL",
-            "extension request failed transiently",
-        ),
-        (
-            "raw-error fatal|RAW_RPC_ERROR_SENTINEL",
-            "extension request failed",
-        ),
-        (
-            "option-error output_schema|RAW_RPC_ERROR_SENTINEL",
-            "extension rejected output_schema",
-        ),
-        (
-            "option-error reasoning_effort|RAW_RPC_ERROR_SENTINEL",
-            "extension rejected reasoning_effort",
-        ),
-        ("raw-error transient|cancelled", "cancelled"),
-    ] {
-        let error = call(&provider, ext_step("direct-model", command, "e1", None))
-            .await
-            .unwrap_err();
-        let typed = ProviderError::of(&error).unwrap();
-        assert_eq!(typed.message, expected);
-        assert!(!format!("{error:#}").contains("RAW_RPC_ERROR_SENTINEL"));
-        if command.contains("rate_limit") {
-            assert_eq!(
-                typed.kind,
-                ProviderErrorKind::RateLimit {
-                    resets_at: Some("2026-10-08T14:00:00Z".into()),
-                }
-            );
-        }
-    }
-}
-
-#[tokio::test]
-async fn extension_process_errors_do_not_include_child_stderr() {
-    let provider = fake();
-    let error = call(
-        &provider,
-        ext_step(
-            "direct-model",
-            "stderr-exit RAW_STDERR_SENTINEL",
-            "e1",
-            None,
-        ),
-    )
-    .await
-    .unwrap_err();
-    let typed = ProviderError::of(&error).unwrap();
-    assert_eq!(typed.kind, ProviderErrorKind::Transient);
-    assert_eq!(typed.message, "extension fake exited");
-    assert!(!format!("{error:#}").contains("RAW_STDERR_SENTINEL"));
 }
 
 #[tokio::test]

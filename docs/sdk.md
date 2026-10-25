@@ -17,6 +17,12 @@ bubblepaw-sdk = { git = "https://github.com/BubbleBuffer/BubblePaw-Core", tag = 
 `v0.2.0` is the first tag with the SDK. The crates are not published to
 crates.io, and the SDK is not a protocol client.
 
+Fixes reach BubblePaw-Core only through a sync: once they are merged into the
+development repo's `release` branch, `scripts/publish-public.sh --push` (run from
+`release`) commits the exported tree to BubblePaw-Core. Consumers that pin a Core
+revision or tag, such as Scratch, then bump that pin. The 2026-10-25 todo SDK
+module and the redacted fatal error text reach consumers this way.
+
 ## Modules
 
 - `store`: the authoritative archive: `Store`, `Session`, `Message`, roles,
@@ -27,6 +33,8 @@ crates.io, and the SDK is not a protocol client.
 - `approvals`: approval policy, modes, declared approval and the decision record.
 - `tools`: the tool traits and registry, plus the runner's workspace, process,
   history, JavaScript and artifact capabilities.
+- `todo`: the `todo` tool, its `TodoItem` / `TodoStatus` host state, `list`
+  and the `HOST_STATE_KEY` it is stored and announced under.
 - `providers`: the provider request surface, the decision types used by roles,
   and the runner's HTTP, extension and scripted adapters.
 - `context`: the context preparation hook, `ContextWriter`, and the runner's
@@ -51,6 +59,7 @@ let host = HostBuilder::new(store, providers)   // Store, ProviderRegistry
     .workspace(workspace_dir)                   // binds and creates the workspace
     .tools(registry)                            // your own ToolRegistry (optional)
     .history_tools(true)                        // history_search, history_read, history_chapters
+    .todo(true)                                 // the todo tool; read with host.todo(session)
     .code_mode(artifacts_dir)                   // ArtifactStore + CodeMode
     .wrap_support_tools(|tool| tool)            // optional host-tool decorator
     .summarize(SummaryConfig::default())        // readable summarization
@@ -60,7 +69,7 @@ let host = HostBuilder::new(store, providers)   // Store, ProviderRegistry
 ```
 
 Only `workspace` is required: it binds the store to the
-workspace and creates the directory when missing. `history_tools` and
+workspace and creates the directory when missing. `history_tools`, `todo` and
 `code_mode` register host capabilities; `wrap_support_tools` decorates every one
 of them before it enters the registry, and their shown-always status survives.
 `summarize` builds the runner's `SummarizingContext` over the store and the
@@ -75,6 +84,18 @@ exposes no model tool for the configured execution mode.
 `Host` holds `harness: Arc<Harness>`, `store`, `providers:
 Arc<ProviderRegistry>`, `code_mode: Option<Arc<CodeMode>>` and `tools`, a
 snapshot of the final registry for hosts that also serve tools outside a run.
+
+## Todo list
+
+`HostBuilder::todo(true)` registers the `todo` host tool (2026-10-25). The
+model replaces the whole list with `{"items": [{"text", "status"}]}`, where
+status is `pending`, `in_progress` or `done`, at most 50 items. The latest list
+per chat is host state under the key `todo`, never part of the prompt.
+`Host::todo(session_id)` (or `todo::list(&store, session_id)`) reads it, empty
+when none was set. Each change emits `EventKind::HostStateChanged { key:
+"todo", value }` with the bare item array. In native mode the tool is a model
+tool (also through the Claude Code extension, which serves it over MCP); in
+JavaScript mode it is `tools.todo(...)`.
 
 `crates/bubblepaw-sdk/examples/scripted_chat.rs` is the runnable version: an
 in-memory store, a scripted provider that calls one host tool, a harness run and

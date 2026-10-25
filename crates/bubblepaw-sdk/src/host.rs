@@ -10,6 +10,7 @@ use bubblepaw_runner::{
     provider::ProviderRegistry,
     runtime_note::RuntimeNotes,
     summarization::{SummarizingContext, SummaryConfig},
+    todo::{self, TodoItem},
     tools::register_history_tools,
 };
 use std::{path::PathBuf, sync::Arc};
@@ -32,6 +33,13 @@ pub struct Host {
     pub tools: ToolRegistry,
 }
 
+impl Host {
+    /// The chat's latest todo list; empty when the model never set one.
+    pub fn todo(&self, session_id: &str) -> Result<Vec<TodoItem>> {
+        todo::list(&self.store, session_id)
+    }
+}
+
 /// Wires a store, a provider registry and the usual host capabilities into a
 /// [`Host`].
 ///
@@ -43,6 +51,7 @@ pub struct HostBuilder {
     workspace: Option<PathBuf>,
     tools: Option<ToolRegistry>,
     history_tools: bool,
+    todo: bool,
     code_mode: Option<PathBuf>,
     wrap: Option<Wrapper>,
     summary: Option<SummaryConfig>,
@@ -59,6 +68,7 @@ impl HostBuilder {
             workspace: None,
             tools: None,
             history_tools: false,
+            todo: false,
             code_mode: None,
             wrap: None,
             summary: None,
@@ -86,6 +96,13 @@ impl HostBuilder {
         self
     }
 
+    /// Register the `todo` tool: the model keeps one small list per chat as
+    /// host state, read with [`Host::todo`] (see [`crate::todo`]).
+    pub fn todo(mut self, enabled: bool) -> Self {
+        self.todo = enabled;
+        self
+    }
+
     /// Create the artifact store and the JavaScript adapter under
     /// `artifacts_dir`, and register the adapter.
     pub fn code_mode(mut self, artifacts_dir: impl Into<PathBuf>) -> Self {
@@ -93,7 +110,7 @@ impl HostBuilder {
         self
     }
 
-    /// Wrap every history and code-mode host tool before it enters the registry.
+    /// Wrap every history, todo and code-mode host tool before it enters the registry.
     /// Shown-always status is applied after wrapping and is kept.
     pub fn wrap_support_tools(
         mut self,
@@ -143,6 +160,7 @@ impl HostBuilder {
             workspace,
             tools,
             history_tools,
+            todo: todo_tool,
             code_mode,
             wrap,
             summary,
@@ -163,6 +181,9 @@ impl HostBuilder {
         if history_tools {
             register_history_tools(&mut support, store.clone())
                 .context("cannot register the history tools")?;
+        }
+        if todo_tool {
+            todo::register(&mut support, store.clone()).context("cannot register the todo tool")?;
         }
         let code_mode = match code_mode {
             Some(artifacts_dir) => {

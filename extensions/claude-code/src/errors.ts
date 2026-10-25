@@ -2,7 +2,9 @@
 // not signed in is `auth`, a usage limit is `rate_limit` (with `resets_at` when
 // Claude Code reported one, and `limit_type` when a subscription usage cap
 // rejected the request), prompt too long is `context`, process and network
-// failures are `transient`, the rest `fatal`.
+// failures are `transient`, the rest `fatal`. Typed kinds keep fixed messages;
+// a fatal failure appends one redacted, truncated line of the underlying text
+// (see `diagnosticLine`), since nothing else would tell the user what broke.
 //
 // Adapted from pi-claude-bridge src/index.ts (resultErrorText, the
 // rate_limit_event handling in consumeQuery, describeRateLimitFailure).
@@ -53,6 +55,49 @@ function safeFailure(kind: ErrorKind, resetsAt?: string, limitType?: string): Pr
 	return new ProviderError(kind, SAFE_MESSAGES[kind], resetsAt, limitType);
 }
 
+const MAX_DIAGNOSTIC_CHARS = 300;
+const SECRET_ENV_NAME = /key|token|secret|password|passwd|auth|credential|cookie|session/i;
+const REDACTIONS: [RegExp, string][] = [
+	[/\b(bearer|basic)\s+[A-Za-z0-9_.\/+=:-]+/gi, "$1 [redacted]"],
+	[/\b(authorization|proxy-authorization|x-api-key|api[-_]?key|(?:access|refresh|id)?[-_]?token|secret|client[-_]?secret|password|cookie|set-cookie)\b(\s*["']?\s*[:=]\s*["']?)[^"'\s,;}\]]+/gi, "$1$2[redacted]"],
+	[/\b([A-Z][A-Z0-9_]{2,})=("[^"]*"|'[^']*'|\S+)/g, "$1=[redacted]"],
+	[/\bsk-[A-Za-z0-9_-]{8,}/g, "[redacted]"],
+	[/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]+/g, "[redacted]"],
+	[/[A-Za-z0-9_+=-]{40,}/g, "[redacted]"],
+];
+
+/** Credential-looking values of the extension's own environment. */
+function envSecrets(env: Record<string, string | undefined> = {}): string[] {
+	return Object.entries({ ...process.env, ...env })
+		.filter(([name, value]) => SECRET_ENV_NAME.test(name) && typeof value === "string" && value.length >= 8)
+		.map(([, value]) => value as string);
+}
+
+/** The first nonempty line of `text`, whitespace-collapsed, with keys, bearer
+ *  tokens, `NAME=value` env assignments, long opaque strings and the values of
+ *  credential-named env variables replaced by `[redacted]`, then cut to 300
+ *  characters. Redaction runs before the cut, so a cut never exposes a secret. */
+export function diagnosticLine(text: string, env?: Record<string, string | undefined>): string {
+	let line = text.split(/\r?\n/).map((part) => part.trim()).find((part) => part.length > 0) ?? "";
+	for (const secret of envSecrets(env)) line = line.split(secret).join("[redacted]");
+	for (const [pattern, replacement] of REDACTIONS) line = line.replace(pattern, replacement);
+	line = line.replace(/\s+/g, " ");
+	return line.length > MAX_DIAGNOSTIC_CHARS ? `${line.slice(0, MAX_DIAGNOSTIC_CHARS - 12)} [truncated]` : line;
+}
+
+/** Claude Code's own stderr, one redacted, truncated log line per line. */
+export function logStderr(data: string, env: Record<string, string | undefined> | undefined, log: (line: string) => void): void {
+	for (const raw of String(data).split(/\r?\n/)) {
+		const line = diagnosticLine(raw, env);
+		if (line) log(`claude stderr: ${line}`);
+	}
+}
+
+function fatalFailure(text: string): ProviderError {
+	const detail = diagnosticLine(text);
+	return new ProviderError("fatal", detail ? `${SAFE_MESSAGES.fatal}: ${detail}` : SAFE_MESSAGES.fatal);
+}
+
 /** The subscription cap named by a `rate_limit_event` rejection; `subscription`
  *  when Claude Code did not name one. Only short identifiers pass. */
 export function limitTypeOf(rejection: { rateLimitType?: string } | null | undefined): string | undefined {
@@ -79,7 +124,7 @@ export function classify(text: string, ctx: FailureContext = {}): ProviderError 
 	if (LIMIT.test(text)) return safeFailure("rate_limit");
 	if (assistant === "overloaded" || assistant === "server_error") return safeFailure("transient");
 	if (TRANSIENT.test(text)) return safeFailure("transient");
-	return safeFailure("fatal");
+	return fatalFailure(text);
 }
 
 /** A thrown error from the SDK or the Claude Code process. */

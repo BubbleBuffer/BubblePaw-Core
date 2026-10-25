@@ -203,6 +203,31 @@ fn redact_text(text: &str, secrets: &[&str]) -> String {
     text
 }
 
+/// One line of free-form provider text that is safe to show: `redact_text`,
+/// then `NAME=value` assignments, `sk-` keys, JWTs and opaque strings of 40 or
+/// more characters, whitespace collapsed and cut to `limit` bytes.
+pub(super) fn redacted_line(text: &str, secrets: &[&str], limit: usize) -> String {
+    static OPAQUE: LazyLock<[(Regex, &str); 4]> = LazyLock::new(|| {
+        [
+            (
+                r#"\b([A-Z][A-Z0-9_]{2,})=("[^"]*"|'[^']*'|\S+)"#,
+                "$1=[redacted]",
+            ),
+            (r"\bsk-[A-Za-z0-9_-]{8,}", REDACTED),
+            (r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_.-]+", REDACTED),
+            (r"[A-Za-z0-9_+=-]{40,}", REDACTED),
+        ]
+        .map(|(pattern, with)| (Regex::new(pattern).expect("valid redaction regex"), with))
+    });
+    let mut text = redact_text(text, secrets);
+    for (pattern, with) in OPAQUE.iter() {
+        text = pattern.replace_all(&text, *with).into_owned();
+    }
+    let mut text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    truncate(&mut text, limit);
+    text
+}
+
 fn truncate(text: &mut String, limit: usize) {
     const SUFFIX: &str = " [truncated]";
     if text.len() > limit {
@@ -285,5 +310,29 @@ mod tests {
         assert!(error.len() <= MAX_DIAGNOSTIC_BYTES);
         assert!(error.ends_with("[truncated]"));
         assert_eq!(diagnostic("Messages", 503, &[], &[]), "Messages HTTP 503");
+    }
+
+    #[test]
+    fn redacted_line_hides_keys_env_values_and_opaque_strings() {
+        let opaque = "Q".repeat(48);
+        let text = format!(
+            "Unknown option   --foo: Bearer bearer-secret sk-ant-oat01-keysecret ANTHROPIC_API_KEY=env-secret jwt eyJhbGciOiJIUzI1NiJ9.e30.sig {opaque} configured-secret path /home/dev/work/a/b"
+        );
+        let line = redacted_line(&text, &["configured-secret"], 4096);
+        for secret in [
+            "bearer-secret",
+            "keysecret",
+            "env-secret",
+            "eyJhbGci",
+            opaque.as_str(),
+            "configured-secret",
+        ] {
+            assert!(!line.contains(secret), "{line}");
+        }
+        assert!(line.starts_with("Unknown option --foo: Bearer [redacted]"));
+        assert!(line.contains("ANTHROPIC_API_KEY=[redacted]"));
+        assert!(line.ends_with("path /home/dev/work/a/b"));
+        let long = redacted_line(&"word ".repeat(200), &[], 300);
+        assert!(long.len() <= 300 && long.ends_with("[truncated]"));
     }
 }

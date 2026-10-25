@@ -18,7 +18,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 ## Models and providers
 
 - [thinking-tool-loop](thinking-tool-loop.md) — Fixed 2026-10-14: live signed-thinking 400 from changing budget prefixes; stable history notices, inactive declarations and recorded SSE replay; replay guards, runner inner-loop inventory and the Messages/chat replay boundaries.
-- [providers](providers.md) — Built through 2026-10-14: live provider registry reload, provider registry, Responses, Claude Code extension, Anthropic Messages and chat completions with tools, decisions and role effort; every kind qualified to one bar; all HTTP kinds stream server-sent events with batched listener text; reasoning artifacts replay only to their origin provider and model; Claude subscriptions (2026-10-19): per-account extension instances via `env`, API-key guard, `replace` system prompt mode and usage-limit failover.
+- [providers](providers.md) — Built through 2026-10-14: live provider registry reload, provider registry, Responses, Claude Code extension, Anthropic Messages and chat completions with tools, decisions and role effort; every kind qualified to one bar; all HTTP kinds stream server-sent events with batched listener text; reasoning artifacts replay only to their origin provider and model; Claude subscriptions (2026-10-19): per-account extension instances via `env`, API-key guard, `replace` system prompt mode and usage-limit failover; fatal extension errors keep a redacted first line and extension stderr is logged redacted at warn (2026-10-25).
 - [provider-qualification](provider-qualification.md) — The qualification bar for provider kinds, with the current status of each kind at the scripted, local-transport and live levels.
 - [decision-providers](decision-providers.md) — Approved 2026-10-08; built: decision providers and named model roles that episodes and approvals consume.
 
@@ -26,7 +26,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 - [host-context](host-context.md) — Built 2026-10-21: the host preparation hook and `ContextWriter`, where static, derived and live host context goes, and how frozen-tier edits and resolver changes are classified.
 - [host-attach](host-attach.md) — 2026-10-21: local run/delegate attachment to the central store's host, per-chat workspaces, request config and host lifetime; verification status and Windows smoke commands.
-- [sdk](sdk.md) — Built 2026-10-24 in 0.2.0: the `bubblepaw-sdk` facade crate for Rust embedders, the `HostBuilder` wiring, the Claude Code helper and the stability policy.
+- [sdk](sdk.md) — Built 2026-10-24 in 0.2.0: the `bubblepaw-sdk` facade crate for Rust embedders, the `HostBuilder` wiring, the Claude Code helper and the stability policy; the `todo` module and `HostBuilder::todo` (2026-10-25).
 - [storage-model](storage-model.md) — Built through 2026-10-21: one central store per machine with a one-time read-only import of legacy per-workspace stores (chats, spill and artifacts, quota, ledger; legacy dirs deletable afterwards except in-use worktrees), lean chats, worker visibility and guarded transient deletion, import, archives and buffered serving; root-chat source mappings are authoritative, shared web-cache.db is disposable.
 - [session-api](session-api.md) — Built; current 2026-10-24: how several clients snapshot a session and follow its durable event stream, with every event kind and stdio method.
 - [usage tracking](usage-tracking.md) - Durable per-request tokens and SDK-reported model IDs, one dated price table, grouped reports and the fixed `bubblepaw.usage.v1` JSONL export.
@@ -56,7 +56,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 - [chapter-bench](chapter-bench.md) — How to run the chapter-selection benchmark: arms, cost cap, frozen episode stages and the report. Results of 2026-10-23 are kept in the project notes.
 - [delegation-bridge](delegation-bridge.md) — Built 2026-10-19 (v0): `bubblepaw delegate` runs an assignment with harness-run checks and rework, false-green detection, explicit class or model routing with in-class exploration, and a `delegations.db` ledger with metrics; `bubblepaw delegations report` groups outcomes by category, class and model.
-- [verification](verification.md) — How the project is verified now: CI gates, the three acceptance levels, opt-in live tests and known limits.
+- [verification](verification.md) — How the project is verified now: CI gates (private CI also runs the claude-code extension's bun checks, 2026-10-25), the three acceptance levels, opt-in live tests and known limits.
 - [lcm-viewer](lcm-viewer.md) — Updated 2026-10-21: offline read-only viewer for chats in the central store (or any `--data-dir`), their LCM episodes, chapters, checkpoints and serving view, and replay outputs (`tools/lcm-viewer`).
 
 ## Ideas

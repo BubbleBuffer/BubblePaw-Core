@@ -10,7 +10,7 @@
 //!
 //! Everything reachable through the named modules ([`store`], [`harness`],
 //! [`events`], [`approvals`], [`tools`], [`providers`], [`context`],
-//! [`net`], [`web`], [`claude_code`]), plus [`Host`] and [`HostBuilder`],
+//! [`todo`], [`net`], [`web`], [`claude_code`]), plus [`Host`] and [`HostBuilder`],
 //! follows semantic versioning from 0.2.0: those paths keep working within a
 //! major release, and a breaking change is a version bump.
 //!
@@ -28,6 +28,7 @@
 //!     .workspace(workspace_dir)
 //!     .tools(registry)
 //!     .history_tools(true)
+//!     .todo(true)
 //!     .code_mode(artifacts_dir)
 //!     .summarize(SummaryConfig::default())
 //!     .config(HarnessConfig { model: "scripted".into(), ..Default::default() })
@@ -45,6 +46,7 @@ mod host;
 pub mod net;
 pub mod providers;
 pub mod store;
+pub mod todo;
 pub mod tools;
 #[cfg(feature = "web")]
 pub mod web;

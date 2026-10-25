@@ -7,7 +7,6 @@
 //! `kill_on_drop` plus explicit shutdown leave none behind.
 #![cfg(unix)]
 
-use regex::Regex;
 use serde_json::{Value, json};
 use std::{
     collections::HashSet,
@@ -24,6 +23,9 @@ mod proc_sockets;
 
 #[path = "host_attach/delegations.rs"]
 mod delegations;
+#[path = "host_attach/normalize.rs"]
+mod normalize;
+use normalize::normalize;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bubblepaw");
 const FAKE: &str = env!("CARGO_BIN_EXE_bubblepaw-fake-extension");
@@ -337,20 +339,6 @@ fn probe_tools(text: &str) -> Vec<&str> {
 }
 
 /// Replaces the parts of run output that differ between processes by design.
-fn normalize(text: &str, data: &Path) -> String {
-    let uuid = Regex::new(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}").unwrap();
-    let stamp =
-        Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})").unwrap();
-    let timing = Regex::new(
-        r#""([A-Za-z_]*(?:_ms|_at|_secs|_nanos|_micros|_time|_duration)|pid|sequence)":\s*[0-9.]+"#,
-    )
-    .unwrap();
-    let text = text.replace(data.to_str().unwrap(), "<data>");
-    let text = uuid.replace_all(&text, "<uuid>");
-    let text = stamp.replace_all(&text, "<time>");
-    timing.replace_all(&text, r#""$1":0"#).into_owned()
-}
-
 fn assignment(check: &str, rework: u32) -> String {
     let check = toml::Value::String(check.into());
     format!(

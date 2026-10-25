@@ -144,6 +144,53 @@ async fn sdk_scripted_chat_runs_host_tool() -> Result<()> {
 }
 
 #[tokio::test]
+async fn sdk_todo_tool_updates_host_state() -> Result<()> {
+    let workspace = tempfile::tempdir()?;
+    let store = Store::in_memory()?;
+    let session = store.create_session("sdk todo")?;
+    let items = json!([
+        {"text": "port the gateway", "status": "in_progress"},
+        {"text": "bump the pin", "status": "pending"}
+    ]);
+    let steps = vec![ScriptedStep::Calls {
+        calls: vec![ToolCall {
+            id: "call-todo-1".into(),
+            name: "todo".into(),
+            arguments: json!({"items": items.clone()}),
+        }],
+    }];
+    let host = HostBuilder::new(store.clone(), scripted(steps, "Planned."))
+        .workspace(workspace.path())
+        .todo(true)
+        .config(scripted_config())
+        .build()?;
+    let todo = host
+        .tools
+        .with_execution_mode(bubblepaw_sdk::harness::ExecutionMode::Native)
+        .definitions()
+        .into_iter()
+        .find(|definition| definition.name == "todo")
+        .expect("todo is a native model tool");
+    assert_eq!(todo.input_schema["type"], "object");
+
+    host.harness
+        .start(&session.id, "Plan the work.", RunOptions::default())?;
+    let run = host.harness.wait_for_idle(&session.id).await?;
+    assert_eq!(run.status, "completed", "{:?}", run.error);
+    let saved = host.todo(&session.id)?;
+    assert_eq!(saved.len(), 2);
+    assert_eq!(saved[0].status, bubblepaw_sdk::todo::TodoStatus::InProgress);
+    assert_eq!(serde_json::to_value(&saved)?, items);
+    let changed = host
+        .harness
+        .events_after(0, Some(&session.id), 1000)?
+        .into_iter()
+        .any(|event| matches!(&event.kind, bubblepaw_sdk::events::EventKind::HostStateChanged { key, value } if key == bubblepaw_sdk::todo::HOST_STATE_KEY && value == &items));
+    assert!(changed, "no todo host_state_changed event");
+    Ok(())
+}
+
+#[tokio::test]
 async fn sdk_builder_wraps_support_tools() -> Result<()> {
     let workspace = tempfile::tempdir()?;
     let store = Store::in_memory()?;
@@ -294,6 +341,14 @@ fn sdk_surface_names_every_public_item() {
     let _: Option<bubblepaw_sdk::tools::ArtifactStore> = None;
     let _: Option<bubblepaw_sdk::tools::RuntimeNotes> = None;
     let _ = bubblepaw_sdk::tools::register_history_tools;
+
+    // todo
+    let _: Option<bubblepaw_sdk::todo::TodoItem> = None;
+    let _: Option<bubblepaw_sdk::todo::TodoStatus> = None;
+    let _ = bubblepaw_sdk::todo::list;
+    let _ = bubblepaw_sdk::todo::register;
+    let _ = bubblepaw_sdk::todo::MAX_TODO_ITEMS;
+    let _ = bubblepaw_sdk::todo::HOST_STATE_KEY;
     // The native registration helper is generic over its two path arguments, so
     // name it with concrete ones.
     fn register_native_tools_with_exec(

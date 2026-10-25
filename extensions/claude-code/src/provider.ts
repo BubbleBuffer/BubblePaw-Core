@@ -21,7 +21,7 @@
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync } from "node:fs";
 import { bubblepawToolName, MCP_SERVER_NAME, oneOffPrompt } from "./convert.js";
-import { cancelled, classify, classifyThrown, resultErrorText, type FailureContext } from "./errors.js";
+import { cancelled, classify, classifyThrown, logStderr, resultErrorText, type FailureContext } from "./errors.js";
 import { createToolServer, ParkingLot } from "./mcp-server.js";
 import { decide, notesText, stableCount, writeSession, type Decision, type Mirror } from "./mirror.js";
 import { makePromptStream, userMessage, type PromptStream } from "./prompt-stream.js";
@@ -508,7 +508,7 @@ export class ClaudeCodeProvider {
 			...live.requestOptions.native,
 			...(mcpServers ? { mcpServers } : {}),
 			...(resumeId ? { resume: resumeId } : {}),
-			stderr: () => this.log("claude: process diagnostic received"),
+			stderr: (data: string) => logStderr(data, this.opts.env, (line) => this.log(line)),
 		};
 		let handle: ReturnType<QueryFn>;
 		try {
@@ -764,7 +764,7 @@ export class ClaudeCodeProvider {
 			systemPrompt: request.system_prompt,
 			persistSession: false,
 			maxTurns: 1,
-			stderr: () => this.log("claude: process diagnostic received"),
+			stderr: (data: string) => logStderr(data, this.opts.env, (line) => this.log(line)),
 		};
 		delete options.permissionMode;
 		delete options.allowDangerouslySkipPermissions;

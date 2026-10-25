@@ -115,6 +115,8 @@ struct Pending {
 }
 struct Shared {
     id: String,
+    /// Credential values from the instance's `env`, redacted from diagnostics.
+    secrets: Vec<String>,
     pending: Mutex<HashMap<u64, Pending>>,
     alive: AtomicBool,
     next_id: AtomicU64,
@@ -170,7 +172,7 @@ impl Shared {
         };
         let settled = match value.get("error") {
             Some(error) => Settled {
-                outcome: Err(rpc_error(error)),
+                outcome: Err(rpc_error(error, &self.secrets)),
                 reported_model: reported_model_of(error.get("data")),
             },
             None => {
@@ -183,118 +185,6 @@ impl Shared {
         };
         let _ = pending.reply.send(settled);
     }
-}
-/// A JSON-RPC error whose `data` carries the provider error kind. A rate limit
-/// with a `limit_type` (a subscription usage cap, e.g. `five_hour`) keeps that
-/// type and `resets_at` in the message, so it is distinguishable from a plain 429.
-fn rpc_error(error: &Value) -> ProviderError {
-    let data = error.get("data");
-    let kind = data
-        .and_then(|data| serde_json::from_value(data.clone()).ok())
-        .unwrap_or(ProviderErrorKind::Fatal);
-    let raw_message = error.get("message").and_then(Value::as_str).unwrap_or("");
-    let message = if raw_message == "cancelled" {
-        "cancelled".to_owned()
-    } else if raw_message.starts_with("output_schema") {
-        "extension rejected output_schema".to_owned()
-    } else if raw_message.starts_with("reasoning_effort") {
-        "extension rejected reasoning_effort".to_owned()
-    } else {
-        match &kind {
-            ProviderErrorKind::Auth => "extension authentication failed".to_owned(),
-            ProviderErrorKind::RateLimit { resets_at } => {
-                let limit_type = data
-                    .and_then(|data| data.get("limit_type"))
-                    .and_then(Value::as_str)
-                    .filter(|limit| safe_token(limit));
-                match limit_type {
-                    Some(limit) => {
-                        let mut message = format!("extension usage limit reached: {limit}");
-                        if let Some(resets_at) = resets_at.as_deref().filter(|at| safe_token(at)) {
-                            message.push_str(&format!(", resets {resets_at}"));
-                        }
-                        message
-                    }
-                    None => "extension rate limit reached".to_owned(),
-                }
-            }
-            ProviderErrorKind::Context => "extension context limit exceeded".to_owned(),
-            ProviderErrorKind::Transient => "extension request failed transiently".to_owned(),
-            ProviderErrorKind::Fatal => "extension request failed".to_owned(),
-        }
-    };
-    let message = if data
-        .and_then(|data| data.get("terminal_quota"))
-        .and_then(Value::as_bool)
-        == Some(true)
-    {
-        "billing or spend limit reached: extension rejected account billing or credits".to_owned()
-    } else {
-        message
-    };
-    let kind = if message.starts_with("billing or spend limit reached") {
-        ProviderErrorKind::Fatal
-    } else {
-        kind
-    };
-    let reported = data
-        .and_then(|data| data.get("usage"))
-        .and_then(|usage| serde_json::from_value::<Usage>(usage.clone()).ok());
-    let error = ProviderError::new(kind, message).with_quota(extension_quota(
-        data,
-        "claude-code",
-        "claude-code",
-    ));
-    match reported {
-        Some(usage) => error.with_usage(usage),
-        None => error,
-    }
-}
-
-/// The full model ID an extension reported for a step or error `data`. Anything
-/// that is not a short identifier is ignored, so the configured name is used.
-fn reported_model_of(value: Option<&Value>) -> Option<String> {
-    value?
-        .get("reported_model")?
-        .as_str()
-        .filter(|model| safe_model(model))
-        .map(str::to_owned)
-}
-
-fn safe_model(value: &str) -> bool {
-    (1..=128).contains(&value.len())
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | ':'))
-}
-
-fn extension_quota(
-    value: Option<&Value>,
-    provider: &str,
-    account: &str,
-) -> Vec<bubblepaw_core::QuotaReading> {
-    value
-        .and_then(|value| value.get("quota_events"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .flat_map(|event| {
-            crate::quota_sources::parse_claude_rate_limit(
-                provider,
-                account,
-                event,
-                chrono::Utc::now(),
-            )
-        })
-        .collect()
-}
-
-/// A short identifier or timestamp that is safe to repeat in an error message.
-fn safe_token(value: &str) -> bool {
-    (1..=64).contains(&value.len())
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.' | '+'))
 }
 
 struct Connection {
@@ -348,6 +238,7 @@ impl Connection {
         let stderr = child.stderr.take().context("extension stderr")?;
         let shared = Arc::new(Shared {
             id: config.id.clone(),
+            secrets: env_secrets(&config.env),
             pending: Mutex::default(),
             alive: AtomicBool::new(true),
             next_id: AtomicU64::new(1),
@@ -380,8 +271,11 @@ impl Connection {
         let errors = shared.clone();
         let stderr_task = tokio::spawn(async move {
             let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(_)) = lines.next_line().await {
-                tracing::debug!(target: "bubblepaw::extension", extension = %errors.id, "extension wrote to stderr");
+            while let Ok(Some(line)) = lines.next_line().await {
+                let line = diagnostic_line(&line, &errors.secrets);
+                if !line.is_empty() {
+                    tracing::warn!(target: "bubblepaw::extension", extension = %errors.id, "extension stderr: {line}");
+                }
             }
         });
         Ok(Self {
@@ -722,5 +616,7 @@ impl Provider for ExtensionProvider {
 #[cfg(test)]
 mod quota_tests;
 
+mod errors;
+use errors::{diagnostic_line, env_secrets, extension_quota, reported_model_of, rpc_error};
 mod result;
 use result::{decode_step_result, validate_calls};

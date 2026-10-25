@@ -20,7 +20,8 @@ Two CI setups run the same gates:
   Linux and Windows, with default features and with `web`, on every `v*` tag and
   attaches the archives and a `SHA256SUMS` file to a GitHub release.
 - **Private development repo.** `ci.yml` runs on every pushed branch on a
-  self-hosted runner that keeps `target/` warm; `windows.yml` cross-builds the
+  self-hosted runner that keeps `target/` warm, plus the same `claude-code extension`
+  job (bun typecheck and tests) on the same runner; `windows.yml` cross-builds the
   Windows binary from `win/**` branches. Neither runs on pull requests from forks.
   The public workflows are kept under `.github/public/` there and moved into
   place when the tree is exported.
