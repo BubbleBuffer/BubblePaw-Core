@@ -259,7 +259,9 @@ impl RuntimeState {
         &self,
         session_id: &str,
     ) -> Result<std::sync::MutexGuard<'_, HashMap<String, Active>>> {
-        let active = self.active.lock().unwrap();
+        // A finalizing run has already published SessionSettled; like admission,
+        // wait for its record instead of refusing a client that saw it settle.
+        let active = self.admission_guard(session_id);
         ensure!(
             !active.get(session_id).is_some_and(|a| a.finished.is_none()),
             "Cannot fork an active session"

@@ -140,7 +140,9 @@ Rewind uses `Store::fork_at` machinery to copy history through the target messag
 inclusive, with fresh message IDs and the usual parent link. The original
 session's messages and checkpoint records remain unchanged. Existing fork
 restrictions apply: active sessions, active background effects, compaction and
-cutoffs containing unresolved tool calls are rejected. The target must be the
+cutoffs containing unresolved tool calls are rejected. A run that has already
+published `session_settled` and is only finishing host maintenance is not active:
+the fork waits for it, as turn admission does. The target must be the
 latest typed user message (see above). A generic `fork_at_with` callback retains the
 fork admission guard while the runner restores files. Rewind checks the target and
 builds its restore plan under that same guard before the fork is created

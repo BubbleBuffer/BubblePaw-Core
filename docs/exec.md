@@ -101,7 +101,8 @@ The runner computes inactivity and repeat intervals; core only delivers the noti
   redirecting the command to a file.
 - Each host process owns one spool directory with a held file lock (`.lock`). A spool is removed
   when its job is reaped and on session cancel; at startup a host sweeps only spool directories
-  whose lock it can take, so several hosts may share a data directory.
+  whose lock it can take, so several hosts may share a data directory. Sweeping and creating
+  a spool hold `jobs/.sweep.lock`, so a sweep never removes a spool that is not yet locked.
 - Nothing per line or per chunk reaches SQLite. Measured on Linux with a 4 MB background job:
   messages stayed at 4 rows, effects at 2 rows, the chat database at 4 KiB; the completion
   transaction grew the WAL by 4,120 bytes.

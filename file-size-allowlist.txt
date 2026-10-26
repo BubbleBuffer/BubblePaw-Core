@@ -4,7 +4,7 @@ crates/bubblepaw-core/src/approvals_tests.rs 1376
 crates/bubblepaw-core/src/event_log.rs 791
 crates/bubblepaw-core/src/event_log_tests.rs 900
 crates/bubblepaw-core/src/lib.rs 898
-crates/bubblepaw-core/src/runtime.rs 1620
+crates/bubblepaw-core/src/runtime.rs 1622
 crates/bubblepaw-core/src/store.rs 3585
 crates/bubblepaw-core/src/store_cold.rs 573
 crates/bubblepaw-core/src/store_layout.rs 3369
@@ -51,7 +51,7 @@ crates/bubblepaw-runner/src/quota_sources.rs 1087
 crates/bubblepaw-runner/src/replay.rs 4809
 crates/bubblepaw-runner/src/session_host.rs 674
 crates/bubblepaw-runner/src/summarization.rs 1825
-crates/bubblepaw-runner/src/tools/process.rs 1739
+crates/bubblepaw-runner/src/tools/process.rs 1788
 crates/bubblepaw-runner/src/tools/workspace.rs 619
 crates/bubblepaw-runner/src/trace.rs 833
 crates/bubblepaw-runner/src/usage_report.rs 601

@@ -414,14 +414,24 @@ impl ProcessTools {
             ensure!(metadata.is_dir(), "jobs spool must be a directory");
         }
         fs::create_dir_all(&jobs)?;
-        sweep_spools(&jobs);
         // Each host owns one locked spool directory, so several hosts can share
-        // a data directory without deleting each other's live output.
+        // a data directory without deleting each other's live output. A new
+        // spool has no lock until it is created, so sweeping and creating hold
+        // the spool-wide lock; otherwise a concurrent sweep removes it first.
+        let sweep = File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(jobs.join(SWEEP_LOCK))?;
+        fs2::FileExt::lock_exclusive(&sweep)
+            .map_err(|error| anyhow!("Locking jobs spool sweep: {error}"))?;
+        sweep_spools(&jobs);
         let spool_root = jobs.join(uuid::Uuid::new_v4().to_string());
         fs::create_dir(&spool_root)?;
         let lock = File::create(spool_root.join(".lock"))?;
         fs2::FileExt::try_lock_exclusive(&lock)
             .map_err(|error| anyhow!("Locking jobs spool: {error}"))?;
+        drop(sweep);
         let mut processes = Self::new(workspace);
         processes.apply_config(config);
         processes.spills = Some(crate::spill::SpillStore::new(&data_dir)?);
@@ -1284,6 +1294,8 @@ fn set_background(
     session.foreground_changed.notify_waiters();
     Ok(())
 }
+/// Serializes spool sweeps with spool creation; kept by every sweep.
+const SWEEP_LOCK: &str = ".sweep.lock";
 /// Best-effort startup sweep: removes spool directories whose host is gone
 /// (their lock can be taken) and stray files from older layouts.
 fn sweep_spools(jobs: &Path) {
@@ -1291,6 +1303,9 @@ fn sweep_spools(jobs: &Path) {
         return;
     };
     for entry in entries.flatten() {
+        if entry.file_name() == SWEEP_LOCK {
+            continue;
+        }
         let path = entry.path();
         let Ok(kind) = entry.file_type() else {
             continue;
@@ -1667,6 +1682,40 @@ mod tests {
                 process_wait_ms(&json!({"timeoutMs":timeout})).unwrap(),
                 timeout
             );
+        }
+    }
+
+    /// Hosts sharing a data directory each sweep stale spools on startup; a sweep
+    /// must never remove a spool another host has created but not yet locked.
+    #[test]
+    fn concurrent_hosts_keep_their_own_spools() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("data");
+        let start = Arc::new(std::sync::Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let (root, data, start) = (root.path().to_owned(), data.clone(), start.clone());
+                std::thread::spawn(move || {
+                    start.wait();
+                    (0..20)
+                        .map(|_| {
+                            ProcessTools::with_config(
+                                WorkspaceTools::new(&root).unwrap(),
+                                ExecConfig::default(),
+                                &data,
+                            )
+                            .unwrap()
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let hosts: Vec<_> = threads
+            .into_iter()
+            .flat_map(|thread| thread.join().unwrap())
+            .collect();
+        for host in &hosts {
+            assert!(host.spool_root.as_ref().unwrap().join(".lock").exists());
         }
     }
 
