@@ -1,6 +1,6 @@
 //! Qualified `provider/model` routes share one harness provider; unqualified models use the default.
 //! Explicit missing prefixes fail at dispatch instead of falling back.
-use super::{RetryPolicy, with_retry};
+use super::{RetryPolicy, retry::add_usage, with_retry};
 use anyhow::{Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -338,6 +338,7 @@ impl ProviderRegistry {
         let repeated = Mutex::new(DecisionUsage::default());
         let response = bubblepaw_core::with_request_usage_account(&account, async {
             let response = with_retry(
+                &id,
                 &self.retry,
                 &cancellation,
                 &published,
@@ -682,6 +683,7 @@ impl ProviderRegistry {
                     &id,
                     self.quota_request(&id, &account, &model, cancellation.clone(), || {
                         super::with_retry(
+                            &id,
                             &policy,
                             &cancellation,
                             &published,
@@ -804,9 +806,6 @@ fn fallback_reason(error: &anyhow::Error) -> String {
         ProviderErrorKind::Fatal => "fatal".into(),
     }
 }
-fn add_usage(total: &mut Option<Usage>, usage: &Usage) {
-    total.get_or_insert_with(Usage::default).add(usage);
-}
 /// Usage a failed decision attempt reports, from its decision metadata or its provider error.
 fn failed_decision_usage(error: &anyhow::Error) -> Option<DecisionUsage> {
     super::decision_error_usage(error).cloned().or_else(|| {
@@ -921,6 +920,7 @@ impl Provider for ProviderRegistry {
                     &id,
                     self.quota_request(&id, &account, &request.model, cancellation.clone(), || {
                         with_retry(
+                            &id,
                             &self.retry,
                             &cancellation,
                             &published,

@@ -56,10 +56,11 @@ impl ChatCompletionsProvider {
         let kind = if terminal.is_some() {
             ProviderErrorKind::Fatal
         } else {
-            crate::provider::http_error::status_kind(
+            crate::provider::http_error::compatible_status_kind(
                 code,
                 retry_after,
                 crate::provider::is_context_overflow(&String::from_utf8_lossy(&bytes)),
+                &bytes,
             )
         };
         let diagnostic =
@@ -77,10 +78,9 @@ impl ChatCompletionsProvider {
         {
             error.usage = Some(response_usage(&payload).0);
         }
-        Err(crate::provider::attach_retry_after(
-            error.into(),
-            code,
-            retry_after,
+        let error = crate::provider::attach_retry_after(error.into(), code, retry_after);
+        Err(crate::provider::http_error::mark_bare_bad_request(
+            error, code, &bytes,
         ))
     }
 }

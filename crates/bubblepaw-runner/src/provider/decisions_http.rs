@@ -23,7 +23,8 @@ pub(in crate::provider) async fn post_json(
         let retry_after = crate::provider::http_error::retry_after(response.headers());
         let bytes = crate::provider::http_error::read_body(response, &cancellation).await?;
         // Episode decisions have no context-overflow classification of their own.
-        let kind = crate::provider::http_error::status_kind(code, retry_after, false);
+        let kind =
+            crate::provider::http_error::compatible_status_kind(code, retry_after, false, &bytes);
         let error = if let Some(reason) = crate::provider::http_error::terminal_reason(&bytes) {
             crate::provider::terminal_quota_failure(
                 reason,
@@ -44,6 +45,7 @@ pub(in crate::provider) async fn post_json(
                 retry_after,
             )
         };
+        let error = crate::provider::http_error::mark_bare_bad_request(error, code, &bytes);
         return Err(match serde_json::from_slice::<Value>(&bytes) {
             Ok(payload) if payload.get("usage").is_some_and(Value::is_object) => {
                 let reported = physical_usage(&payload);

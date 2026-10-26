@@ -46,6 +46,71 @@ pub(super) fn status_kind(
     }
 }
 
+/// OpenAI-compatible gateways sometimes return a bare 400 for a failed model
+/// request. Only a structured error message/code makes that 400 authoritative.
+/// Messages keeps its separate, unchanged status mapping.
+pub(super) fn compatible_status_kind(
+    code: u16,
+    retry_after: Option<Duration>,
+    context_overflow: bool,
+    body: &[u8],
+) -> ProviderErrorKind {
+    if bare_bad_request(code, body) {
+        ProviderErrorKind::Transient
+    } else {
+        status_kind(code, retry_after, context_overflow)
+    }
+}
+
+fn bare_bad_request(code: u16, body: &[u8]) -> bool {
+    if code != 400 {
+        return false;
+    }
+    let Ok(payload) = serde_json::from_slice::<Value>(body) else {
+        return true;
+    };
+    let envelopes = [&payload["error"], &payload["response"]["error"]];
+    // A string-valued error is itself a structured error message. A top-level
+    // JSON string, like ordinary plain text, has no structured error fields.
+    let error_message = envelopes
+        .iter()
+        .any(|error| error.as_str().is_some_and(|text| !text.trim().is_empty()));
+    let error_fields = std::iter::once(&payload).chain(envelopes).any(|error| {
+        ["message", "code"].into_iter().any(|field| {
+            error.get(field).is_some_and(|value| match value {
+                Value::String(text) => !text.trim().is_empty(),
+                Value::Number(_) => true,
+                _ => false,
+            })
+        })
+    });
+    !error_message && !error_fields
+}
+
+/// An error-chain marker lets the single retry loop report bare 400 retries
+/// without parsing diagnostics, including after usage/publication wrappers.
+#[derive(Debug)]
+struct BareBadRequest(String);
+impl std::fmt::Display for BareBadRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+pub(super) fn mark_bare_bad_request(error: anyhow::Error, code: u16, body: &[u8]) -> anyhow::Error {
+    if bare_bad_request(code, body)
+        && super::ProviderError::of(&error)
+            .is_some_and(|typed| typed.kind == ProviderErrorKind::Transient)
+    {
+        let message = error.to_string();
+        error.context(BareBadRequest(message))
+    } else {
+        error
+    }
+}
+pub(super) fn is_bare_bad_request(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<BareBadRequest>().is_some()
+}
+
 /// Billing and enforced spend controls are terminal even when a gateway uses
 /// HTTP 429. Retrying cannot replenish credits or alter the account's budget.
 pub(super) fn terminal_billing(body: &[u8]) -> bool {
@@ -244,6 +309,49 @@ fn truncate(text: &mut String, limit: usize) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn compatible_bare_400_classification_requires_a_structured_message_or_code() {
+        for body in [
+            "",
+            " \r\n\t",
+            "upstream request failed",
+            "<html><body>Bad Request</body></html>",
+            r#"{"model":"deepseek-v4.1-flash"}"#,
+            r#"{"error":{"type":"invalid_request_error","message":" ","code":null}}"#,
+            r#"{"error":{},"message":null,"code":""}"#,
+            r#""generic JSON string""#,
+            // Context-like plain text is still unstructured on compatible routes.
+            "context_length_exceeded",
+        ] {
+            assert_eq!(
+                compatible_status_kind(400, None, true, body.as_bytes()),
+                ProviderErrorKind::Transient,
+                "{body}"
+            );
+        }
+        for body in [
+            r#"{"error":{"message":"invalid model"}}"#,
+            r#"{"error":{"code":"invalid_request"}}"#,
+            r#"{"message":"invalid input"}"#,
+            r#"{"code":400}"#,
+            r#"{"response":{"error":{"message":"invalid input"}}}"#,
+            r#"{"error":"invalid input"}"#,
+        ] {
+            assert_eq!(
+                compatible_status_kind(400, None, false, body.as_bytes()),
+                ProviderErrorKind::Fatal,
+                "{body}"
+            );
+            assert_eq!(
+                compatible_status_kind(400, None, true, body.as_bytes()),
+                ProviderErrorKind::Context,
+                "{body}"
+            );
+        }
+        assert_eq!(status_kind(400, None, false), ProviderErrorKind::Fatal);
+        assert_eq!(status_kind(400, None, true), ProviderErrorKind::Context);
+    }
 
     #[tokio::test]
     async fn oversized_http_body_stops_at_read_cap() {

@@ -40,6 +40,8 @@ pub use messages::MessagesProvider;
 pub use registry::ProviderRegistry;
 pub use retry::RetryPolicy;
 pub(crate) use retry::with_retry;
+// HTTP Retry-After attachments share the registry's retry status policy.
+use retry::retryable_http_status;
 pub use scripted::{ScriptedProvider, ScriptedStep};
 use serde_json::{Value, json};
 use std::{
@@ -210,12 +212,13 @@ impl ResponsesProvider {
             if let Some(reason) = http_error::terminal_reason(&bytes) {
                 return Err(terminal_quota_failure(reason, http_error::diagnostic("Responses", code, &bytes, &[&bearer])));
             }
-            let kind = http_error::status_kind(
+            let kind = http_error::compatible_status_kind(
                 code,
                 retry_after,
                 is_context_overflow(&String::from_utf8_lossy(&bytes)),
+                &bytes,
             );
-            return Err(attach_retry_after(
+            return Err(http_error::mark_bare_bad_request(attach_retry_after(
                 classify(
                     kind,
                     anyhow!(http_error::diagnostic(
@@ -227,7 +230,7 @@ impl ResponsesProvider {
                 ),
                 code,
                 retry_after,
-            ));
+            ), code, &bytes));
         }
         let mut reader = SseReader::new(response);
         let mut batch = TextBatch::new(on_text.clone());
@@ -812,9 +815,6 @@ impl std::error::Error for RetryAfterError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(self.source.as_ref())
     }
-}
-fn retryable_http_status(code: u16) -> bool {
-    matches!(code, 408 | 409 | 429 | 500..=599)
 }
 fn attach_retry_after(error: anyhow::Error, code: u16, delay: Option<Duration>) -> anyhow::Error {
     if retryable_http_status(code)

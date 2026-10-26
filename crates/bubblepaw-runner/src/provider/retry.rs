@@ -3,12 +3,20 @@
 //! whether a classified failure may be retried and how long to wait.
 use super::{ProviderError, ProviderErrorKind, cancelled};
 use anyhow::Result;
-use bubblepaw_core::CancellationToken;
+use bubblepaw_core::{CancellationToken, Usage};
 use std::{
     future::Future,
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
+
+pub(super) fn retryable_http_status(code: u16) -> bool {
+    matches!(code, 408 | 409 | 429 | 500..=599)
+}
+
+pub(super) fn add_usage(total: &mut Option<Usage>, usage: &Usage) {
+    total.get_or_insert_with(Usage::default).add(usage);
+}
 
 /// Total attempts and local backoff bounds for one provider request.
 #[derive(Clone, Debug)]
@@ -120,6 +128,7 @@ pub(crate) fn retry_delay(
 /// `on_failed_attempt` so callers can keep its usage and quota readings; the
 /// sleep is cancelable and returns the `cancelled` error instead of waiting.
 pub(crate) async fn with_retry<T, F, Fut>(
+    provider: &str,
     policy: &RetryPolicy,
     cancellation: &CancellationToken,
     published: &AtomicBool,
@@ -145,8 +154,26 @@ where
                     published.load(Ordering::Acquire),
                     cancellation,
                 ) else {
+                    if attempt + 1 >= policy.max_attempts
+                        && super::http_error::is_bare_bad_request(&error)
+                    {
+                        let mut typed = ProviderError::of(&error)
+                            .expect("bare HTTP 400 keeps its typed source")
+                            .clone();
+                        typed.message = format!("{}; retried {attempt} times", typed.message);
+                        return Err(error.context(typed));
+                    }
                     return Err(error);
                 };
+                if super::http_error::is_bare_bad_request(&error) {
+                    tracing::warn!(
+                        target: "bubblepaw::provider",
+                        provider,
+                        status = 400,
+                        attempt = attempt + 1,
+                        "Retrying unstructured HTTP 400"
+                    );
+                }
                 on_failed_attempt(&error);
                 attempt += 1;
                 tokio::select! {
