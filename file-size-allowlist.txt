@@ -68,7 +68,7 @@ crates/bubblepaw-runner/tests/config_runtime.rs 506
 crates/bubblepaw-runner/tests/context_growth.rs 766
 crates/bubblepaw-runner/tests/context_strategies.rs 715
 crates/bubblepaw-runner/tests/decision_providers.rs 1078
-crates/bubblepaw-runner/tests/delegate.rs 789
+crates/bubblepaw-runner/tests/delegate.rs 738
 crates/bubblepaw-runner/tests/episode_background.rs 555
 crates/bubblepaw-runner/tests/episode_forks.rs 522
 crates/bubblepaw-runner/tests/episode_forks_http.rs 585
@@ -89,7 +89,7 @@ crates/bubblepaw-runner/tests/provider_ext.rs 962
 crates/bubblepaw-runner/tests/provider_live.rs 1574
 crates/bubblepaw-runner/tests/provider_messages.rs 1206
 crates/bubblepaw-runner/tests/provider_quota.rs 539
-crates/bubblepaw-runner/tests/provider_reload.rs 569
+crates/bubblepaw-runner/tests/provider_reload.rs 529
 crates/bubblepaw-runner/tests/provider_responses.rs 1318
 crates/bubblepaw-runner/tests/questions.rs 562
 crates/bubblepaw-runner/tests/quota_scheduling.rs 871
@@ -100,7 +100,6 @@ crates/bubblepaw-runner/tests/recursive_children.rs 592
 crates/bubblepaw-runner/tests/research.rs 821
 crates/bubblepaw-runner/tests/research_live400.rs 819
 crates/bubblepaw-runner/tests/rewind.rs 1583
-crates/bubblepaw-runner/tests/runner.rs 550
 crates/bubblepaw-runner/tests/session_lifecycle.rs 603
 crates/bubblepaw-runner/tests/skills.rs 541
 crates/bubblepaw-runner/tests/summarization.rs 1776

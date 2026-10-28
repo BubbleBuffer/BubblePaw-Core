@@ -115,14 +115,11 @@ impl Tool for StalledHost {
 
 #[path = "codemode_exec_tests/support.rs"]
 mod support;
-use support::{Fixture, IDLE, sleep_command};
+use support::{Fixture, IDLE, controlled_poll_command, sleep_command, timed_command};
 
 #[tokio::test]
 async fn real_sync_exec_outlasts_both_shortened_idle_deadlines() {
-    #[cfg(windows)]
-    let command = format!("{}; [Console]::Out.Write('long-exec')", sleep_command(7));
-    #[cfg(not(windows))]
-    let command = format!("{}; printf long-exec", sleep_command(7));
+    let command = timed_command(IDLE * 7, "", "long-exec");
     let fixture = Fixture::new(format!("await tools.exec({})", json!({"command":command})));
     let result = fixture.result().await;
     assert!(!result.is_error, "{}", result.content);
@@ -134,12 +131,6 @@ async fn real_sync_exec_outlasts_both_shortened_idle_deadlines() {
     fixture.shutdown().await;
 }
 
-#[cfg(windows)]
-const CONTROLLED_POLL_COMMAND: &str = "[Console]::Out.Write('ready'); while (-not (Test-Path 'release.txt')) { Start-Sleep -Milliseconds 20 }; [Console]::Out.Write('poll-finished')";
-#[cfg(not(windows))]
-const CONTROLLED_POLL_COMMAND: &str =
-    "printf ready; while [ ! -e release.txt ]; do sleep 0.02; done; printf poll-finished";
-
 #[tokio::test]
 async fn real_yielding_poll_outlasts_idle_deadlines_and_preserves_cell_state_and_cursors() {
     let fixture = Fixture::new(format!(
@@ -148,7 +139,7 @@ async fn real_yielding_poll_outlasts_idle_deadlines_and_preserves_cell_state_and
          const elapsed=Date.now()-before; await wait({{handle:p.handle,timeoutMs:60000}}); \
          const final=await tools.poll({{handle:p.handle,cursor:{{stdout:0,stderr:0}}}}); \
          return {{marker:state.marker,firstStatus:first.status,elapsed,final}};",
-        start = json!({"command":CONTROLLED_POLL_COMMAND,"yieldMs":1}),
+        start = json!({"command":controlled_poll_command(),"yieldMs":1}),
         yield_ms = (IDLE * 7).as_millis()
     ));
     let mut events = fixture.harness.subscribe();
@@ -197,7 +188,7 @@ async fn yielding_poll_keeps_cancellation_and_explicit_cell_background_controls(
         let fixture = Fixture::new(format!(
             "state.marker='waiting'; const p=await tools.exec({start}); \
              return await tools.poll({{handle:p.handle,yieldMs:1200000}});",
-            start = json!({"command":CONTROLLED_POLL_COMMAND,"yieldMs":1})
+            start = json!({"command":controlled_poll_command(),"yieldMs":1})
         ));
         let mut events = fixture.harness.subscribe();
         fixture
@@ -286,10 +277,7 @@ async fn ordinary_host_call_still_hits_the_shortened_deadline() {
 
 #[tokio::test]
 async fn sync_exec_backgrounds_at_configured_timeout_after_outlasting_idle_limits() {
-    #[cfg(windows)]
-    let command = "[Console]::Out.Write('ready'); Start-Sleep -Seconds 30";
-    #[cfg(not(windows))]
-    let command = "printf ready; sleep 30";
+    let command = timed_command(Duration::from_secs(30), "ready", "");
     let fixture = Fixture::with_config(
         format!("await tools.exec({})", json!({"command":command})),
         ExecConfig {

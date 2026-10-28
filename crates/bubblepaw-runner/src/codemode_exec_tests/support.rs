@@ -2,7 +2,7 @@ use super::*;
 
 /// The fixture's shortened idle limit. Every test duration that must
 /// outlast it is a multiple of it. Windows gets more room because starting
-/// a background PowerShell job alone can take longer than 30 ms there.
+/// the fixture's explicit PowerShell process can take longer than 30 ms there.
 pub(super) const IDLE: Duration = if cfg!(windows) {
     Duration::from_millis(500)
 } else {
@@ -10,13 +10,59 @@ pub(super) const IDLE: Duration = if cfg!(windows) {
 };
 
 /// A command that runs for `IDLE * factor`.
-pub(super) fn sleep_command(factor: u32) -> String {
-    let millis = (IDLE * factor).as_millis();
-    if cfg!(windows) {
-        format!("Start-Sleep -Milliseconds {millis}")
-    } else {
-        format!("sleep {}", millis as f64 / 1000.0)
+pub(super) fn sleep_command(factor: u32) -> Value {
+    timed_command(IDLE * factor, "", "")
+}
+
+/// Print exact bytes around a delay without adding line endings.
+pub(super) fn timed_command(delay: Duration, before: &str, after: &str) -> Value {
+    #[cfg(windows)]
+    {
+        windows_command(delay, before, after, false)
     }
+    #[cfg(not(windows))]
+    {
+        let quote = |text: &str| format!("'{}'", text.replace('\'', "'\"'\"'"));
+        json!(format!(
+            "printf %s {}; sleep {}; printf %s {}",
+            quote(before),
+            delay.as_secs_f64(),
+            quote(after)
+        ))
+    }
+}
+
+pub(super) fn controlled_poll_command() -> Value {
+    #[cfg(windows)]
+    {
+        windows_command(Duration::ZERO, "ready", "poll-finished", true)
+    }
+    #[cfg(not(windows))]
+    json!("printf ready; while [ ! -e release.txt ]; do sleep 0.02; done; printf poll-finished")
+}
+
+#[cfg(windows)]
+fn windows_command(delay: Duration, before: &str, after: &str, gate: bool) -> Value {
+    // A nonempty sentinel avoids PowerShell 5.1's handling of empty -File args.
+    json!({
+        "parts":["powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "," "," "," "," ",""],
+        "values":["exec-fixture.ps1",delay.as_millis().to_string(),
+            if before.is_empty() { "__none__" } else { before },
+            if after.is_empty() { "__none__" } else { after },
+            if gate { "1" } else { "0" }]
+    })
+}
+
+#[cfg(windows)]
+fn install_exec_fixture(root: &std::path::Path) {
+    std::fs::write(root.join("exec-fixture.ps1"), concat!(
+        "param([int]$DelayMs, [string]$Before, [string]$After, [int]$Gate)\r\n",
+        "if ($Before -ne '__none__') { [Console]::Out.Write($Before) }\r\n",
+        "if ($Gate -eq 1) {\r\n",
+        "  while (-not (Test-Path -LiteralPath 'release.txt')) { Start-Sleep -Milliseconds 20 }\r\n",
+        "} else { Start-Sleep -Milliseconds $DelayMs }\r\n",
+        "if ($After -ne '__none__') { [Console]::Out.Write($After) }\r\n"
+    )).unwrap();
 }
 
 pub(super) struct Fixture {
@@ -40,6 +86,8 @@ impl Fixture {
         web: Option<&WebConfig>,
     ) -> Self {
         let root = tempfile::tempdir().unwrap();
+        #[cfg(windows)]
+        install_exec_fixture(root.path());
         let processes = Arc::new(
             ProcessTools::with_config(
                 WorkspaceTools::new(root.path()).unwrap(),

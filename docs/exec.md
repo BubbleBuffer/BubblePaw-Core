@@ -197,7 +197,7 @@ idle/busy delivery, restart notice recovery and concurrent steering/completion;
 `web_wake.rs` verifies automatic turns through HTTP/SSE, and `wake_storage.rs`
 bounds SQLite writes while exec output and model fragments stream.
 
-Windows acceptance on 2026-10-28 used `cargo xwin test --no-run` on a Linux host
+Initial Windows acceptance on 2026-10-28 used `cargo xwin test --no-run` on a Linux host
 for `x86_64-pc-windows-msvc`, then ran the CI job's selected tests serially on a
 Windows 11 VM: 63 passed, none failed or ignored. The GitHub-hosted Windows job
 remains enabled but could not start because of the Actions budget.
@@ -205,6 +205,16 @@ Copy `bubblepaw.exe` and `bubblepaw-argv-probe.exe` beside the test executables
 when moving them to another host. The argv test uses the built native fixture;
 the test host needs no Rust compiler. This is scripted acceptance, not a live
 model run.
+
+The expanded Windows CI selection runs the whole runner library with `web,bench`,
+including the CodeMode idle-deadline tests, and 32 integration binaries with
+Windows branches. Shared Windows timing helpers count toward that selection.
+The entirely Unix-gated `host_attach`, `host_attach_mcp` and `wake_storage`
+binaries are excluded. CodeMode's Windows command fixtures use argv to run a
+PowerShell script file, preserving their exact delays, output and release gates.
+Copied integration binaries also need `bubblepaw-fake-extension.exe` beside
+them; library and worktree tests require Git on the test process's PATH.
+The test VM has no Git; Git-dependent tests are covered by the public Windows CI on GitHub-hosted runners.
 
 ## Defaults and argument leniency (2026-10-20)
 

@@ -40,7 +40,7 @@ impl ScriptedProvider {
         if writable {
             let path = format!("bubblepaw-demo-{}.txt", uuid::Uuid::new_v4());
             #[cfg(windows)]
-            let command = "[Console]::Out.Write('BubblePaw process tool executed')";
+            let command = "<nul set /p=BubblePaw process tool executed& cmd /c exit 0";
             #[cfg(not(windows))]
             let command = "printf 'BubblePaw process tool executed'";
             code.push_str(&format!(
@@ -72,7 +72,7 @@ impl ScriptedProvider {
         if writable {
             let path = format!("bubblepaw-demo-{}.txt", uuid::Uuid::new_v4());
             #[cfg(windows)]
-            let command = "[Console]::Out.Write('BubblePaw process tool executed')";
+            let command = "<nul set /p=BubblePaw process tool executed& cmd /c exit 0";
             #[cfg(not(windows))]
             let command = "printf 'BubblePaw process tool executed'";
             calls.extend([

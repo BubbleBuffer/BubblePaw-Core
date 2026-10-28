@@ -94,28 +94,31 @@ async fn killed_runner_recovers_unknown_effect_without_repeating_it() {
         axum::serve(listener, app).await.unwrap();
     });
     let db = temp.path().join("archive.sqlite");
-    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_bubblepaw"))
-        .args(["--set", "agent.execution_mode='js'"])
-        .args([
-            "--provider",
-            "api",
-            "--base-url",
-            &format!("http://{address}"),
-            "--decider",
-            "llm/api/gpt-6-luna",
-            "--workspace",
-        ])
-        .arg(&workspace)
-        .arg("--db")
-        .arg(&db)
-        .arg("stdio")
-        .env("OPENAI_API_KEY", "synthetic-fixture")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
+    let mut child = tokio::process::Command::new(fixture_binary::resolve(
+        env!("CARGO_BIN_EXE_bubblepaw"),
+        "bubblepaw",
+    ))
+    .args(["--set", "agent.execution_mode='js'"])
+    .args([
+        "--provider",
+        "api",
+        "--base-url",
+        &format!("http://{address}"),
+        "--decider",
+        "llm/api/gpt-6-luna",
+        "--workspace",
+    ])
+    .arg(&workspace)
+    .arg("--db")
+    .arg(&db)
+    .arg("stdio")
+    .env("OPENAI_API_KEY", "synthetic-fixture")
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null())
+    .kill_on_drop(true)
+    .spawn()
+    .unwrap();
     let mut stdin = child.stdin.take().unwrap();
     let mut stdout = BufReader::new(child.stdout.take().unwrap());
     send(&mut stdin, 1, "session.open", json!({})).await;

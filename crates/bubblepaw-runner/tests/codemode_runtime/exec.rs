@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "../support/fixture_binary.rs"]
+mod fixture_binary;
+
 #[cfg(windows)]
 #[path = "../support/windows_command.rs"]
 mod windows_command;
@@ -99,28 +102,16 @@ async fn failed_command_has_exit_stderr_and_can_be_corrected_without_stale_evide
 #[tokio::test]
 async fn cmd_tag_exec_roundtrips_native_argv_and_raw_strings_remain_shell() {
     let f = Fixture::with_native_tools();
-    let source = f._root.path().join("probe.rs");
-    std::fs::write(
-        &source,
-        "fn main(){ println!(\"{:?}\", std::env::args().skip(1).collect::<Vec<_>>()); }",
-    )
-    .unwrap();
     let name = if cfg!(windows) {
         "argv_probe.exe"
     } else {
         "argv_probe"
     };
-    let compiled = std::process::Command::new("rustc")
-        .arg(&source)
-        .arg("-o")
-        .arg(f._root.path().join(name))
-        .output()
-        .unwrap();
-    assert!(
-        compiled.status.success(),
-        "{}",
-        String::from_utf8_lossy(&compiled.stderr)
+    let executable = fixture_binary::resolve(
+        env!("CARGO_BIN_EXE_bubblepaw-argv-probe"),
+        "bubblepaw-argv-probe",
     );
+    std::fs::copy(executable, f._root.path().join(name)).unwrap();
     let args = [
         "space value",
         "O'Brien",
