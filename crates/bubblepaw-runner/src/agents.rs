@@ -154,6 +154,8 @@ struct WorkerFinished {
     finished_at: String,
 }
 
+#[path = "agents_question.rs"]
+mod questions;
 #[path = "agent_reminders.rs"]
 mod reminder_notices;
 mod worktree_cleanup;
@@ -378,56 +380,6 @@ impl AgentTools {
     pub fn wake_coordinator(&self) -> Arc<WakeCoordinator> {
         self.registry.wake.clone()
     }
-    pub fn set_questions(&self, questions: Arc<QuestionTools>) -> Result<()> {
-        self.registry
-            .questions
-            .set(questions)
-            .map_err(|_| anyhow!("question tools are already configured"))
-    }
-    /// Restore the ordinary child-parent wake binding before publishing a
-    /// persisted grandchild question. Root parents use the host fallback.
-    pub fn recover_questions(&self) -> Result<usize> {
-        let questions = self
-            .registry
-            .questions
-            .get()
-            .ok_or_else(|| anyhow!("question routing is unavailable"))?;
-        for session in self.store.list_sessions()? {
-            if self
-                .registry
-                .scope
-                .as_ref()
-                .is_some_and(|scope| !scope.contains(&self.store, &session.id))
-            {
-                continue;
-            }
-            if self.store.active_session_metadata(&session.id)?.is_none() {
-                continue;
-            }
-            if questions.pending(&session.id)?.is_none() {
-                continue;
-            }
-            let Some(parent) = session.parent_session_id else {
-                continue;
-            };
-            let parent_session = self.store.session(&parent)?;
-            if let Some(owner) = parent_session.parent_session_id {
-                match self.child(&owner, &parent) {
-                    Ok(child) => self.register_child_wake(&child),
-                    Err(error) => {
-                        tracing::warn!(session = %parent, %error, "pending question parent could not be reattached; question remains durable")
-                    }
-                }
-            }
-        }
-        questions.recover_pending_scoped(
-            &self
-                .registry
-                .scope
-                .clone()
-                .unwrap_or_else(crate::session_scope::SessionScope::all),
-        )
-    }
     pub(crate) fn set_workspace_host(&self, host: WorkspaceHost) -> Result<()> {
         self.registry
             .workspace_host
@@ -554,9 +506,18 @@ impl AgentTools {
     }
     fn start_wake_child(
         &self,
+        child: Arc<Child>,
+        reminders: Vec<bubblepaw_core::Reminder>,
+        approval: ApprovalPolicy,
+    ) -> Result<Run> {
+        self.start_wake_child_input(child, reminders, approval, false)
+    }
+    fn start_wake_child_input(
+        &self,
         mut child: Arc<Child>,
         mut reminders: Vec<bubblepaw_core::Reminder>,
         approval: ApprovalPolicy,
+        resume_queued: bool,
     ) -> Result<Run> {
         let workspace_guard = crate::worktrees::admission_guard()?;
         let mut state = self
@@ -618,9 +579,13 @@ impl AgentTools {
         let events = child.harness.subscribe();
         let started = Instant::now();
         let run = self.admit_scoped(&child.session_id, || {
-            child
-                .harness
-                .start_reminders_if_active(&child.session_id, reminders, options)
+            if resume_queued {
+                child.harness.start_resume(&child.session_id, options)
+            } else {
+                child
+                    .harness
+                    .start_reminders_if_active(&child.session_id, reminders, options)
+            }
         })?;
         if retain {
             state.children.insert(child.handle.clone(), child.clone());
@@ -1755,6 +1720,7 @@ impl AgentTools {
                 "handle",
                 "sessionId",
                 "text",
+                "question_id",
                 "output_schema",
                 "max_tool_calls",
                 "timeout",
@@ -1793,9 +1759,16 @@ impl AgentTools {
             crate::worktrees::restore_in_admission(&self.store, &session_id)?;
         }
         let child = self.child(&context.session_id, address)?;
+        let current_question = self.question_for_send(&child.session_id, &input)?;
         let mut recovered_answer = None;
         let mut resume_queued_answer = false;
-        if let Some(question) = pending_question(&self.store, &child.session_id)? {
+        // Keep the observed question identity through atomic answer acceptance.
+        // Re-reading only its pending status could turn a losing answer race
+        // into unrelated child steering after the user resolves it.
+        if let Some(question) = current_question
+            .as_ref()
+            .filter(|question| question["status"] == "pending")
+        {
             ensure!(
                 input.get("output_schema").is_none()
                     && input.get("max_tool_calls").is_none()
@@ -3316,6 +3289,10 @@ impl Tool for AgentTool {
             if self.name == "agent" {
                 schema["properties"]["worktree"] = json!({"type":"boolean","default":false});
                 description.push_str(" worktree:true opts into a git worktree on bp/<sessionId> from the parent's current HEAD. Returns workspace, branch and worktree.path. Parent uncommitted changes are not copied. Default false.");
+            }
+            if self.name == "agent_send" {
+                schema["properties"]["question_id"] = json!({"type":"string","minLength":1});
+                description.push_str(" When answering a pending question, include question_id to correlate the answer. A question already answered by the user rejects a late answer with that id.");
             }
             if matches!(self.name, "agent" | "agent_send") {
                 description.push_str(" Optional output_schema {name,schema} declares submit_result with that input schema; finish by calling it. Invalid arguments return a tool error; a missing submission gets one text-only reminder before failure. Completed results include json and text. max_tool_calls bounds this run, counting model calls and each nested tool call; child limits cannot exceed the calling turn's remaining budget or timeout. Omission inherits those bounds, otherwise unlimited. timeout is a nonnegative integer wall-clock limit in milliseconds, cancelling and cleaning up only this turn. Every finished child can receive a new turn with its full history. Follow-up budgets and timeouts are fresh; output_schema is retained unless replaced or cleared with null. Controls cannot be changed while steering an active turn.");

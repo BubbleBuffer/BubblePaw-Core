@@ -1,11 +1,92 @@
 # Session API: several clients on one session
 
-Status: built; current as of 2026-10-24.
+Status: built; current as of 2026-10-27.
 
 Several clients (a desktop, a phone, a script) can watch and drive one session
 at once. Each loads a snapshot, then follows one event stream from the snapshot's
 position. Nothing is missed or applied twice, and every client sees which client
 started, steered, cancelled or approved what.
+
+## Context reads and compaction notifications (2026-10-27)
+
+Stdio `initialize` advertises `"context"` in `features`; `protocol_version`
+remains `"0.1"`. Clients can use that feature to detect all five reads below.
+Each requires `session_id` and checks that the session belongs to this host's
+workspace. Reads do not gather, apply, update a view or write token estimates.
+
+| Method | Additional params | Result |
+|---|---|---|
+| `context.view` | None | `{view: ContextView \| null}`; null before a view is saved. |
+| `context.structure` | None | `{episodes: [...], chapters: [...], legacy_chapters: [...], summary_tokens_estimated: true}`; metadata without full summaries. |
+| `context.summary` | `kind: "episode" \| "chapter"`, `id` | `{kind, id, summary}`; full summary text, or null for an open chapter without a summary. Unknown IDs are errors. |
+| `context.events` | None | `{events: [...]}` in stable chronological insertion order. |
+| `history.range` | An inclusive `first_seq`/`last_seq` pair **or** `first_message_id`/`last_message_id` pair; optional `limit` (default 200, maximum 1000) | `{messages: [{seq, message, tokens, source}], next_seq}`; canonical originals in sequence order. `next_seq` is the next row within the requested range, or null. |
+
+Sequence bounds must be nonnegative and ascending. Do not mix sequence and ID
+bounds. ID bounds must belong to the requested session. A subsequent page can
+use `next_seq` as `first_seq` while retaining the original upper sequence bound.
+Message token `source` is `"reported"` or `"estimated"`. Provider-reported zero
+is distinct from missing usage. Reported counts come from linked physical
+requests; estimates use the runner's existing tokenizer and are never persisted.
+The counts-only SDK read decodes only messages needing estimates; `history.range`
+also decodes originals to return their bodies.
+
+Web exposes the same payloads through `GET /api/sessions/{id}/context/view`,
+`/context/structure`, `/context/summary?kind=episode&id=episode-1`,
+`/context/events`, and `/api/sessions/{id}/history/range?first_seq=1&last_seq=100`.
+The abbreviated context paths share the `/api/sessions/{id}` prefix. Range
+options use query parameters. Invalid parameters return 400, unknown summaries
+404, and sessions belonging to another workspace 409.
+
+The saved view includes `frontier`, `prefix`, `tokens`, `blocks_estimated` and
+ordered `blocks`. Each block has `kind`, `tokens`, optional `id`, and optional
+`first_message_id`/`last_message_id`. Block kinds are `opening`, `memory_index`,
+`anchors`, `chapter_summary`, `episode_summary`, and `raw_suffix`. These are
+apply-time measurements; appending a raw message does not rewrite the snapshot.
+Old views may have no blocks. See [context compaction](context-compaction.md).
+
+Episode metadata includes `id`, `ordinal`, `chapter_id`, covered message IDs,
+`title`, `status: "written"`, `source_tokens`, and `summary_tokens`. Subject
+chapters include `id`, `ordinal`, first/last episode ordinals, covered message
+IDs, `title` (the saved description, nullable), `status` (`open` or `closed`),
+`source_tokens`, and `summary_tokens`. Legacy chapter source counts are null.
+Summary token counts estimate summary text, rather than the rendered view block.
+
+`context.events` returns the recorded fact, including its `id`, `kind`,
+`trigger`, `trigger_text`, source range, episode/summary IDs, `tokens_before`,
+`tokens_after`, and optional `input_before`/`input_after`. `tokens_before` is null
+when inherited coverage lacks stored source counts; reading or applying never
+loads cold originals just to fill that count. Existing stores have no backfilled
+events.
+
+When a fact is written, the session event stream emits `context_compaction`:
+
+```json
+{"sequence":42,"durable":true,"session_id":"chat-1","run_id":"","created_at":"2026-10-27T11:00:00Z","type":"context_compaction","event_id":"fact-1","kind":"applied","trigger":"pressure"}
+```
+
+The payload fields are `event_id`, `kind` (`episode_written`, `chapter_closed`,
+or `applied`) and `trigger` (`pressure`, `emergency`, `source_size`,
+`subject_change`, or `manual`). Clients re-read the affected Context resources
+after this notification. It uses ordinary stdio event notifications,
+`events.after`, and the existing web SSE stream.
+
+The fact and notification share the existing canonical write boundary. For a
+single-file store the journal row shares that transaction. In the central layout,
+the fact is in the chat database and the disposable journal is buffered in
+`serving.db`, joining the existing serving/catalog flush. Notifications add no
+chat commit and no independent serving commit. The journal's existing gap,
+reopen and resnapshot rules still apply; there is no cross-WAL atomicity claim.
+
+Example requests and abbreviated results:
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"context.view","params":{"session_id":"chat-1"}}
+{"jsonrpc":"2.0","id":1,"result":{"view":null}}
+{"jsonrpc":"2.0","id":2,"method":"context.summary","params":{"session_id":"chat-1","kind":"episode","id":"episode-1"}}
+{"jsonrpc":"2.0","id":2,"result":{"kind":"episode","id":"episode-1","summary":"Retained summary text."}}
+{"jsonrpc":"2.0","id":3,"method":"history.range","params":{"session_id":"chat-1","first_seq":1,"last_seq":100,"limit":20}}
+```
 
 ## Quota waits (built 2026-10-20)
 
@@ -109,17 +190,35 @@ These events use the existing stdio event notifications and web SSE stream.
 
 Root one-shot `run`, `resume` and `script` return `no_user_available` immediately
 without storing a question. Child questions go to their direct parent, which
-answers through `tools.agent_send`; see [child sessions](child-sessions.md).
+answers through `tools.agent_send`; the host user can also answer with
+`question.answer_child {parent, child, question_id, text}` or
+`POST /api/sessions/{parent}/children/{child}/question/answer {question_id, text}`.
+Both return `{answered: true}` and require the actual direct parent and exact
+question ID. The answer must be nonblank and at most 16 KiB. The original child
+binding is retained; see [child sessions](child-sessions.md).
 Root-client answer endpoints reject child sessions before changing their state;
-the child's original profile, model and approval binding remain with `agent_send`.
+use the explicit parent/child endpoint for a host user answer.
 Cancel ends a wait, including a pending question restored after restart.
+
+Saved question objects include `asked_at` (RFC 3339; absent on older records).
+An answered child's object records `answered_by: "user"` for a host user answer
+and `"parent"` for `agent_send`; older answers without it are parent answers.
+The child's `host_state_changed {key: "question", value}` event remains the
+authoritative question change. The direct parent receives a bounded projection:
+`key: "child_question"` for pending/cancelled questions, and the existing
+`key: "child_question_answer"` for answered questions. These leave the parent's
+own `question` alone. See [child events](#child-events-on-the-direct-parent-stream)
+for payloads and transaction boundaries.
 
 Question state survives restart. Answering after loss of the volatile waiter
 admits a new generated continuation containing the original question and answer,
 with a durable answer marker for retry deduplication. It never reruns the old
 JavaScript cell or an unknown external effect. The answer remains in host state
-until the next question replaces it; a failed continuation admission can be
-retried with the same question ID and text. There is no model context injection
+until the next question replaces it; the root and parent answer paths can retry
+failed continuation admission with the same question ID and text. The host user
+child-answer path requires pending state, so a repeated accepted answer returns
+a conflict; recovery delivers a saved answer without accepting a second one.
+There is no model context injection
 of todo lists.
 If a restart lands between saving an answer and admitting its continuation, the
 next ordinary turn receives the saved answer once through a durable host notice.
@@ -281,7 +380,68 @@ still being written (joined by blank lines, capped at 1 MiB); it clears once the
 reply is stored as a message.
 
 One store has one sequence and one stream, shared by every harness on it,
-including child agents, so a parent's subscribers see their children's events.
+including child agents. Child events retain their own session IDs. The bounded
+parent events described below also appear when a client follows only the direct
+parent's session ID.
+
+### Child events on the direct parent stream
+
+Stdio `initialize.features` includes `child_events`. The existing `event`
+notifications, `events.after {session_id: parent, after}` and web `/api/events`
+SSE deliver these durable envelopes. A parent event's `session_id` is the actual
+direct parent; clients need no descendant filter or new subscription endpoint.
+Run-state projections skip hidden/internal children. Question projections retain
+the existing direct-parent question behavior, including hidden worker parents.
+A grandchild projects to its immediate parent, without duplicating the event on
+an ancestor's stream.
+
+`child_run_state_changed {child_session_id, state}` uses the envelope's `run_id`
+for the child run. Its `state` is `running` at durable run admission or the actual
+stored terminal run status at durable completion (`completed`, `cancelled`,
+`failed` or recovery's `interrupted`). For example:
+
+```json
+{"sequence":42,"durable":true,"session_id":"parent-session-id","run_id":"child-run-id","created_at":"2026-10-27T12:00:00Z","type":"child_run_state_changed","child_session_id":"child-session-id","state":"completed"}
+```
+
+Question projections use the existing `host_state_changed` kind. Their `value`
+has `child_session_id`, `id`, `parent_session_id`, `status`, `text`, `options`,
+`asked_at` and `run_id`; `asked_at` is `null` for older questions without a
+timestamp. Answers add `answer` and `answered_by: "parent" | "user"`.
+The transient delivery bookkeeping field is omitted. A pending kind payload is:
+
+```json
+{"type":"host_state_changed","key":"child_question","value":{"child_session_id":"child-session-id","id":"question-id","parent_session_id":"parent-session-id","status":"pending","text":"Which colour?","options":["Blue","Green"],"asked_at":"2026-10-27T12:00:00Z","run_id":"child-run-id"}}
+```
+
+Cancellation uses the same key with `status: "cancelled"`; either author answering
+uses `child_question_answer` with `status: "answered"`, `answer` and `answered_by`.
+Each key retains only its latest value; the durable event sequence describes the
+transitions. These parent values are event hints, not a pending-question inventory.
+Clients derive `waiting_for_answer` from the child's authoritative pending
+question and resnapshot that child after an event or stream reset.
+Run events do not report quota waits, process-local registry `idle` states or
+cleanup progress. They cover only the existing durable admission and terminal
+boundaries, so a runner's `timed_out` result remains distinguishable from the
+underlying stored run status.
+
+For parent and child in the same chat database, each projection shares the
+existing state-change transaction and serving-journal batch. A question whose
+parent is in another database may require one additional parent transaction.
+Ordinary parent turns add no child-event transaction. These are durable status
+projections, without stream fragments or a separately persisted registry.
+
+Startup recovery also projects `interrupted` for recovered visible child runs.
+Single-file stores commit the canonical interruption and its parent projection
+atomically, without an additional transaction. Directory stores first finish the
+canonical interruption, then publish its parent event after catalog and sequence
+initialization; this adds one transaction per recovered visible child run. There
+is no durable outbox between those steps. A failed directory reopen or crash
+before the queued projection is flushed can require reset/resnapshot; the next
+startup's sequence reservation invalidates old cursors. This contract covers
+normal chat-v1 directory stores, without promising parent-event replay through
+legacy intermediate storage conversion. Registry-only idle and cleanup states
+remain outside the event contract.
 
 ### Event kinds
 
@@ -292,6 +452,9 @@ caused it), `session_id`, `run_id`, `created_at`, and the kind's own fields unde
 Durable kinds are journaled and take sequence numbers:
 
 - `run_started {model}`: a run was admitted.
+- `child_run_state_changed {child_session_id, state}`: a visible direct child's
+  durable run admission or terminal boundary projected onto its parent's envelope;
+  `run_id` identifies that child run. See [child events](#child-events-on-the-direct-parent-stream).
 - `run_waiting_for_quota {wait}` and `run_quota_resumed {}`: see Quota waits.
 - `tool_started {call}` and `tool_finished {call_id, name, result}`: direct model
   tool boundaries. Nested host tool progress inside a tool cell is transient.
@@ -335,6 +498,10 @@ result shown; errors are JSON-RPC errors. Host commands typed as the text of
 ([host commands](#host-commands-and-session-control-built-2026-10-22)).
 
 - `initialize` returns `{protocol_version: "0.1", features, transport: "stdio", input_limits}`.
+  `features` includes `question` for root question support and
+  `question.answer_child` for the explicit host user child-answer method. Clients
+  can check that exact feature string before offering child answers. `child_events`
+  advertises durable run/question projections on the direct parent's stream.
 - `shutdown` returns `{stopped: true}` and ends the loop after the reply.
 - `config.reload {server?}`: the reload diff.
 - `session.open {title? | name?, session_id?, parent_session_id? | parent_id?}`: a
@@ -363,12 +530,47 @@ result shown; errors are JSON-RPC errors. Host commands typed as the text of
 - `approval.list {session_id}`: pending approvals.
 - `approval.decide {approval_id, decision, reason?, client?}`: the decided approval.
 - `question.answer {session_id, question_id, text, client?}`: `{question, live}`.
-  Child questions are answered by their parent (`agent_send`); this method rejects
-  child sessions.
+  This method rejects child sessions.
+- `question.answer_child {parent, child, question_id, text}`: `{answered: true}`.
+  The host user answers a direct child's exact pending question. Both sessions
+  must belong to this host's workspace. Unknown children, wrong direct parents
+  and unknown question IDs fail; an already answered/cancelled question conflicts.
+  Blank or oversized text fails. Errors use the ordinary JSON-RPC error envelope.
 - `storage.stats`: storage statistics.
 
 Notifications from the host: `event` (a `HarnessEvent`) and `events.gap {skipped,
 after, recover_with: "events.after"}`.
+
+### Child-answer request and response
+
+After reading a child's pending `question` from `session.state`, send its exact
+`id` with the direct parent and child session IDs. All four fields are required;
+this method uses `parent` and `child` instead of `session_id`. It has no client
+attribution argument:
+
+```json
+{"jsonrpc":"2.0","id":17,"method":"question.answer_child","params":{"parent":"parent-session-id","child":"child-session-id","question_id":"pending-question-id","text":"Green with stripes"}}
+```
+
+Successful live delivery or admission of a safe child continuation returns:
+
+```json
+{"jsonrpc":"2.0","id":17,"result":{"answered":true}}
+```
+
+An unknown question ID, including an ID superseded by a newer question, returns:
+
+```json
+{"jsonrpc":"2.0","id":17,"error":{"code":-32000,"message":"pending child question not found"}}
+```
+
+The same error shape and code apply to other command failures. A question already
+answered or cancelled reports `question was already answered or cancelled`.
+Stdio rejects blank text with `Text or at least one attachment is required`;
+answers over 16 KiB that fit the host's prompt limit report
+`answer must be nonempty and at most 16 KiB`. The host prompt limit is checked
+before question validation. No question state changes on those refusals. The
+older `question.answer` method continues to reject child sessions.
 
 ## Catching up
 

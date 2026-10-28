@@ -5,6 +5,9 @@ use std::time::Duration;
 
 #[path = "support/checkpoint_write.rs"]
 mod checkpoint_write;
+#[cfg(windows)]
+#[path = "support/windows_command.rs"]
+mod windows_command;
 
 fn context() -> ToolContext {
     ToolContext {
@@ -30,11 +33,11 @@ async fn call(registry: &ToolRegistry, name: &str, input: Value) -> Value {
     serde_json::from_str(&output.content).unwrap()
 }
 #[cfg(windows)]
-const ECHO: &str = "[Console]::Out.Write('hello'); [Console]::Error.Write('problem')";
+const ECHO: &str = "<nul set /p=hello& <nul set /p=problem>&2& cmd /c exit 0";
 #[cfg(not(windows))]
 const ECHO: &str = "printf hello; printf problem >&2";
 #[cfg(windows)]
-const SLEEP: &str = "Start-Sleep -Seconds 30";
+const SLEEP: &str = "ping -n 31 127.0.0.1 >nul";
 #[cfg(not(windows))]
 const SLEEP: &str = "sleep 30";
 
@@ -44,7 +47,7 @@ async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
     let mut registry = ToolRegistry::new();
     let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
     #[cfg(windows)]
-    let nonzero = "[Console]::Error.Write('unknown option --bogus'); exit 7";
+    let nonzero = "<nul set /p=unknown option --bogus>&2& exit 7";
     #[cfg(not(windows))]
     let nonzero = "printf 'unknown option --bogus' >&2; exit 7";
     let started = call(&registry, "exec", json!({"command":nonzero,"yieldMs":0})).await;
@@ -78,9 +81,13 @@ async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
     assert_eq!(done["status"], "timed_out");
     assert!(done["diagnostic"].as_str().unwrap().contains("terminated"));
     #[cfg(windows)]
-    let invalid = "[Console]::OpenStandardOutput().Write([byte[]]@(255,254),0,2)";
+    let invalid = windows_command::powershell_file(
+        directory.path(),
+        "invalid-bytes.ps1",
+        "[Console]::OpenStandardOutput().Write([byte[]]@(255,254),0,2)",
+    );
     #[cfg(not(windows))]
-    let invalid = "printf '\\377\\376'";
+    let invalid = json!("printf '\\377\\376'");
     let started = call(&registry, "exec", json!({"command":invalid,"yieldMs":0})).await;
     call(&registry, "wait", json!({"handle":started["handle"]})).await;
     let out = call(&registry, "poll", json!({"handle":started["handle"]})).await;
@@ -214,9 +221,13 @@ async fn native_gaps_are_explicit_and_bounded() {
     let mut registry = ToolRegistry::new();
     let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
     #[cfg(windows)]
-    let script = "[Console]::Out.Write(('x' * 180000)); [Console]::Out.Write('END')";
+    let script = windows_command::powershell_file(
+        directory.path(),
+        "gaps.ps1",
+        "[Console]::Out.Write(('x' * 180000)); [Console]::Out.Write('END')",
+    );
     #[cfg(not(windows))]
-    let script = "head -c 180000 /dev/zero | tr '\\000' x; printf END";
+    let script = json!("head -c 180000 /dev/zero | tr '\\000' x; printf END");
     let started = call(&registry, "exec", json!({"command":script,"yieldMs":0})).await;
     call(&registry, "wait", json!({"handle":started["handle"]})).await;
     let out = call(&registry, "poll", json!({"handle":started["handle"]})).await;

@@ -199,7 +199,7 @@ fn old_style_chat_checkpoint_opens() -> Result<()> {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].content, "original history");
         let conn = Connection::open(&chat)?;
-        assert_eq!(version(&conn)?, 11, "record steps 10 and 11");
+        assert_eq!(version(&conn)?, 12, "record steps 10 to 12");
         assert_eq!(column(&conn, "message_tool_calls", "kind")?, Some(true));
         // Step 11 also builds the derived headers table from the same message.
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM message_headers")?, 1);
@@ -214,7 +214,7 @@ fn old_style_chat_checkpoint_opens() -> Result<()> {
         let reopened = Store::open_data_dir(dir.path())?;
         assert_eq!(reopened.messages(&session.id)?.len(), 1);
         let conn = Connection::open(&chat)?;
-        assert_eq!(version(&conn)?, 11);
+        assert_eq!(version(&conn)?, 12);
         assert_eq!(count(&conn, "SELECT COUNT(*) FROM checkpoint_records")?, 1);
     }
     Ok(())

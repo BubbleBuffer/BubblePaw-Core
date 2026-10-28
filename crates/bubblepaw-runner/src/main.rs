@@ -1,10 +1,13 @@
 #[cfg(feature = "bench")]
 mod chapter_bench_cli;
+mod cli;
 mod ephemeral_dir;
 mod host_attach;
 mod host_lifetime;
+mod question_stdio;
 mod session_host;
-
+mod source_fingerprint;
+mod stdio_context;
 use anyhow::{Context, Result, bail, ensure};
 use bubblepaw_core::{
     ApprovalState, AutoApprovalConfig, CancellationToken, ContextStrategy, Decision, EventKind,
@@ -41,388 +44,19 @@ use bubblepaw_runner::{
     wake::WakeCoordinator,
 };
 use bubblepaw_runner::{cli_output::Output, session_scope::SessionScope};
-use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+#[cfg(test)]
+use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
+use cli::{
+    CatalogCommand, Cli, Command, DelegationsCommand, LoginProvider, ProviderChoice, QuotaCommand,
+    ServingCommand, TraceMode, TranscriptFormat, UsageCommand,
+};
 use host_attach::PreparedRequest;
 use host_lifetime::HostLifetime;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::mpsc;
-
-#[derive(Parser, Clone, Serialize, Deserialize)]
-#[command(
-    name = "bubblepaw",
-    version,
-    about = "Small Rust agent harness",
-    subcommand_precedence_over_arg = true
-)]
-struct Cli {
-    /// Replace the user and project configuration files with this file.
-    #[arg(long, global = true)]
-    config: Option<PathBuf>,
-    /// Override any configuration key with a TOML value (or plain string).
-    #[arg(long = "set", global = true)]
-    settings: Vec<String>,
-    #[arg(long, global = true, default_value = ".")]
-    workspace: PathBuf,
-    #[arg(long, global = true)]
-    db: Option<PathBuf>,
-    /// Directory containing catalog.db, serving.db and chats/<root-session>.db.
-    #[arg(long, global = true, conflicts_with = "db")]
-    data_dir: Option<PathBuf>,
-    #[arg(long, global = true, value_enum, default_value = "codex")]
-    provider: ProviderChoice,
-    #[arg(long, global = true, default_value = "gpt-6-luna")]
-    model: String,
-    #[arg(long, global = true)]
-    auth_file: Option<PathBuf>,
-    #[arg(long, global = true)]
-    base_url: Option<String>,
-    /// JSON file of out-of-process provider extensions, `[{"id","command","args","cwd"?}]`.
-    /// Their models are addressed as `<id>/<model>`; --provider stays the default.
-    #[arg(long, global = true)]
-    extensions: Option<PathBuf>,
-    #[arg(long, global = true)]
-    read_only: bool,
-    /// Enable native web search and page fetching (off by default).
-    #[arg(long, global = true)]
-    web: bool,
-    /// Search backend: deepseek, ddg, searxng:<url>, or brave (named API-key environment).
-    /// Sets one backend; for an ordered fallback list use
-    /// --set 'web.search=["deepseek", "ddg"]' (the configuration default).
-    #[arg(long, global = true)]
-    web_search: Option<String>,
-    /// Web methods exposed to this agent: fetch and search.
-    #[arg(
-        long,
-        global = true,
-        num_args = 1,
-        value_delimiter = ',',
-        default_value = "fetch,search"
-    )]
-    web_expose: Vec<String>,
-    /// Tools whose calls wait for approval (docs/approvals.md).
-    #[arg(long, global = true, value_delimiter = ',')]
-    confirm: Vec<String>,
-    /// Allow tools that declare Confirm without asking.
-    #[arg(long, global = true)]
-    approve_all: bool,
-    /// Check Confirm calls with the approver role before asking a person.
-    #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", conflicts_with = "approve_all")]
-    auto_approve: Option<String>,
-    /// Tools checked by the approver role before asking a person.
-    #[arg(long, global = true, value_delimiter = ',')]
-    confirm_auto: Vec<String>,
-    /// Decision model for episode subject splits (adapter/model).
-    #[arg(long, global = true)]
-    decider: Option<String>,
-    /// Decision model for automatic approval checks (adapter/model).
-    #[arg(long, global = true)]
-    approver: Option<String>,
-    /// Override model capacity when it is not available in local model metadata.
-    #[arg(long, global = true)]
-    context_window_tokens: Option<usize>,
-    /// Compact at the smaller of this cap and the model window minus the configured output reserve.
-    #[arg(long, global = true, default_value_t = 200_000)]
-    compact_threshold_tokens: usize,
-    #[arg(long, global = true)]
-    no_auto_summarize: bool,
-    /// Context strategy for a new session; an existing session keeps its saved selection.
-    #[arg(long, global = true, value_enum)]
-    context_strategy: Option<ContextStrategyChoice>,
-    /// Episode chat-completions base URL; an empty value uses the main provider.
-    #[arg(long, global = true)]
-    episode_summary_base_url: Option<String>,
-    #[arg(long = "summary-model", alias = "episode-summary-model", global = true)]
-    episode_summary_model: Option<String>,
-    /// Environment variable containing the episode summary API key.
-    #[arg(long, global = true)]
-    episode_summary_key_env: Option<String>,
-    /// JSON object containing chat-completions reasoning fields.
-    #[arg(long, global = true)]
-    episode_summary_reasoning_fields: Option<String>,
-    /// Base delay for the episode model calls' exponential retry backoff.
-    #[arg(long, global = true)]
-    episode_retry_base_ms: Option<u64>,
-    /// Maximum Unicode characters in ordinary prompt text; large web pastes become files.
-    #[arg(long, global = true, default_value_t = 32_000)]
-    max_prompt_chars: usize,
-    /// Maximum bytes in one uploaded input file.
-    #[arg(long, global = true, default_value_t = 16 * 1024 * 1024)]
-    max_attachment_bytes: u64,
-    /// Maximum combined attachment bytes in one accepted message.
-    #[arg(long, global = true, default_value_t = 32 * 1024 * 1024)]
-    max_attachment_total_bytes: u64,
-    /// Estimated tokens available for the complete attachment envelope, including text.
-    #[arg(long, global = true, default_value_t = 10_000)]
-    attachment_inline_tokens: usize,
-    #[arg(long, global = true)]
-    json: bool,
-    /// Opt in to disposable behavior traces, separate from the session archive.
-    #[arg(long, global = true)]
-    trace_file: Option<PathBuf>,
-    /// Contents mode captures bounded prompts, code, commands and tool results.
-    #[arg(long, global = true, value_enum, default_value = "metadata")]
-    trace_mode: TraceMode,
-    /// Name this build/configuration for later comparisons.
-    #[arg(long, global = true)]
-    trace_label: Option<String>,
-    /// Maximum size of each rotated trace file in MiB.
-    #[arg(long, global = true, default_value_t = 32)]
-    trace_max_mib: u64,
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-enum ProviderChoice {
-    Codex,
-    Api,
-    Demo,
-}
-
-#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-enum LoginProvider {
-    Opencode,
-}
-
-#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-enum TranscriptFormat {
-    ClaudeCode,
-    Codex,
-}
-
-#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-enum TraceMode {
-    Metadata,
-    Contents,
-}
-
-#[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-enum ContextStrategyChoice {
-    Lcm,
-    Classical,
-}
-
-impl From<ContextStrategyChoice> for ContextStrategy {
-    fn from(value: ContextStrategyChoice) -> Self {
-        match value {
-            ContextStrategyChoice::Lcm => Self::Lcm,
-            ContextStrategyChoice::Classical => Self::Classical,
-        }
-    }
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize)]
-enum Command {
-    /// Print effective TOML configuration and its sources; never reads credentials.
-    Config,
-    /// Run a prompt, optionally continuing a saved session.
-    Run {
-        #[arg(
-            required_unless_present = "prompt_file",
-            conflicts_with = "prompt_file"
-        )]
-        prompt: Option<String>,
-        /// Read the task from a UTF-8 file, relative to the invoking directory.
-        #[arg(long, required_unless_present = "prompt", conflicts_with = "prompt")]
-        prompt_file: Option<PathBuf>,
-        #[arg(long)]
-        session: Option<String>,
-        /// Title of this new session.
-        #[arg(long, conflicts_with = "session")]
-        name: Option<String>,
-        /// Use a private temporary store, removed when the process exits.
-        #[arg(long, conflicts_with = "session")]
-        no_session: bool,
-    },
-    /// Run a js file as a model-less run and print its result.
-    Script {
-        file: PathBuf,
-        #[arg(long)]
-        session: Option<String>,
-        #[arg(long, conflicts_with = "session")]
-        name: Option<String>,
-        #[arg(long, conflicts_with = "session")]
-        no_session: bool,
-    },
-    /// Resume interrupted or pending work explicitly.
-    Resume { session: String },
-    /// Bidirectional JSON-RPC records over stdin/stdout; no HTTP server.
-    Stdio,
-    /// List saved sessions without contacting a provider.
-    Sessions,
-    /// Print the authoritative conversation.
-    History { session: String },
-    /// Export one session as JSONL, with complete message content and child links.
-    Export {
-        session: String,
-        #[arg(long)]
-        out: Option<PathBuf>,
-    },
-    /// Request usage and cost by session, model, provider and day, read from retained
-    /// records without contacting a provider. `usage export` writes one JSONL line per request.
-    Usage {
-        /// Only requests at or after this RFC 3339 time.
-        #[arg(long)]
-        since: Option<String>,
-        /// Only this session's requests.
-        #[arg(long)]
-        session: Option<String>,
-        #[command(subcommand)]
-        command: Option<UsageCommand>,
-    },
-    /// Sign in to a provider console that BubblePaw reads quota from. Only
-    /// `opencode` (OpenCode Console device login) exists. Tokens are stored in
-    /// a user-only file under the data directory and never printed.
-    Login {
-        #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
-        provider: LoginProvider,
-        /// Quota account; default: the opencode provider entry's account.
-        #[arg(long)]
-        account: Option<String>,
-    },
-    /// Delete a stored console login.
-    Logout {
-        #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
-        provider: LoginProvider,
-        #[arg(long)]
-        account: Option<String>,
-    },
-    /// Latest subscription and rate-limit readings, without contacting providers.
-    Quota {
-        #[command(subcommand)]
-        command: Option<QuotaCommand>,
-    },
-    /// Import a local coding-agent transcript without contacting a provider.
-    Import {
-        #[arg(value_enum)]
-        format: TranscriptFormat,
-        file: PathBuf,
-        #[arg(long)]
-        title: Option<String>,
-        /// Additional native child transcripts; descendants share the root chat file.
-        #[arg(long = "child")]
-        children: Vec<PathBuf>,
-    },
-    /// Compress a whole idle chat, including its child sessions.
-    Archive { chat: String },
-    /// Restore an archived chat to its ordinary SQLite file.
-    Unarchive { chat: String },
-    /// Search indexed text across chats; fetch only hit messages for snippets.
-    Search {
-        query: String,
-        #[arg(long)]
-        chat: Option<String>,
-    },
-    /// Delete a session and its descendants; deleting a root removes its chat file.
-    Delete { session: String },
-    /// Rebuild the small session catalog from authoritative chat files.
-    Catalog {
-        #[command(subcommand)]
-        command: CatalogCommand,
-    },
-    /// Manage disposable operational storage.
-    Serving {
-        #[command(subcommand)]
-        command: ServingCommand,
-    },
-    /// Show archive size and write counters.
-    Stats,
-    /// Summarize disposable JSONL traces without contacting a provider.
-    TraceReport { path: PathBuf },
-    /// Run one delegated assignment (Markdown with TOML front matter): the worker turn,
-    /// harness-run checks and reworks, one ledger row per attempt, then a result record.
-    Delegate {
-        assignment: PathBuf,
-        /// Seed the explore draw, for reproducible routing.
-        #[arg(long)]
-        seed: Option<u64>,
-        /// Title of the worker session.
-        #[arg(long)]
-        name: Option<String>,
-    },
-    /// Query the delegation outcome ledger (delegations.db beside the store).
-    Delegations {
-        #[command(subcommand)]
-        command: DelegationsCommand,
-    },
-    #[cfg(feature = "bench")]
-    /// Compare chapter selection on recorded chats without executing their tools.
-    ChapterBench(chapter_bench_cli::Args),
-    #[cfg(feature = "bench")]
-    /// Replay a recorded chat into a fresh isolated SQLite archive and report.
-    Replay {
-        /// Canonical corpus JSON (an object with "messages"); other formats are rejected.
-        #[arg(long)]
-        chat: String,
-        #[arg(long)]
-        out: PathBuf,
-        #[arg(long)]
-        threshold: Option<usize>,
-        #[arg(long)]
-        dry_run: bool,
-        #[arg(long, requires = "plan_probes")]
-        probes: Option<PathBuf>,
-        /// Probe after the complete typed-user turn K, before user turn K+1.
-        #[arg(long, value_delimiter = ',')]
-        checkpoints_at_turns: Vec<usize>,
-        /// Build both scripted arms once, or derive a smaller existing plan.
-        #[arg(long)]
-        plan_probes: bool,
-        /// Consume the pinned common probe lists; no per-arm list overrides.
-        #[arg(long)]
-        probe_plan: Option<PathBuf>,
-        #[arg(long)]
-        probe_limit: Option<usize>,
-        #[arg(long)]
-        max_cost_usd: Option<f64>,
-    },
-    /// Serve the local workbench, embedding the harness in this process.
-    #[cfg(feature = "web")]
-    Web {
-        #[arg(long, default_value_t = 8788)]
-        port: u16,
-        /// Built frontend directory containing index.html (required).
-        #[arg(long)]
-        assets: PathBuf,
-    },
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize)]
-enum UsageCommand {
-    /// One JSONL object per request (schema bubblepaw.usage.v1), ordered by time.
-    Export {
-        /// Only requests at or after this RFC 3339 time, inclusive.
-        #[arg(long)]
-        since: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize)]
-enum QuotaCommand {
-    /// Change-only quota history as bubblepaw.quota.v1 JSONL.
-    Export {
-        #[arg(long)]
-        since: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize)]
-enum CatalogCommand {
-    Rebuild,
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize)]
-enum DelegationsCommand {
-    /// Cost per accepted outcome by category, class, model and route reason.
-    Report,
-}
-
-#[derive(Subcommand, Clone, Serialize, Deserialize)]
-enum ServingCommand {
-    Wipe,
-}
 
 fn config_overrides(
     cli: &Cli,
@@ -711,63 +345,6 @@ fn storage_paths(cli: &Cli, settings: &Settings) -> Result<(PathBuf, PathBuf, bo
         settings.storage.legacy_db.clone()
     };
     Ok((data_dir, legacy, central))
-}
-
-fn source_fingerprint() -> String {
-    use sha2::{Digest, Sha256};
-    let mut digest = Sha256::new();
-    for source in [
-        include_str!("main.rs"),
-        include_str!("root_prompt.rs"),
-        include_str!("host_attach.rs"),
-        include_str!("host_lifetime.rs"),
-        include_str!("host_attach/io.rs"),
-        include_str!("host_transport.rs"),
-        include_str!("session_host.rs"),
-        include_str!("session_scope.rs"),
-        include_str!("cli_output.rs"),
-        include_str!("config.rs"),
-        include_str!("codemode.rs"),
-        include_str!("input_files.rs"),
-        include_str!("agents.rs"),
-        include_str!("agent_handles.rs"),
-        include_str!("episodes.rs"),
-        include_str!("episode_models.rs"),
-        include_str!("episode_fork.rs"),
-        include_str!("history_snapshot.rs"),
-        include_str!("model_roles.rs"),
-        include_str!("provider/registry.rs"),
-        include_str!("provider/live_provider.rs"),
-        include_str!("images.rs"),
-        include_str!("provider/endpoints.rs"),
-        include_str!("provider/decisions.rs"),
-        include_str!("provider/chat.rs"),
-        include_str!("episode_worker.rs"),
-        include_str!("episode_background.rs"),
-        include_str!("summary_prompt_v2.txt"),
-        include_str!("chapter_prompt_v1.txt"),
-        include_str!("summarization.rs"),
-        include_str!("summary_prompt.md"),
-        include_str!("runtime_note.rs"),
-        include_str!("command_template.rs"),
-        include_str!("trace.rs"),
-        include_str!("todo.rs"),
-        include_str!("question.rs"),
-        include_str!("tools/process.rs"),
-        include_str!("../../bubblepaw-core/src/lib.rs"),
-        include_str!("../../bubblepaw-core/src/runtime.rs"),
-        include_str!("../../bubblepaw-core/src/dispatch.rs"),
-        include_str!("../../bubblepaw-core/src/decision.rs"),
-        include_str!("../../bubblepaw-core/src/approvals/mod.rs"),
-        include_str!("../../bubblepaw-core/src/approvals/modes.rs"),
-        include_str!("../../bubblepaw-core/src/approvals/rules.rs"),
-        include_str!("../../bubblepaw-core/src/observation.rs"),
-        include_str!("../../bubblepaw-core/src/host_state.rs"),
-    ] {
-        digest.update(source.len().to_le_bytes());
-        digest.update(source.as_bytes());
-    }
-    format!("{:x}", digest.finalize())
 }
 
 fn validate_trace_path(
@@ -1597,6 +1174,9 @@ async fn run_stdio(
     cancellation: CancellationToken,
 ) -> Result<()> {
     let wake = services.agents.wake_coordinator();
+    services
+        .questions
+        .set_child_answer_harness(harness.clone())?;
     services.processes.set_wake(wake.clone());
     services.processes.set_store(store.clone());
     let wake_registration = wake.register_harness_scoped(harness.clone(), services.scope.clone());
@@ -1755,7 +1335,7 @@ async fn command(
             serde_json::to_value(services.live_config.reload(params["server"].as_str()).await)?
         }
         "initialize" => {
-            json!({"protocol_version":"0.1","features":["sessions","tools","paragraphs","steer","follow_up","cancel","codemode","environments","outputs","approvals","events","processes","config_reload","compact","todo","question","rewind"],"transport":"stdio","input_limits":input_limits})
+            json!({"protocol_version":"0.1","features":["sessions","tools","paragraphs","steer","follow_up","cancel","codemode","environments","outputs","approvals","events","processes","config_reload","compact","todo","question","question.answer_child","child_events","rewind","context"],"transport":"stdio","input_limits":input_limits})
         }
         "session.open" => {
             let parent = params["parent_session_id"]
@@ -1938,23 +1518,8 @@ async fn command(
             services.processes.jobs(session_id()?)?
         }
         "approval.list" => serde_json::to_value(harness.pending_approvals(session_id()?)?)?,
-        "question.answer" => {
-            let id = session_id()?;
-            ensure!(
-                store.session(id)?.parent_session_id.is_none(),
-                "Child questions must be answered by their direct parent through agent_send"
-            );
-            let origin = client()?;
-            let question_id = params["question_id"]
-                .as_str()
-                .context("question_id is required")?;
-            let answer = services
-                .questions
-                .answer(harness, id, question_id, text()?)?;
-            if !answer.live {
-                bubblepaw_runner::question::continue_answer(harness, store, id, &answer, origin)?;
-            }
-            json!({"question":answer.question,"live":answer.live})
+        "question.answer" | "question.answer_child" => {
+            question_stdio::answer(harness, store, services, input_limits, method, params).await?
         }
         "approval.decide" => serde_json::to_value(
             harness.decide_from(
@@ -1974,7 +1539,7 @@ async fn command(
         // The stdio loop exits after this reply; request cleanup drains its own
         // sessions. Shared runtime shutdown belongs to HostLifetime.
         "shutdown" => json!({"stopped":true}),
-        _ => bail!("unknown method: {method}"),
+        _ => stdio_context::command(store, method, params, session_id)?,
     })
 }
 

@@ -21,7 +21,7 @@ use std::{
 
 /// Writes five bytes, then keeps the sync wait open until steered or cancelled.
 #[cfg(windows)]
-const HOLD: &str = "[Console]::Out.Write('ready'); Start-Sleep -Seconds 30";
+const HOLD: &str = "<nul set /p=ready& ping -n 31 127.0.0.1 >nul";
 #[cfg(not(windows))]
 const HOLD: &str = "printf ready; sleep 30";
 /// Byte length of "ready", the barrier for output produced inside the sync wait.

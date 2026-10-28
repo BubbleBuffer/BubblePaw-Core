@@ -15,6 +15,13 @@ use std::{
 mod edit;
 #[path = "files.rs"]
 mod files;
+#[path = "workspace_paths.rs"]
+mod paths;
+#[path = "scratch_access.rs"]
+mod scratch_access;
+#[path = "workspace_tool.rs"]
+mod tool;
+use tool::WorkspaceTool;
 
 const MAX_FILE: u64 = 8 * 1024 * 1024;
 pub(crate) const MAX_MUTATION_FILE: u64 = 32 * 1024 * 1024;
@@ -44,6 +51,8 @@ pub struct WorkspaceTools {
     mutation: Arc<Mutex<()>>,
     skill_read_roots: Arc<RwLock<BTreeMap<String, Vec<PathBuf>>>>,
     spill_data_dir: Option<PathBuf>,
+    scratch: scratch_access::ScratchAccess,
+    scratch_boundary: Option<crate::scratchpads::Scratchpads>,
 }
 impl WorkspaceTools {
     pub fn new(root: impl AsRef<Path>) -> Result<Self> {
@@ -56,6 +65,8 @@ impl WorkspaceTools {
             root,
             skill_read_roots: Arc::default(),
             spill_data_dir: None,
+            scratch: Default::default(),
+            scratch_boundary: None,
         })
     }
     pub fn root(&self) -> &Path {
@@ -71,6 +82,8 @@ impl WorkspaceTools {
         let mut workspace = Self::new(root)?;
         workspace.skill_read_roots = self.skill_read_roots.clone();
         workspace.spill_data_dir = self.spill_data_dir.clone();
+        workspace.scratch = self.scratch.clone();
+        workspace.retain_scratch_workspace()?;
         Ok(workspace)
     }
     pub(crate) fn with_spill_data_dir(mut self, data_dir: PathBuf) -> Self {
@@ -97,40 +110,6 @@ impl WorkspaceTools {
             .insert(session.to_owned(), roots);
         Ok(())
     }
-    fn readable(
-        &self,
-        relative: &str,
-        session: &str,
-        data_dir: Option<&Path>,
-    ) -> Result<(PathBuf, bool)> {
-        let path = self
-            .root
-            .join(relative)
-            .canonicalize()
-            .with_context(|| format!("read path does not exist: {relative}"))?;
-        let data_dir = data_dir
-            .or(self.spill_data_dir.as_deref())
-            .unwrap_or(&self.root);
-        let spill_root = data_dir.join("spill");
-        if path.starts_with(&spill_root) || Path::new(relative).starts_with(&spill_root) {
-            let spills = crate::spill::SpillStore::new(data_dir)?;
-            return Ok((spills.readable(session, &self.root.join(relative))?, true));
-        }
-        if path.starts_with(&self.root) {
-            return Ok((path, false));
-        }
-        let roots = self
-            .skill_read_roots
-            .read()
-            .map_err(|_| anyhow!("skill read roots poisoned"))?;
-        ensure!(
-            roots
-                .get(session)
-                .is_some_and(|roots| roots.iter().any(|root| path.starts_with(root))),
-            "path escapes workspace and this session's read grants"
-        );
-        Ok((path, false))
-    }
     pub fn register(&self, registry: &mut ToolRegistry, read_only: bool) -> Result<()> {
         for name in ["list", "read", "search", "edit", "write"] {
             if read_only && matches!(name, "edit" | "write") {
@@ -142,58 +121,6 @@ impl WorkspaceTools {
             }))?;
         }
         Ok(())
-    }
-    pub(crate) fn existing(&self, relative: &str) -> Result<PathBuf> {
-        let resolved = fs::canonicalize(self.root.join(relative))
-            .with_context(|| format!("workspace path does not exist: {relative}"))?;
-        ensure!(
-            resolved.starts_with(&self.root),
-            "path escapes workspace root"
-        );
-        Ok(resolved)
-    }
-    fn destination(&self, relative: &str) -> Result<PathBuf> {
-        let path = self.root.join(relative);
-        let mut ancestor = path
-            .parent()
-            .ok_or_else(|| anyhow!("path needs a parent"))?;
-        let mut missing = Vec::new();
-        while !ancestor.exists() {
-            ensure!(
-                fs::symlink_metadata(ancestor).is_err(),
-                "destination parent is inaccessible or a dangling symlink"
-            );
-            missing.push(
-                ancestor
-                    .file_name()
-                    .ok_or_else(|| anyhow!("invalid destination parent"))?
-                    .to_owned(),
-            );
-            ancestor = ancestor
-                .parent()
-                .ok_or_else(|| anyhow!("path needs an existing ancestor"))?;
-        }
-        let mut parent = fs::canonicalize(ancestor)?;
-        ensure!(
-            parent.starts_with(&self.root) && parent.is_dir(),
-            "path escapes workspace root"
-        );
-        for component in missing.into_iter().rev() {
-            parent.push(component);
-        }
-        let destination = parent.join(
-            path.file_name()
-                .ok_or_else(|| anyhow!("path needs a filename"))?,
-        );
-        ensure!(
-            !fs::symlink_metadata(&destination).is_ok_and(|m| m.file_type().is_symlink()),
-            "refusing to replace a symlink"
-        );
-        if destination.exists() {
-            self.existing(relative)
-        } else {
-            Ok(destination)
-        }
     }
     fn execute(
         &self,
@@ -486,134 +413,4 @@ pub(crate) fn clip(text: &str, limit: usize) -> (&str, bool) {
         end -= 1;
     }
     (&text[..end], end < text.len())
-}
-struct WorkspaceTool {
-    workspace: WorkspaceTools,
-    name: &'static str,
-}
-impl WorkspaceTool {
-    async fn invoke_resolved(
-        &self,
-        context: ToolContext,
-        input: Value,
-        read_path: Option<(PathBuf, bool)>,
-    ) -> Result<ToolResult> {
-        ensure!(!context.cancellation.is_cancelled(), "cancelled");
-        let workspace = self.workspace.clone();
-        let name = self.name;
-        let mut value = tokio::task::spawn_blocking(move || {
-            workspace.execute(
-                name,
-                input,
-                context.cancellation,
-                &context.session_id,
-                read_path,
-            )
-        })
-        .await??;
-        // Keep text pages bounded; oversized listings/searches flow through the
-        // dispatcher's spill policy instead of losing entries before dispatch.
-        if serde_json::to_vec(&value)?.len() > MAX_RESULT
-            && let Some(content) = value["content"].as_str()
-        {
-            let content = clip(content, 4096).0.to_owned();
-            value["returnedLines"] = json!(content.split_inclusive('\n').count());
-            value["content"] = json!(content);
-            value["truncated"] = json!(true);
-        }
-        Ok(ToolResult::text(serde_json::to_string(&value)?))
-    }
-}
-#[async_trait]
-impl Tool for WorkspaceTool {
-    fn definition(&self) -> ToolDefinition {
-        let (description, properties, required) = match self.name {
-            "list" => (
-                "List a workspace directory in name order, then apply limit (default 200, maximum 1000).",
-                json!({"path":{"type":"string"},"limit":{"type":"integer","minimum":1}}),
-                vec![],
-            ),
-            "read" => (
-                "Read UTF-8 lines or attach a PNG, JPEG, GIF or WebP image to the model. Images are limited to 5 MB without resizing. startLine is 1-based; lineCount defaults to 1000 (maximum 2000). Text previews are bounded to 64 KiB. Absolute paths in this chat's spill directory and listed skill folders are read-only exceptions to the workspace boundary; spill files support line ranges up to the 256 MiB retention cap.",
-                json!({"path":{"type":"string"},"startLine":{"type":"integer","minimum":1},"lineCount":{"type":"integer","minimum":1}}),
-                vec!["path"],
-            ),
-            "search" => (
-                "Search workspace text; skips symlinks and .git, node_modules, target.",
-                json!({"path":{"type":"string"},"query":{"type":"string"},"regex":{"type":"boolean"},"maxResults":{"type":"integer","minimum":1}}),
-                vec!["query"],
-            ),
-            "edit" => (
-                "Replace literal text in an existing workspace file. Copy old_string exactly from a fresh read, including indentation, with enough surrounding lines to match once; use replace_all only to replace every occurrence. No regex or whitespace normalization. For several edits, call edit several times. Use write to create a file.",
-                json!({"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}}),
-                vec!["path", "old_string", "new_string"],
-            ),
-            "write" => (
-                "Create or overwrite a workspace file with complete UTF-8 content, creating missing parent directories. Supply the complete content; use edit for targeted changes to an existing file.",
-                json!({"path":{"type":"string"},"content":{"type":"string"}}),
-                vec!["path", "content"],
-            ),
-            _ => unreachable!("unknown workspace tool"),
-        };
-        ToolDefinition {
-            approval: Default::default(),
-            read_only: matches!(self.name, "list" | "read" | "search"),
-            name: self.name.into(),
-            description: description.into(),
-            input_schema: json!({"type":"object","properties":properties,"required":required,"additionalProperties":false}),
-        }
-    }
-    async fn invoke_with_dispatcher(
-        &self,
-        context: ToolContext,
-        input: Value,
-        dispatcher: ToolDispatcher,
-    ) -> Result<ToolResult> {
-        if matches!(self.name, "edit" | "write") {
-            let name = self.name;
-            let workspace = self.workspace.clone();
-            let store = dispatcher.store().clone();
-            let value = tokio::task::spawn_blocking(move || {
-                let _guard = workspace.mutation_guard()?;
-                workspace.edit_or_write_checkpointed(name, &input, &context, &store)
-            })
-            .await??;
-            return Ok(ToolResult::text(serde_json::to_string(&value)?));
-        }
-        if self.name == "read" {
-            validate_fields(&input, &["path", "startLine", "lineCount"])?;
-            let relative = string(&input, "path")?.to_owned();
-            ensure!(
-                count(&input, "startLine", 1)? > 0 && count(&input, "lineCount", 1000)? > 0,
-                "startLine and lineCount must be positive"
-            );
-            let read_path = self.workspace.readable(
-                &relative,
-                &context.session_id,
-                dispatcher.store().data_dir(),
-            )?;
-            let path = read_path.0.clone();
-            let store = dispatcher.store().clone();
-            let session = context.session_id.clone();
-            let cancellation = context.cancellation.clone();
-            if let Some(content) = tokio::task::spawn_blocking(move || {
-                ensure!(!cancellation.is_cancelled(), "cancelled");
-                crate::images::read_image(&store, &session, &path, &relative)
-            })
-            .await??
-            {
-                return Ok(ToolResult::text(content));
-            }
-            return self.invoke_resolved(context, input, Some(read_path)).await;
-        }
-        self.invoke(context, input).await
-    }
-    async fn invoke(&self, context: ToolContext, input: Value) -> Result<ToolResult> {
-        ensure!(
-            !matches!(self.name, "edit" | "write"),
-            "{} requires the tool dispatcher to persist file checkpoints",
-            self.name
-        );
-        self.invoke_resolved(context, input, None).await
-    }
 }

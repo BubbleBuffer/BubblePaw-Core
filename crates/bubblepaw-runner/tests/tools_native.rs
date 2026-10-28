@@ -5,6 +5,9 @@ use std::time::Duration;
 
 #[path = "support/checkpoint_write.rs"]
 mod checkpoint_write;
+#[cfg(windows)]
+#[path = "support/windows_command.rs"]
+mod windows_command;
 
 fn context() -> ToolContext {
     ToolContext {
@@ -83,8 +86,8 @@ async fn root_and_exact_edit_contract() {
     processes.shutdown().await;
 }
 
-fn command(script: &str) -> Value {
-    json!(script)
+fn command(script: impl Into<Value>) -> Value {
+    script.into()
 }
 
 async fn finished(registry: &ToolRegistry, mut output: Value) -> Value {
@@ -108,9 +111,13 @@ async fn processes_are_real_owned_bounded_and_cancelled() {
     let mut registry = ToolRegistry::new();
     let processes = register_native_tools(&mut registry, root.path(), false).unwrap();
     #[cfg(windows)]
-    let script = "[Console]::Out.Write(('x' * 180000)); [Console]::Out.WriteLine('SUCCESS')";
+    let script = windows_command::powershell_file(
+        root.path(),
+        "bytes.ps1",
+        "[Console]::Out.Write(('x' * 180000)); [Console]::Out.WriteLine('SUCCESS')",
+    );
     #[cfg(not(windows))]
-    let script = "head -c 180000 /dev/zero | tr '\\000' x; echo SUCCESS";
+    let script = json!("head -c 180000 /dev/zero | tr '\\000' x; echo SUCCESS");
     let result = call(
         &registry,
         "exec",
@@ -128,9 +135,10 @@ async fn processes_are_real_owned_bounded_and_cancelled() {
     assert!(result["stdout"].as_str().unwrap().contains("SUCCESS"));
     assert!(result["stdout"].as_str().unwrap().len() <= 16 * 1024);
     #[cfg(windows)]
-    let sleep = "Start-Sleep -Seconds 30";
+    let sleep =
+        windows_command::powershell_file(root.path(), "sleep.ps1", "Start-Sleep -Seconds 30");
     #[cfg(not(windows))]
-    let sleep = "sleep 30";
+    let sleep = json!("sleep 30");
     let running = call(
         &registry,
         "exec",
@@ -158,13 +166,14 @@ async fn process_deadline_and_run_token_kill_children() {
     let mut registry = ToolRegistry::new();
     let processes = register_native_tools(&mut registry, root.path(), false).unwrap();
     #[cfg(windows)]
-    let script = "Start-Sleep -Seconds 30";
+    let script =
+        windows_command::powershell_file(root.path(), "sleep.ps1", "Start-Sleep -Seconds 30");
     #[cfg(not(windows))]
-    let script = "sleep 30";
+    let script = json!("sleep 30");
     let result = call(
         &registry,
         "exec",
-        json!({"command":command(script),"timeoutMs":50,"yieldMs":1000}),
+        json!({"command":command(script.clone()),"timeoutMs":50,"yieldMs":1000}),
     )
     .await;
     let result = finished(&registry, result).await;
@@ -205,7 +214,16 @@ async fn windows_cancel_terminates_a_spawned_descendant() {
     let root = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
     let processes = register_native_tools(&mut registry, root.path(), false).unwrap();
-    let script = "$child = Start-Process -FilePath powershell.exe -WindowStyle Hidden -ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30' -PassThru; [Console]::Out.WriteLine($child.Id); Start-Sleep -Seconds 30";
+    std::fs::write(
+        root.path().join("descendant-child.ps1"),
+        "Start-Sleep -Seconds 30",
+    )
+    .unwrap();
+    let script = windows_command::powershell_file(
+        root.path(),
+        "descendant.ps1",
+        r#"$childScript = Join-Path $PSScriptRoot 'descendant-child.ps1'; $child = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $childScript) -PassThru; [Console]::Out.WriteLine($child.Id); Start-Sleep -Seconds 30"#,
+    );
     let mut running = call(
         &registry,
         "exec",

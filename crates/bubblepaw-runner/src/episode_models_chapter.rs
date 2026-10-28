@@ -6,6 +6,27 @@ use super::fork_requests::{ForkCall, ForkDelivery, dispatch_fork};
 use super::*;
 use bubblepaw_core::{ContextState, Reminder};
 
+#[derive(Clone, Debug)]
+pub struct ChapterInput {
+    pub session_id: String,
+    pub episodes: Vec<String>,
+    pub previous_chapters: Vec<ContextSubjectChapter>,
+    pub typed_user_texts: Vec<String>,
+    /// Actual ChildTask instructions, kept separate from human requests.
+    pub task_instructions: Vec<String>,
+}
+#[derive(Clone, Debug)]
+pub struct ChapterResult {
+    pub description: String,
+    pub summary: String,
+    pub decisions: Option<Vec<String>>,
+    pub sections: Option<Vec<bubblepaw_core::ChapterSection>>,
+    pub related_ids: Vec<String>,
+    pub related_evidence: Vec<RelatedEvidence>,
+    pub model: String,
+    pub usage: Usage,
+    pub reasoning: Option<String>,
+}
 pub(super) async fn close_chapter(
     models: &HttpEpisodeModels,
     input: ChapterInput,
@@ -33,9 +54,32 @@ pub(super) async fn close_chapter(
         &input.typed_user_texts,
         &input.task_instructions,
     );
-    models.validate_summary_output("chapter", &input.session_id, &response, &clean)?;
+    let (memory, decisions, sections) =
+        if models.episode_config.chapter_prompt == crate::episodes::ChapterPrompt::V2 {
+            let metadata = match chapter_sections::parse(&clean, &input.episodes) {
+                Ok(metadata) => Some(metadata),
+                Err(reason) => {
+                    tracing::warn!(
+                        event = "chapter_metadata_invalid", session = %input.session_id,
+                        reason, "Invalid chapter v2 metadata; retaining ordinary chapter memory"
+                    );
+                    if let Some(trace) = &models.trace {
+                        trace.runtime_info(json!({"event":"chapter_metadata_invalid",
+                            "session_id":input.session_id,"reason":reason}));
+                    }
+                    None
+                }
+            };
+            let (decisions, sections) = metadata
+                .map(|metadata| (Some(metadata.decisions), Some(metadata.sections)))
+                .unwrap_or_default();
+            (chapter_sections::prose(&clean), decisions, sections)
+        } else {
+            (clean.as_str(), None, None)
+        };
+    models.validate_summary_output("chapter", &input.session_id, &response, memory)?;
     let (description, summary) = summary_parts(
-        &clean,
+        memory,
         input
             .typed_user_texts
             .first()
@@ -47,6 +91,8 @@ pub(super) async fn close_chapter(
     Ok(ChapterResult {
         description,
         summary,
+        decisions,
+        sections,
         related_ids,
         related_evidence,
         model: response.model,
@@ -58,7 +104,10 @@ pub(super) async fn close_chapter(
 fn chapter_prompt(models: &HttpEpisodeModels, input: &ChapterInput) -> (String, String) {
     let system = format!(
         "{}\n\n{RELATED_INSTRUCTION}",
-        CHAPTER_PROMPT
+        models
+            .episode_config
+            .chapter_prompt
+            .text()
             .replace(
                 "{limit}",
                 &models.episode_config.chapter_summary_max_tokens.to_string()
@@ -177,7 +226,15 @@ async fn chapter_fork(
             model: &model,
             attempt: 1,
         },
-        &|text| summary_output_reason("chapter", text).is_none(),
+        &|text| {
+            let text = if models.episode_config.chapter_prompt == crate::episodes::ChapterPrompt::V2
+            {
+                chapter_sections::prose(text)
+            } else {
+                text
+            };
+            summary_output_reason("chapter", text).is_none()
+        },
     )
     .await?;
     let result = ChatResult {

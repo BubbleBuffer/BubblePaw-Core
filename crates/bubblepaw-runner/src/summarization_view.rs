@@ -3,181 +3,6 @@
 use super::*;
 
 impl SummarizingContext {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn episode_prefix(
-        &self,
-        session: &str,
-        history: &[Message],
-        legacy: &[Message],
-        episodes: &[ContextEpisode],
-        chapters: &[ContextSubjectChapter],
-        cutoff: Option<usize>,
-    ) -> Result<Vec<Message>> {
-        let covered = episodes
-            .iter()
-            .filter_map(
-                |episode| match Self::message_index(history, &episode.last_message_id) {
-                    Ok(index) if cutoff.is_some_and(|cutoff| index <= cutoff) => Some(Ok(episode)),
-                    Ok(_) => None,
-                    Err(error) => Some(Err(error)),
-                },
-            )
-            .collect::<Result<Vec<_>>>()?;
-        let mut prefix = legacy.to_vec();
-        // Preserve the opening request and current task ahead of appended memory.
-        // These are original messages, with their original identity and origin.
-        prefix.extend(self.task_anchors(history, cutoff));
-        // The rendered frozen prefix is the summary block for provider mirrors.
-        // Derive synthetic identities from its text, and timestamps from coverage.
-        let created_at = covered
-            .last()
-            .map(|episode| episode.created_at.as_str())
-            .or_else(|| cutoff.map(|index| history[index].created_at.as_str()))
-            .or_else(|| history.first().map(|message| message.created_at.as_str()))
-            .unwrap_or("");
-        let summary_block = |content: String| Message {
-            id: format!(
-                "context:view:{}",
-                bubblepaw_core::fingerprint(content.as_bytes())
-            ),
-            created_at: created_at.into(),
-            ..Self::synthetic(session, Role::System, content)
-        };
-        let mut index_rows = Vec::new();
-        let mut index_used = self.tokens("Subject chapter index (historical navigation):\n");
-        let mut omitted = 0;
-        for chapter in chapters
-            .iter()
-            .rev()
-            .filter(|c| c.status == SubjectChapterStatus::Closed)
-        {
-            let Some(last) = covered.iter().rev().find(|e| e.chapter_id == chapter.id) else {
-                continue;
-            };
-            let description = if last.ordinal == chapter.last_episode_ordinal {
-                chapter.description.as_deref().unwrap_or("")
-            } else {
-                "Partial coverage; retrieve original episodes"
-            };
-            let row = format!(
-                "[{}] Chapter {} ({}) | {} | episodes {}-{} | related: {}\n",
-                chapter.short_id(),
-                chapter.ordinal,
-                chapter.id,
-                self.excerpt(
-                    description,
-                    self.config.lcm.episodes.chapter_description_tokens
-                ),
-                chapter.first_episode_ordinal,
-                last.ordinal,
-                chapter.related_ids.join(", ")
-            );
-            let cost = self.tokens(&row);
-            if index_used + cost <= self.config.lcm.index_tokens {
-                index_rows.push(row);
-                index_used += cost;
-            } else {
-                omitted += 1;
-            }
-        }
-        if !index_rows.is_empty() || omitted > 0 {
-            index_rows.reverse();
-            let mut index = format!(
-                "Subject chapter index (historical navigation):\n{}",
-                index_rows.concat()
-            );
-            if omitted > 0 {
-                index.push_str(&format!(
-                    "{omitted} navigation rows omitted; complete chapter memory follows.\n"
-                ));
-            }
-            prefix.push(summary_block(index));
-        }
-        let mut closed = String::new();
-        let mut open = String::new();
-        for chapter in chapters {
-            let members: Vec<_> = covered
-                .iter()
-                .filter(|e| e.chapter_id == chapter.id)
-                .copied()
-                .collect();
-            if members.is_empty() {
-                continue;
-            }
-            let is_closed = chapter.status == SubjectChapterStatus::Closed;
-            let block = if is_closed { &mut closed } else { &mut open };
-            let whole_chapter = members
-                .last()
-                .is_some_and(|e| e.ordinal == chapter.last_episode_ordinal);
-            if is_closed && whole_chapter {
-                let summary = chapter.summary.as_deref().unwrap_or("");
-                if let Some(reason) =
-                    crate::episode_models::summary_output_reason("chapter", summary)
-                {
-                    anyhow::bail!(
-                        "Context summarization failed: stored chapter {} requires repair ({reason}); view was not changed",
-                        chapter.id
-                    );
-                }
-                // Older records acquire their immutable ordinal label only when
-                // a new serving view is applied; existing frozen views stay intact.
-                let label = format!("[{}]\n", chapter.short_id());
-                let label = if summary.starts_with(&label) {
-                    ""
-                } else {
-                    &label
-                };
-                let text = format!(
-                    "\n## Chapter {} ({})\n{}\n",
-                    chapter.ordinal,
-                    chapter.id,
-                    format_args!("{label}{summary}")
-                );
-                block.push_str(&text);
-            } else {
-                // A frontier inside a closed chapter must only expose its older episodes.
-                let heading = format!(
-                    "\n## {} chapter {} ({})\n",
-                    if is_closed { "Partial" } else { "Open" },
-                    chapter.ordinal,
-                    chapter.id
-                );
-                block.push_str(&heading);
-                for episode in members {
-                    ensure!(
-                        !episode.title.trim().is_empty(),
-                        "Context summarization failed: stored episode {} requires repair (empty_title); view was not changed",
-                        episode.id
-                    );
-                    if let Some(reason) =
-                        crate::episode_models::summary_output_reason("summary", &episode.summary)
-                    {
-                        anyhow::bail!(
-                            "Context summarization failed: stored episode {} requires repair ({reason}); view was not changed",
-                            episode.id
-                        );
-                    }
-                    let title = format!(
-                        "Episode {} ({}) | {}\n",
-                        episode.ordinal, episode.id, episode.title
-                    );
-                    let text = format!("{title}{}\n", episode.summary);
-                    block.push_str(&text);
-                }
-            }
-        }
-        if !closed.is_empty() {
-            prefix.push(summary_block(format!(
-                "Closed chapter summaries (historical):\n{closed}"
-            )));
-        }
-        if !open.is_empty() {
-            prefix.push(summary_block(format!(
-                "Open chapter episodes (historical):\n{open}"
-            )));
-        }
-        Ok(prefix)
-    }
     // These immutable inputs describe one candidate over the same canonical snapshot.
     #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
@@ -216,6 +41,8 @@ impl SummarizingContext {
             threshold,
             budget: self.config.lcm.apply_target(threshold),
             tokens: 0,
+            blocks: Vec::new(),
+            blocks_estimated: false,
         })
     }
 
@@ -304,6 +131,8 @@ impl SummarizingContext {
             threshold,
             budget: self.config.lcm.apply_target(threshold),
             tokens: 0,
+            blocks: Vec::new(),
+            blocks_estimated: false,
         })
     }
 
@@ -441,24 +270,37 @@ impl SummarizingContext {
     ) -> Result<ContextView> {
         let raw_start = cutoff.map_or(0, |index| index + 1);
         let history = snapshot.anchor_history(raw_start)?;
+        let (prefix, mut blocks) =
+            self.episode_prefix_with_blocks(session, &history, legacy, episodes, chapters, cutoff)?;
+        // Legacy groups keep their actual provenance when it is available.
+        // Imported synthetic text has no trustworthy individual summary ID or
+        // source range; leave those optional fields empty rather than inventing
+        // a native summary identity or assigning the full new coverage to it.
+        let checkpoint = self.store.context_checkpoint(session)?;
+        let legacy_chapters = self.store.context_chapters(session)?;
+        for (message, block) in legacy.iter().zip(&mut blocks) {
+            if let Some(checkpoint) = &checkpoint
+                && message.id == format!("context:checkpoint:{}", checkpoint.id)
+            {
+                block.id = Some(checkpoint.id.clone());
+                block.first_message_id = history.first().map(|message| message.id.clone());
+                block.last_message_id = Some(checkpoint.through_message_id.clone());
+            } else if let (Some(first), Some(last)) =
+                (legacy_chapters.first(), legacy_chapters.last())
+                && message.id == format!("context:summary:{}", last.id)
+            {
+                block.id = (legacy_chapters.len() == 1).then(|| first.id.clone());
+                block.first_message_id = Some(first.first_message_id.clone());
+                block.last_message_id = Some(last.last_message_id.clone());
+            }
+        }
         Ok(ContextView {
             session_id: session.into(),
             system_prompt: String::new(),
             frontier: cutoff
                 .map(|index| self.store.message_seq(session, &history[index].id))
                 .transpose()?,
-            prefix: LcmStrategy.prefix(
-                self,
-                SummaryPrefixInput {
-                    session,
-                    history: &history,
-                    legacy,
-                    episodes,
-                    chapters,
-                    checkpoint: None,
-                    cutoff,
-                },
-            )?,
+            prefix,
             // LCM replaces covered history with evidence-bearing summaries.
             // Uncovered history stays exact; masking it is not summarization.
             masked_tool_output_ids: Vec::new(),
@@ -467,6 +309,155 @@ impl SummarizingContext {
             threshold,
             budget: self.config.lcm.apply_target(threshold),
             tokens: 0,
+            blocks,
+            blocks_estimated: true,
         })
+    }
+}
+
+#[cfg(test)]
+mod block_tests {
+    use super::*;
+
+    #[test]
+    fn blocks_partition_shared_summary_messages_and_preserve_model_order() -> Result<()> {
+        let context = SummarizingContext::new(
+            Store::in_memory()?,
+            Arc::new(crate::provider::ScriptedProvider::new("unused")),
+            SummaryConfig::default(),
+            None,
+        )?;
+        let session = "blocks";
+        let history = (0..4)
+            .map(|index| Message {
+                id: format!("source-{index}"),
+                ..SummarizingContext::synthetic(
+                    session,
+                    if index % 2 == 0 {
+                        Role::User
+                    } else {
+                        Role::Assistant
+                    },
+                    format!("original {index}"),
+                )
+            })
+            .collect::<Vec<_>>();
+        let episodes = (1..=3)
+            .map(|ordinal| ContextEpisode {
+                id: format!("episode-{ordinal}"),
+                session_id: session.into(),
+                ordinal,
+                first_message_id: history[ordinal - 1].id.clone(),
+                last_message_id: history[ordinal - 1].id.clone(),
+                source_tokens: 20,
+                cap: 100,
+                origin_request_id: None,
+                title: format!("Title {ordinal}"),
+                summary: format!("Retained 猫 {ordinal}: \"quoted\"\nNext line."),
+                model: "scripted".into(),
+                usage: None,
+                reasoning: None,
+                created_at: "now".into(),
+                chapter_id: if ordinal == 1 { "closed" } else { "open" }.into(),
+            })
+            .collect::<Vec<_>>();
+        let chapters = vec![
+            ContextSubjectChapter {
+                id: "closed".into(),
+                session_id: session.into(),
+                ordinal: 1,
+                first_episode_ordinal: 1,
+                last_episode_ordinal: 1,
+                status: SubjectChapterStatus::Closed,
+                description: Some("Navigation".into()),
+                summary: Some("Closed memory.".into()),
+                related_ids: vec![],
+                related_evidence: vec![],
+                decisions: None,
+                sections: None,
+                model: None,
+                usage: None,
+                reasoning: None,
+            },
+            ContextSubjectChapter {
+                id: "open".into(),
+                session_id: session.into(),
+                ordinal: 2,
+                first_episode_ordinal: 2,
+                last_episode_ordinal: 3,
+                status: SubjectChapterStatus::Open,
+                description: None,
+                summary: None,
+                related_ids: vec![],
+                related_evidence: vec![],
+                decisions: None,
+                sections: None,
+                model: None,
+                usage: None,
+                reasoning: None,
+            },
+        ];
+        let legacy = vec![SummarizingContext::synthetic(
+            session,
+            Role::System,
+            "Legacy memory.".into(),
+        )];
+        let (prefix, blocks) = context.episode_prefix_with_blocks(
+            session,
+            &history,
+            &legacy,
+            &episodes,
+            &chapters,
+            Some(3),
+        )?;
+        assert_eq!(
+            blocks.iter().map(|block| block.kind).collect::<Vec<_>>(),
+            vec![
+                ContextBlockKind::ChapterSummary,
+                ContextBlockKind::Opening,
+                ContextBlockKind::Anchors,
+                ContextBlockKind::MemoryIndex,
+                ContextBlockKind::ChapterSummary,
+                ContextBlockKind::EpisodeSummary,
+                ContextBlockKind::EpisodeSummary,
+            ]
+        );
+        assert_eq!(
+            blocks.iter().map(|block| block.tokens).sum::<u64>(),
+            prefix
+                .iter()
+                .map(|message| context.message_tokens(message) as u64)
+                .sum::<u64>()
+        );
+        assert_eq!(prefix[0].content, "Legacy memory.");
+        assert_eq!(prefix[1].id, history[0].id);
+        assert_eq!(prefix[2].id, history[2].id);
+        assert_eq!(
+            prefix[4].content,
+            "Closed chapter summaries (historical):\n\n## Chapter 1 (closed)\n[ch-1]\nClosed memory.\n"
+        );
+        assert_eq!(
+            prefix[5].content,
+            format!(
+                "Open chapter episodes (historical):\n\n## Open chapter 2 (open)\nEpisode 2 (episode-2) | Title 2\n{}\nEpisode 3 (episode-3) | Title 3\n{}\n",
+                episodes[1].summary, episodes[2].summary,
+            )
+        );
+        for (block, episode) in blocks[5..].iter().zip(&episodes[1..]) {
+            assert_eq!(block.id.as_deref(), Some(episode.id.as_str()));
+            assert_eq!(
+                block.first_message_id.as_deref(),
+                Some(episode.first_message_id.as_str())
+            );
+            assert_eq!(
+                block.last_message_id.as_deref(),
+                Some(episode.last_message_id.as_str())
+            );
+            assert!(block.tokens > 0);
+        }
+        assert_eq!(blocks[4].id.as_deref(), Some("closed"));
+        assert_eq!(blocks[4].first_message_id.as_deref(), Some("source-0"));
+        assert_eq!(blocks[4].last_message_id.as_deref(), Some("source-0"));
+        Ok(())
     }
 }

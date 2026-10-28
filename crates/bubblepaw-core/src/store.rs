@@ -1,3 +1,4 @@
+use crate::{ContextEvent, ContextEventKind};
 use crate::{
     ContextStrategy, Message, MessageOrigin, OutputRecord, RequestUsage, Role, Run, Session,
     ToolCall, ToolResult, Usage, id, is_typed_user, now,
@@ -13,12 +14,19 @@ use std::{
     sync::{Arc, Mutex, OnceLock, Weak},
 };
 
+pub use crate::context_facts::{ContextCheckpoint, ContextView};
+
 #[derive(Clone)]
 pub struct Store(Arc<Inner>);
 /// Host cleanup after canonical deletion. Filesystem cleanup is not a SQL transaction.
 pub type SessionCleanup = Arc<dyn Fn(&str) -> Result<()> + Send + Sync>;
+#[path = "store_chapters.rs"]
+mod chapters;
+pub use chapters::{ChapterSection, ContextSubjectChapter};
 #[path = "store_cold.rs"]
 mod cold;
+#[path = "store_context_events.rs"]
+mod context_events;
 #[path = "store_episodes.rs"]
 mod episodes;
 #[path = "store_execution_mode.rs"]
@@ -51,6 +59,8 @@ pub use legacy::{
 };
 #[path = "store_ownership.rs"]
 mod ownership;
+#[path = "store_recovery.rs"]
+mod recovery;
 #[path = "store_reminders.rs"]
 mod reminders;
 #[cfg(test)]
@@ -136,41 +146,6 @@ pub struct SessionRecord {
     pub last_message: Option<Message>,
     pub latest_run: Option<Run>,
     pub pending_input_count: u64,
-}
-
-/// A host's disposable serving summary. Canonical messages remain in the archive.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContextCheckpoint {
-    pub id: String,
-    pub session_id: String,
-    pub through_message_id: String,
-    pub model: String,
-    pub summary: String,
-    /// Deterministic file trail retained by a rolling summary host.
-    #[serde(default)]
-    pub files_touched: Vec<String>,
-    pub created_at: String,
-    pub usage: Option<Usage>,
-}
-
-/// A frozen, disposable serving view; canonical history remains unchanged.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContextView {
-    pub session_id: String,
-    /// Inclusive canonical messages(seq) boundary, or None for a fully raw view.
-    pub frontier: Option<i64>,
-    /// Instructions frozen with the rendered message prefix until compaction.
-    #[serde(default)]
-    pub system_prompt: String,
-    pub prefix: Vec<Message>,
-    /// Canonical output IDs masked in the raw zone.
-    pub masked_tool_output_ids: Vec<String>,
-    /// Call IDs clipped in the raw zone.
-    pub clipped_tool_call_ids: Vec<String>,
-    pub created_at: String,
-    pub threshold: usize,
-    pub budget: usize,
-    pub tokens: usize,
 }
 
 // The public view remains a rendered request. Its durable representation contains
@@ -332,33 +307,6 @@ impl From<&str> for RelatedEvidence {
     }
 }
 
-/// Consecutive episode membership. Text and related links are set only at close.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContextSubjectChapter {
-    pub id: String,
-    pub session_id: String,
-    pub ordinal: usize,
-    pub first_episode_ordinal: usize,
-    pub last_episode_ordinal: usize,
-    pub status: SubjectChapterStatus,
-    pub description: Option<String>,
-    pub summary: Option<String>,
-    pub related_ids: Vec<String>,
-    /// The user's words supporting each corresponding related ID.
-    pub related_evidence: Vec<RelatedEvidence>,
-    pub model: Option<String>,
-    pub usage: Option<Usage>,
-    #[serde(default)]
-    pub reasoning: Option<String>,
-}
-
-impl ContextSubjectChapter {
-    /// Stable within a session because chapter ordinals never change.
-    pub fn short_id(&self) -> String {
-        format!("ch-{}", self.ordinal)
-    }
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DecisionKind {
@@ -426,7 +374,7 @@ impl Store {
         );
         let version: i64 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         anyhow::ensure!(
-            version <= 11,
+            version <= 12,
             "Unsupported database schema version {version}"
         );
         if tables == 0 {
@@ -449,7 +397,7 @@ impl Store {
             initialization.commit()?;
         } else {
             anyhow::ensure!(
-                (1..=11).contains(&version),
+                (1..=12).contains(&version),
                 "Unsupported database schema version {version}"
             );
         }
@@ -512,6 +460,7 @@ impl Store {
         cold::initialize(&connection)?;
         let dictionary_pins = cold::pin_dictionaries(&connection)?;
         Self::initialize_tool_call_index(&mut connection)?;
+        Self::migrate_context_facts(&mut connection, version)?;
         let (last_event, pruned_events) = crate::event_log::bounds(&connection)?;
         let store = Self(Arc::new(Inner {
             connection: Arc::new(Mutex::new(connection)),
@@ -830,42 +779,6 @@ impl Store {
         self.0.write_nanoseconds.load(Ordering::Relaxed) as f64 / 1_000_000_000.0
     }
 
-    fn recover(&self) -> Result<()> {
-        let interrupted: Vec<Run> = {
-            let conn = self.0.connection.lock().unwrap();
-            let mut stmt = conn
-                .prepare("SELECT data FROM runs WHERE status IN ('running','waiting_for_quota')")?;
-            stmt.query_map([], |r| r.get::<_, String>(0))?
-                .map(|r| Ok(serde_json::from_str(&r?)?))
-                .collect::<Result<_>>()?
-        };
-        for mut run in interrupted {
-            // Waiting is only an automatic recovery hint while no external
-            // outcome is unresolved. Keep the marker for host startup policy.
-            self.close_unresolved(&run.session_id, &run.id)?;
-            run.status = "interrupted".into();
-            run.error = Some("Process stopped before run completion".into());
-            run.ended_at = Some(now());
-            self.finish_run(&run)?;
-        }
-        self.recover_quota_waits()?;
-        crate::approvals::recover(self)?;
-        let pending: bool = self.0.connection.lock().unwrap().query_row(
-            "SELECT EXISTS(SELECT 1 FROM effects WHERE state='dispatched')",
-            [],
-            |r| r.get(0),
-        )?;
-        if pending {
-            self.write(|tx| {
-                tx.execute(
-                    "UPDATE effects SET state='unknown' WHERE state='dispatched'",
-                    [],
-                )?;
-                Ok(())
-            })?;
-        }
-        Ok(())
-    }
     /// A resume may reaffirm its persisted policy, but cannot change it.
     pub fn ensure_context_strategy(
         &self,
@@ -1035,6 +948,7 @@ impl Store {
             crate::event_log::remember_last(tx, last_event)?;
             for session in &removed {
                 self.delete_session_checkpoints(tx, session)?;
+                tx.execute("UPDATE request_usage SET message_seq=NULL WHERE session_id=?1 AND message_seq IS NOT NULL", [session])?;
             }
             for table in [
                 "reminder_metadata",
@@ -1046,6 +960,7 @@ impl Store {
                 "context_views",
                 "context_checkpoint_versions",
                 "context_decisions",
+                "context_events",
                 "context_episodes",
                 "context_subject_chapters",
                 "context_chapters",
@@ -2583,8 +2498,25 @@ impl Store {
 
     /// Replace all view data in exactly one transaction after validating its references.
     pub fn save_context_view(&self, view: &ContextView) -> Result<()> {
+        self.save_context_view_events(view, &[])
+    }
+
+    /// Publish a view with an authoritative apply fact in its existing validation transaction.
+    pub fn save_context_view_with_event(
+        &self,
+        view: &ContextView,
+        event: &ContextEvent,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            event.kind == ContextEventKind::Applied,
+            "View requires an applied event"
+        );
+        self.save_context_view_events(view, std::slice::from_ref(event))
+    }
+
+    fn save_context_view_events(&self, view: &ContextView, events: &[ContextEvent]) -> Result<()> {
         if let Some(store) = self.scoped(&view.session_id)? {
-            return store.save_context_view(view);
+            return store.save_context_view_events(view, events);
         }
         anyhow::ensure!(
             !view.session_id.trim().is_empty(),
@@ -2594,7 +2526,7 @@ impl Store {
             !view.created_at.trim().is_empty(),
             "View creation time is empty"
         );
-        let data = self.write(|tx| {
+        self.write_context_view_events(view, events, |tx| {
             let session = Self::session_from_connection(tx, &view.session_id)?;
             if let Some(frontier) = view.frontier {
                 let member: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM messages WHERE session_id=?1 AND seq=?2)", params![view.session_id, frontier], |row| row.get(0))?;
@@ -2632,15 +2564,9 @@ impl Store {
                 }
             }
             let data = Self::encode_context_view(tx, view)?;
-            if self.host().is_none() {
-                tx.execute("INSERT INTO context_views(session_id,data) VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET data=excluded.data", params![view.session_id, data])?;
-            }
+            Self::insert_context_events_tx(tx, &view.session_id, events)?;
             Ok(data)
-        })?;
-        if let Some(host) = self.host() {
-            host.write(|tx| { tx.execute("INSERT INTO context_views(session_id,data) VALUES(?1,?2) ON CONFLICT(session_id) DO UPDATE SET data=excluded.data", params![view.session_id, data])?; Ok(()) })?;
-        }
-        Ok(())
+        })
     }
 
     fn session_from_connection(conn: &Connection, session_id: &str) -> Result<Session> {

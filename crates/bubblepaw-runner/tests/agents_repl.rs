@@ -342,7 +342,7 @@ impl ControlFixture {
 async fn shared_js_wait_and_cancel_route_agent_process_and_timer_handles() -> Result<()> {
     let fixture = ControlFixture::new()?;
     #[cfg(windows)]
-    let command = "Write-Output 'process-ok'";
+    let command = "echo process-ok";
     #[cfg(not(windows))]
     let command = "printf 'process-ok\\n'";
     let code = format!(

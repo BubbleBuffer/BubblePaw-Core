@@ -9,6 +9,27 @@ chats. Every arm walks the same frozen episode boundaries, keeps its own chapter
 state, and scores against independently supplied labels. It does not replay any
 archived tool, continue the original task, or use historical decision inputs.
 
+## Chapter prompt comparison
+
+The separate `bubblepaw-episode-prompt-bench` binary also compares chapter
+prompts v1 and v2 over the same frozen episode inputs, without regenerating
+episodes. Build with the `bench` feature and use the checked-in synthetic
+fixtures for a scripted check:
+
+```text
+bubblepaw-episode-prompt-bench --chapter-fixtures crates/bubblepaw-runner/tests/fixtures/chapter-prompt-bench.json --out <output-dir> --dry-run
+```
+
+The fixture JSON supplies episode memories with their original `EPISODE N
+[source ...]` headers, typed requests, delegated instructions and optional
+earlier chapters. The report contains the shared input fingerprint, each arm's
+output, usage and elapsed time. `--dry-run` uses an in-process scripted provider
+and does not load credentials; it checks the machinery, not model quality.
+Omitting it invokes `opencode/deepseek-v4.1-flash` through the configured provider
+registry and can incur charges; only run that comparison with the owner's
+authorization. `--max-cost-usd` bounds calls
+between invocations, so one call may exceed the remaining allowance.
+
 ## Invocation
 
 Build the runner with the `bench` feature. Supply each chat and arm explicitly:

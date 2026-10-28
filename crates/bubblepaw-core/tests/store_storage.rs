@@ -161,6 +161,8 @@ fn view_uses_ranges_and_immutable_summary_refs_with_exact_roundtrip() -> Result<
         threshold: 200,
         budget: 100,
         tokens: 42,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     };
     // Saving a captured view after the worker replaces its latest checkpoint must retain C1.
     store.save_context_checkpoint(&ContextCheckpoint {
@@ -242,7 +244,7 @@ fn old_inline_rows_are_not_rewritten_when_message_ids_are_backfilled() -> Result
     );
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        11
+        12
     );
     assert_eq!(
         conn.query_row(
@@ -285,6 +287,8 @@ fn projected_canonical_prefix_preserves_clipped_arguments_and_provider_metadata(
         threshold: 200,
         budget: 100,
         tokens: 42,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     };
     store.save_context_view(&view)?;
     assert_eq!(
@@ -336,6 +340,8 @@ fn frozen_episode_view_survives_open_chapter_growth_and_closure() -> Result<()> 
         summary: None,
         related_ids: Vec::new(),
         related_evidence: Vec::new(),
+        decisions: None,
+        sections: None,
         model: None,
         usage: None,
         reasoning: None,
@@ -384,6 +390,8 @@ fn frozen_episode_view_survives_open_chapter_growth_and_closure() -> Result<()> 
         threshold: 200,
         budget: 100,
         tokens: 42,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     };
     store.save_context_view(&view)?;
     let grown = ContextSubjectChapter {
@@ -456,6 +464,8 @@ fn same_id_view_projection_preserves_signed_zero_arguments_and_provider_metadata
         threshold: 200,
         budget: 100,
         tokens: 42,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     };
     let expected = serde_json::to_vec(&view)?;
     store.save_context_view(&view)?;
@@ -476,92 +486,8 @@ fn same_id_view_projection_preserves_signed_zero_arguments_and_provider_metadata
     Ok(())
 }
 
-#[tokio::test]
-async fn attachment_bytes_and_inline_json_use_one_blob_with_exact_escaped_roundtrip() -> Result<()>
-{
-    let directory = tempfile::tempdir()?;
-    let path = directory.path().join("attachments.db");
-    let store = Store::open(&path)?;
-    let session = store.create_session("attachments")?;
-    let text = "Text with 猫, quotes \"like this\", a slash \\ and\nnewlines.\nLiteral tags: <BubblePawAttachments> and </BubblePawAttachments>.\n".repeat(500);
-    let metadata = "{\"id\":\"file-1\",\"name\":\"notes.txt\",\"text\":true}";
-    let hash = store.store_attachment(&session.id, "file-1", metadata, text.as_bytes())?;
-    assert_eq!(
-        store.store_attachment(&session.id, "file-1", metadata, text.as_bytes())?,
-        hash
-    );
-    assert!(
-        store
-            .store_attachment(&session.id, "file-1", metadata, b"replacement")
-            .is_err()
-    );
-    assert!(
-        store
-            .store_attachment(&session.id, "file-1", "{}", text.as_bytes())
-            .is_err()
-    );
-    let inline =
-        json!({"files":[{"id":"file-1","name":"notes.txt","size":text.len(),"inline":text}]});
-    let content =
-        format!("Please inspect.\n\n<BubblePawAttachments>\n{inline}\n</BubblePawAttachments>");
-    store.queue(&session.id, bubblepaw_core::InputKind::Followup, &content)?;
-    assert_eq!(store.queued_inputs(&session.id)?[0].text, content);
-    assert_eq!(
-        store.snapshot(&session.id, 10, 10, 10)?.pending_inputs[0].text,
-        content
-    );
-    let conn = Connection::open(store.chat_path(&session.id)?.unwrap())?;
-    let descriptor: String =
-        conn.query_row("SELECT content_blob FROM inputs", [], |row| row.get(0))?;
-    assert_eq!(
-        conn.query_row("SELECT text FROM inputs", [], |row| row.get::<_, String>(0))?,
-        ""
-    );
-    let agent = input_harness(&store);
-    agent.resume(&session.id, Default::default()).await?;
-    assert_eq!(
-        store.attachment(&session.id, "file-1")?,
-        Some((metadata.into(), text.as_bytes().to_vec()))
-    );
-    assert!(store.attachment(&session.id, "missing")?.is_none());
-    assert_eq!(store.messages(&session.id)?[0].content, content);
-    assert_eq!(
-        conn.query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get::<_, i64>(0))?,
-        2
-    );
-    assert_eq!(
-        conn.query_row("SELECT COUNT(*) FROM blobs WHERE hash=?1", [&hash], |row| {
-            row.get::<_, i64>(0)
-        })?,
-        1
-    );
-    assert_eq!(
-        conn.query_row("SELECT blob_hash FROM attachments", [], |row| row
-            .get::<_, String>(0))?,
-        hash
-    );
-    let data: String = conn.query_row(
-        "SELECT data FROM messages WHERE json_extract(data,'$.role')='user'",
-        [],
-        |row| row.get(0),
-    )?;
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&data)?["_content_parts_blob"],
-        descriptor
-    );
-    assert!(store.queued_inputs(&session.id)?[0].text.is_empty());
-    assert!(!data.contains(&text));
-    drop(conn);
-    drop(agent);
-    drop(store);
-    let reopened = Store::open(&path)?;
-    assert_eq!(reopened.messages(&session.id)?[0].content, content);
-    assert_eq!(
-        reopened.attachment(&session.id, "file-1")?,
-        Some((metadata.into(), text.into_bytes()))
-    );
-    Ok(())
-}
+#[path = "store_storage/chapter_compat.rs"]
+mod chapter_compat;
 
 struct InputProvider;
 #[async_trait::async_trait]
@@ -588,64 +514,7 @@ fn input_harness(store: &Store) -> bubblepaw_core::Harness {
     )
 }
 
-#[tokio::test]
-async fn accepted_input_transfers_one_blob_from_pending_queue_to_canonical_message() -> Result<()> {
-    let directory = tempfile::tempdir()?;
-    let path = directory.path().join("accepted.db");
-    let store = Store::open(&path)?;
-    let session = store.create_session("accepted")?;
-    let text = "Small accepted input containing Unicode 猫 and\nnewlines.";
-    let input = store.queue(&session.id, bubblepaw_core::InputKind::Followup, text)?;
-    let conn = Connection::open(store.chat_path(&session.id)?.unwrap())?;
-    let hash: String = conn.query_row(
-        "SELECT content_blob FROM inputs WHERE id=?1",
-        [&input.id],
-        |row| row.get(0),
-    )?;
-    assert_eq!(
-        conn.query_row("SELECT text FROM inputs WHERE id=?1", [&input.id], |row| {
-            row.get::<_, String>(0)
-        })?,
-        ""
-    );
-    assert_eq!(store.queued_inputs(&session.id)?[0].text, text);
-    assert_eq!(
-        store.snapshot(&session.id, 10, 10, 10)?.pending_inputs[0].text,
-        text
-    );
-    input_harness(&store)
-        .resume(&session.id, Default::default())
-        .await?;
-    let data: String = conn.query_row(
-        "SELECT data FROM messages WHERE json_extract(data,'$.role')='user'",
-        [],
-        |row| row.get(0),
-    )?;
-    let value: serde_json::Value = serde_json::from_str(&data)?;
-    assert_eq!(value["content"], "");
-    assert_eq!(value["_content_blob"], hash);
-    assert_eq!(
-        conn.query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get::<_, i64>(0))?,
-        1
-    );
-    store.flush_serving()?;
-    let serving = Connection::open(Store::legacy_data_dir(&path).join("serving.db"))?;
-    assert!(
-        serving
-            .query_row(
-                "SELECT content_blob FROM inputs WHERE id=?1",
-                [&input.id],
-                |row| row.get::<_, Option<String>>(0)
-            )?
-            .is_none()
-    );
-    assert!(store.queued_inputs(&session.id)?[0].text.is_empty());
-    assert_eq!(store.messages(&session.id)?[0].content, text);
-    drop(conn);
-    drop(store);
-    assert_eq!(Store::open(&path)?.messages(&session.id)?[0].content, text);
-    Ok(())
-}
-
+#[path = "store_storage/inputs.rs"]
+mod inputs;
 #[path = "store_storage/script_failures.rs"]
 mod script_failures;

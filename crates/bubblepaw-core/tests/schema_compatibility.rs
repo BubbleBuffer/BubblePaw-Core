@@ -61,12 +61,13 @@ fn assert_schema(store: &Store, session_id: &str) -> Result<()> {
     let conn = Connection::open(store.chat_path(session_id)?.unwrap())?;
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        11
+        12
     );
     for table in [
         "context_episodes",
         "context_subject_chapters",
         "context_decisions",
+        "context_events",
         "approvals",
         "approval_rules",
     ] {
@@ -120,6 +121,8 @@ fn main_v6_preserves_frozen_context_and_adds_agent_tables() -> Result<()> {
         threshold: 200,
         budget: 100,
         tokens: 20,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     };
     let conn = Connection::open(&path)?;
     // Populate the main-only dependency chain so deletion must account for it.

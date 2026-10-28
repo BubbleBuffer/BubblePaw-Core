@@ -11,6 +11,10 @@ use std::{path::Path, sync::Arc, time::Duration};
 mod notice_provider;
 use notice_provider::{NoticeProvider, chat_measure};
 
+#[cfg(windows)]
+#[path = "support/windows_command.rs"]
+mod windows_command;
+
 struct Fixture {
     _workspace: tempfile::TempDir,
     data: tempfile::TempDir,
@@ -60,16 +64,16 @@ async fn call(registry: &ToolRegistry, owner: &str, name: &str, input: Value) ->
     serde_json::from_str(&result.content).unwrap()
 }
 #[cfg(windows)]
-const ECHO: &str = "[Console]::Out.Write('hello'); [Console]::Error.Write('problem')";
+const ECHO: &str = "<nul set /p=hello& <nul set /p=problem>&2& cmd /c exit 0";
 #[cfg(not(windows))]
 const ECHO: &str = "printf hello; printf problem >&2";
 #[cfg(windows)]
 const DELAYED: &str =
-    "[Console]::Out.Write('first'); Start-Sleep -Milliseconds 1800; [Console]::Out.Write('last')";
+    "<nul set /p=first& ping -n 3 127.0.0.1 >nul& <nul set /p=last& cmd /c exit 0";
 #[cfg(not(windows))]
 const DELAYED: &str = "printf first; sleep 1.8; printf last";
 #[cfg(windows)]
-const SLEEP: &str = "Start-Sleep -Seconds 30";
+const SLEEP: &str = "ping -n 31 127.0.0.1 >nul";
 #[cfg(not(windows))]
 const SLEEP: &str = "sleep 30";
 
@@ -149,7 +153,11 @@ async fn sync_default_returns_complete_output_and_poll_consumes_server_cursor() 
 async fn twelve_kib_per_stream_is_returned_without_preview_gaps() {
     let fixture = Fixture::new(ExecConfig::default());
     #[cfg(windows)]
-    let command = "[Console]::Out.Write(('x' * 12288)); [Console]::Error.Write(('y' * 12288))";
+    let command = windows_command::powershell_file(
+        fixture._workspace.path(),
+        "twelve-kib.ps1",
+        "[Console]::Out.Write(('x' * 12288)); [Console]::Error.Write(('y' * 12288))",
+    );
     #[cfg(not(windows))]
     let command =
         r"head -c 12288 /dev/zero | tr '\000' x; head -c 12288 /dev/zero | tr '\000' y >&2";
@@ -172,7 +180,7 @@ async fn twelve_kib_per_stream_is_returned_without_preview_gaps() {
 async fn default_process_wait_waits_for_five_second_command_to_exit() {
     let fixture = Fixture::new(ExecConfig::default());
     #[cfg(windows)]
-    let command = "Start-Sleep -Seconds 5";
+    let command = "ping -n 6 127.0.0.1 >nul";
     #[cfg(not(windows))]
     let command = "sleep 5";
     let started = call(
@@ -239,7 +247,7 @@ async fn workdir_alias_matches_cwd_and_rejects_conflicting_directories() {
     std::fs::create_dir(&subdirectory).unwrap();
     std::fs::write(subdirectory.join("marker.txt"), "from subdirectory").unwrap();
     #[cfg(windows)]
-    let command = "[Console]::Out.Write([IO.File]::ReadAllText('marker.txt'))";
+    let command = "type marker.txt";
     #[cfg(not(windows))]
     let command = "cat marker.txt";
     for options in [
@@ -581,7 +589,11 @@ async fn spool_is_capped_across_streams_and_removed_on_reap_and_restart() {
         ..ExecConfig::default()
     });
     #[cfg(windows)]
-    let chatty = "[Console]::Out.Write(('a' * 90000)); [Console]::Error.Write(('b' * 90000))";
+    let chatty = windows_command::powershell_file(
+        fixture._workspace.path(),
+        "chatty.ps1",
+        "[Console]::Out.Write(('a' * 90000)); [Console]::Error.Write(('b' * 90000))",
+    );
     #[cfg(not(windows))]
     let chatty =
         r"head -c 90000 /dev/zero | tr '\000' a; head -c 90000 /dev/zero | tr '\000' b >&2";
@@ -674,7 +686,11 @@ async fn idle_completion_notice_is_durable_once_and_chatty_output_has_no_chunk_t
     );
     repl.register(&mut registry).unwrap();
     #[cfg(windows)]
-    let command = "Start-Sleep -Seconds 1; [Console]::Out.Write(('a' * 2000000)); [Console]::Error.Write(('b' * 2000000))";
+    let command = windows_command::powershell_file(
+        fixture._workspace.path(),
+        "idle-chatty.ps1",
+        "Start-Sleep -Seconds 1; [Console]::Out.Write(('a' * 2000000)); [Console]::Error.Write(('b' * 2000000))",
+    );
     #[cfg(not(windows))]
     let command = r"sleep 1; head -c 2000000 /dev/zero | tr '\000' a; head -c 2000000 /dev/zero | tr '\000' b >&2";
     let provider = Arc::new(NoticeProvider {
@@ -844,7 +860,11 @@ async fn idle_completion_notice_is_durable_once_and_chatty_output_has_no_chunk_t
 async fn second_host_on_same_data_dir_keeps_live_spool() {
     let fixture = Fixture::new(ExecConfig::default());
     #[cfg(windows)]
-    let command = "[Console]::Out.Write('live output'); Start-Sleep -Seconds 30";
+    let command = windows_command::powershell_file(
+        fixture._workspace.path(),
+        "live-output.ps1",
+        "[Console]::Out.Write('live output'); Start-Sleep -Seconds 30",
+    );
     #[cfg(not(windows))]
     let command = "printf 'live output'; sleep 30";
     let started = call(
@@ -1059,589 +1079,8 @@ async fn missing_marker_adds_no_note_for_exec_user_trap_or_kill() {
 }
 
 #[cfg(windows)]
-mod windows {
-    use super::*;
-    use std::path::PathBuf;
-    use windows_sys::Win32::{
-        Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT},
-        System::Threading::{
-            OpenProcess, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE, TerminateProcess,
-            WaitForSingleObject,
-        },
-    };
-
-    fn literal(value: &str) -> String {
-        format!("'{}'", value.replace('\'', "''"))
-    }
-
-    fn path_literal(path: &Path) -> String {
-        literal(&path.to_string_lossy())
-    }
-
-    /// Hold the original process object throughout the assertion. PID reuse
-    /// cannot make a later liveness check observe an unrelated process.
-    struct OwnedProcess {
-        handle: HANDLE,
-        pid: u32,
-    }
-
-    impl OwnedProcess {
-        fn open(pid: u32) -> Self {
-            // SAFETY: OpenProcess returns an owned handle, closed in Drop.
-            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid) };
-            assert!(
-                !handle.is_null(),
-                "cannot open fixture process {pid}: {}",
-                std::io::Error::last_os_error()
-            );
-            Self { handle, pid }
-        }
-
-        fn running(&self) -> bool {
-            // SAFETY: the process handle remains valid until Drop.
-            let state = unsafe { WaitForSingleObject(self.handle, 0) };
-            assert!(
-                matches!(state, WAIT_OBJECT_0 | WAIT_TIMEOUT),
-                "cannot inspect fixture process {}: {}",
-                self.pid,
-                std::io::Error::last_os_error()
-            );
-            state == WAIT_TIMEOUT
-        }
-
-        async fn assert_stopped(&self) {
-            tokio::time::timeout(Duration::from_secs(30), async {
-                while self.running() {
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            })
-            .await
-            .unwrap_or_else(|_| {
-                panic!("owned fixture process {} survived job completion", self.pid)
-            });
-        }
-
-        fn assert_stopped_without_runtime(&self) {
-            // SAFETY: the process handle remains valid until Drop. Waiting
-            // directly on the kernel object gives no Tokio task a chance to
-            // perform cleanup on this test's current-thread executor.
-            let state = unsafe { WaitForSingleObject(self.handle, 5000) };
-            assert_eq!(
-                state, WAIT_OBJECT_0,
-                "owned fixture process {} survived owner Drop without executor progress",
-                self.pid
-            );
-        }
-    }
-
-    impl Drop for OwnedProcess {
-        fn drop(&mut self) {
-            // SAFETY: this is the exact owned process object opened above.
-            // Cleanup on an assertion failure never targets an image name or
-            // reopens a PID that could have been reused.
-            unsafe {
-                if WaitForSingleObject(self.handle, 0) == WAIT_TIMEOUT {
-                    TerminateProcess(self.handle, 1);
-                    WaitForSingleObject(self.handle, 2000);
-                }
-                CloseHandle(self.handle);
-            }
-        }
-    }
-
-    struct TreeScripts {
-        command: String,
-        root_pid: PathBuf,
-        child_pid: PathBuf,
-        grandchild_pid: PathBuf,
-        ready: PathBuf,
-        release: PathBuf,
-    }
-
-    impl TreeScripts {
-        fn new(root: &Path, natural_exit: bool) -> Self {
-            let root_pid = root.join("root.pid");
-            let child_pid = root.join("child.pid");
-            let grandchild_pid = root.join("grandchild.pid");
-            let ready = root.join("grandchild.ready");
-            let release = root.join("release-child");
-            let grandchild_script = root.join("grandchild.ps1");
-            let child_script = root.join("child.ps1");
-            std::fs::write(
-                &grandchild_script,
-                format!(
-                    "[IO.File]::WriteAllText({}, 'ready'); Start-Sleep -Seconds 60",
-                    path_literal(&ready)
-                ),
-            )
-            .unwrap();
-            let child_end = if natural_exit {
-                format!(
-                    "while (-not [IO.File]::Exists({})) {{ Start-Sleep -Milliseconds 25 }}; exit 0",
-                    path_literal(&release)
-                )
-            } else {
-                "Start-Sleep -Seconds 60".to_owned()
-            };
-            std::fs::write(
-                &child_script,
-                format!(
-                    concat!(
-                        "[IO.File]::WriteAllText({}, [string]$PID); ",
-                        "$start = New-Object System.Diagnostics.ProcessStartInfo; ",
-                        "$start.FileName = Join-Path $PSHOME 'powershell.exe'; ",
-                        "$start.Arguments = {}; ",
-                        "$start.UseShellExecute = $false; $start.CreateNoWindow = $true; ",
-                        "$grandchild = [Diagnostics.Process]::Start($start); ",
-                        "[IO.File]::WriteAllText({}, [string]$grandchild.Id); {}"
-                    ),
-                    path_literal(&child_pid),
-                    literal(&format!(
-                        "-NoProfile -NonInteractive -File \"{}\"",
-                        grandchild_script.display()
-                    )),
-                    path_literal(&grandchild_pid),
-                    child_end,
-                ),
-            )
-            .unwrap();
-            let command = format!(
-                "[IO.File]::WriteAllText({}, [string]$PID); & (Join-Path $PSHOME 'powershell.exe') -NoProfile -NonInteractive -File {}; exit $LASTEXITCODE",
-                path_literal(&root_pid),
-                path_literal(&child_script)
-            );
-            Self {
-                command,
-                root_pid,
-                child_pid,
-                grandchild_pid,
-                ready,
-                release,
-            }
-        }
-
-        async fn observe(&self) -> [OwnedProcess; 3] {
-            async fn process(path: &Path) -> OwnedProcess {
-                tokio::time::timeout(Duration::from_secs(40), async {
-                    loop {
-                        if let Ok(text) = std::fs::read_to_string(path)
-                            && let Ok(pid) = text.trim().parse()
-                        {
-                            return OwnedProcess::open(pid);
-                        }
-                        tokio::time::sleep(Duration::from_millis(20)).await;
-                    }
-                })
-                .await
-                .unwrap_or_else(|_| panic!("fixture did not publish {}", path.display()))
-            }
-            let root = process(&self.root_pid).await;
-            let child = process(&self.child_pid).await;
-            let grandchild = process(&self.grandchild_pid).await;
-            tokio::time::timeout(Duration::from_secs(40), async {
-                while !self.ready.exists() {
-                    tokio::time::sleep(Duration::from_millis(20)).await;
-                }
-            })
-            .await
-            .expect("grandchild did not reach its ready marker");
-            assert!(root.running(), "root exited before the test action");
-            assert!(child.running(), "child exited before the test action");
-            assert!(
-                grandchild.running(),
-                "grandchild exited before the test action"
-            );
-            [root, child, grandchild]
-        }
-    }
-
-    #[tokio::test]
-    async fn cancel_terminates_the_shell_child_and_grandchild() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let scripts = TreeScripts::new(fixture._workspace.path(), false);
-        let started = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":scripts.command,"background":true}),
-        )
-        .await;
-        assert_eq!(started["status"], "running");
-        let owned = scripts.observe().await;
-        call(
-            &fixture.registry,
-            "owner",
-            "cancel",
-            json!({"handle":started["handle"]}),
-        )
-        .await;
-        let done = call(
-            &fixture.registry,
-            "owner",
-            "wait",
-            json!({"handle":started["handle"],"timeoutMs":60000}),
-        )
-        .await;
-        assert_eq!(done["status"], "cancelled");
-        for process in &owned {
-            process.assert_stopped().await;
-        }
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn shutdown_terminates_the_shell_child_and_grandchild() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let scripts = TreeScripts::new(fixture._workspace.path(), false);
-        let started = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":scripts.command,"background":true}),
-        )
-        .await;
-        assert_eq!(started["status"], "running");
-        let owned = scripts.observe().await;
-        fixture.processes.shutdown().await;
-        for process in &owned {
-            process.assert_stopped().await;
-        }
-        assert!(
-            fixture.processes.jobs("owner").unwrap()["jobs"]
-                .as_array()
-                .unwrap()
-                .is_empty()
-        );
-    }
-
-    #[tokio::test(flavor = "current_thread")]
-    async fn dropping_last_host_owner_terminates_the_tree_without_executor_progress() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let scripts = TreeScripts::new(fixture._workspace.path(), false);
-        let started = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":scripts.command,"background":true}),
-        )
-        .await;
-        assert_eq!(started["status"], "running");
-        let owned = scripts.observe().await;
-        let Fixture {
-            _workspace: workspace,
-            data,
-            processes,
-            registry,
-        } = fixture;
-        // Registered tools hold ProcessTools Arcs too. Release those first,
-        // while the fixture directories remain alive until after assertions.
-        drop(registry);
-        assert_eq!(Arc::strong_count(&processes), 1);
-        drop(processes);
-        for process in &owned {
-            process.assert_stopped_without_runtime();
-        }
-        drop(data);
-        drop(workspace);
-    }
-
-    #[tokio::test]
-    async fn hard_deadline_terminates_the_shell_child_and_grandchild() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let scripts = TreeScripts::new(fixture._workspace.path(), false);
-        let started = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":scripts.command,"background":true,"timeoutMs":45000}),
-        )
-        .await;
-        let owned = scripts.observe().await;
-        let done = call(
-            &fixture.registry,
-            "owner",
-            "wait",
-            json!({"handle":started["handle"],"timeoutMs":90000}),
-        )
-        .await;
-        assert_eq!(done["status"], "timed_out");
-        for process in &owned {
-            process.assert_stopped().await;
-        }
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn natural_shell_exit_releases_remaining_owned_grandchild() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let scripts = TreeScripts::new(fixture._workspace.path(), true);
-        let started = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":scripts.command,"background":true}),
-        )
-        .await;
-        let owned = scripts.observe().await;
-        std::fs::write(&scripts.release, "exit").unwrap();
-        let done = call(
-            &fixture.registry,
-            "owner",
-            "wait",
-            json!({"handle":started["handle"],"timeoutMs":60000}),
-        )
-        .await;
-        assert_eq!(done["status"], "exited");
-        assert_eq!(done["exitCode"], 0);
-        for process in &owned {
-            process.assert_stopped().await;
-        }
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn default_shell_remains_windows_powershell() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let result = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":"[Console]::Out.Write([Diagnostics.Process]::GetCurrentProcess().MainModule.ModuleName + '|' + $PSVersionTable.PSEdition)"}),
-        )
-        .await;
-        assert_eq!(result["status"], "exited");
-        assert_eq!(result["exitCode"], 0);
-        assert_eq!(result["stdout"], "powershell.exe|Desktop");
-        assert_eq!(result["stderr"], "");
-        assert!(result.get("note").is_none());
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn successful_cd_reports_reset_to_the_explicit_start_directory() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let custom = fixture._workspace.path().join("custom start");
-        std::fs::create_dir(&custom).unwrap();
-        let start = std::fs::canonicalize(&custom).unwrap();
-        let elsewhere = tempfile::tempdir().unwrap();
-        let result = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({
-                "cwd":"custom start",
-                "command":format!("Set-Location -LiteralPath {}; [Console]::Out.Write((Get-Location).ProviderPath)", path_literal(elsewhere.path()))
-            }),
-        )
-        .await;
-        assert_eq!(result["status"], "exited");
-        assert_eq!(result["exitCode"], 0);
-        assert_eq!(
-            std::fs::canonicalize(result["stdout"].as_str().unwrap()).unwrap(),
-            std::fs::canonicalize(elsewhere.path()).unwrap()
-        );
-        assert_eq!(result["stderr"], "");
-        assert_eq!(result["note"], cwd_reset_note(&start));
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn changed_directory_adds_note_and_preserves_explicit_exit_and_exact_streams() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let elsewhere = tempfile::tempdir().unwrap();
-        let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
-        let output = "[Console]::Out.Write('out'); [Console]::Error.Write('err'); exit 3";
-        for moved in [false, true] {
-            let command = if moved {
-                format!(
-                    "Set-Location -LiteralPath {}; {output}",
-                    path_literal(elsewhere.path())
-                )
-            } else {
-                output.to_owned()
-            };
-            let result = call(
-                &fixture.registry,
-                "owner",
-                "exec",
-                json!({"command":command}),
-            )
-            .await;
-            assert_eq!(result["status"], "exited");
-            assert_eq!(result["exitCode"], 3);
-            assert_eq!(result["stdout"], "out");
-            assert_eq!(result["stderr"], "err");
-            if moved {
-                assert_eq!(result["note"], cwd_reset_note(&start));
-            } else {
-                assert!(result.get("note").is_none());
-            }
-        }
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn unchanged_and_restored_directories_get_no_note() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let elsewhere = tempfile::tempdir().unwrap();
-        let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
-        for command in [
-            "[Console]::Out.Write('same')".to_owned(),
-            format!(
-                "Set-Location -LiteralPath {}; [Console]::Out.Write('same')",
-                path_literal(fixture._workspace.path())
-            ),
-            format!(
-                "Set-Location -LiteralPath {}; Set-Location -LiteralPath {}; [Console]::Out.Write('same')",
-                path_literal(elsewhere.path()),
-                path_literal(fixture._workspace.path())
-            ),
-        ] {
-            let result = call(
-                &fixture.registry,
-                "owner",
-                "exec",
-                json!({"command":command}),
-            )
-            .await;
-            assert_eq!(result["exitCode"], 0);
-            assert_eq!(result["stdout"], "same");
-            assert!(result.get("note").is_none(), "{result}");
-        }
-        // Every invocation starts back in the configured directory.
-        let location = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":"[Console]::Out.Write((Get-Location).ProviderPath)"}),
-        )
-        .await;
-        assert_eq!(
-            std::fs::canonicalize(location["stdout"].as_str().unwrap()).unwrap(),
-            start
-        );
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn cwd_note_preserves_powershell_native_failure_and_native_template_exit_code() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let elsewhere = tempfile::tempdir().unwrap();
-        let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
-        let native =
-            "[Console]::Out.Write('out'); [Console]::Error.Write('err'); & cmd.exe /d /c 'exit 7'";
-        for moved in [false, true] {
-            let command = if moved {
-                format!(
-                    "Set-Location -LiteralPath {}; {native}",
-                    path_literal(elsewhere.path())
-                )
-            } else {
-                native.to_owned()
-            };
-            let result = call(
-                &fixture.registry,
-                "owner",
-                "exec",
-                json!({"command":command}),
-            )
-            .await;
-            // PowerShell -Command maps a final failing native command to 1.
-            // Only explicit `exit $LASTEXITCODE` exposes the native exit code.
-            assert_eq!(result["exitCode"], 1);
-            assert_eq!(result["stdout"], "out");
-            assert_eq!(result["stderr"], "err");
-            if moved {
-                assert_eq!(result["note"], cwd_reset_note(&start));
-            } else {
-                assert!(result.get("note").is_none());
-            }
-        }
-        let native_template = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({"command":{"parts":["cmd.exe /d /c ",""],"values":["exit 7"]}}),
-        )
-        .await;
-        assert_eq!(native_template["status"], "exited");
-        assert_eq!(native_template["exitCode"], 7);
-        assert!(native_template.get("note").is_none());
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn changed_directory_keeps_terminating_and_nonterminating_cmdlet_errors() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let elsewhere = tempfile::tempdir().unwrap();
-        let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
-        for error in [
-            "Write-Error 'bp-winexec-preserved-error'",
-            "Write-Error 'bp-winexec-preserved-error' -ErrorAction Stop",
-        ] {
-            let result = call(
-                &fixture.registry,
-                "owner",
-                "exec",
-                json!({"command":format!("Set-Location -LiteralPath {}; [Console]::Out.Write('before'); {error}", path_literal(elsewhere.path()))}),
-            )
-            .await;
-            assert_eq!(result["status"], "exited");
-            assert_eq!(result["exitCode"], 1);
-            assert_eq!(result["stdout"], "before");
-            assert!(
-                result["stderr"]
-                    .as_str()
-                    .unwrap()
-                    .contains("bp-winexec-preserved-error"),
-                "{result}"
-            );
-            assert_eq!(result["note"], cwd_reset_note(&start));
-        }
-        fixture.processes.shutdown().await;
-    }
-
-    #[tokio::test]
-    async fn background_directory_note_appears_on_final_wait_and_poll() {
-        let fixture = Fixture::new(ExecConfig::default());
-        let elsewhere = tempfile::tempdir().unwrap();
-        let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
-        let started = call(
-            &fixture.registry,
-            "owner",
-            "exec",
-            json!({
-                "command":format!("Set-Location -LiteralPath {}; [Console]::Out.Write('now'); Start-Sleep -Milliseconds 300; [Console]::Out.Write('late'); [Console]::Error.Write('err'); exit 3", path_literal(elsewhere.path())),
-                "background":true
-            }),
-        )
-        .await;
-        assert_eq!(started["status"], "running");
-        assert!(started.get("note").is_none());
-        let waited = call(
-            &fixture.registry,
-            "owner",
-            "wait",
-            json!({"handle":started["handle"],"timeoutMs":60000}),
-        )
-        .await;
-        assert_eq!(waited["status"], "exited");
-        assert_eq!(waited["exitCode"], 3);
-        assert_eq!(waited["note"], cwd_reset_note(&start));
-        let polled = call(
-            &fixture.registry,
-            "owner",
-            "poll",
-            json!({"handle":started["handle"]}),
-        )
-        .await;
-        assert_eq!(polled["exitCode"], 3);
-        assert_eq!(polled["stdout"], "nowlate");
-        assert_eq!(polled["stderr"], "err");
-        assert_eq!(polled["note"], cwd_reset_note(&start));
-        fixture.processes.shutdown().await;
-    }
-}
+#[path = "exec_jobs/windows.rs"]
+mod windows;
 
 #[tokio::test]
 async fn live_exec_config_changes_next_admission_but_preserves_foreground_wait() {

@@ -136,7 +136,7 @@ async fn current_state_and_owned_command_regenerate_after_reset_and_restart() {
     let fixture = Fixture::new();
     fixture.cell("main", "state.saved = 'private-value'; state.count = 812345; Object.defineProperty(state,'getter',{enumerable:true,get(){throw Error('getter invoked');}}); text('private-output');").await;
     #[cfg(windows)]
-    let command = "Write-Output 'private-command-output'; Start-Sleep -Seconds 30";
+    let command = "echo private-command-output& ping -n 31 127.0.0.1 >nul";
     #[cfg(not(windows))]
     let command = "echo private-command-output; sleep 30";
     let output = fixture
@@ -326,7 +326,7 @@ async fn agents_keep_active_first_and_recent_available_results_without_bodies() 
 async fn owned_running_commands_are_capped_with_an_honest_omission_count() {
     let fixture = Fixture::new();
     #[cfg(windows)]
-    let command = "Start-Sleep -Seconds 30";
+    let command = "ping -n 31 127.0.0.1 >nul";
     #[cfg(not(windows))]
     let command = "sleep 30";
     for _ in 0..9 {
@@ -376,9 +376,6 @@ async fn hosts_without_process_tools_get_a_note_without_commands() {
 #[tokio::test]
 async fn sync_results_already_returned_add_no_per_step_notice() {
     let fixture = Fixture::new();
-    #[cfg(windows)]
-    let (ok, failing) = ("Write-Output ok", "exit 3");
-    #[cfg(not(windows))]
     let (ok, failing) = ("echo ok", "exit 3");
     let exec = fixture.registry.get("exec").unwrap();
     let finished: Value = serde_json::from_str(

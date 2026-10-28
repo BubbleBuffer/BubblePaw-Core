@@ -1,4 +1,8 @@
 use super::*;
+
+#[path = "registry_metering_tests.rs"]
+mod metering;
+
 struct ForkOnly {
     requests: Mutex<Vec<ModelRequest>>,
 }

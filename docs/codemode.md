@@ -435,8 +435,8 @@ subprocess, scheduler, store schema change or new frontend manager.
 
 ```js
 state.job = await tools.exec({
-  command: "python generate_report.py",
-  cwd: ".",       // workspace-relative; default .
+  command: {parts:["python ", ""], values:["generate_report.py"]},
+  cwd: ".",       // workspace or an absolute scratchpad path; default .
   background: true // return at once; omit to block until exit or exec.sync_timeout_secs
   // timeoutMs is an optional positive command deadline that kills; absent means none
 });
@@ -445,14 +445,15 @@ return state.job;
 
 Commands are sync by default and background on sync timeout, user action or steer
 (`status:"backgrounded"`); see [exec](exec.md) for jobs, notices and limits.
-Commands use a fresh PowerShell shell on Windows and `sh` on Unix. No PTY or
-interactive stdin. A result includes `status`, `handle`, `stdout`, `stderr`,
+Use argv for single programs; it spawns directly without a shell. Use strings
+for pipes, redirects and `&&` chains: `cmd.exe /d /s /c` on Windows and `sh -c`
+on Unix. There is no per-call shell option, PTY or interactive stdin. A result includes `status`, `handle`, `stdout`, `stderr`,
 `cursor:{stdout,stderr}`, and per-stream capture/gap metadata. Terminal results
 include `exitCode`. Status is `running`, `backgrounded`, `exited`, `cancelled` or `timed_out`.
 Handles are session-owned and process-local; an environment is not filesystem
 or process isolation.
 
-### Experimental command templates
+### Argv command templates
 
 ```js
 const glob = "**/*";
@@ -465,13 +466,15 @@ return result;
 values separately. The helper preserves raw literal parts and stringifies only
 strings, finite numbers and booleans. Rust validates that structure and launches
 one native executable with separate arguments, rather than executing a rendered
-shell command. The quoted rendering is display-only. This avoids PowerShell 5.1
-forwarding ambiguities for native arguments.
+shell command. The quoted rendering is display-only. The native form is
+`{parts:["python ",""],values:["script.py"]}`; the tag builds the same object.
 
 This v0 tag accepts a literal executable, plain literal words, and complete
 unquoted substitutions. Static quotes, embedded-word substitutions, newlines,
-shell expansion, pipes, redirects and comments are rejected; use ordinary strings
-for multiline shell scripts. Put a spaced literal argument in a substitution.
+shell expansion, pipes, redirects and comments are rejected. Use ordinary strings
+for pipes, redirects and `&&` chains. Put script source in a scratchpad file,
+then run it with argv in the same cell or native batch; no `python -c`, `node -e`
+or inline PowerShell. PowerShell runs only as `powershell -NoProfile -File <file>`. Put a spaced literal argument in a substitution.
 Arrays, objects, null, nonfinite numbers and NUL are rejected. Windows shell
 builtins/aliases and batch scripts require ordinary shell strings. The guarantee
 is argument boundaries, not the semantics of a program's flags or regex syntax.
@@ -609,7 +612,20 @@ The default native instructions follow the `Execution environment:` line:
 call independent tools together in one message, search exact identifiers before
 reading, use `edit`/`write` for changes, and return the final answer as the last
 message. A tool batch completes before the next model request; effectful calls
-execute in message order. Read calls currently execute in order too.
+execute in message order. Read calls currently execute in order too. Native
+`submit_result` calls settle after the other calls. A `write` followed by an
+`exec` of that file therefore runs in one batch without another model request.
+
+An ordinary tool failure, including a missing-file read or unknown tool, produces
+its own `is_error` result and later native calls still run. Each result retains
+its call ID. Cancellation or a storage failure can abort the remaining calls;
+an unknown effect outcome is not automatically retried. In JS, await dependent
+calls in order; a thrown JS error aborts that cell.
+
+Start parallel command work with two `exec({background:true,...})` calls. Once
+their handles are returned, call `wait` once per handle in the same next batch.
+`wait` accepts one handle and is unchanged. See `tests/native_batch_exec.rs` for
+scripted batch-ordering and error-continuation checks.
 
 JS-mode instructions apply only to the opt-in wrapper. They ask for independent
 reads and checks in one cell, `tools.edit` for changes, and `text(markdown)` for

@@ -28,7 +28,7 @@ use bubblepaw_core::{
     ApprovalRecord, CancellationToken, ClientInfo, Decision, EventKind, Harness, HarnessEvent,
     Message, MessageOrigin, QueuedInput, Run, RunOptions, Session, Store, client_param,
 };
-use errors::{ApiError, ChildSessionRefusal};
+use errors::ApiError;
 use futures_util::stream;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,12 @@ use tokio::{
     sync::{Notify, broadcast},
 };
 use tower_http::services::{ServeDir, ServeFile};
+
+#[path = "web_context.rs"]
+mod context;
+#[path = "web_question.rs"]
+mod question_routes;
+use question_routes::{answer_child_question, answer_question};
 
 mod errors;
 mod store;
@@ -244,6 +250,9 @@ fn build_router(
         .canonicalize()
         .context("Cannot open frontend assets directory")?;
     let (events, _) = broadcast::channel(EVENT_CAPACITY);
+    if let Some(questions) = &services.questions {
+        questions.set_child_answer_harness(harness.clone())?;
+    }
     let wake = services
         .agents
         .as_ref()
@@ -320,7 +329,8 @@ fn build_router(
             .route("/api/sessions", get(sessions).post(create_session))
             .route("/api/sessions/{id}", get(session))
             .route("/api/sessions/{id}/rename", post(rename_session))
-            .route("/api/sessions/{id}/messages", get(messages))
+            .route("/api/sessions/{id}/messages", get(context::messages))
+            .merge(context::routes())
             .route("/api/sessions/{id}/run", post(run))
             .route("/api/sessions/{id}/resume", post(resume))
             .route("/api/sessions/{id}/steer", post(steer))
@@ -336,6 +346,10 @@ fn build_router(
             .route("/api/sessions/{id}/approvals", get(approvals))
             .route("/api/approvals/{id}", post(decide_approval))
             .route("/api/sessions/{id}/question/answer", post(answer_question))
+            .route(
+                "/api/sessions/{id}/children/{child}/question/answer",
+                post(answer_child_question),
+            )
             .route(
                 "/api/sessions/{id}/attachments",
                 post(upload_attachment).layer(DefaultBodyLimit::max(upload_limit)),
@@ -1070,50 +1084,6 @@ async fn session(
     .await
     .map(Json)
 }
-#[derive(Deserialize)]
-struct MessagesQuery {
-    before: Option<String>,
-    limit: Option<usize>,
-}
-#[derive(Serialize)]
-struct MessagesPage {
-    messages: Vec<Message>,
-    has_more: bool,
-}
-async fn messages(
-    State(state): State<Arc<WebState>>,
-    Path(id): Path<String>,
-    query: std::result::Result<Query<MessagesQuery>, QueryRejection>,
-) -> std::result::Result<Json<MessagesPage>, ApiError> {
-    let Query(query) =
-        query.map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.body_text()))?;
-    let limit = query.limit.unwrap_or(100);
-    if !(1..=MESSAGE_LIMIT).contains(&limit) {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            format!("Limit must be between 1 and {MESSAGE_LIMIT}"),
-        ));
-    }
-    let rows = blocking(move || {
-        state.store.session(&id)?;
-        state
-            .store
-            .messages_before(&id, query.before.as_deref(), limit + 1)
-    })
-    .await?
-    .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "Unknown before message id".into()))?;
-    let has_more = rows.len() > limit;
-    // The read is ascending, so discard the oldest extra row for continuation.
-    let messages = rows
-        .into_iter()
-        .skip(usize::from(has_more))
-        .map(|(_, mut message)| {
-            message.provider_state = None;
-            message
-        })
-        .collect();
-    Ok(Json(MessagesPage { messages, has_more }))
-}
 #[derive(Default, Deserialize)]
 struct TitleBody {
     #[serde(alias = "name")]
@@ -1410,43 +1380,6 @@ async fn decide_approval(
     Ok(Json(record))
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct QuestionAnswerBody {
-    question_id: String,
-    text: String,
-    #[serde(default)]
-    client: Option<Value>,
-}
-async fn answer_question(
-    State(state): State<Arc<WebState>>,
-    Path(id): Path<String>,
-    input: std::result::Result<Json<QuestionAnswerBody>, JsonRejection>,
-) -> std::result::Result<Json<Value>, ApiError> {
-    ensure_workspace(&state, &id)?;
-    let input = body(input)?;
-    let origin = client(&input.client)?;
-    let answering = state.clone();
-    let answer = blocking(move || {
-        let state = answering;
-        if state.store.session(&id)?.parent_session_id.is_some() {
-            return Err(ChildSessionRefusal.into());
-        }
-        let questions = state
-            .services
-            .questions
-            .as_ref()
-            .context("Question service unavailable")?;
-        let answer = questions.answer(&state.harness, &id, &input.question_id, &input.text)?;
-        if !answer.live {
-            crate::question::continue_answer(&state.harness, &state.store, &id, &answer, origin)?;
-        }
-        Ok(answer)
-    })
-    .await?;
-    state.refresh.notify_one();
-    Ok(Json(json!({"question":answer.question,"live":answer.live})))
-}
 async fn fork(
     State(state): State<Arc<WebState>>,
     Path(id): Path<String>,

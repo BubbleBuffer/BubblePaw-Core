@@ -19,6 +19,9 @@ pub struct SpillStore {
     chat_limit: u64,
 }
 impl SpillStore {
+    pub(crate) fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
     pub fn new(data_dir: impl AsRef<Path>) -> Result<Self> {
         Self::with_chat_limit(data_dir, CHAT_LIMIT_BYTES)
     }
@@ -141,6 +144,7 @@ impl SpillStore {
     }
     /// Register at host startup, including hosts that only delete a stored chat.
     pub fn attach(&self, store: &Store) {
+        crate::scratchpads::ScratchpadStore::register_cleanup_at(store, &self.data_dir);
         let spills = self.clone();
         store.set_session_cleanup(
             "runner.spill",

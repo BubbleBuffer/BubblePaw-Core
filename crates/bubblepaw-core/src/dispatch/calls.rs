@@ -95,6 +95,7 @@ impl ToolDispatcher {
         &self,
         message: &crate::Message,
         usage: &[crate::RequestUsage],
+        request_ids: &[String],
         prepared: &PreparedToolCall,
     ) -> Result<String> {
         ensure!(
@@ -112,7 +113,7 @@ impl ToolDispatcher {
             None,
             |tx| {
                 Store::insert_message(tx, message)?;
-                Store::insert_request_usage_tx(tx, usage)?;
+                Store::insert_message_request_usage_tx(tx, message, usage, request_ids)?;
                 let invocation = Store::dispatch_tx(
                     tx,
                     &prepared.context.session_id,

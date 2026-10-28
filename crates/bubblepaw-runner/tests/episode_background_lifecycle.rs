@@ -93,6 +93,8 @@ impl EpisodeModels for ScriptedModels {
             summary: "Retained task progress.".into(),
             related_ids: vec![],
             related_evidence: vec![],
+            decisions: None,
+            sections: None,
             model: "script".into(),
             usage: Usage::default(),
             reasoning: None,

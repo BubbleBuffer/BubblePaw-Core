@@ -298,9 +298,21 @@ fn windows_junction_cannot_redirect_session_storage_outside_workspace() {
     let storage = InputFiles::new(workspace.path(), InputLimits::default()).unwrap();
     let session = id();
     let link = workspace.path().join(".run/attachments").join(&session);
+    let script = workspace.path().join("create-junction.ps1");
+    std::fs::write(&script, "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:BUBBLEPAW_TEST_LINK -Target $env:BUBBLEPAW_TEST_TARGET | Out-Null").unwrap();
     let result = std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:BUBBLEPAW_TEST_LINK -Target $env:BUBBLEPAW_TEST_TARGET | Out-Null"])
-        .env("BUBBLEPAW_TEST_LINK", &link).env("BUBBLEPAW_TEST_TARGET", external.path()).output().unwrap();
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ])
+        .arg(&script)
+        .env("BUBBLEPAW_TEST_LINK", &link)
+        .env("BUBBLEPAW_TEST_TARGET", external.path())
+        .output()
+        .unwrap();
     assert!(
         result.status.success(),
         "{}",

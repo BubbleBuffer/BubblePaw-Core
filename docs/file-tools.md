@@ -1,15 +1,15 @@
 # Workspace file tools
 
-**Status:** revised 2026-10-20: literal `edit` and whole-file `write` replace the
+**Status:** scratchpad grants added 2026-10-28; revised 2026-10-20: literal `edit` and whole-file `write` replace the
 former patch tool. Current checks and earlier dated acceptance are recorded
 separately in [verification](verification.md); no live acceptance is claimed here.
 
-The runner exposes five workspace file tools through `js`: `read`, `list`,
-`search`, `edit`, and `write`. Paths stay inside the canonical workspace root,
-with read-only exceptions for this chat's spill output and its listed skill folders.
+The runner exposes five file tools in native mode and through optional `js`:
+`read`, `list`, `search`, `edit`, and `write`. Read/write/edit accept the canonical
+workspace root and the chat/project scratchpads, with read-only exceptions for
+this chat's spill output and its listed skill folders.
 These checks are tool boundaries, not an OS sandbox for commands. No prior read
-or read hash is required. These are host tools called as `tools.NAME(...)` inside
-`js`; top-level provider file tools are outside this scope.
+or read hash is required. In JS mode, call them as `tools.NAME(...)`.
 
 `tools.list({path?, limit?})` lists a directory in name order. The path defaults
 to `.`, and the limit defaults to 200, with a maximum of 1000. Entries identify
@@ -44,6 +44,32 @@ capped at 1000. Search skips symlinks, `.git`, `node_modules`, `target`, binary
 files and files over 2 MiB. Match text and traversal are bounded; truncation is
 explicit.
 
+## Chat and project scratchpads (2026-10-28)
+
+`read`, `write` and `edit` accept both scratchpad paths shown in the prompt,
+as well as the workspace root. Chat files live under
+`<data_dir>/scratch/chat/<root-chat-id>/`; children share this directory and use
+a subfolder named after their own chat ID. Project files live under
+`<data_dir>/scratch/workspace/<SHA-256 of canonical workspace root>/` and are
+shared by chats using that workspace.
+
+Use absolute paths for scratch files. A `..` escape, a symlink or a Windows
+junction resolving outside the selected scratchpad is refused, including a
+link back into the workspace or into the other scratchpad. Other chats'
+scratchpads are not granted even when the data directory is inside the workspace.
+Windows accepts ordinary and verbatim absolute paths. Scratch mutation results
+return absolute paths; workspace mutation results remain workspace-relative.
+
+Write a script with `write`, then run it with argv `exec` in the same batch.
+Scratch `write` and `edit` retain ordinary tool policies, atomic replacement and
+mutation locking. Their disposable files are excluded from workspace rewind
+checkpoints. Root-chat deletion removes the chat scratchpad; project retention
+is described in [storage](storage-model.md#scratchpads-2026-10-28).
+No new approval or configuration setting is needed. `list` and `search` keep
+their workspace boundary.
+
+## File mutations
+
 ```js
 await tools.edit({
   path: "README.md",
@@ -73,7 +99,7 @@ it. Errors are diagnostic only; they never relax exact matching.
 missing parent directories. Its result is exactly `{path, bytes, created}`:
 `bytes` is the UTF-8 byte count, and `created` identifies a newly created file.
 Content is written exactly as supplied, including line endings and final newline.
-Neither mutation result contains checkpoint metadata. Returned paths are canonical
+Neither mutation result contains checkpoint metadata. For workspace files, returned paths are canonical
 workspace-relative paths using `/` between directories on every platform; a
 literal backslash in a Unix filename remains part of its name.
 
@@ -91,7 +117,7 @@ failure, cancellation or process interruption can leave new directories or a
 committed file whose tool result was not delivered. Inspect the file after an
 unknown outcome; do not automatically replay an external effect.
 
-Both `edit` and `write` durably checkpoint changed files before target writes,
+For workspace files, both `edit` and `write` durably checkpoint changed files before target writes,
 using the existing content-addressed attachment blobs. Originals and final
 content up to 10 MiB are covered. Larger changes remain allowed within the
 32 MiB file limit and receive a durable barrier that prevents rewind across the

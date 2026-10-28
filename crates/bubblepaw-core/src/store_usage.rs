@@ -3,6 +3,75 @@ use super::*;
 pub(crate) mod prompt_log;
 
 impl Store {
+    /// Persist physical billing rows and link only the explicitly retained response contributors.
+    pub(crate) fn insert_message_request_usage_tx(
+        tx: &Connection,
+        message: &Message,
+        records: &[RequestUsage],
+        request_ids: &[String],
+    ) -> Result<()> {
+        Self::insert_request_usage_tx(tx, records)?;
+        if request_ids.is_empty() {
+            return Ok(());
+        }
+        anyhow::ensure!(
+            message.role == Role::Assistant,
+            "Only assistant replies own provider output"
+        );
+        let seq = Self::session_message_seq(tx, &message.session_id, &message.id)?;
+        for request_id in request_ids {
+            let record = records
+                .iter()
+                .find(|record| record.request_id == *request_id)
+                .context("Message output references an absent request")?;
+            anyhow::ensure!(
+                !record.failed
+                    && record.kind == crate::RequestKind::Main
+                    && record.session_id == message.session_id,
+                "Message output must reference a successful main request in the same session"
+            );
+            tx.execute(
+                "UPDATE request_usage SET message_seq=?2 WHERE request_id=?1 AND message_seq IS NULL AND failed=0 AND kind='main' AND session_id=?3",
+                params![request_id, seq, message.session_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Read provider output reports in canonical order using indexed metadata only.
+    /// Missing or incomplete reports stay None; estimation belongs to the host.
+    pub fn reported_message_tokens(
+        &self,
+        session_id: &str,
+        range: std::ops::RangeInclusive<i64>,
+    ) -> Result<Vec<crate::ReportedMessageTokens>> {
+        if let Some(store) = self.scoped(session_id)? {
+            return store.reported_message_tokens(session_id, range);
+        }
+        self.read(|conn| {
+            let mut statement = conn.prepare(
+                "SELECT m.message_id,(CASE WHEN h.role='assistant' THEN
+                    (SELECT SUM(u.output_tokens) FROM request_usage u
+                    WHERE u.session_id=m.session_id AND u.message_seq=m.seq
+                        AND u.failed=0 AND u.kind='main') END)
+                 FROM messages m JOIN message_headers h ON h.message_seq=m.seq
+                 WHERE m.session_id=?1 AND m.seq BETWEEN ?2 AND ?3 ORDER BY m.seq",
+            )?;
+            statement
+                .query_map(params![session_id, range.start(), range.end()], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+                })?
+                .map(|row| {
+                    let (message_id, tokens) = row?;
+                    Ok(crate::ReportedMessageTokens {
+                        message_id,
+                        tokens: tokens.map(u64::try_from).transpose()?,
+                    })
+                })
+                .collect()
+        })
+    }
+
     pub(super) fn migrate_request_usage(connection: &mut Connection, version: i64) -> Result<()> {
         if version < 8 {
             let migration = connection.transaction()?;
@@ -90,13 +159,14 @@ impl Store {
         &self,
         message: &Message,
         records: &[RequestUsage],
+        request_ids: &[String],
     ) -> Result<()> {
         if let Some(store) = self.scoped(&message.session_id)? {
-            return store.append_with_request_usage(message, records);
+            return store.append_with_request_usage(message, records, request_ids);
         }
         self.write(|tx| {
             Self::insert_message(tx, message)?;
-            Self::insert_request_usage_tx(tx, records)
+            Self::insert_message_request_usage_tx(tx, message, records, request_ids)
         })
     }
 

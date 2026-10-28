@@ -26,6 +26,8 @@ use tokio::sync::Notify;
 mod hook;
 use hook::{prepare_call, prepare_fresh};
 
+#[path = "manual_compaction/apply_facts.rs"]
+mod apply_facts;
 #[path = "manual_compaction/transactions.rs"]
 mod transactions;
 

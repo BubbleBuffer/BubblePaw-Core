@@ -8,7 +8,9 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 ## Context management
 
-- [lcm-contract](lcm-contract.md) — Approved and implemented 2026-10-19: exact gather/apply timeline, prefix preservation, explicit fallback, complete memory and scoped local/live verification.
+- [lcm-contract](lcm-contract.md) — Gather/apply facts, trigger mapping and transaction budget; opt-in chapter v2 decisions and sections, exact timeline, prefix preservation and fallback.
+- [lcm-episode-v3-comparison](lcm-episode-v3-comparison.md) — Measured 2026-10-28: episode summary prompt v2, the v3 draft and v3.1 (three rounds) (gist + `Actions:` log, `context.lcm.episode_prompt`) on DeepSeek Flash over recorded episodes; verdict keeps v2 the default.
+- [context-compaction](context-compaction.md) — 2026-10-27: durable compaction events, applied-view block tokens, reported/estimated message tokens and SDK reads.
 - [memory-files](memory-files.md) — Runner memory files: frozen AGENTS.md and CLAUDE.md context, bounded content and one-time live change notes.
 - [skills](skills.md) — Frozen SKILL.md catalogs, ordinary body reads, per-session folder access and durable live diffs.
 - [prefix-cache-design](prefix-cache-design.md) — 2026-10-21 P8: every request is logged by tier in the serving store, and an unexplained cache miss warns (`cache_miss_unexplained`) with expected/actual cached tokens and the gap. P7: hosts write per-request context through `ContextWriter` (tail reminders, cold notes); a hook edit to the frozen tier is an undeclared `frozen_change`, a resolver change is declared. P6: same-model side calls (summary, chapter) fork the chat context; fresh side calls declare why. 2026-10-19: prompt-cache accounting (declared busts, unexplained misses per provider/model). 2026-10-18: integrated Chat episode forks, durable runtime notices and native token projection; broader tool declarations and other protocols remain separate, with explicit signed-thinking apply limits.
@@ -26,18 +28,18 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 - [host-context](host-context.md) — Built 2026-10-21: the host preparation hook and `ContextWriter`, where static, derived and live host context goes, and how frozen-tier edits and resolver changes are classified.
 - [host-attach](host-attach.md) — 2026-10-21: local run/delegate attachment to the central store's host, per-chat workspaces, request config and host lifetime; verification status and Windows smoke commands.
-- [sdk](sdk.md) — Built 2026-10-24 in 0.2.0: the `bubblepaw-sdk` facade crate for Rust embedders, the `HostBuilder` wiring, the Claude Code helper and the stability policy; the `todo` module and `HostBuilder::todo` (2026-10-25).
-- [storage-model](storage-model.md) — Built through 2026-10-21: one central store per machine with a one-time read-only import of legacy per-workspace stores (chats, spill and artifacts, quota, ledger; legacy dirs deletable afterwards except in-use worktrees), lean chats, worker visibility and guarded transient deletion, import, archives and buffered serving; root-chat source mappings are authoritative, shared web-cache.db is disposable.
-- [session-api](session-api.md) — Built; current 2026-10-24: how several clients snapshot a session and follow its durable event stream, with every event kind and stdio method.
+- [sdk](sdk.md) — Updated 2026-10-27: context events, view blocks, message-token reads, and host answers and pending reads for child questions; the Rust facade, `HostBuilder`, Claude Code helper, todo module and stability policy.
+- [storage-model](storage-model.md) — Updated 2026-10-27: schema 12 compaction facts and message usage links without extra ordinary transactions; central storage, legacy import, lean chats, archives and disposable serving.
+- [session-api](session-api.md) — Built; current 2026-10-27: session snapshots, durable events, Context reads over stdio, compaction notifications, direct-parent child run/question events (`child_events`) and `question.answer_child`.
 - [usage tracking](usage-tracking.md) - Durable per-request tokens and SDK-reported model IDs, one dated price table, grouped reports and the fixed `bubblepaw.usage.v1` JSONL export.
 - [quota](quota.md) — Native subscription/rate-limit/credit readings, change-only history, rejection-specific waits and restart recovery; piggybacked balances with explicit standalone recording times; OpenCode Go meters through a BubblePaw-owned console login (`bubblepaw login opencode`).
 - [rewind](rewind.md) — Built 2026-10-15; edit/write updated 2026-10-20: file checkpoints, content-addressed originals, conflict-safe session rewind, and rewind limited to the latest turn (a typed user row or ChildTask instruction; host notices never count), with checkpoints pruned to the current and previous turn.
-- [web-contract](web-contract.md) — Built; current 2026-10-24: `web` startup line (`--port 0`), local boundary checks, every JSON endpoint, SessionView shape, SSE and error statuses.
+- [web-contract](web-contract.md) — Built; current 2026-10-27: `web` startup line (`--port 0`), local boundary checks, every JSON endpoint, SessionView shape, SSE and error statuses, including user answers to child questions.
 - [web-workbench](web-workbench.md) — Built through 2026-10-14: automatic completion turns, older-history pagination and provider setup with live apply and explicit disk reload.
 - [product](product.md) — Workbench product brief: users, purpose, constraints, brand commitments and principles.
 - [design](design.md) — Workbench visual specification: tokens, colors, typography, layout and components.
 - [child-worktrees](child-worktrees.md) — Built 2026-10-15: opt-in child git workspaces, safe archive/delete cleanup and explicit continuation.
-- [child-sessions](child-sessions.md) — Built through 2026-10-15: recursive children, direct-parent completion/question wakes including hidden worker parents, inherited denies, controls, acknowledgement and retention; hidden workers stay silent toward their callers.
+- [child-sessions](child-sessions.md) — Built through 2026-10-27: durable run/question projections on the direct parent's event stream; user answers with atomic resolution, attribution and parent notice; recursive controls, acknowledgement and retention; hidden workers stay silent toward their callers.
 - [tracing](tracing.md) — Experimental, optional: disposable JSONL behavior tracing, off by default, with metadata or contents modes; prompt-cache events.
 - [config](config.md) — Built through 2026-10-21: central default data dir, layered TOML, live provider apply and explicit reload, default-on completion wake/debounce, worker retention, chat reasoning replay and stale-child reminders.
 - [local-worker](local-worker.md) — Local Windows worker launch (own data dir; shared dirs attach), OpenCode Go profile, task-file input and full Windows/live LCM qualification (2026-10-18).

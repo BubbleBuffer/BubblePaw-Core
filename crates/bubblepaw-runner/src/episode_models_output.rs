@@ -19,6 +19,13 @@ impl HttpEpisodeModels {
         text: &str,
         attempt: usize,
     ) -> Result<()> {
+        let text = if kind == "chapter"
+            && self.episode_config.chapter_prompt == crate::episodes::ChapterPrompt::V2
+        {
+            chapter_sections::prose(text)
+        } else {
+            text
+        };
         let Some(reason) = summary_output_reason(kind, text) else {
             return Ok(());
         };

@@ -85,6 +85,7 @@ pub(super) struct Layout {
     pub(super) pending_catalog: Mutex<HashMap<String, (String, Session, String)>>,
     pub(super) projection_gap: std::sync::atomic::AtomicBool,
     pub(super) event_reserved_end: AtomicU64,
+    pub(super) recovery: super::recovery::RecoveryEvents,
     pub(super) serving_transactions: AtomicU64,
     chat_open_hooks: Mutex<Vec<(&'static str, ChatOpenHook)>>,
 }
@@ -276,7 +277,7 @@ pub(super) fn open_record(
     let application: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     anyhow::ensure!(
-        application == 0x42504230 && (1..=11).contains(&version),
+        application == 0x42504230 && (1..=12).contains(&version),
         "Unsupported chat record schema"
     );
     record.dictionary_pins = cold::pin_dictionaries(&record)?;
@@ -575,6 +576,7 @@ impl Store {
                         "context_subject_chapters",
                         "context_episodes",
                         "context_decisions",
+                        "context_events",
                         "context_checkpoint_versions",
                         "attachments",
                         "approvals",
@@ -785,6 +787,7 @@ impl Store {
                 pending_catalog: Mutex::default(),
                 projection_gap: std::sync::atomic::AtomicBool::new(false),
                 event_reserved_end: AtomicU64::new(0),
+                recovery: Default::default(),
                 serving_transactions: AtomicU64::new(0),
                 chat_open_hooks: Mutex::default(),
             })),
@@ -799,6 +802,7 @@ impl Store {
         // Scanning also repairs stale catalog entries left by interrupted projection writes.
         store.catalog_rebuild_mode(false)?;
         store.initialize_event_sequences()?;
+        store.publish_startup_recovery_events()?;
         store.housekeeping()?;
         owners.insert(
             data_dir,
@@ -932,7 +936,7 @@ impl Store {
                 connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
             let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
             anyhow::ensure!(
-                application == 0x42504230 && (7..=11).contains(&version),
+                application == 0x42504230 && (7..=12).contains(&version),
                 "Unsupported chat record schema"
             );
             connection.busy_timeout(std::time::Duration::from_secs(2))?;
@@ -943,6 +947,7 @@ impl Store {
             cold::initialize(&connection)?;
             let dictionary_pins = cold::pin_dictionaries(&connection)?;
             Self::initialize_tool_call_index(&mut connection)?;
+            Self::migrate_context_facts(&mut connection, version)?;
             Self(Arc::new(Inner {
                 connection: Arc::new(Mutex::new(connection)),
                 dictionary_pins,
@@ -998,12 +1003,7 @@ impl Store {
         }
         chats.insert(root.into(), store.clone());
         drop(chats);
-        if split {
-            store.recover()?;
-        }
-        // Recovery ran against the record before opening any serving projection.
-        // Expired/completed metadata can now move to its proper lifetime.
-        store.archive_operations()?;
+        store.finish_chat_open_recovery(split)?;
         Ok(store)
     }
 
@@ -2620,6 +2620,7 @@ impl Store {
                 }
                 for session in &removed {
                     chat.delete_session_checkpoints(tx, session)?;
+                    tx.execute("UPDATE request_usage SET message_seq=NULL WHERE session_id=?1 AND message_seq IS NOT NULL", [session])?;
                 }
                 for table in [
                     "reminder_metadata",
@@ -2629,6 +2630,7 @@ impl Store {
                     "attachments",
                     "context_checkpoint_versions",
                     "context_decisions",
+                    "context_events",
                     "context_episodes",
                     "context_subject_chapters",
                     "context_chapters",
@@ -3260,110 +3262,5 @@ mod ownership_tests {
 }
 
 #[cfg(test)]
-mod checkpoint_prune_tests {
-    use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    fn checkpoint_id(name: &str) -> String {
-        format!("{CHECKPOINT_PREFIX}{name}")
-    }
-
-    fn counting_hook(counter: Arc<AtomicUsize>) -> ChatOpenHook {
-        Arc::new(move |_chat: &Store| {
-            counter.fetch_add(1, Ordering::SeqCst);
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn checkpoint_prune_never_scans_reference_text() -> anyhow::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let store = Store::open_data_dir(directory.path())?;
-        let session = store.create_session("scan")?.id;
-        fn record(id: &str, patch_index: u64, boundary_seq: i64) -> crate::CheckpointRecord<'_> {
-            crate::CheckpointRecord {
-                id,
-                patch_index,
-                boundary_seq,
-                metadata: "{}",
-            }
-        }
-        store.write_checkpoint(&session, record(&checkpoint_id("a"), 1, 0), b"one", &[])?;
-        let before = Store::reference_scans();
-        let prunes = [(session.clone(), 3)];
-        store.write_checkpoint(&session, record(&checkpoint_id("b"), 2, 5), b"two", &prunes)?;
-        assert_eq!(Store::reference_scans(), before);
-        Ok(())
-    }
-
-    #[test]
-    fn chat_open_hook_runs_once_per_chat_on_first_open() -> anyhow::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let store = Store::open_data_dir(directory.path())?;
-        let opened = Arc::new(AtomicUsize::new(0));
-        store.on_chat_open("test.counter", counting_hook(opened.clone()))?;
-        let session = store.create_session("hook")?.id;
-        assert_eq!(opened.load(Ordering::SeqCst), 1);
-        store.store_attachment(&session, "x", "{}", b"x")?;
-        store.chat_sessions(&session)?;
-        assert_eq!(opened.load(Ordering::SeqCst), 1);
-        Ok(())
-    }
-
-    #[test]
-    fn hook_installed_after_open_runs_on_chats_already_open() -> anyhow::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let store = Store::open_data_dir(directory.path())?;
-        let session = store.create_session("cached")?.id;
-        // The chat is cached before the hook exists, as the constructor leaves it.
-        let opened = Arc::new(AtomicUsize::new(0));
-        store.on_chat_open("test.cached", counting_hook(opened.clone()))?;
-        assert_eq!(opened.load(Ordering::SeqCst), 1);
-        store.store_attachment(&session, "x", "{}", b"x")?;
-        assert_eq!(opened.load(Ordering::SeqCst), 1);
-        Ok(())
-    }
-
-    #[test]
-    fn chat_open_hook_key_registers_once() -> anyhow::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let store = Store::open_data_dir(directory.path())?;
-        let opened = Arc::new(AtomicUsize::new(0));
-        store.on_chat_open("test.dedupe", counting_hook(opened.clone()))?;
-        store.create_session("dedupe")?;
-        assert_eq!(opened.load(Ordering::SeqCst), 1);
-        // A second registration under the same key is ignored, so the cached chat
-        // does not run it and no open runs it twice.
-        store.on_chat_open("test.dedupe", counting_hook(opened.clone()))?;
-        assert_eq!(opened.load(Ordering::SeqCst), 1);
-        store.create_session("dedupe-again")?;
-        assert_eq!(opened.load(Ordering::SeqCst), 2);
-        Ok(())
-    }
-
-    #[test]
-    fn failing_hook_on_one_cached_chat_does_not_stop_the_others() -> anyhow::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let store = Store::open_data_dir(directory.path())?;
-        store.create_session("first-cached")?;
-        store.create_session("second-cached")?;
-        let calls = Arc::new(AtomicUsize::new(0));
-        let counter = calls.clone();
-        let hook: ChatOpenHook = Arc::new(move |_chat: &Store| {
-            if counter.fetch_add(1, Ordering::SeqCst) == 0 {
-                anyhow::bail!("first chat is broken");
-            }
-            Ok(())
-        });
-        let failures = store.on_chat_open("test.partial", hook)?;
-        assert_eq!(calls.load(Ordering::SeqCst), 2, "both chats ran the hook");
-        assert_eq!(failures.len(), 1);
-        assert!(format!("{:#}", failures[0].error).contains("first chat is broken"));
-        assert!(
-            failures[0]
-                .chat
-                .starts_with(directory.path().canonicalize()?)
-        );
-        Ok(())
-    }
-}
+#[path = "store_layout_checkpoint_tests.rs"]
+mod checkpoint_prune_tests;

@@ -720,11 +720,7 @@ impl Provider for MessagesProvider {
                 .await;
                 let result =
                     result.map_err(|error| crate::quota_sources::with_error_quota(error, quota));
-                let usage = match &result {
-                    Ok((response, _, _)) => response.usage.as_ref(),
-                    Err(error) => ProviderError::of(error).and_then(|error| error.usage.as_ref()),
-                };
-                meter.finish(usage, result.is_err());
+                meter.finish_borrowed_result(result.as_ref().map(|(response, ..)| response));
                 let (response, cut, streamed) = result?;
                 if let Some(usage) = &response.usage {
                     known_usage.get_or_insert_with(Usage::default).add(usage);

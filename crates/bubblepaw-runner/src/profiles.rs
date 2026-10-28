@@ -165,6 +165,13 @@ pub fn workspace_profiles_with_agents(
             prompt(native),
             prompt(js),
         );
+        let scratch_workspace = crate::tools::WorkspaceTools::new(workspace)?;
+        scratch_workspace.prepare_scratchpads(repl.spill_store().data_dir())?;
+        crate::root_prompt::configure_scratchpads(
+            &mut child_config,
+            store.clone(),
+            scratch_workspace,
+        );
         if let Some(source) = config.registry_resolver.clone() {
             let read_only = name == "read-only";
             let fallback = child_tools.clone();

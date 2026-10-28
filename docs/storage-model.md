@@ -88,6 +88,42 @@ reclaims free chat pages through incremental vacuum and checkpoints the chat WAL
 Catalog/serving housekeeping remains disposable. Its acceptance checks, which assert
 transaction counts and WAL behaviour, are in [verification](verification.md).
 
+## Scratchpads (2026-10-28)
+
+Scratchpads are disposable files under the host data directory, outside SQLite:
+
+- `scratch/chat/<root-chat-id>/` is shared by a root chat and all descendants.
+  Deleting a child preserves it; deleting the root removes it through the
+  existing session-cleanup callback. Archives preserve it. Cleanup is registered
+  on host startup, including delete-only CLI invocations after restart.
+- `scratch/workspace/<hash>/` is shared by chats using the same canonical
+  workspace root. The key is SHA-256 of that canonical path (native Windows
+  UTF-16 units or Unix path bytes). A child using another worktree gets that
+  worktree's project scratchpad while keeping its root chat scratchpad.
+
+The project sweep runs alongside process-spool sweeping at host startup. Its
+constant retention age is **seven days since last use**. It removes a project
+directory only when the directory and every nested entry have been unmodified
+for at least seven days and no live host holds its workspace lease. Acquiring
+or using a workspace refreshes `.last-used`; the host acquires its current
+workspace lease before sweeping. Shared cross-process file locks protect live
+hosts; the sweeper takes an exclusive lock before checking age and deleting.
+Lease files and the sweep lock live outside removable project directories.
+The sweep does not follow symlinks or junctions. No config knob is added.
+
+The runner owns paths, file grants and cleanup. `WorkspaceTools::scratchpads`
+resolves the paths for a session; `prepare_scratchpads` binds a host data dir and
+retains a workspace lease. The native pack does this at startup. Low-level file
+tools use the dispatcher's data dir when none is configured; in-memory fixtures
+without either source use an owned temporary directory. Embedders constructing
+their own prompts can use `root_prompt::configure_scratchpads` with the same
+workspace tools to show the grants.
+
+Scratch file operations add no workspace rewind checkpoints or scratch-content
+SQLite records. Their accepted tool calls, completed results and ordinary effect
+boundaries remain durable. An interrupted exec with an unknown outcome is never
+replayed. See [file tools](file-tools.md) and [exec](exec.md).
+
 ## Large tool output (2026-10-15)
 
 Tool output over the existing 64 KiB dispatcher cap is retained as UTF-8 text in
@@ -434,6 +470,46 @@ not the billing source. [Usage tracking](usage-tracking.md) documents read-time
 pricing, filters and the fixed JSONL export.
 
 ## Tiers
+
+### Compaction facts and message tokens (2026-10-27)
+
+Chat schema 12 adds `context_events(id TEXT PRIMARY KEY, session_id TEXT NOT
+NULL, kind TEXT NOT NULL, data TEXT NOT NULL)`, with a session index and a kind
+check for `episode_written`, `chapter_closed` and `applied`. `data` is serialized
+`ContextEvent`; reads order by insertion `rowid` so timestamp ties are stable.
+Its `tokens_before` is null when inherited coverage lacks stored source counts;
+cold originals are never loaded just to obtain this metric.
+The additive migration uses one transaction and leaves old stores with an empty
+event table. Events are durable chat data, including when `context_views` lives
+in the disposable central `serving.db`.
+
+The same migration adds nullable `request_usage.message_seq` and a partial
+index on `(session_id, message_seq)`. Successful assistant-producing requests
+link to their canonical message in the existing message transaction. A response
+joined from several successful continuation requests links each contributing
+row, and the read sums `output_tokens`. Usage without a message stays unlinked;
+missing usage stays absent in core's reported-count read. The SDK estimates it
+on read using the runner's estimator, without persisting a zero measurement.
+Explicit provider-reported zero remains a reported count. Discarded fallback
+output retains its billing row but is excluded from message attribution.
+
+`ContextView` JSON adds defaulted `blocks` and `blocks_estimated`; no block table
+is added. Old rows without blocks continue to load. The runner records those
+blocks when it builds an applied view, with IDs and source ranges for summaries
+and original-message blocks.
+
+Gather events share `save_episode_batch`'s transaction. Apply events share the
+chat transaction already used to validate/encode a view before saving its
+serving projection. Message links share existing assistant writes. These facts
+therefore add zero gather transactions and zero ordinary-turn transactions;
+view reuse emits no event and no write. See [context compaction](context-compaction.md)
+for trigger rules and token meanings.
+
+`context_compaction` journal notifications reference the committed fact by ID,
+kind and trigger. They share its canonical write boundary; central stores buffer
+them into the serving transaction already required by catalog projection work.
+Multiple facts share one flush, with no extra chat or standalone serving commit.
+The existing disposable-journal gap and resnapshot behavior remains unchanged.
 
 | Tier | Holds | Lifetime | Cleanup |
 |---|---|---|---|

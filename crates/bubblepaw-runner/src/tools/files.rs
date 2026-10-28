@@ -140,16 +140,18 @@ impl WorkspaceTools {
         ensure!(!context.cancellation.is_cancelled(), "cancelled");
         // Persist the complete intent before replacement, including when the
         // process is interrupted during commit. Large files get rewind barriers.
-        crate::rewind::checkpoint_changes(
-            store,
-            self.root(),
-            context,
-            std::iter::once((
-                change.relative.as_str(),
-                change.previous.as_deref(),
-                change.content.as_deref(),
-            )),
-        )?;
+        if self.scratch_boundary.is_none() {
+            crate::rewind::checkpoint_changes(
+                store,
+                self.root(),
+                context,
+                std::iter::once((
+                    change.relative.as_str(),
+                    change.previous.as_deref(),
+                    change.content.as_deref(),
+                )),
+            )?;
+        }
         self.commit_changes(vec![change], &context.cancellation, || Ok(()))
     }
 

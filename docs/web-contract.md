@@ -1,6 +1,6 @@
 # Web host contract
 
-Status: built; current as of 2026-10-24.
+Status: built; current as of 2026-10-27.
 
 The web host embeds the library and owns a disposable in-memory serving SQLite
 view. Core SQLite remains authoritative. The web feature is optional; default
@@ -85,9 +85,22 @@ frontend assets are served, from the explicit `--assets` directory.
   `{ question, live }`, where `question` is the answered question object. `live` is
   true when a waiting tool call was still attached and received the answer; false
   when the answer is saved for a generated continuation. Only the root session
-  answers. A child session's question is answered by its direct parent through
-  `agent_send`; this route rejects child sessions before it changes any state. The
+  answers. A child session's question can be answered by its direct parent through
+  `agent_send` or by a host user through the explicit child route below;
+  this root route rejects child sessions before it changes any state. The
   rejection is a 409 (see Errors). The question lifecycle is in [session API](session-api.md#todo-and-questions-built-2026-10-15).
+- POST `/api/sessions/{parent}/children/{child}/question/answer` with
+  `{ question_id, text }`: `{ answered: true }`. Both sessions must belong to this
+  host's workspace and `child` must be a direct child of `parent`. The exact
+  question ID is required. Unknown/inactive children, wrong direct parents and
+  unknown question IDs return 404; an answered/cancelled question returns 409;
+  blank text or text over 16 KiB returns 400. The child retains its original
+  harness/profile. A live waiter receives the answer; an interrupted waiter gets
+  a safe generated continuation. The child's question records `answered_by:
+  "user"`. Durable `host_state_changed` events update its `question` and the
+  parent's separate `child_question_answer` key (answered object plus
+  `child_session_id`), a bounded latest-answer projection. The parent's own
+  pending question remains unchanged. The two state changes commit separately.
 - GET `/api/sessions/:id/approvals`: pending `ApprovalRecord[]`.
 - POST `/api/approvals/:id` with `{ decision: "approve"|"approve_session"|"deny", reason?, client? }`: decided `ApprovalRecord` ([approvals](approvals.md)).
 - GET `/api/events`: SSE stream, described under Events.
@@ -137,18 +150,20 @@ usage: SessionUsage, todo: TodoItem[], question: object|null }`.
   `GET /api/sessions/:id/messages`.
 
 Errors: a non-2xx response is JSON `{ error: string }`. The status comes from the
-error text (`ApiError` in `web.rs`):
+error text (`ApiError` in `web/errors.rs`), with typed child-answer errors mapped
+by the child-answer handler:
 
 - 400: malformed JSON, text or attachments over the input limits, an unknown
   message cursor, a bad title, an unsupported process handle, a read-only refusal,
-  and `/reload` on a host without live config.
+  `/reload` on a host without live config, and blank or oversized child-question answers.
 - 422: a JSON body that parses but has missing or mistyped fields (the JSON
   extractor's own rejection).
 - 403: Host or Origin rejected by the local boundary.
 - 404: unknown session, unknown or expired process or artifact, and unknown
-  provider.
+  provider; child-answer requests also use 404 for inactive children, wrong direct
+  parents and unknown question IDs.
 - 409: active-run conflicts, a session bound to another workspace, a question answer sent to a child session, and provider
-  saves masked by a later config layer.
+  saves masked by a later config layer, and child questions already answered or cancelled.
 - 415: a POST, PUT or DELETE without the required content type.
 - 500: any error the mapping does not classify. Clients should treat unexpected
   500s as failures to show, not as state.

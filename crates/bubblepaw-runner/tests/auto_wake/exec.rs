@@ -1,28 +1,39 @@
 //! Background exec helpers shared by the auto-wake tests.
 use super::*;
 
+#[cfg(windows)]
+#[path = "../support/windows_command.rs"]
+mod windows_command;
+
 pub(super) fn exec_test_timeout() -> Duration {
     Duration::from_secs(if cfg!(windows) { 15 } else { 4 })
 }
 pub(super) fn completed_command() -> &'static str {
     if cfg!(windows) {
-        "[Console]::Write('completed')"
+        "<nul set /p=completed& cmd /c exit 0"
     } else {
         "printf completed"
     }
 }
-pub(super) fn gated_completion_command() -> &'static str {
-    if cfg!(windows) {
-        // Enroll before publishing readiness and recheck the condition after
-        // every event wait, including when creation races with the first wait.
-        "$watcher = New-Object IO.FileSystemWatcher ((Get-Location).Path), 'release'; \
-         $watcher.EnableRaisingEvents = $true; \
-         Set-Content -LiteralPath ready -Value ready -NoNewline; \
-         while (!(Test-Path -LiteralPath release)) { \
-             $null = $watcher.WaitForChanged([IO.WatcherChangeTypes]::Created, 1000) \
-         }; $watcher.Dispose(); [Console]::Write('completed')"
-    } else {
-        "mkfifo release; : > ready; IFS= read -r token < release; printf completed"
+pub(super) fn gated_completion_command(root: &std::path::Path) -> Value {
+    #[cfg(windows)]
+    {
+        // Enroll before publishing readiness and recheck after every wait.
+        windows_command::powershell_file(
+            root,
+            "gated-completion.ps1",
+            "$watcher = New-Object IO.FileSystemWatcher ((Get-Location).Path), 'release'; \
+             $watcher.EnableRaisingEvents = $true; \
+             Set-Content -LiteralPath ready -Value ready -NoNewline; \
+             while (!(Test-Path -LiteralPath release)) { \
+                 $null = $watcher.WaitForChanged([IO.WatcherChangeTypes]::Created, 1000) \
+             }; $watcher.Dispose(); [Console]::Write('completed')",
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = root;
+        json!("mkfifo release; : > ready; IFS= read -r token < release; printf completed")
     }
 }
 pub(super) async fn release_completion(path: &std::path::Path) -> Result<()> {

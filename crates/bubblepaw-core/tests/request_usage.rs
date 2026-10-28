@@ -125,13 +125,28 @@ async fn final_reply_usage_is_durable_without_an_extra_transaction() -> Result<(
     assert_eq!(record.kind, RequestKind::Main);
     assert_eq!(record.usage, usage());
     assert!(!record.failed);
+    let before_read = store.storage_stats()?.chat_transaction_count;
+    let contributions = store.reported_message_tokens(&session.id, 0..=i64::MAX)?;
+    assert_eq!(contributions.len(), 2);
+    assert_eq!(contributions[0].tokens, None);
+    assert_eq!(contributions[1].tokens, Some(usage().output_tokens));
+    assert_eq!(store.storage_stats()?.chat_transaction_count, before_read);
     uuid::Uuid::parse_str(&record.request_id)?;
     chrono::DateTime::parse_from_rfc3339(&record.created_at)?;
     store.serving_wipe()?;
     assert_eq!(store.request_usage()?, records);
+    assert_eq!(
+        store.reported_message_tokens(&session.id, 0..=i64::MAX)?,
+        contributions
+    );
     drop(engine);
     drop(store);
     assert_eq!(Store::read_request_usage_data_dir(dir.path())?, records);
+    let store = Store::open_data_dir(dir.path())?;
+    assert_eq!(
+        store.reported_message_tokens(&session.id, 0..=i64::MAX)?,
+        contributions
+    );
     Ok(())
 }
 
@@ -169,40 +184,6 @@ async fn failed_requests_keep_partial_or_zero_usage_without_assistant_messages()
             }
         );
     }
-    Ok(())
-}
-
-#[tokio::test]
-async fn physical_attempts_keep_their_routes_and_replace_logical_fallback() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    let store = Store::open_data_dir(dir.path())?;
-    let session = store.create_session("physical")?;
-    let engine = harness(store.clone(), false, true, true);
-    let run = engine
-        .prompt(&session.id, "hello", RunOptions::default())
-        .await?;
-    let records = store.request_usage()?;
-    assert_eq!(records.len(), 2);
-    assert!(
-        records
-            .iter()
-            .all(|record| record.run_id.as_deref() == Some(run.id.as_str()))
-    );
-    assert!(
-        records
-            .iter()
-            .any(|record| record.provider == "first" && record.model == "m1" && record.failed)
-    );
-    assert!(
-        records
-            .iter()
-            .any(|record| record.provider == "second" && record.model == "m2" && !record.failed)
-    );
-    assert_eq!(
-        run.usage,
-        Some(usage()),
-        "run aggregates retain their existing contract"
-    );
     Ok(())
 }
 
@@ -374,7 +355,7 @@ fn version_seven_migration_preserves_canonical_rows_and_drops_old_serving_usage(
     let connection = Connection::open(chat)?;
     assert_eq!(
         connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        11
+        12
     );
     assert_eq!(
         connection.query_row("SELECT data FROM messages", [], |row| row
@@ -432,7 +413,7 @@ fn existing_split_version_seven_chat_migrates_on_first_write() -> Result<()> {
     store.flush_request_usage(&session.id)?;
     assert_eq!(
         Connection::open(chat)?.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        11
+        12
     );
     assert_eq!(store.request_usage()?, vec![record]);
     Ok(())
@@ -512,7 +493,7 @@ fn schema_eight_account_backfill_and_read_only_projection_preserve_history() -> 
     let connection = Connection::open(&chat)?;
     assert_eq!(
         connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        11
+        12
     );
     assert_eq!(
         connection.query_row("SELECT account FROM request_usage", [], |row| row
@@ -521,3 +502,6 @@ fn schema_eight_account_backfill_and_read_only_projection_preserve_history() -> 
     );
     Ok(())
 }
+
+#[path = "request_usage/message_tokens.rs"]
+mod message_tokens;

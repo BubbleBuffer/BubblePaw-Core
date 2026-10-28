@@ -3,6 +3,9 @@ use serde_json::{Value, json};
 use std::{process::Stdio, time::Duration};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[path = "support/fixture_binary.rs"]
+mod fixture_binary;
+
 async fn rpc(
     input: &mut tokio::process::ChildStdin,
     output: &mut BufReader<tokio::process::ChildStdout>,
@@ -37,23 +40,26 @@ async fn rpc(
 async fn stdio_background_releases_sync_exec_and_cancel_removes_spool() {
     let root = tempfile::tempdir().unwrap();
     let data = root.path().join("data");
-    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_bubblepaw"))
-        .args(["--set", "agent.execution_mode='js'"])
-        .args(["--provider", "demo", "--no-auto-summarize", "--workspace"])
-        .arg(root.path())
-        .args([
-            "--set",
-            &format!("storage.data_dir={}", data.display()),
-            "--set",
-            "exec.max_output_bytes=64",
-            "stdio",
-        ])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
+    let mut child = tokio::process::Command::new(fixture_binary::resolve(
+        env!("CARGO_BIN_EXE_bubblepaw"),
+        "bubblepaw",
+    ))
+    .args(["--set", "agent.execution_mode='js'"])
+    .args(["--provider", "demo", "--no-auto-summarize", "--workspace"])
+    .arg(root.path())
+    .args([
+        "--set",
+        &format!("storage.data_dir={}", data.display()),
+        "--set",
+        "exec.max_output_bytes=64",
+        "stdio",
+    ])
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null())
+    .kill_on_drop(true)
+    .spawn()
+    .unwrap();
     let mut input = child.stdin.take().unwrap();
     let mut output = BufReader::new(child.stdout.take().unwrap());
     let opened = rpc(
@@ -69,7 +75,7 @@ async fn stdio_background_releases_sync_exec_and_cancel_removes_spool() {
     #[cfg(unix)]
     let command = "printf ready; sleep 30";
     #[cfg(windows)]
-    let command = "[Console]::Out.Write('ready'); Start-Sleep -Seconds 30";
+    let command = "<nul set /p=ready& ping -n 31 127.0.0.1 >nul";
     let script = format!("return await tools.exec({});", json!({"command":command}));
     let started = rpc(
         &mut input,

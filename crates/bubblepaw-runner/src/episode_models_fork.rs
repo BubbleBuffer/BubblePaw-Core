@@ -66,7 +66,7 @@ pub(super) async fn summarize_fork_attempt(
         fork.last_message_id,
         delivery.instruction(),
         mapping,
-        summary_instructions(input)
+        summary_instructions(models, input)
     );
     if let Some(turn) = &input.turn_request {
         control.push_str(&format!(
@@ -368,4 +368,22 @@ fn refuse_tool_calls(
             ..message(Role::Tool, refusal.into())
         });
     }
+}
+/// The configured episode prompt with its size limits and an optional manual focus.
+pub(super) fn summary_instructions(models: &HttpEpisodeModels, input: &SummaryInput) -> String {
+    let mut system = models
+        .episode_config
+        .episode_prompt
+        .text()
+        .replace("{target}", &input.cap.to_string())
+        .replace("{limit}", &input.cap.to_string());
+    if let Some(focus) = input
+        .focus
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+    {
+        system.push_str(&format!("\n\nFor this manual compaction, preserve the details needed for this user focus while retaining the summary requirements above:\n{focus}"));
+    }
+    system
 }

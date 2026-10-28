@@ -83,11 +83,7 @@ fn root_prompt_override_replaces_instructions_and_keeps_execution_metadata() {
         ExecutionMode::Js,
     );
     assert!(custom.contains(&format!("workspace={}", root.path().display())));
-    let shell = if cfg!(windows) {
-        "powershell.exe"
-    } else {
-        "sh"
-    };
+    let shell = if cfg!(windows) { "cmd.exe" } else { "sh" };
     assert!(custom.ends_with(&format!(
         "raw command shell={shell}. Only inspect the assigned files."
     )));

@@ -1,5 +1,7 @@
 #[path = "support/episode_fixture.rs"]
 mod episode_fixture;
+#[path = "episode_worker/events.rs"]
+mod events;
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -441,6 +443,8 @@ impl EpisodeModels for Models {
             },
             related_ids: vec![],
             related_evidence: vec![],
+            decisions: None,
+            sections: None,
             model: "fake-chapter".into(),
             usage: Usage::default(),
             reasoning: Some("chapter reasoning".into()),
@@ -1113,150 +1117,8 @@ async fn explicit_lossy_summary_budget_preserves_archive_and_continuation_contex
 
 // These tests exercise gathering/apply with deterministic episode-only models.
 // Fork transport is covered separately by captured-request adapter tests.
-#[tokio::test]
-async fn invalid_summary_or_chapter_cannot_advance_canonical_coverage() -> Result<()> {
-    let fixture = Fixture::new(4).await?;
-    let original = fixture.store.messages(&fixture.session)?;
-    let models = Arc::new(Models::default());
-    models.blank_summary.store(true, Ordering::SeqCst);
-    let worker = fixture.worker(models.clone());
-    assert!(worker.precompute(&fixture.session).await.is_err());
-    assert!(
-        fixture
-            .store
-            .episode_coverage_token(&fixture.session)?
-            .is_none()
-    );
-    assert!(fixture.store.context_episodes(&fixture.session)?.is_empty());
-    assert!(fixture.store.context_view(&fixture.session)?.is_none());
-    models.blank_summary.store(false, Ordering::SeqCst);
-    models.protocol_summary.store(true, Ordering::SeqCst);
-    assert!(worker.precompute(&fixture.session).await.is_err());
-    assert!(
-        fixture
-            .store
-            .episode_coverage_token(&fixture.session)?
-            .is_none()
-    );
-    assert!(fixture.store.context_episodes(&fixture.session)?.is_empty());
-    models.protocol_summary.store(false, Ordering::SeqCst);
-    models.split_once.store(true, Ordering::SeqCst);
-    models.blank_chapter.store(true, Ordering::SeqCst);
-    assert!(worker.precompute(&fixture.session).await.is_err());
-    let episodes = fixture.store.context_episodes(&fixture.session)?;
-    assert_eq!(episodes.len(), 1);
-    assert_eq!(
-        fixture.store.episode_coverage_token(&fixture.session)?,
-        Some(episodes[0].last_message_id.clone())
-    );
-    assert_eq!(
-        fixture.store.context_subject_chapters(&fixture.session)?[0].status,
-        SubjectChapterStatus::Open
-    );
-    assert!(
-        fixture
-            .store
-            .context_decisions(&fixture.session)?
-            .is_empty()
-    );
-    assert_eq!(fixture.store.messages(&fixture.session)?, original);
-    models.blank_chapter.store(false, Ordering::SeqCst);
-    worker.precompute(&fixture.session).await?;
-    assert!(fixture.store.context_episodes(&fixture.session)?.len() > 1);
-    assert!(fixture.store.context_view(&fixture.session)?.is_none());
-    Ok(())
-}
+#[path = "episode_worker/chapter_compat.rs"]
+mod chapter_compat;
 
-#[tokio::test]
-async fn automatic_wakes_deduplicate_failed_range_until_revision_or_confirmed_route_changes()
--> Result<()> {
-    let fixture = Fixture::new(3).await?;
-    let models = Arc::new(Models::default());
-    models.fail.store(true, Ordering::SeqCst);
-    let worker = fixture.worker(models.clone());
-    let begin = || -> Result<()> {
-        fixture.estimator.observe_request(
-            &fixture.session,
-            &ModelRequest {
-                model: "logical-main".into(),
-                messages: fixture.store.messages(&fixture.session)?,
-                ..Default::default()
-            },
-            Arc::new(MainProvider),
-        );
-        Ok(())
-    };
-    let confirm = |route: &str| {
-        fixture.estimator.observe_response(
-            &fixture.session,
-            &ModelResponse {
-                provider_state: Some(serde_json::json!({"_bubblepaw_selected_model":route})),
-                ..Default::default()
-            },
-        )
-    };
-    begin()?;
-    confirm("free/model");
-    worker.trigger(&fixture.session, 0, 0);
-    wait(&worker, &fixture.session).await?;
-    assert_eq!(models.summaries.lock().unwrap().len(), 1);
-    for index in 0..3 {
-        fixture
-            .harness
-            .prompt(
-                &fixture.session,
-                format!("new main round {index}"),
-                RunOptions::default(),
-            )
-            .await?;
-        begin()?;
-        confirm("free/model");
-        worker.trigger(&fixture.session, 0, 0);
-        wait(&worker, &fixture.session).await?;
-    }
-    assert_eq!(models.summaries.lock().unwrap().len(), 1);
-    assert!(
-        fixture
-            .store
-            .episode_coverage_token(&fixture.session)?
-            .is_none()
-    );
-    assert!(fixture.store.context_view(&fixture.session)?.is_none());
-    models.revision.store(1, Ordering::SeqCst);
-    worker.trigger(&fixture.session, 0, 0);
-    wait(&worker, &fixture.session).await?;
-    assert_eq!(models.summaries.lock().unwrap().len(), 2);
-    // Releasing a warm prefix between runs does not confirm a route change.
-    fixture.estimator.release_session(&fixture.session);
-    begin()?;
-    worker.trigger(&fixture.session, 0, 0);
-    wait(&worker, &fixture.session).await?;
-    assert_eq!(models.summaries.lock().unwrap().len(), 2);
-    confirm("free/model");
-    // A pending request still belongs to the prior confirmed route.
-    begin()?;
-    worker.trigger(&fixture.session, 0, 0);
-    wait(&worker, &fixture.session).await?;
-    assert_eq!(models.summaries.lock().unwrap().len(), 2);
-    confirm("go/model");
-    worker.trigger(&fixture.session, 0, 0);
-    wait(&worker, &fixture.session).await?;
-    assert_eq!(models.summaries.lock().unwrap().len(), 3);
-    models.fail.store(false, Ordering::SeqCst);
-    worker
-        .gather_pressure_step(
-            &fixture.session,
-            fixture.store.messages(&fixture.session)?.len(),
-            false,
-            None,
-        )
-        .await?;
-    assert_eq!(models.summaries.lock().unwrap().len(), 4);
-    assert_eq!(fixture.store.context_episodes(&fixture.session)?.len(), 1);
-    // A successful next coverage removes the suppression key entirely.
-    worker.trigger(&fixture.session, 0, 0);
-    wait(&worker, &fixture.session).await?;
-    assert!(fixture.store.context_episodes(&fixture.session)?.len() > 1);
-    assert!(fixture.store.context_view(&fixture.session)?.is_none());
-    Ok(())
-}
+#[path = "episode_worker/retry.rs"]
+mod retry;

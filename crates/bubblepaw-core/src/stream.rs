@@ -1,3 +1,19 @@
+pub(crate) fn bounded(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.into();
+    }
+    const MARKER: &str = "\n[tool result truncated]";
+    let room = max.saturating_sub(MARKER.len());
+    let mut end = room.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if max < MARKER.len() {
+        return MARKER[..max].into();
+    }
+    format!("{}{}", &text[..end], MARKER)
+}
+
 /// Emits complete paragraphs, keeping fenced code in one block. Provider deltas
 /// never become public events or stored conversation messages.
 #[derive(Default)]

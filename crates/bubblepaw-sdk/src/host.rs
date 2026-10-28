@@ -1,5 +1,6 @@
 //! The ordinary embedder wiring, and the host it builds.
 
+use crate::questions::{ChildQuestionAnswerError, PendingChildQuestion, QuestionTools};
 use anyhow::{Context, Result, ensure};
 use bubblepaw_core::{
     ContextPreparation, Harness, HarnessConfig, Provider, Store, Tool, ToolRegistry,
@@ -31,12 +32,72 @@ pub struct Host {
     /// A snapshot of the final registry the harness was built with, for hosts
     /// that also serve its tools outside a run (a gateway, tool listings).
     pub tools: ToolRegistry,
+    questions: Option<Arc<QuestionTools>>,
 }
 
 impl Host {
     /// The chat's latest todo list; empty when the model never set one.
     pub fn todo(&self, session_id: &str) -> Result<Vec<TodoItem>> {
         todo::list(&self.store, session_id)
+    }
+
+    /// Read a child's durable pending question, including when the question
+    /// service is disabled. Missing, archived and root sessions return `None`.
+    pub fn pending_child_question(&self, child: &str) -> Result<Option<PendingChildQuestion>> {
+        if !self
+            .store
+            .active_session_metadata(child)?
+            .is_some_and(|session| session.parent_session_id.is_some())
+        {
+            return Ok(None);
+        }
+        let Some(value) = self
+            .store
+            .host_state(child, "question")?
+            .filter(|value| value["status"] == "pending")
+        else {
+            return Ok(None);
+        };
+        let Some(parent) = value["parent_session_id"].as_str() else {
+            return Ok(None);
+        };
+        Ok(Some(PendingChildQuestion {
+            id: value["id"]
+                .as_str()
+                .context("question id is missing")?
+                .into(),
+            text: value["text"]
+                .as_str()
+                .context("question text is missing")?
+                .into(),
+            options: value["options"]
+                .as_array()
+                .map(|options| {
+                    options
+                        .iter()
+                        .filter_map(|value| value.as_str().map(str::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            asked_at: value["asked_at"].as_str().map(str::to_owned),
+            parent_session_id: parent.into(),
+        }))
+    }
+
+    /// Answer a direct child's pending question as the host user.
+    pub async fn answer_child_question(
+        &self,
+        parent: &str,
+        child: &str,
+        question_id: &str,
+        text: &str,
+    ) -> std::result::Result<(), ChildQuestionAnswerError> {
+        let questions = self.questions.as_ref().ok_or_else(|| {
+            ChildQuestionAnswerError::Internal(anyhow::anyhow!("Question service unavailable"))
+        })?;
+        questions
+            .answer_child_as_user(parent, child, question_id, text)
+            .await
     }
 }
 
@@ -52,6 +113,7 @@ pub struct HostBuilder {
     tools: Option<ToolRegistry>,
     history_tools: bool,
     todo: bool,
+    questions: Option<Arc<QuestionTools>>,
     code_mode: Option<PathBuf>,
     wrap: Option<Wrapper>,
     summary: Option<SummaryConfig>,
@@ -69,6 +131,7 @@ impl HostBuilder {
             tools: None,
             history_tools: false,
             todo: false,
+            questions: None,
             code_mode: None,
             wrap: None,
             summary: None,
@@ -103,6 +166,14 @@ impl HostBuilder {
         self
     }
 
+    /// Share a question service with the host and register its model tool.
+    /// Use the same store as this builder. Hosts with child orchestration should
+    /// also bind this service to their agent manager.
+    pub fn questions(mut self, questions: Arc<QuestionTools>) -> Self {
+        self.questions = Some(questions);
+        self
+    }
+
     /// Create the artifact store and the JavaScript adapter under
     /// `artifacts_dir`, and register the adapter.
     pub fn code_mode(mut self, artifacts_dir: impl Into<PathBuf>) -> Self {
@@ -110,7 +181,7 @@ impl HostBuilder {
         self
     }
 
-    /// Wrap every history, todo and code-mode host tool before it enters the registry.
+    /// Wrap every history, todo, question and code-mode host tool before registration.
     /// Shown-always status is applied after wrapping and is kept.
     pub fn wrap_support_tools(
         mut self,
@@ -161,6 +232,7 @@ impl HostBuilder {
             tools,
             history_tools,
             todo: todo_tool,
+            questions,
             code_mode,
             wrap,
             summary,
@@ -184,6 +256,11 @@ impl HostBuilder {
         }
         if todo_tool {
             todo::register(&mut support, store.clone()).context("cannot register the todo tool")?;
+        }
+        if let Some(questions) = &questions {
+            questions
+                .register(&mut support)
+                .context("cannot register the question tool")?;
         }
         let code_mode = match code_mode {
             Some(artifacts_dir) => {
@@ -250,12 +327,16 @@ impl HostBuilder {
 
         let tools = registry.clone();
         let harness = Arc::new(Harness::new(store.clone(), provider, registry, config));
+        if let Some(questions) = &questions {
+            questions.set_child_answer_harness(harness.clone())?;
+        }
         Ok(Host {
             harness,
             store,
             providers,
             code_mode,
             tools,
+            questions,
         })
     }
 }

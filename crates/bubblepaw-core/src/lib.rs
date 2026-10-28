@@ -22,11 +22,13 @@
 //! ```
 mod approvals;
 mod cache_accounting;
+mod context_facts;
 mod context_state;
 mod decision;
 mod discovery;
 mod dispatch;
 mod event_log;
+mod events;
 mod host_state;
 mod observation;
 mod output_schema;
@@ -59,6 +61,10 @@ pub use cache_accounting::{
     CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, RequestKind, WireShape,
     request_components,
 };
+pub use context_facts::{
+    ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextTrigger,
+    MessageTokenSource, MessageTokens, ReportedMessageTokens,
+};
 pub use context_state::{
     BuiltContext, CacheTiers, ContextBuild, ContextClassification, ContextState, ContextWriter,
     LegacyReminderSource, Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord,
@@ -71,6 +77,7 @@ pub use decision::{
 pub use discovery::{search_tool_definitions_with_servers, tool_definition_summary};
 pub use dispatch::ToolDispatcher;
 pub use event_log::{ClientInfo, EVENTS_AFTER_LIMIT, LogPosition, client_param};
+pub use events::{EventKind, HarnessEvent};
 pub use observation::{
     Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink, fingerprint,
 };
@@ -90,8 +97,9 @@ pub use reasoning::{
 };
 pub use request_size::prepared_request_bytes;
 pub use request_usage::{
-    RequestUsage, capture_request_usage, capture_request_usage_with_store, current_request_kind,
-    record_request_usage, request_usage_count, with_request_usage_account,
+    LastRequestUsage, RequestUsage, capture_request_usage, capture_request_usage_with_store,
+    current_request_kind, discard_request_usage_since, record_request_usage,
+    record_request_usage_with_output_presence, request_usage_count, with_request_usage_account,
     with_request_usage_provider,
 };
 pub use runtime::{
@@ -102,9 +110,9 @@ pub use runtime::{
 };
 pub use script::SCRIPT_MODEL;
 pub use store::{
-    CHECKPOINT_PREFIX, ChatOpenFailure, ChatOpenHook, CheckpointRecord, ContextChapter,
-    ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter, ContextView,
-    DecisionKind, EpisodeBatch, InputKind, LEGACY_IMPORT_BATCH, LegacyCheckpointNote,
+    CHECKPOINT_PREFIX, ChapterSection, ChatOpenFailure, ChatOpenHook, CheckpointRecord,
+    ContextChapter, ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter,
+    ContextView, DecisionKind, EpisodeBatch, InputKind, LEGACY_IMPORT_BATCH, LegacyCheckpointNote,
     LegacyImportReport, LegacyImportStatus, LegacyImportSummary, LegacySnapshot, QueuedInput,
     RelatedEvidence, RootStoragePolicy, SearchHit, SearchIndexProgress, SessionCleanup,
     SessionRecord, SessionSnapshot, StorageStats, Store, StoreOptions, SubjectChapterStatus,
@@ -398,15 +406,6 @@ pub struct ModelRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_tiers: Option<CacheTiers>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LastRequestUsage {
-    /// Whole-prompt input of the final physical request. None means that request omitted it.
-    pub input_tokens: Option<u64>,
-    /// Output of that same physical request, separate from cumulative continuations.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_tokens: Option<u64>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelResponse {
     pub text: String,
@@ -805,85 +804,6 @@ pub struct RunOptions {
     pub client: Option<ClientInfo>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HarnessEvent {
-    /// For a durable event its own log sequence; for a live one (`Paragraph`)
-    /// the sequence of the last durable event before it (docs/session-api.md).
-    pub sequence: u64,
-    #[serde(default = "durable_default")]
-    pub durable: bool,
-    /// The client whose command caused this event, when it named itself.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin: Option<ClientInfo>,
-    pub session_id: String,
-    pub run_id: String,
-    pub created_at: String,
-    #[serde(flatten)]
-    pub kind: EventKind,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum EventKind {
-    /// Small host-owned durable state. The engine does not interpret its value.
-    HostStateChanged {
-        key: String,
-        value: Value,
-    },
-    Output {
-        record: OutputRecord,
-    },
-    SessionSettled {},
-    RunStarted {
-        model: String,
-    },
-    RunWaitingForQuota {
-        wait: QuotaWait,
-    },
-    RunQuotaResumed {},
-    Paragraph {
-        text: String,
-    },
-    /// Transient boundary before each provider request, including correction retries.
-    /// Hosts can reset partial response capture without writing another history row.
-    ModelRequestStarted {},
-    /// Live progress: one text batch as the provider streams it. Never stored,
-    /// not part of `streaming_text`, and not counted in `live_seen`; the
-    /// paragraph events stay the reply's own view.
-    TextDelta {
-        text: String,
-    },
-    ToolStarted {
-        call: ToolCall,
-    },
-    ToolFinished {
-        call_id: String,
-        name: String,
-        result: ToolResult,
-    },
-    SteeringAccepted {
-        text: String,
-    },
-    FollowupQueued {
-        text: String,
-    },
-    RunFinished {
-        status: String,
-        text: Option<String>,
-        error: Option<String>,
-        usage: Option<Usage>,
-    },
-    ApprovalRequested {
-        approval: ApprovalRecord,
-    },
-    ApprovalResolved {
-        approval_id: String,
-        state: ApprovalState,
-        reason: Option<String>,
-    },
-}
-fn durable_default() -> bool {
-    true
-}
 pub(crate) fn now() -> String {
     chrono::Utc::now().to_rfc3339()
 }

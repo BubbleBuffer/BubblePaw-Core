@@ -10,7 +10,7 @@
 //!
 //! Everything reachable through the named modules ([`store`], [`harness`],
 //! [`events`], [`approvals`], [`tools`], [`providers`], [`context`],
-//! [`todo`], [`net`], [`web`], [`claude_code`]), plus [`Host`] and [`HostBuilder`],
+//! [`todo`], [`questions`], [`net`], [`web`], [`claude_code`]), plus [`Host`] and [`HostBuilder`],
 //! follows semantic versioning from 0.2.0: those paths keep working within a
 //! major release, and a breaking change is a version bump.
 //!
@@ -45,6 +45,7 @@ pub mod harness;
 mod host;
 pub mod net;
 pub mod providers;
+pub mod questions;
 pub mod store;
 pub mod todo;
 pub mod tools;

@@ -345,6 +345,8 @@ compact_threshold_tokens = 200000
 
 [context.lcm]
 summary_input = "fork"               # fork main Chat prefix; episode explicitly uses compact source
+episode_prompt = "v2"               # v2 | v3: v3 adds a gist line and an Actions: log
+chapter_prompt = "v1"               # v1 | v2: v2 adds decisions and sections
 decider_enabled = true              # false skips semantic chapter decisions; volume rollover remains available
 source_target_tokens = 24000
 source_max_tokens = 32000
@@ -481,6 +483,28 @@ the switch takes effect when the host starts. Examples:
 `BUBBLEPAW_CONTEXT__LCM__DECIDER_ENABLED=false`.
 Metered replay also skips decider price and credential preflight while disabled;
 its summary and chapter routes still require their normal credentials.
+
+`context.lcm.episode_prompt` selects the episode summary prompt: `v2` (default)
+or `v3`. Both use the same length target and limit. `v3` adds a one-sentence
+gist on line 2 and a required `Actions:` log immediately before `Open:`, one
+action per line (`- <Verb> <target>[ · <change>][ · <outcome>][ [<call-id>]][ ! <kind>: <reason>]`,
+with closed verb and kind sets, repo-relative paths and full IDs). The Actions
+rows replace the prose record of what was done, so a v3 summary is about as long
+as a v2 one. `bubblepaw_runner::episode_actions::parse_actions` parses that log
+into rows: several ` · ` outcomes are kept joined, Rewrote/Modified/Updated read
+as Edited, Wrote as Created and Executed as Ran, Listed as Read, and other malformed lines are
+skipped. `parse_gist` takes the first prose line after the title (skipping headings and
+lists, stopping at `Actions:`/`Open:`), without backticks, capped at 25 words. Chapter summaries, the store
+and the wire format are the same under either value. Like other LCM settings, it
+takes effect when the host starts: `--set context.lcm.episode_prompt=v3`. See the
+[episode prompt v3 comparison](lcm-episode-v3-comparison.md).
+
+`context.lcm.chapter_prompt` selects `v1` (default) or opt-in `v2` at host
+start, using the usual file, environment and CLI layering. v2 adds grounded
+decision lines and named, contiguous episode sections to closed chapter data;
+malformed blocks produce a warning and the ordinary chapter memory is retained
+without the new fields. The grammar and storage contract are in
+[LCM chapter synthesis](lcm-contract.md#gather).
 
 The approved [LCM contract](lcm-contract.md) treats
 `child_compact_threshold_tokens` as a child physical context cap, separately from

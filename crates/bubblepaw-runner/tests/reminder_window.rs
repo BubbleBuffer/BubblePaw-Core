@@ -260,6 +260,8 @@ fn disabled_automatic_summary_admission_keeps_existing_bypass_with_or_without_vi
         threshold: 20,
         budget: 20,
         tokens: 0,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     })?;
     context.validate_prepared_request(&session, &request, provider)?;
     Ok(())

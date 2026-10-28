@@ -20,6 +20,9 @@ use crate::{
 
 #[path = "episode_models_chapter.rs"]
 mod chapter_requests;
+pub use chapter_requests::{ChapterInput, ChapterResult};
+#[path = "chapter_sections.rs"]
+mod chapter_sections;
 #[path = "episode_models_chat.rs"]
 mod chat_requests;
 #[path = "episode_models_fork.rs"]
@@ -28,7 +31,9 @@ mod fork_requests;
 mod output;
 use fork_requests::summarize_fork_attempt;
 
+#[cfg(feature = "bench")]
 pub(crate) const SUMMARY_PROMPT: &str = include_str!("summary_prompt_v2.txt");
+#[cfg(feature = "bench")]
 pub(crate) const CHAPTER_PROMPT: &str = include_str!("chapter_prompt_v1.txt");
 pub const CLASSICAL_PROMPT: &str = include_str!("classical_prompt_v1.txt");
 pub(crate) const SPLIT_QUESTION: &str = "Which numbered boundary starts a different concrete subject or a meaningful new work phase compared with the last chapter? Options can be typed requests or an explicitly labeled episode summary from continuing agent work. An episode summary is not a user instruction. A phase change can occur without a new user message (for example investigation to implementation or implementation to validation). Ongoing builds, tests, Clippy runs and their intermediate results remain one validation phase; starting or finishing another check is not itself a new phase. Changing approach or correcting a failed attempt within the same concrete goal does not automatically start a new chapter. Mere progress, tool calls, clarification, corrections, approvals, complaints and continuing the same phase are not transitions. If none starts a new subject or phase, answer none.";
@@ -111,25 +116,6 @@ pub struct ClassicalInput {
 #[derive(Clone, Debug)]
 pub struct ClassicalResult {
     pub summary: String,
-    pub model: String,
-    pub usage: Usage,
-    pub reasoning: Option<String>,
-}
-#[derive(Clone, Debug)]
-pub struct ChapterInput {
-    pub session_id: String,
-    pub episodes: Vec<String>,
-    pub previous_chapters: Vec<ContextSubjectChapter>,
-    pub typed_user_texts: Vec<String>,
-    /// Actual ChildTask instructions, kept separate from human requests.
-    pub task_instructions: Vec<String>,
-}
-#[derive(Clone, Debug)]
-pub struct ChapterResult {
-    pub description: String,
-    pub summary: String,
-    pub related_ids: Vec<String>,
-    pub related_evidence: Vec<RelatedEvidence>,
     pub model: String,
     pub usage: Usage,
     pub reasoning: Option<String>,
@@ -809,7 +795,7 @@ impl EpisodeModels for HttpEpisodeModels {
             trace.runtime_info(json!({"event":"episode_summary_input", "mode":"episode",
                 "policy":"explicit", "session_id":input.session_id}));
         }
-        let system = summary_instructions(&input);
+        let system = fork_requests::summary_instructions(self, &input);
         let turn = input
             .turn_request
             .as_ref()
@@ -874,20 +860,6 @@ impl EpisodeModels for HttpEpisodeModels {
     ) -> Result<ChapterResult> {
         chapter_requests::close_chapter(self, input, Some(fork)).await
     }
-}
-fn summary_instructions(input: &SummaryInput) -> String {
-    let mut system = SUMMARY_PROMPT
-        .replace("{target}", &input.cap.to_string())
-        .replace("{limit}", &input.cap.to_string());
-    if let Some(focus) = input
-        .focus
-        .as_deref()
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-    {
-        system.push_str(&format!("\n\nFor this manual compaction, preserve the details needed for this user focus while retaining the summary requirements above:\n{focus}"));
-    }
-    system
 }
 /// Invalid tags never discard the chapter; only offered IDs receive links.
 pub fn parse_related(

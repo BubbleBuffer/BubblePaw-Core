@@ -9,16 +9,30 @@ use bubblepaw_core::{
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 use tokio::sync::{Notify, oneshot};
+
+#[path = "question_child.rs"]
+mod child;
+pub use child::ChildQuestionAnswerError;
+use child::validate_user_answer;
+
+#[path = "question_projection.rs"]
+mod projection;
 
 const KEY: &str = "question";
 const MAX_TEXT: usize = 16 * 1024;
 
+/// Older saved answers were supplied by the parent.
+pub fn answered_by(question: &Value) -> &str {
+    question["answered_by"].as_str().unwrap_or("parent")
+}
+
 /// `live` means the current tool invocation received the answer. Otherwise the
 /// host must admit a fresh turn containing `continuation_text()`; replaying the
 /// interrupted JS cell could repeat unrelated external effects.
+#[derive(Debug)]
 pub struct QuestionAnswer {
     pub question: Value,
     pub live: bool,
@@ -39,6 +53,8 @@ pub struct QuestionTools {
     wake: Arc<WakeCoordinator>,
     interactive: bool,
     waiters: Mutex<HashMap<String, (String, oneshot::Sender<Value>)>>,
+    agents: OnceLock<Weak<crate::agents::AgentTools>>,
+    child_answer_harness: OnceLock<Weak<Harness>>,
     pub(crate) changed: Notify,
 }
 impl QuestionTools {
@@ -48,6 +64,8 @@ impl QuestionTools {
             wake,
             interactive,
             waiters: Mutex::default(),
+            agents: OnceLock::new(),
+            child_answer_harness: OnceLock::new(),
             changed: Notify::new(),
         }
     }
@@ -68,12 +86,19 @@ impl QuestionTools {
         if value["status"] != "answered" {
             return Ok(None);
         }
-        let answer = self.answer(
-            harness,
-            session,
-            value["id"].as_str().unwrap_or_default(),
-            value["answer"].as_str().unwrap_or_default(),
-        )?;
+        let answer = if answered_by(&value) == "user" {
+            QuestionAnswer {
+                live: self.answered_is_live(session, &value)?,
+                question: value,
+            }
+        } else {
+            self.answer(
+                harness,
+                session,
+                value["id"].as_str().unwrap_or_default(),
+                value["answer"].as_str().unwrap_or_default(),
+            )?
+        };
         if !answer.live && answer_is_undelivered(&self.store, session, &answer)? {
             Ok(Some(answer))
         } else {
@@ -114,9 +139,18 @@ impl QuestionTools {
             if self.store.active_session_metadata(&session.id)?.is_none() {
                 continue;
             }
+            let _waiters = self
+                .waiters
+                .lock()
+                .map_err(|_| anyhow!("question waiters poisoned"))?;
             if let Some(question) = self.pending(&session.id)? {
                 self.publish_question(&session.id, &question);
                 count += 1;
+            } else if let Some(question) = self.store.host_state(&session.id, KEY)?
+                && question["status"] == "answered"
+                && answered_by(&question) == "user"
+            {
+                self.publish_user_answer_if_undelivered(&session.id, &question)?;
             }
         }
         Ok(count)
@@ -128,8 +162,20 @@ impl QuestionTools {
         question_id: &str,
         text: &str,
     ) -> Result<QuestionAnswer> {
-        ensure!(!text.trim().is_empty(), "answer must not be empty");
-        ensure!(text.len() <= MAX_TEXT, "answer exceeds 16 KiB");
+        self.answer_inner(harness, session, question_id, text, false)
+    }
+    fn answer_inner(
+        &self,
+        harness: &Harness,
+        session: &str,
+        question_id: &str,
+        text: &str,
+        as_user: bool,
+    ) -> Result<QuestionAnswer> {
+        if !as_user {
+            ensure!(!text.trim().is_empty(), "answer must not be empty");
+            ensure!(text.len() <= MAX_TEXT, "answer exceeds 16 KiB");
+        }
         let mut waiters = self
             .waiters
             .lock()
@@ -137,15 +183,18 @@ impl QuestionTools {
         let current = self
             .store
             .host_state(session, KEY)?
-            .ok_or_else(|| anyhow!("session has no pending question"))?;
-        ensure!(
-            current["id"].as_str() == Some(question_id),
-            "question id does not match pending question"
-        );
+            .ok_or(ChildQuestionAnswerError::NotFound)?;
+        if current["id"].as_str() != Some(question_id) {
+            return Err(ChildQuestionAnswerError::NotFound.into());
+        }
         let has_waiter = waiters
             .get(session)
             .is_some_and(|(id, sender)| id == question_id && !sender.is_closed());
-        if current["status"] == "answered" {
+        if !as_user && current["status"] == "answered" {
+            ensure!(
+                answered_by(&current) != "user",
+                "question was already answered by the user"
+            );
             ensure!(
                 current["answer"].as_str() == Some(text),
                 "question was already answered differently"
@@ -158,26 +207,42 @@ impl QuestionTools {
                 });
             }
         }
-        ensure!(
-            current["status"] == "pending" || current["status"] == "answered",
-            "question is no longer pending"
-        );
+        if !as_user && current["status"] != "pending" && current["status"] != "answered" {
+            return Err(ChildQuestionAnswerError::Conflict.into());
+        }
         let run = current["run_id"].as_str().unwrap_or_default();
-        let mut question = if current["status"] == "answered" {
+        let mut question = if !as_user && current["status"] == "answered" {
             current.clone()
         } else {
-            self.store.update_host_state(session, run, KEY, |value| {
-                let mut value = value.ok_or_else(|| anyhow!("question disappeared"))?;
-                ensure!(
-                    value["id"].as_str() == Some(question_id) && value["status"] == "pending",
-                    "question is no longer pending"
-                );
+            self.update_question(session, run, "child_question_answer", |value| {
+                if as_user {
+                    validate_user_answer(value.as_ref(), question_id, text)?;
+                }
+                let mut value = value.ok_or(ChildQuestionAnswerError::NotFound)?;
+                if value["id"].as_str() != Some(question_id) {
+                    return Err(ChildQuestionAnswerError::NotFound.into());
+                }
+                if value["status"] != "pending" {
+                    return Err(ChildQuestionAnswerError::Conflict.into());
+                }
+                if text.trim().is_empty() || text.len() > MAX_TEXT {
+                    return Err(ChildQuestionAnswerError::Invalid.into());
+                }
                 value["status"] = json!("answered");
                 value["answer"] = json!(text);
+                value["answered_by"] = json!(if as_user { "user" } else { "parent" });
                 value["delivery"] = json!(if has_waiter { "live" } else { "continuation" });
                 Ok(value)
             })?
         };
+        // Replace the parent's waiting notice while the question mutex still
+        // excludes publication by ask. Both parent and child clients can watch
+        // the existing durable host-state event shape.
+        if as_user {
+            self.publish_user_answer(session, &question)?;
+        } else {
+            self.publish_answer_projection(session, &question)?;
+        }
         if has_waiter {
             let answer = QuestionAnswer {
                 question: question.clone(),
@@ -208,8 +273,10 @@ impl QuestionTools {
                 Ok(value)
             })?;
         }
+        if !as_user {
+            self.remove_notice(session, &question);
+        }
         drop(waiters);
-        self.remove_notice(session, &question);
         Ok(QuestionAnswer { question, live })
     }
     fn answered_is_live(&self, session: &str, question: &Value) -> Result<bool> {
@@ -229,7 +296,7 @@ impl QuestionTools {
         };
         let run = current["run_id"].as_str().unwrap_or_default();
         let id = current["id"].clone();
-        let cancelled = self.store.update_host_state(session, run, KEY, |value| {
+        let cancelled = self.update_question(session, run, "child_question", |value| {
             let mut value = value.ok_or_else(|| anyhow!("question disappeared"))?;
             ensure!(
                 value["id"] == id && value["status"] == "pending",
@@ -257,11 +324,12 @@ impl QuestionTools {
         if let Some(parent) = question["parent_session_id"].as_str() {
             let id = question["id"].as_str().unwrap_or_default();
             let text = format!(
-                "Child {} is waiting_for_answer. Question: {}\nOptions: {}\nAnswer using tools.agent_send({{sessionId:{},text:<answer>}}).",
+                "Child {} is waiting_for_answer. Question: {}\nOptions: {}\nAnswer using tools.agent_send({{sessionId:{},question_id:{},text:<answer>}}).",
                 session,
                 question["text"].as_str().unwrap_or_default(),
                 question["options"],
-                json!(session)
+                json!(session),
+                json!(id)
             );
             let reminder =
                 bubblepaw_core::Reminder::new(format!("question_waiting:{session}:{id}"), text)
@@ -309,7 +377,7 @@ impl QuestionTools {
             return Ok(ToolResult::text(json!({"status":"no_user_available","reason":"No user is available in this unattended host."}).to_string()));
         }
         let id = uuid::Uuid::new_v4().to_string();
-        let question = json!({"id":id,"status":"pending","text":text,"options":input.get("options"),"run_id":context.run_id,"parent_session_id":parent});
+        let question = json!({"id":id,"status":"pending","text":text,"options":input.get("options"),"run_id":context.run_id,"parent_session_id":parent,"asked_at":chrono::Utc::now().to_rfc3339()});
         let receiver = {
             let mut waiters = self
                 .waiters
@@ -331,19 +399,23 @@ impl QuestionTools {
                     "the previous answered question still awaits continuation admission"
                 );
             }
-            self.store
-                .update_host_state(&context.session_id, &context.run_id, KEY, |value| {
+            self.update_question(
+                &context.session_id,
+                &context.run_id,
+                "child_question",
+                |value| {
                     ensure!(
                         !value.is_some_and(|value| value["status"] == "pending"),
                         "session already has a pending question"
                     );
                     Ok(question.clone())
-                })?;
+                },
+            )?;
             let (sender, receiver) = oneshot::channel();
             waiters.insert(context.session_id.clone(), (id.clone(), sender));
+            self.publish_question(&context.session_id, &question);
             receiver
         };
-        self.publish_question(&context.session_id, &question);
         self.changed.notify_waiters();
         let answer = tokio::select! {
             answer = receiver => answer.map_err(|_| anyhow!("question waiter closed"))?,

@@ -120,11 +120,37 @@ impl EpisodeWorker {
             "Chapter summarization returned no memory after its retrieval label"
         );
         chapter.summary = Some(format!("{label}\n{summary}"));
+        chapter.decisions = result.decisions;
+        chapter.sections = result.sections;
         chapter.related_ids = result.related_ids;
         chapter.related_evidence = result.related_evidence;
         chapter.model = Some(result.model);
         chapter.usage = Some(result.usage);
         chapter.reasoning = result.reasoning;
         Ok(chapter)
+    }
+}
+
+pub(super) fn new_open_chapter(
+    session: &str,
+    chapter_ordinal: usize,
+    episode_ordinal: usize,
+) -> ContextSubjectChapter {
+    ContextSubjectChapter {
+        id: new_id(),
+        session_id: session.into(),
+        ordinal: chapter_ordinal,
+        first_episode_ordinal: episode_ordinal,
+        last_episode_ordinal: episode_ordinal,
+        status: SubjectChapterStatus::Open,
+        description: None,
+        summary: None,
+        related_ids: Vec::new(),
+        related_evidence: Vec::new(),
+        decisions: None,
+        sections: None,
+        model: None,
+        usage: None,
+        reasoning: None,
     }
 }

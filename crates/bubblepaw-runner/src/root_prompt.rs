@@ -3,6 +3,10 @@
 //! `root_access_line`), so a read-only toggle reaches this prompt.
 use bubblepaw_core::ExecutionMode;
 
+#[path = "root_prompt_scratch.rs"]
+mod scratch;
+pub use scratch::configure_scratchpads;
+
 pub fn root_system_prompt(
     workspace: &std::path::Path,
     instructions: Option<&str>,
@@ -14,7 +18,11 @@ pub fn root_system_prompt(
 ",
             "- Put independent reads, searches and checks together as multiple tool calls in one message. Take another turn only when a result decides the next step.
 ",
-            "- Search for exact identifiers first, then read the relevant files in large ranges.
+            "- Use the file tools to read, search and edit. Search for exact identifiers first, then read the relevant files in large ranges.
+",
+            "- Use argv for single programs: exec({command:{parts:[\"python \",\"\"],values:[\"script.py\"]}}). Use command strings for pipes, redirects and && chains.
+",
+            "- Write code to a scratchpad file and run it in the same batch; no python -c, node -e or inline PowerShell. Run PowerShell only as powershell -NoProfile -File <file> through argv.
 ",
             "- Make changes with edit (write for new files), then run the relevant tests or checks with exec and read their exit codes. Use wait for long commands.
 ",
@@ -30,7 +38,11 @@ pub fn root_system_prompt(
 ",
         "- Do independent reads, searches and checks together in one cell. Take another turn only when a result decides the next step.
 ",
-        "- Search for exact identifiers first, then read the relevant files in large ranges.
+        "- Use the file tools to read, search and edit. Search for exact identifiers first, then read the relevant files in large ranges.
+",
+        "- Use argv for single programs: await tools.exec({command:{parts:[\"python \",\"\"],values:[\"script.py\"]}}). Use command strings for pipes, redirects and && chains.
+",
+        "- Write code to a scratchpad file and run it in the same batch; no python -c, node -e or inline PowerShell. Run PowerShell only as powershell -NoProfile -File <file> through argv.
 ",
         "- Make changes with tools.edit, then run the relevant tests or checks and read their exit codes.
 ",
@@ -44,10 +56,6 @@ pub fn root_system_prompt(
         "Execution environment: OS={}, workspace={}, raw command shell={}. {instructions}",
         std::env::consts::OS,
         workspace.display(),
-        if cfg!(windows) {
-            "powershell.exe"
-        } else {
-            "sh"
-        },
+        crate::command_template::shell_name(),
     )
 }

@@ -211,6 +211,8 @@ fn imported_summary_seeds_coverage_without_inventing_outcomes_or_copying_summary
         threshold: 10000,
         budget: 5000,
         tokens: 100,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     };
     store.save_context_view(&view)?;
     store.flush_serving()?;

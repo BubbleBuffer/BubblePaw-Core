@@ -1,3 +1,7 @@
+#[cfg(windows)]
+#[path = "support/windows_command.rs"]
+mod windows_command;
+
 use bubblepaw_core::{Harness, HarnessConfig, Role, RunOptions, Store, ToolCall, ToolRegistry};
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -9,7 +13,7 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 
 #[cfg(windows)]
-const SLEEP: &str = "Start-Sleep -Seconds 30";
+const SLEEP: &str = "ping -n 31 127.0.0.1 >nul";
 #[cfg(not(windows))]
 const SLEEP: &str = "sleep 30";
 
@@ -48,7 +52,11 @@ async fn shared_dispatch_preserves_json_cursors_and_escaped_reads() {
     );
     repl.register(&mut tools).unwrap();
     #[cfg(windows)]
-    let command = "[Console]::Out.Write((([string][char]0) * 180000)); [Console]::Error.Write((([string][char]0) * 180000))";
+    let command = windows_command::powershell_file(
+        root.path(),
+        "nul-output.ps1",
+        "[Console]::Out.Write((([string][char]0) * 180000)); [Console]::Error.Write((([string][char]0) * 180000))",
+    );
     #[cfg(not(windows))]
     let command = "head -c 180000 /dev/zero; head -c 180000 /dev/zero >&2";
     let code = format!(
@@ -123,7 +131,7 @@ async fn js_exec_keeps_full_host_object_and_returns_only_exit_code() {
     );
     repl.register(&mut tools).unwrap();
     #[cfg(windows)]
-    let command = "[Console]::Out.Write([IO.File]::ReadAllText('stdout.txt')); [Console]::Error.Write([IO.File]::ReadAllText('stderr.txt'))";
+    let command = "type stdout.txt& type stderr.txt>&2";
     #[cfg(not(windows))]
     let command = "cat stdout.txt; cat stderr.txt >&2";
     let code = format!(

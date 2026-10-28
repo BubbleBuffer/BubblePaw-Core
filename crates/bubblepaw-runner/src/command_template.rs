@@ -40,7 +40,7 @@ impl PreparedCommand {
 }
 
 pub fn shell_name() -> &'static str {
-    if cfg!(windows) { "powershell" } else { "sh" }
+    if cfg!(windows) { "cmd.exe" } else { "sh" }
 }
 
 /// Validate before starting any effects. In v0 every interpolation is a whole
@@ -120,14 +120,11 @@ pub fn prepare(command: &Value) -> Result<PreparedCommand> {
     let executable = argv.remove(0);
     #[cfg(windows)]
     reject_windows_non_native(&executable)?;
-    let mut rendered = std::iter::once(&executable)
+    let rendered = std::iter::once(&executable)
         .chain(argv.iter())
         .map(|v| quote_display(v))
         .collect::<Vec<_>>()
         .join(" ");
-    if cfg!(windows) {
-        rendered.insert_str(0, "& ");
-    }
     Ok(PreparedCommand {
         original: command.clone(),
         rendered,
@@ -200,7 +197,7 @@ fn reject_windows_non_native(executable: &str) -> Result<()> {
 
 fn quote_display(value: &str) -> String {
     if cfg!(windows) {
-        format!("'{}'", value.replace('\'', "''"))
+        format!("\"{}\"", value.replace('"', "\\\""))
     } else {
         format!("'{}'", value.replace('\'', "'\"'\"'"))
     }

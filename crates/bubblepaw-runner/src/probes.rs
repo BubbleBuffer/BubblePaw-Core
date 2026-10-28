@@ -102,27 +102,9 @@ pub struct PlanCheckpoint {
     pub arm_frontiers: BTreeMap<String, Value>,
 }
 pub const STRATEGIES: [&str; 2] = ["lcm", "classical"];
-pub fn fingerprint<T: Serialize>(value: &T) -> Result<String> {
-    Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(value)?)))
-}
-pub fn strategy_signature() -> String {
-    // Pin the existing policies and prompts; the planner never modifies them.
-    format!(
-        "{:x}",
-        Sha256::digest(concat!(
-            include_str!("context_strategies.rs"),
-            include_str!("summarization.rs"),
-            include_str!("episode_worker.rs"),
-            include_str!("episodes.rs"),
-            include_str!("episode_models.rs"),
-            include_str!("episode_fork.rs"),
-            include_str!("history_snapshot.rs"),
-            include_str!("summary_prompt_v2.txt"),
-            include_str!("chapter_prompt_v1.txt"),
-            include_str!("classical_prompt_v1.txt")
-        ))
-    )
-}
+#[path = "probes_signature.rs"]
+mod signature;
+pub use signature::{fingerprint, strategy_signature};
 pub fn save_plan(path: &Path, plan: &ProbePlan) -> Result<String> {
     let digest = fingerprint(plan)?;
     std::fs::write(

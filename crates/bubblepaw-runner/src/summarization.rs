@@ -1,39 +1,49 @@
 //! Immutable context chapters are a disposable model view over the unchanged archive.
+#[cfg(test)]
+use crate::context_strategies::{ContextSummaryStrategy, LcmStrategy, SummaryPrefixInput};
 use crate::context_strategies::{
-    ContextSummaryStrategy, LcmStrategy, STRATEGY_RETRIEVAL_INSTRUCTION, SummaryPrefixInput,
-    TYPED_USER_TOKENS, complete_prefix_end, typed_user_block_with_budget,
+    STRATEGY_RETRIEVAL_INSTRUCTION, TYPED_USER_TOKENS, complete_prefix_end,
+    typed_user_block_with_budget,
 };
 use crate::history_snapshot::HistorySnapshot;
 use crate::{episode_worker::EpisodeWorker, runtime_note::RuntimeNotes};
 use anyhow::{Context, Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, ContextChapter, ContextCheckpoint, ContextEpisode, ContextPreparation,
-    ContextStrategy, ContextSubjectChapter, ContextView, ContextWriter, Message, ModelRequest,
+    CancellationToken, ContextBlock, ContextBlockKind, ContextChapter, ContextCheckpoint,
+    ContextEpisode, ContextEvent, ContextEventKind, ContextPreparation, ContextStrategy,
+    ContextSubjectChapter, ContextTrigger, ContextView, ContextWriter, Message, ModelRequest,
     ModelResponse, PrepareCall, PrepareMode, PreparedContext, Provider, Role, Store,
     SubjectChapterStatus, is_typed_user,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, Weak},
     time::Duration,
 };
-use tiktoken_rs::{CoreBPE, bpe_for_tokenizer, tokenizer::Tokenizer};
+use tiktoken_rs::CoreBPE;
 
 #[path = "episode_fork.rs"]
 mod episode_fork;
 #[path = "summarization_context.rs"]
 mod summarization_context;
+#[path = "summarization_episode_prefix.rs"]
+mod summarization_episode_prefix;
+#[path = "summarization_facts.rs"]
+mod summarization_facts;
 #[path = "summarization_hook.rs"]
 mod summarization_hook;
+#[path = "summarization_tokens.rs"]
+mod summarization_tokens;
 #[path = "summarization_view.rs"]
 mod summarization_view;
 #[cfg(test)]
 use summarization_hook::{built_after_prepare, has_inventory, prepare_main};
+pub use summarization_tokens::canonical_message_tokens;
+use summarization_tokens::{TokenCache, message_fingerprint};
 
 /// Gather and serving allocations are token targets, independent of agent lifetime.
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -156,90 +166,6 @@ struct Meter {
     rendered_input: bool,
     anchor: Option<(usize, usize)>,
 }
-#[derive(Default)]
-struct TokenCache {
-    counts: HashMap<[u8; 32], usize>,
-    order: VecDeque<[u8; 32]>,
-    #[cfg(test)]
-    computations: usize,
-}
-
-// Count by message contents, including rendered context messages whose generated
-// IDs can change on every preparation. Bound disposable entries in a long-lived host.
-impl TokenCache {
-    fn insert(&mut self, key: [u8; 32], count: usize) {
-        const CAPACITY: usize = 65_536;
-        if self.counts.insert(key, count).is_none() {
-            self.order.push_back(key);
-        }
-        while self.order.len() > CAPACITY {
-            if let Some(oldest) = self.order.pop_front() {
-                self.counts.remove(&oldest);
-            }
-        }
-    }
-}
-
-fn hash_text(hasher: &mut Sha256, text: &str) {
-    hasher.update((text.len() as u64).to_le_bytes());
-    hasher.update(text.as_bytes());
-}
-
-fn hash_value(hasher: &mut Sha256, value: &Value) {
-    match value {
-        Value::Null => hasher.update([0]),
-        Value::Bool(value) => hasher.update([1, u8::from(*value)]),
-        Value::Number(value) => {
-            hasher.update([2]);
-            hash_text(hasher, &value.to_string());
-        }
-        Value::String(value) => {
-            hasher.update([3]);
-            hash_text(hasher, value);
-        }
-        Value::Array(values) => {
-            hasher.update([4]);
-            hasher.update((values.len() as u64).to_le_bytes());
-            for value in values {
-                hash_value(hasher, value);
-            }
-        }
-        Value::Object(values) => {
-            hasher.update([5]);
-            hasher.update((values.len() as u64).to_le_bytes());
-            for (name, value) in values {
-                hash_text(hasher, name);
-                hash_value(hasher, value);
-            }
-        }
-    }
-}
-
-fn message_fingerprint(message: &Message) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update([match message.role {
-        Role::System => 0,
-        Role::User => 1,
-        Role::Assistant => 2,
-        Role::Tool => 3,
-    }]);
-    hash_text(&mut hasher, &message.content);
-    hasher.update((message.tool_calls.len() as u64).to_le_bytes());
-    for call in &message.tool_calls {
-        hash_text(&mut hasher, &call.id);
-        hash_text(&mut hasher, &call.name);
-        hash_value(&mut hasher, &call.arguments);
-    }
-    hasher.update([u8::from(message.tool_call_id.is_some())]);
-    if let Some(id) = &message.tool_call_id {
-        hash_text(&mut hasher, id);
-    }
-    hasher.update([u8::from(message.provider_state.is_some())]);
-    if let Some(state) = &message.provider_state {
-        hash_value(&mut hasher, state);
-    }
-    hasher.finalize().into()
-}
 #[derive(Clone)]
 pub struct SummarizingContext {
     store: Store,
@@ -280,7 +206,7 @@ impl SummarizingContext {
             worker: Arc::new(Mutex::new(Weak::new())),
             config,
             notes,
-            tokenizer: bpe_for_tokenizer(Tokenizer::O200kBase)?,
+            tokenizer: crate::episodes::token_encoder(),
             meters: Arc::default(),
             captures: Arc::default(),
             token_cache: Arc::default(),
@@ -394,30 +320,7 @@ impl SummarizingContext {
         count
     }
     fn uncached_message_tokens(&self, message: &Message) -> usize {
-        // The Responses adapter replays wire items instead of duplicating assistant text/calls.
-        // Encrypted reasoning is opaque: provider usage calibrates the estimate after a request.
-        let body = if let Some(state) = &message.provider_state
-            && state["adapter"] == "responses"
-            && state["items"].is_array()
-        {
-            let mut items = json!(
-                crate::provider::replay_state::hydrate(
-                    state,
-                    &message.content,
-                    &message.tool_calls
-                )
-                .unwrap_or_else(|_| state["items"].as_array().unwrap().clone())
-            );
-            for item in items.as_array_mut().unwrap() {
-                if let Some(object) = item.as_object_mut() {
-                    object.remove("encrypted_content");
-                }
-            }
-            items.to_string()
-        } else {
-            json!({"role":message.role,"content":message.content,"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id}).to_string()
-        };
-        self.tokens(&body) + 4
+        canonical_message_tokens(message)
     }
     /// Source cadence includes readable reasoning produced by native models,
     /// even when a later serving policy no longer replays that older state.
@@ -1027,6 +930,8 @@ impl SummarizingContext {
             });
         }
         let before = self.register_request(session, &request, checkpoint.as_ref(), &chapters)?;
+        let input_before = self.estimated_tokens(&request);
+        let bytes_before = bubblepaw_core::prepared_request_bytes(&request)?;
         if !manual
             && pressure.is_none()
             && before <= config.threshold()
@@ -1268,7 +1173,36 @@ impl SummarizingContext {
             !cancellation.is_cancelled(),
             "Context summarization cancelled"
         );
-        self.store.save_context_view(&selected)?;
+        self.finish_view_blocks(&mut selected, &request);
+        let trigger_text = if manual {
+            "User asked to compact".into()
+        } else if bytes_before > config.max_request_bytes {
+            format!(
+                "Input reached {bytes_before} bytes, cap {}",
+                config.max_request_bytes
+            )
+        } else {
+            let measurement = if before > input_before {
+                "Calibrated input"
+            } else {
+                "Input"
+            };
+            format!(
+                "{measurement} reached {before} tokens, cap {}",
+                config.threshold()
+            )
+        };
+        let event = self.applied_event(
+            session,
+            &snapshot,
+            &selected,
+            &legacy,
+            input_before,
+            after,
+            trigger_text,
+            manual,
+        )?;
+        self.store.save_context_view_with_event(&selected, &event)?;
         self.mark_prefix_change(session, "lcm_apply");
         self.register_request(session, &request, checkpoint.as_ref(), &chapters)?;
         Ok(PreparedContext {

@@ -35,6 +35,8 @@ async fn worker_history_rounds_keep_long_answer_and_leave_source_view_unchanged(
         threshold: 1000,
         budget: 500,
         tokens: 100,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     })?;
     let before = serde_json::to_value(store.snapshot(&session.id, 100, 100, 100)?)?;
     let before_view = serde_json::to_value(store.context_view(&session.id)?)?;

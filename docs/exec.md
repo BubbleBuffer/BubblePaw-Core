@@ -1,11 +1,36 @@
 # Command execution: sync and background jobs
 
-**Status:** built 2026-10-13; idle completion wake and Windows exec ownership added 2026-10-14, design approved 2026-10-13. Scripted and local
+**Status:** cmd shell and scratchpads added 2026-10-28; built 2026-10-13; idle completion wake and Windows exec ownership added 2026-10-14, design approved 2026-10-13. Scripted and local
 acceptance only; no live model acceptance.
 
 Commands are the native capability `tools.exec` in `crates/bubblepaw-runner/src/tools/process.rs`,
-reached through the `js` model tool. A "job" is the existing `process:<uuid>` handle, routed by
+exposed directly in native mode or through the optional `js` model tool. A "job" is the existing `process:<uuid>` handle, routed by
 `tools.poll`, `tools.jobs`, `tools.cancel` and the `wait` helper. There is no second job system.
+
+## Direct programs and shell commands
+
+Use argv for a single program. The command object spawns the executable directly,
+without a shell. Literal parts contain the program and plain arguments; values
+occupy complete arguments, including paths with spaces.
+
+```json
+{"command":{"parts":["python ",""],"values":["script.py"]},"workdir":"<absolute chat scratchpad>"}
+```
+
+Use string commands for pipes, redirects and `&&` chains. Every Windows embedder
+runs them as `cmd.exe /d /s /c <command>`; Unix uses `sh -c`. There is no per-call
+shell option. Shell parsing applies to string commands, including cmd's early
+`%VAR%` expansion within a command line. No delayed expansion is enabled.
+
+Use the file tools to read, search and edit. Write code to a scratchpad file and
+run it in the same batch. Do not use `python -c`, `node -e` or inline PowerShell.
+Run PowerShell as an ordinary argv program: `powershell -NoProfile -File <file>`.
+
+The prompt gives absolute chat and project scratchpad paths. Both are accepted
+as `cwd`/`workdir`; paths through a scratchpad cannot escape it using `..`, a
+symlink or a Windows junction. Children share the root chat's scratchpad and
+work in a subfolder named after their own chat ID. See [file tools](file-tools.md)
+and [storage](storage-model.md#scratchpads-2026-10-28).
 
 ## Model-facing behaviour
 
@@ -31,8 +56,8 @@ reached through the `js` model tool. A "job" is the existing `process:<uuid>` ha
   immediately. Use `wait({handle})` for a completion wait, then inspect output
   with `poll`. Ordinary steering stays queued; explicit background and
   cancellation controls remain available.
-- **Directory note.** Each exec starts in its project dir (or `cwd`), so a `cd` does not carry over. When a shell command ends in another directory, its result (the sync result, or the final `wait`/`poll`) gets `note: "Working directory reset to <start dir>; each exec starts there. Pass `cwd` to run elsewhere."`. POSIX uses an exit trap with final `pwd -P`; Windows PowerShell uses `try/finally` with the final FileSystem provider location. Both write a spool marker only when the final folder differs from the start folder. The Windows wrapper saves the command's success status before marker housekeeping and preserves explicit `exit` codes, stdout, stderr and command error text. `powershell.exe -NoProfile -NonInteractive -Command` remains the default Windows shell: a final failed native command maps to exit 1 unless the script explicitly uses `exit $LASTEXITCODE`. Killed shells, POSIX `exec` replacement or a user replacement EXIT trap, native argv commands and hosts without a spool directory get no note.
-- The JS tool reference text describes all of this (`js_reference` in `codemode.rs`).
+- **Directory note.** Each exec starts in its workspace or explicit `cwd`/`workdir`; a `cd` does not carry over. If a shell finishes in another directory, its sync result or final `wait`/`poll` includes a note naming the starting directory and advising an explicit `cwd`. POSIX uses an exit trap with `pwd -P`. Windows captures the exit code with CALL second expansion, then a nested `cmd.exe /d /u /c cd` writes the final directory in UTF-16LE. The directory is never expanded into CALL source; a private environment variable carries the marker path, and a per-invocation variable carries the original exit code. Marker handling preserves that code and ordinary stdout/stderr, then removes the consumed marker before publishing completion. Explicit cmd `exit`/`exit /b`, user control flow or comments that bypass the suffix, killed shells, POSIX `exec` or a replaced EXIT trap, native argv and hosts without a spool get no cwd note. An explicit exit still preserves its requested exit code.
+- The JS tool reference text describes all of this (`js_reference` in `codemode_reference.rs`).
 
 ## User backgrounding
 
@@ -171,6 +196,15 @@ hard timeout and natural shell exit, preserved Windows exit codes and error text
 idle/busy delivery, restart notice recovery and concurrent steering/completion;
 `web_wake.rs` verifies automatic turns through HTTP/SSE, and `wake_storage.rs`
 bounds SQLite writes while exec output and model fragments stream.
+
+Windows acceptance on 2026-10-28 used `cargo xwin test --no-run` on a Linux host
+for `x86_64-pc-windows-msvc`, then ran the CI job's selected tests serially on a
+Windows 11 VM: 63 passed, none failed or ignored. The GitHub-hosted Windows job
+remains enabled but could not start because of the Actions budget.
+Copy `bubblepaw.exe` and `bubblepaw-argv-probe.exe` beside the test executables
+when moving them to another host. The argv test uses the built native fixture;
+the test host needs no Rust compiler. This is scripted acceptance, not a live
+model run.
 
 ## Defaults and argument leniency (2026-10-20)
 

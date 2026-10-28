@@ -1,6 +1,6 @@
 //! Qualified `provider/model` routes share one harness provider; unqualified models use the default.
 //! Explicit missing prefixes fail at dispatch instead of falling back.
-use super::{RetryPolicy, retry::add_usage, with_retry};
+use super::{RetryPolicy, metering::record_model_result, retry::add_usage, with_retry};
 use anyhow::{Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -664,6 +664,11 @@ impl ProviderRegistry {
                     if bubblepaw_core::request_usage_count() == before {
                         record_model_result(record, &result);
                     }
+                    if result.is_err()
+                        && let Some(start) = before
+                    {
+                        bubblepaw_core::discard_request_usage_since(start);
+                    }
                     result
                 }
             };
@@ -814,22 +819,6 @@ fn failed_decision_usage(error: &anyhow::Error) -> Option<DecisionUsage> {
             .map(DecisionUsage::from)
     })
 }
-fn record_model_result(mut record: RequestUsage, result: &Result<ModelResponse>) {
-    record.failed = result.is_err();
-    record.usage = result
-        .as_ref()
-        .ok()
-        .and_then(|response| response.usage.clone())
-        .or_else(|| {
-            result
-                .as_ref()
-                .err()
-                .and_then(ProviderError::of)
-                .and_then(|error| error.usage.clone())
-        })
-        .unwrap_or_default();
-    bubblepaw_core::record_request_usage(record);
-}
 fn with_usage(error: anyhow::Error, usage: Option<&Usage>, published: bool) -> anyhow::Error {
     if usage.is_none() && !published {
         return error;
@@ -940,6 +929,11 @@ impl Provider for ProviderRegistry {
                                     .await;
                                     if bubblepaw_core::request_usage_count() == before {
                                         record_model_result(record, &response);
+                                    }
+                                    if response.is_err()
+                                        && let Some(start) = before
+                                    {
+                                        bubblepaw_core::discard_request_usage_since(start);
                                     }
                                     response
                                 }

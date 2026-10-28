@@ -13,7 +13,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 
 const SLEEP: &str = if cfg!(windows) {
-    "Start-Sleep -Seconds 30"
+    "ping -n 31 127.0.0.1 >nul"
 } else {
     "sleep 30"
 };

@@ -28,6 +28,9 @@ use tokio::{
 
 #[path = "web_wake/providers.rs"]
 mod providers;
+#[cfg(windows)]
+#[path = "support/windows_command.rs"]
+mod windows_command;
 use providers::{ChildProvider, ParentProvider};
 
 struct Fixture {
@@ -343,11 +346,15 @@ async fn idle_background_exec_completion_uses_the_existing_sse_and_generated_not
         .post("run", json!({"text":"Explicit first request"}))
         .await?;
     parent_run(&mut events, &fixture.parent).await?;
-    let command = if cfg!(windows) {
-        "while (!(Test-Path release-exec)) { Start-Sleep -Milliseconds 10 }; [Console]::Out.Write('synthetic command output')"
-    } else {
-        "while [ ! -e release-exec ]; do sleep 0.01; done; printf 'synthetic command output'"
-    };
+    #[cfg(windows)]
+    let command = windows_command::powershell_file(
+        fixture.directory.path(),
+        "wait-release.ps1",
+        "while (!(Test-Path release-exec)) { Start-Sleep -Milliseconds 10 }; [Console]::Out.Write('synthetic command output')",
+    );
+    #[cfg(not(windows))]
+    let command =
+        "while [ ! -e release-exec ]; do sleep 0.01; done; printf 'synthetic command output'";
     let result = fixture
         .exec
         .invoke(

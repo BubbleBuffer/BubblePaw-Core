@@ -67,6 +67,8 @@ async fn legacy_view_serves_its_frozen_system_prompt_and_prefix_unchanged() -> R
         threshold: 100000,
         budget: 50000,
         tokens: 0,
+        blocks: Vec::new(),
+        blocks_estimated: false,
     };
     store.save_context_view(&view)?;
     let mut later = old.clone();

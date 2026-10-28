@@ -319,7 +319,7 @@ async fn timeout_returns_current_unfinished_stream_without_archiving_partial_mes
 #[tokio::test]
 async fn timeout_cleans_child_commands_and_js_and_returns_last_partial_answer() -> Result<()> {
     #[cfg(windows)]
-    let command = "Start-Sleep -Seconds 30";
+    let command = "ping -n 31 127.0.0.1 >nul";
     #[cfg(not(windows))]
     let command = "sleep 30";
     let code = format!(

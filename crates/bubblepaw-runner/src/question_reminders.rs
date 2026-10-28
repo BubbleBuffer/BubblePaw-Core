@@ -24,6 +24,35 @@ impl QuestionAnswer {
     }
 }
 impl QuestionTools {
+    pub(super) fn publish_user_answer(&self, session: &str, question: &Value) -> Result<()> {
+        self.publish_answer_projection(session, question)?;
+        if let Some(parent) = question["parent_session_id"].as_str() {
+            let id = question["id"].as_str().unwrap_or_default();
+            self.wake.publish_reminder_required(
+                parent,
+                notice_key(session, id),
+                user_answer_reminder(session, question),
+            );
+        }
+        Ok(())
+    }
+    pub(super) fn publish_user_answer_if_undelivered(
+        &self,
+        session: &str,
+        question: &Value,
+    ) -> Result<()> {
+        if let Some(parent) = question["parent_session_id"].as_str()
+            && !crate::wake::undelivered_markers(
+                &self.store,
+                parent,
+                [user_answer_marker(session, question)],
+            )?
+            .is_empty()
+        {
+            self.publish_user_answer(session, question)?;
+        }
+        Ok(())
+    }
     pub(super) fn take_reminders(&self, session: &str) -> Vec<bubblepaw_core::Reminder> {
         let mut reminders = self.wake.take_reminders(session, "question:");
         match self.unrecorded_answer(session) {
@@ -35,6 +64,37 @@ impl QuestionTools {
         }
         reminders
     }
+}
+
+fn user_answer_marker(session: &str, question: &Value) -> crate::wake::DeliveryMarker {
+    let id = question["id"].as_str().unwrap_or_default();
+    crate::wake::DeliveryMarker::new(
+        "question_answered_by_user",
+        serde_json::to_string(&[session, id]).expect("question identity is JSON"),
+        format!("[question answered by user:{session}:{id}]"),
+    )
+}
+fn user_answer_reminder(session: &str, question: &Value) -> bubblepaw_core::Reminder {
+    let id = question["id"].as_str().unwrap_or_default();
+    let preview = |field: &str| {
+        question[field]
+            .as_str()
+            .unwrap_or_default()
+            .chars()
+            .take(4000)
+            .collect::<String>()
+    };
+    bubblepaw_core::Reminder::new(
+        format!("question_answered_by_user:{session}:{id}"),
+        format!(
+            "The user answered child {}'s question (question_id {}).\nQuestion: {}\nAnswer: {}\nDo not answer this question again.",
+            session,
+            id,
+            preview("text"),
+            preview("answer"),
+        ),
+    )
+    .with_delivery("question_answered_by_user", user_answer_marker(session, question).id)
 }
 
 fn answer_marker(answer: &QuestionAnswer) -> crate::wake::DeliveryMarker {

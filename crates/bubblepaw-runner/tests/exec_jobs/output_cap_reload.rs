@@ -7,7 +7,11 @@ async fn live_exec_output_cap_applies_only_to_new_jobs() {
         ..ExecConfig::default()
     });
     #[cfg(windows)]
-    let delayed_output = "Start-Sleep -Milliseconds 300; [Console]::Out.Write(('a' * 10000))";
+    let delayed_output = windows_command::powershell_file(
+        fixture._workspace.path(),
+        "cap-reload.ps1",
+        "Start-Sleep -Milliseconds 300; [Console]::Out.Write(('a' * 10000))",
+    );
     #[cfg(not(windows))]
     let delayed_output = r"sleep 0.3; head -c 10000 /dev/zero | tr '\000' a";
     let old = call(

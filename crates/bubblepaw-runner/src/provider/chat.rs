@@ -828,11 +828,7 @@ impl ChatCompletionsProvider {
             })
         }
         .await;
-        let usage = match &result {
-            Ok((response, _)) => response.usage.as_ref(),
-            Err(error) => ProviderError::of(error).and_then(|error| error.usage.as_ref()),
-        };
-        meter.finish(usage, result.is_err());
+        meter.finish_borrowed_result(result.as_ref().map(|(response, ..)| response));
         result
     }
 }

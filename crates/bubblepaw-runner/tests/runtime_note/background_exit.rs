@@ -4,7 +4,7 @@ use super::*;
 async fn background_exit_is_listed_until_its_result_is_polled() {
     let fixture = Fixture::new();
     #[cfg(windows)]
-    let command = "Start-Sleep -Milliseconds 400; Write-Output private-command-output";
+    let command = "ping -n 2 127.0.0.1 >nul& echo private-command-output";
     #[cfg(not(windows))]
     let command = "sleep 0.4; echo private-command-output";
     let exec = fixture.registry.get("exec").unwrap();

@@ -5,6 +5,9 @@ use bubblepaw_runner::{
 };
 use serde_json::{Value, json};
 
+#[path = "support/fixture_binary.rs"]
+mod fixture_binary;
+
 fn context() -> ToolContext {
     ToolContext {
         session_id: "owner".into(),
@@ -30,7 +33,11 @@ fn structure_rendering_and_raw_multiline_are_preserved() {
     assert_eq!(prepared.metadata()["execution_mode"], "native_argv");
     assert!(!prepared.metadata().to_string().contains("雪"));
     #[cfg(windows)]
-    assert!(prepared.rendered.contains("'a''\"$()`\n雪'"));
+    {
+        assert!(prepared.rendered.contains("\"a'\\\"$()`\n雪\""));
+        assert!(!prepared.rendered.starts_with("& "));
+        assert_eq!(bubblepaw_runner::command_template::shell_name(), "cmd.exe");
+    }
     #[cfg(not(windows))]
     assert!(prepared.rendered.contains("'a'\"'\"'\"$()`\n雪'"));
     let raw = "first\nsecond\n\"already quoted\"; $literal `literal";
@@ -110,30 +117,18 @@ async fn native_name_lookup_does_not_fall_back_to_a_batch_script() {
 }
 
 /// A real executable using the platform's standard native argv contract. This
-/// deliberately bypasses PowerShell 5.1's lossy native argument forwarding.
+/// deliberately bypasses cmd.exe line parsing and its argument quoting.
 fn argv_probe(root: &std::path::Path) -> String {
-    let source = root.join("probe.rs");
-    std::fs::write(
-        &source,
-        "fn main(){ println!(\"{:?}\", std::env::args().skip(1).collect::<Vec<_>>()); }",
-    )
-    .unwrap();
     let name = if cfg!(windows) {
         "argv_probe.exe"
     } else {
         "argv_probe"
     };
-    let output = std::process::Command::new("rustc")
-        .arg(&source)
-        .arg("-o")
-        .arg(root.join(name))
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+    let executable = fixture_binary::resolve(
+        env!("CARGO_BIN_EXE_bubblepaw-argv-probe"),
+        "bubblepaw-argv-probe",
     );
+    std::fs::copy(executable, root.join(name)).unwrap();
     name.to_owned()
 }
 

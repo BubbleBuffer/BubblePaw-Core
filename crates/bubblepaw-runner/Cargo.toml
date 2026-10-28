@@ -12,7 +12,7 @@ publish.workspace = true
 web = ["dep:axum", "dep:tower-http", "dep:toml_edit"]
 # Episode-replay and probe benchmark code.
 bench = []
-# Builds the fake extension and MCP fixture binaries the integration tests spawn.
+# Builds native fixture binaries the integration tests spawn.
 test-fixtures = []
 
 [lib]
@@ -21,6 +21,12 @@ name = "bubblepaw_runner"
 [[bin]]
 name = "bubblepaw"
 path = "src/main.rs"
+
+# Dev-only episode prompt v2/v3 comparison (docs/lcm-episode-v3-comparison.md).
+[[bin]]
+name = "bubblepaw-episode-prompt-bench"
+path = "src/bin/episode_prompt_bench.rs"
+required-features = ["bench"]
 
 # Test fixture for the out-of-process provider extension host.
 [[bin]]
@@ -32,6 +38,12 @@ required-features = ["test-fixtures"]
 [[bin]]
 name = "bubblepaw-runner-fake-mcp"
 path = "../bubblepaw-mcp/src/bin/fake_mcp.rs"
+required-features = ["test-fixtures"]
+
+# Native argv roundtrip fixture; tests copy it into their isolated workspace.
+[[bin]]
+name = "bubblepaw-argv-probe"
+path = "tests/support/argv_probe.rs"
 required-features = ["test-fixtures"]
 
 [dependencies]

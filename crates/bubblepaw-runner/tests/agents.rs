@@ -65,7 +65,7 @@ impl Provider for Probe {
         }
         if text.contains("workspace child") && !has_tool {
             #[cfg(windows)]
-            let command = "Start-Sleep -Seconds 30";
+            let command = "ping -n 31 127.0.0.1 >nul";
             #[cfg(not(windows))]
             let command = "sleep 30";
             return Ok(ModelResponse {

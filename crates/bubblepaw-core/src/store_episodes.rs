@@ -5,9 +5,24 @@ impl Store {
     /// Append exactly one immutable episode, its decisions, and one chapter transition.
     /// Every validation and write shares a transaction, including the coverage check.
     pub fn save_episode_batch(&self, batch: &EpisodeBatch) -> Result<()> {
+        self.save_episode_batch_with_events(batch, &[])
+    }
+
+    /// Save gather facts in the same canonical transaction as their episode/chapter.
+    pub fn save_episode_batch_with_events(
+        &self,
+        batch: &EpisodeBatch,
+        events: &[ContextEvent],
+    ) -> Result<()> {
         if let Some(store) = self.scoped(&batch.episode.session_id)? {
-            return store.save_episode_batch(batch);
+            return store.save_episode_batch_with_events(batch, events);
         }
+        anyhow::ensure!(
+            events
+                .iter()
+                .all(|event| event.kind != ContextEventKind::Applied),
+            "Apply events require a context view"
+        );
         let episode = &batch.episode;
         anyhow::ensure!(
             batch.closed_chapter.is_none() || batch.close_after_episode.is_none(),
@@ -37,7 +52,7 @@ impl Store {
         );
         let ordinal = i64::try_from(episode.ordinal).context("Episode ordinal is too large")?;
         let data = serde_json::to_string(episode)?;
-        self.write_context(|tx| {
+        self.write_context_events(&episode.session_id, events, true, |tx| {
             let (previous_ordinal, previous_last, token) = Self::episode_coverage(tx, &episode.session_id)?;
             anyhow::ensure!(token == batch.expected_previous_coverage, "Stale episode coverage");
             anyhow::ensure!(previous_ordinal.checked_add(1) == Some(ordinal), "Episode ordinal must follow previous coverage");
@@ -74,6 +89,7 @@ impl Store {
                     params![decision.id, decision.session_id, ordinal, serde_json::to_string(decision)?],
                 )?;
             }
+            Self::insert_context_events_tx(tx, &episode.session_id, events)?;
             Ok(())
         })
     }
@@ -197,6 +213,7 @@ impl Store {
     }
 
     fn validate_subject_chapter(chapter: &ContextSubjectChapter) -> Result<()> {
+        chapter.validate_retrieval_metadata()?;
         anyhow::ensure!(
             !chapter.id.trim().is_empty() && !chapter.session_id.trim().is_empty(),
             "Subject chapter identity is empty"

@@ -16,8 +16,9 @@ their own children can wake them.
 
 `crates/bubblepaw-runner/src/agents.rs`, `profiles.rs` and `agent_handles.rs`
 own orchestration. Core provides generic per-run structured output and tool-call
-budgets, effective `ApprovalPolicy` on `ToolContext`, and host notice delivery;
-it has no child-session concept. Questions use the generic bounded durable
+budgets, effective `ApprovalPolicy` on `ToolContext`, host notice delivery and
+projections from durable child run boundaries; orchestration stays in the runner.
+Questions use the generic bounded durable
 host-state table; orchestration metadata otherwise retains its existing storage.
 The generic transient `ModelRequestStarted` event resets the host's partial-answer
 buffer for each provider request, including a schema correction; it adds no durable row.
@@ -39,10 +40,11 @@ Inside `js`:
 
 - `tools.agent({task, context?, profile?, access?, worktree?, output_schema?, max_tool_calls?, timeout?})` creates and starts a child,
   returning `{handle:"agent:<uuid>", sessionId, status:"running"}`.
-- `tools.agent_send({handle|sessionId, text, output_schema?, max_tool_calls?, timeout?})` steers a running child through
+- `tools.agent_send({handle|sessionId, text, question_id?, output_schema?, max_tool_calls?, timeout?})` steers a running child through
   `Harness::steer`, or starts a new turn in an idle child through `Harness::start`.
   When the child is `waiting_for_answer`, `text` answers its pending question
-  and resumes its current tool invocation. Run controls cannot change in an answer.
+  and resumes its current tool invocation. Optional `question_id` correlates an
+  answer with that question and rejects stale answers. Run controls cannot change in an answer.
   Every ended child remains continuable, including cancelled, timed-out and failed runs.
 - `tools.agent_status({handle?|sessionId?})` returns one child's status and its
   available result. With no address it lists the calling parent's descendant tree,
@@ -61,6 +63,45 @@ canonical child history. Task and serialized context together fit within 64 KiB.
 A finished result is unread until `wait` or `agent_status` for that specific child
 returns it. Listing all children does not consume results. A parent can inspect
 the list or receive a completion notice to find work that finished while it was idle.
+
+### Durable events on the direct parent stream
+
+Clients following just the parent session receive
+`child_run_state_changed {child_session_id, state}` in an ordinary durable event
+whose `session_id` is that direct parent and `run_id` identifies the child run.
+The states come from existing durable run boundaries: `running` on admission
+and the actual stored terminal status on completion. This does not persist
+registry-only `idle`, cleanup progress or quota-wait transitions. A child timeout
+can therefore have a runner result of `timed_out` and a stored run status of
+`cancelled`. The run projection shares the existing transaction and journal
+batch; ordinary parent turns add no transaction for it.
+
+Startup interruption recovery is also observable as `state: "interrupted"`.
+Single-file stores commit that recovery and its parent projection atomically
+with no added transaction. Normal chat-v1 directory stores finish canonical
+recovery first, then publish the parent event after catalog/sequence
+initialization, adding one transaction per recovered visible child run. There
+is no durable outbox. A failed directory reopen or crash before the queued
+projection flush can require reset/resnapshot; the next startup's sequence
+reservation invalidates old cursors. Parent-event replay through legacy
+intermediate storage conversion is not guaranteed. This adds no persistence for
+registry idle or cleanup progress.
+
+Questions project pending/cancelled changes to the parent's `child_question` key
+and answers to its existing `child_question_answer` key. These are bounded latest
+values with the child's identity, question content and state; they leave the
+parent's own pending question untouched. Same-database projections share the
+question transaction. These bounded parent values are event hints, not a pending
+inventory; the child's question is authoritative. Run projections skip
+hidden/internal children; question projections retain the existing parent-question
+behavior, including hidden worker parents. Grandchildren project only to their
+own direct parents.
+
+Stdio advertises `child_events` in `initialize.features`. Its existing event
+notifications, parent-scoped `events.after` and the existing web SSE route carry
+the same envelopes. Clients derive waiting from a pending question, then
+resnapshot or follow subsequent events. See [session API](session-api.md#child-events-on-the-direct-parent-stream)
+for exact fields, replay and transaction limits.
 
 Handles are process-local. An address using `sessionId` is accepted only when the
 store's catalog parent is the calling session. After restart, addressing a saved
@@ -214,7 +255,7 @@ Children otherwise run alongside the parent's turn and can continue after that
 turn ends. Parent steering backgrounds an explicit wait. Visible completion
 notices use the normal request hook or start an idle parent turn as described below.
 
-### Questions (built 2026-10-15)
+### Questions (user answers built 2026-10-27; original path 2026-10-15)
 
 `tools.question({text, options?})` suspends a CodeMode host call. Root questions
 are exposed to clients as durable pending question state; unattended root hosts
@@ -233,6 +274,37 @@ An explicit parent `wait` returns `waiting_for_answer` when a question arrives,
 so its JS cell finishes and the parent can answer from the same environment on
 the next model round. The child's task stays suspended until answered.
 
+A host client can answer on the direct parent's behalf with
+`QuestionTools::answer_child_as_user(parent, child, question_id, text)`, the SDK's
+`Host::answer_child_question`, stdio `question.answer_child`, or
+`POST /api/sessions/{parent}/children/{child}/question/answer`. This is a host-only
+operation, never a model tool. It first checks the child's catalog parent, then
+the question ID and pending status, then the answer's nonempty/16 KiB bound.
+A wrong parent, missing child or unknown question is not found; an already
+answered or cancelled question conflicts; invalid answer text is rejected.
+Resolving the question checks and changes its JSON host-state row atomically.
+A racing parent answer and user answer cannot both win: the loser gets an
+already-answered conflict.
+
+The child receives a user-authored answer through the same neutral generated
+answer notice, durable question marker and live-waiter or recovered-continuation
+path as a parent's answer. Its answer notice does not identify the author.
+The stored answered question and its durable state-change event carry
+`answered_by: "parent" | "user"`; old answered rows without that field read as
+`"parent"`. The parent's `child_question_answer` host-state row projects the
+latest answered child question, including `child_session_id` and `answered_by`,
+and emits its own durable state-change event. Pending and cancelled questions
+use the parent's separate `child_question` key. The child's `question` row remains
+the authority; projections share its transaction when both sessions use the same
+database and never replace a question asked by the parent itself. A user answer also sends the parent a required
+`question_answered_by_user` notice identifying the child, question ID and a
+bounded preview of the answer. It uses the waiting notice's key, replacing an
+undelivered `question_waiting` notice for that question. Optional completion-wake
+settings do not disable it; explicit cancellation suppression still applies.
+A later `agent_send` answer correlated with that question ID reports that the
+user already answered and never delivers a second answer. Direct-parent
+ownership and ordinary child continuation rules are unchanged.
+
 The question and answer live in the authoritative chat's bounded host state,
 with generic durable state-change events. Before delivering a live answer to its
 waiting tool, the host durably accepts it as generated steering input, with a
@@ -241,7 +313,9 @@ are supported: an earlier answer stays queued when the next question replaces
 the host-state row. Ordinary input consumption places those notices into canonical
 history once, making disposable run metadata unnecessary after retention.
 Answer-state update and accepted input each cost one transaction; canonical input
-consumption batches nearby answers at the existing turn boundary. Unchanged
+consumption batches nearby answers at the existing turn boundary. A child's
+question projection shares that transaction in the same database; a parent in
+another database requires at most one additional transaction per change. Unchanged
 notice checks add no transactions. Startup republishes unanswered child
 questions. A lost JS environment is never reconstructed: after restart, an answer
 is accepted as a fresh generated continuation input containing a deterministic

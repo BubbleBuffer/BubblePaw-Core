@@ -19,6 +19,10 @@ use std::{
     time::Duration,
 };
 
+#[path = "questions/support.rs"]
+mod support;
+use support::NoticeProbe;
+
 struct Script {
     store: Store,
     root: String,
@@ -342,23 +346,6 @@ async fn recovered_answer_is_accepted_once_without_replaying_unknown_effect() ->
     Ok(())
 }
 
-struct NoticeProbe(Mutex<Vec<ModelRequest>>);
-#[async_trait]
-impl Provider for NoticeProbe {
-    async fn generate(
-        &self,
-        request: ModelRequest,
-        _: TextCallback,
-        _: CancellationToken,
-    ) -> Result<ModelResponse> {
-        self.0.lock().unwrap().push(request);
-        Ok(ModelResponse {
-            text: "continued".into(),
-            ..Default::default()
-        })
-    }
-}
-
 struct LiveAnswerProbe {
     requests: Mutex<Vec<ModelRequest>>,
     entered: tokio::sync::Notify,
@@ -570,3 +557,6 @@ mod sequential_questions;
 #[path = "questions/delivery_cases.rs"]
 mod delivery_cases;
 use delivery_cases::has_answer_delivery;
+
+#[path = "questions/user_answers.rs"]
+mod user_answers;

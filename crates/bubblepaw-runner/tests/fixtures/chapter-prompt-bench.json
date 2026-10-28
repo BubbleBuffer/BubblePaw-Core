@@ -1,0 +1,26 @@
+{
+  "fixtures": [
+    {
+      "id": "typed-decision",
+      "session_id": "synthetic-typed",
+      "episodes": [
+        "EPISODE 1 [source u1..a1]\nThe user asked to repair file import. Inspection found that the existing reader remains sufficient; the decision was to preserve it and correct the path conversion.",
+        "EPISODE 2 [source a2..a3]\nImplemented the path conversion correction and verified it with scripted inputs. Device acceptance remains unverified."
+      ],
+      "typed_user_texts": ["Repair import and preserve the current reader."],
+      "task_instructions": [],
+      "previous_chapters": []
+    },
+    {
+      "id": "delegated-work",
+      "session_id": "synthetic-delegated",
+      "episodes": [
+        "EPISODE 7 [source t1..a7]\nA child task requested investigation of a missing attachment. The investigation found that the fixture had no attachment record.",
+        "EPISODE 8 [source a8..a9]\nThe child documented the missing input and stopped without inventing an attachment or claiming a repair. No human supplied a new instruction."
+      ],
+      "typed_user_texts": [],
+      "task_instructions": ["Investigate the attachment fixture; report missing evidence without inventing a repair."],
+      "previous_chapters": []
+    }
+  ]
+}

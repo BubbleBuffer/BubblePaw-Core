@@ -126,8 +126,8 @@ pub(super) async fn execute(
         )?;
         trace.runtime_info(json!({
             "package_version":env!("CARGO_PKG_VERSION"),
-            "source_fingerprint":source_fingerprint(),
-            "source_fingerprint_scope":"main,root_prompt,host_attach,host_attach_io,host_lifetime,session_host,cli_output,session_scope,host_transport,config,codemode,input_files,agents,agent_handles,episodes,episode_models,episode_fork,history_snapshot,model_roles,registry,live_provider,images,retry,endpoints,decisions,chat,episode_worker,episode_background,summary_prompt_v2,chapter_prompt_v1,summarization,summary_prompt,runtime_note,command_template,trace,todo,question,process,core_lib,runtime,dispatch,decision,approvals,observation,host_state",
+            "source_fingerprint":crate::source_fingerprint::source_fingerprint(),
+            "source_fingerprint_scope":"main,source_fingerprint,root_prompt,host_attach,host_attach_io,host_lifetime,session_host,cli_output,session_scope,host_transport,config,codemode,input_files,agents,agent_handles,episodes,episode_models,episode_fork,history_snapshot,model_roles,registry,live_provider,images,retry,endpoints,decisions,chat,episode_worker,episode_background,summary_prompt_v2,summary_prompt_v3,chapter_prompt_v1,summarization,summary_prompt,runtime_note,command_template,trace,todo,question,process,core_lib,runtime,dispatch,decision,approvals,observation,host_state",
             "model":cli.model,
             "provider":selected_main_provider(&settings),
             "platform":std::env::consts::OS,
@@ -295,7 +295,7 @@ pub(super) async fn execute(
     // event stream (docs/session-api.md), so one subscription sees every request.
     let one_shot = scoped_request;
     live_config.configure_harness(&mut config);
-    prompts::configure(&mut config, &store, &workspace, &settings.agent);
+    prompts::configure(&mut config, &store, &workspace, &data_dir, &settings.agent)?;
     let wake = Arc::new(WakeCoordinator::new(
         settings.agents.auto_wake,
         Duration::from_millis(settings.agents.wake_debounce_ms),

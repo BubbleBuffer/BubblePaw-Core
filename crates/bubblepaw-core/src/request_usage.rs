@@ -3,6 +3,15 @@ use crate::{RequestKind, Store, Usage, id, now};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, sync::Mutex};
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LastRequestUsage {
+    /// Whole-prompt input of the final physical request. None means that request omitted it.
+    pub input_tokens: Option<u64>,
+    /// Output of that same physical request, separate from cumulative continuations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+}
+
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct RequestUsage {
     pub request_id: String,
@@ -77,8 +86,14 @@ struct Capture {
     session_id: String,
     run_id: Option<String>,
     kind: RequestKind,
-    records: Mutex<Vec<RequestUsage>>,
+    records: Mutex<Vec<CapturedAttempt>>,
     store: Option<Store>,
+}
+
+struct CapturedAttempt {
+    record: RequestUsage,
+    output_reported: bool,
+    discarded: bool,
 }
 
 impl Drop for Capture {
@@ -90,7 +105,7 @@ impl Drop for Capture {
             }
             let result = records
                 .into_iter()
-                .try_for_each(|record| store.queue_request_usage(record))
+                .try_for_each(|attempt| store.queue_request_usage(attempt.record))
                 .and_then(|()| store.flush_request_usage(&self.session_id));
             if let Err(error) = result {
                 tracing::warn!("Failed to preserve interrupted request usage: {error}");
@@ -114,7 +129,11 @@ pub async fn capture_request_usage<F: Future>(
     kind: RequestKind,
     future: F,
 ) -> (F::Output, Vec<RequestUsage>) {
-    capture(None, session_id, run_id, kind, future).await
+    let (result, attempts) = capture(None, session_id, run_id, kind, future).await;
+    (
+        result,
+        attempts.into_iter().map(|attempt| attempt.record).collect(),
+    )
 }
 
 /// As `capture_request_usage`, preserving completed attempts if the enclosing
@@ -126,7 +145,45 @@ pub async fn capture_request_usage_with_store<F: Future>(
     kind: RequestKind,
     future: F,
 ) -> (F::Output, Vec<RequestUsage>) {
-    capture(Some(store.clone()), session_id, run_id, kind, future).await
+    let (result, attempts) = capture(Some(store.clone()), session_id, run_id, kind, future).await;
+    (
+        result,
+        attempts.into_iter().map(|attempt| attempt.record).collect(),
+    )
+}
+
+/// Main runtime capture retains attribution privately; public billing APIs do not change.
+pub(crate) async fn capture_message_request_usage<F: Future>(
+    store: &Store,
+    session_id: &str,
+    run_id: &str,
+    future: F,
+) -> (F::Output, Vec<RequestUsage>, Vec<String>) {
+    let (result, attempts) = capture(
+        Some(store.clone()),
+        session_id,
+        Some(run_id),
+        RequestKind::Main,
+        future,
+    )
+    .await;
+    let contributing: Vec<_> = attempts
+        .iter()
+        .filter(|attempt| !attempt.record.failed && !attempt.discarded)
+        .collect();
+    let links = if contributing.iter().all(|attempt| attempt.output_reported) {
+        contributing
+            .iter()
+            .map(|attempt| attempt.record.request_id.clone())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    (
+        result,
+        attempts.into_iter().map(|attempt| attempt.record).collect(),
+        links,
+    )
 }
 
 async fn capture<F: Future>(
@@ -135,7 +192,7 @@ async fn capture<F: Future>(
     run_id: Option<&str>,
     kind: RequestKind,
     future: F,
-) -> (F::Output, Vec<RequestUsage>) {
+) -> (F::Output, Vec<CapturedAttempt>) {
     CAPTURE
         .scope(
             Capture {
@@ -181,7 +238,18 @@ pub fn request_usage_count() -> Option<usize> {
 
 /// Record a completed physical attempt. Returns false outside a capture scope.
 /// Never persists prompts, response content, credentials or transport state.
-pub fn record_request_usage(mut record: RequestUsage) -> bool {
+/// Supplied counts are treated as reported; adapters with optional output fields
+/// must use `record_request_usage_with_output_presence` to retain omissions.
+pub fn record_request_usage(record: RequestUsage) -> bool {
+    record_request_usage_with_output_presence(record, true)
+}
+
+/// Record a physical attempt while retaining whether its output count was present.
+/// Explicit zero is a report. This attribution metadata is transient, not billing data.
+pub fn record_request_usage_with_output_presence(
+    mut record: RequestUsage,
+    output_reported: bool,
+) -> bool {
     let default_account = record.account == record.provider;
     if let Ok(provider) = PROVIDER.try_with(Clone::clone) {
         record.provider = provider;
@@ -196,7 +264,28 @@ pub fn record_request_usage(mut record: RequestUsage) -> bool {
             record.session_id.clone_from(&capture.session_id);
             record.run_id.clone_from(&capture.run_id);
             record.kind = capture.kind;
-            capture.records.lock().unwrap().push(record);
+            capture.records.lock().unwrap().push(CapturedAttempt {
+                record,
+                output_reported,
+                discarded: false,
+            });
         })
         .is_ok()
+}
+
+/// Exclude this logical attempt's physical responses from a later fallback reply.
+/// Their billing records and physical success/failure flags remain unchanged.
+pub fn discard_request_usage_since(start: usize) -> bool {
+    CAPTURE
+        .try_with(|capture| {
+            let mut records = capture.records.lock().unwrap();
+            let Some(attempts) = records.get_mut(start..) else {
+                return false;
+            };
+            for attempt in attempts {
+                attempt.discarded = true;
+            }
+            true
+        })
+        .unwrap_or(false)
 }

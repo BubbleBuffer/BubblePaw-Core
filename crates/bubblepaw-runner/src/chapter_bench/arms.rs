@@ -132,6 +132,8 @@ fn chapter(arm: &str, ordinal: usize, episode: &ContextEpisode) -> ContextSubjec
         summary: None,
         related_ids: vec![],
         related_evidence: vec![],
+        decisions: None,
+        sections: None,
         model: None,
         usage: None,
         reasoning: None,

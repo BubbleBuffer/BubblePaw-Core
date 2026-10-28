@@ -18,12 +18,20 @@ pub enum EpisodeSummaryInput {
     Episode,
 }
 
+#[path = "episode_prompts.rs"]
+mod prompts;
+pub use prompts::{ChapterPrompt, EpisodePrompt};
+
 /// Gathering policy, independent of the serving context pressure threshold.
 /// Token counts use the runner's canonical estimator; targets are not word counts.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct EpisodeConfig {
     pub summary_input: EpisodeSummaryInput,
+    /// Episode summary prompt; `v2` unless explicitly selected.
+    pub episode_prompt: EpisodePrompt,
+    /// Chapter synthesis prompt; `v1` unless explicitly selected.
+    pub chapter_prompt: ChapterPrompt,
     /// Semantic chapter decisions; disabling leaves only explicit volume rollover.
     pub decider_enabled: bool,
     pub source_target_tokens: usize,
@@ -43,6 +51,8 @@ impl Default for EpisodeConfig {
     fn default() -> Self {
         Self {
             summary_input: EpisodeSummaryInput::Fork,
+            episode_prompt: EpisodePrompt::V2,
+            chapter_prompt: ChapterPrompt::V1,
             decider_enabled: true,
             source_target_tokens: EPISODE_TARGET_TOKENS,
             source_max_tokens: EPISODE_MAX_TOKENS,
@@ -403,7 +413,7 @@ pub fn turn_summary_cap(source_tokens: usize) -> usize {
 pub(crate) fn text_tokens(text: &str) -> usize {
     token_encoder().encode_ordinary(text).len()
 }
-fn token_encoder() -> &'static tiktoken_rs::CoreBPE {
+pub(crate) fn token_encoder() -> &'static tiktoken_rs::CoreBPE {
     tiktoken_rs::bpe_for_tokenizer(tiktoken_rs::tokenizer::Tokenizer::O200kBase)
         .expect("Bundled O200k tokenizer")
 }

@@ -132,6 +132,8 @@ async fn native_chapter_preserves_tools_without_schema_and_uses_existing_related
                     summary: Some("Earlier parser state".into()),
                     related_ids: vec![],
                     related_evidence: vec![],
+                    decisions: None,
+                    sections: None,
                     model: None,
                     usage: None,
                     reasoning: None,

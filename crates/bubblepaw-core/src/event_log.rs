@@ -73,6 +73,10 @@ pub(crate) enum ContentRef {
 pub(crate) type JournalEvent = (EventKind, Option<ContentRef>);
 type JournalBatch<T> = (T, Vec<JournalEvent>);
 
+#[path = "event_log_commit.rs"]
+mod commit;
+pub(crate) use commit::{PendingEvent, parent_run_state_event};
+
 /// What a snapshot read under [`Harness::snapshot_with`] reflects.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct LogPosition {
@@ -154,147 +158,6 @@ impl Log {
         {
             self.transient_from(session_id, run_id, fallback, origin);
         }
-    }
-    /// Canonical state commits before journal references enter the serving
-    /// buffer. Lock order is log, then store; publish under that same log lock
-    /// so snapshots and subscribers observe one ordered sequence.
-    pub(crate) fn commit<T>(
-        &self,
-        store: &Store,
-        session_id: &str,
-        run_id: &str,
-        origin: Option<ClientInfo>,
-        write: impl FnOnce(&Connection) -> Result<JournalBatch<T>>,
-    ) -> Result<T> {
-        self.commit_impl(store, session_id, run_id, origin, false, write)
-    }
-    pub(crate) fn commit_reply<T>(
-        &self,
-        store: &Store,
-        session_id: &str,
-        run_id: &str,
-        origin: Option<ClientInfo>,
-        write: impl FnOnce(&Connection) -> Result<JournalBatch<T>>,
-    ) -> Result<T> {
-        self.commit_impl(store, session_id, run_id, origin, true, write)
-    }
-    #[allow(clippy::too_many_arguments)]
-    fn commit_impl<T>(
-        &self,
-        store: &Store,
-        session_id: &str,
-        run_id: &str,
-        origin: Option<ClientInfo>,
-        settle_reply: bool,
-        write: impl FnOnce(&Connection) -> Result<JournalBatch<T>>,
-    ) -> Result<T> {
-        let mut state = self.state.lock().unwrap();
-        let chat = store.scoped(session_id)?.unwrap_or_else(|| store.clone());
-        state.pruned_through = state
-            .pruned_through
-            .max(self.pruned_floor.load(Ordering::Relaxed));
-        let (value, mut events) = chat.write(|tx| {
-            let (value, kinds) = write(tx)?;
-            let reserved_through = state
-                .last
-                .checked_add(kinds.len() as u64)
-                .context("Event sequence overflow")?;
-            store.ensure_event_sequences(reserved_through)?;
-            let mut events = Vec::with_capacity(kinds.len());
-            for (offset, (kind, reference)) in kinds.into_iter().enumerate() {
-                let event = HarnessEvent {
-                    sequence: state.last + offset as u64 + 1,
-                    durable: true,
-                    origin: if matches!(&kind, EventKind::SessionSettled {}) {
-                        None
-                    } else {
-                        origin.clone()
-                    },
-                    session_id: session_id.into(),
-                    run_id: run_id.into(),
-                    created_at: now(),
-                    kind,
-                };
-                let encoded = encode(tx, &event, reference)?;
-                if !store.is_layout() {
-                    append_encoded(tx, &event, &encoded)?;
-                }
-                events.push((event, encoded));
-            }
-            Ok((value, events))
-        })?;
-        if store.is_layout() {
-            // The authoritative record is already committed. Journal failure
-            // requires clients to resync; it must never trigger effect replay.
-            let journal = if store.take_projection_gap() {
-                Err(anyhow::anyhow!("Disposable metadata projection failed"))
-            } else {
-                store.write(|tx| {
-                    remember_last(
-                        tx,
-                        events
-                            .last()
-                            .map_or(state.last, |(event, _)| event.sequence),
-                    )?;
-                    if state.pruned_through > 0 {
-                        tx.execute(
-                            "INSERT OR REPLACE INTO metadata VALUES(?1,?2)",
-                            params![PRUNED_KEY, state.pruned_through.to_string()],
-                        )?;
-                    }
-                    for (event, encoded) in &events {
-                        append_encoded(tx, event, encoded)?;
-                    }
-                    Ok(())
-                })
-            };
-            if journal.is_err() {
-                if let Some((event, _)) = events.last() {
-                    state.last = event.sequence;
-                    state.pruned_through = state.last;
-                }
-                for (event, _) in &mut events {
-                    event.durable = false;
-                }
-                // A rejected event INSERT need not block the small gap marker.
-                // Preserve resync across reopen without storing journal content
-                // in the authoritative chat or turning record success into error.
-                let _ = store.write(|tx| {
-                    remember_last(tx, state.last)?;
-                    tx.execute(
-                        "INSERT OR REPLACE INTO metadata VALUES(?1,?2)",
-                        params![PRUNED_KEY, state.pruned_through.to_string()],
-                    )?;
-                    Ok(())
-                });
-            }
-        }
-        if settle_reply && let Some(streaming) = state.streaming.get_mut(session_id) {
-            streaming.text.clear();
-        }
-        for (event, _) in events {
-            state.last = event.sequence;
-            state.live.clear();
-            match &event.kind {
-                EventKind::RunStarted { .. } => {
-                    state.streaming.insert(
-                        session_id.into(),
-                        Streaming {
-                            run_id: run_id.into(),
-                            text: String::new(),
-                        },
-                    );
-                }
-                EventKind::RunFinished { .. } | EventKind::SessionSettled {} => {
-                    state.streaming.remove(session_id);
-                }
-                _ => {}
-            }
-            if let Some(sender) = self.sender.get() {
-                let _ = sender.send(event);
-            }
-        }
-        Ok(value)
     }
     /// Presentation of nested calls is progress, not another copy of host
     /// arguments and results in the durable journal.
@@ -751,6 +614,9 @@ impl Harness {
         session_id: &str,
         read: impl FnOnce() -> Result<T>,
     ) -> Result<(T, LogPosition)> {
+        // A lazy chat open can recover runs and publish their parent events.
+        // Finish that work before excluding event commits from this snapshot.
+        self.store().scoped(session_id)?;
         let log = self.log();
         let state = log.state.lock().unwrap();
         let value = read()?;
@@ -789,3 +655,7 @@ pub fn client_param(value: Option<&serde_json::Value>) -> Result<Option<ClientIn
 #[cfg(test)]
 #[path = "event_log_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "event_log_parent_tests.rs"]
+mod parent_tests;

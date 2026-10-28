@@ -32,6 +32,9 @@ const MAX_YIELD_MS: u64 = 30_000;
 const REPLY_BYTES: usize = 16 * 1024;
 const DEFAULT_WAIT_MS: u64 = 600_000;
 
+#[path = "process_scratch.rs"]
+mod scratch;
+
 fn exec_yield_ms(input: &Value, sync_ms: u64) -> Result<u64> {
     Ok(unsigned(input, "yieldMs", None)?
         .unwrap_or(sync_ms.max(unsigned(input, "timeoutMs", Some(0))?.unwrap())))
@@ -124,6 +127,10 @@ fn with_process_diagnostic(mut value: Value) -> Value {
 
 #[path = "process_reminders.rs"]
 mod reminder_notices;
+
+#[path = "process_shell.rs"]
+mod shell;
+use shell::{cwd_note, shell_command};
 
 type SharedEnvironment = Arc<RwLock<Option<Vec<(String, String)>>>>;
 
@@ -379,7 +386,8 @@ impl ProcessTools {
     }
     /// Bind command paths to another workspace while retaining host-wide job
     /// admission, configuration, output storage and completion ownership.
-    pub fn for_workspace(self: &Arc<Self>, workspace: WorkspaceTools) -> Self {
+    pub fn for_workspace(self: &Arc<Self>, mut workspace: WorkspaceTools) -> Self {
+        workspace.inherit_host_scratch(&self.workspace);
         Self {
             workspace,
             config: self.config.clone(),
@@ -405,6 +413,8 @@ impl ProcessTools {
     ) -> Result<Self> {
         fs::create_dir_all(data_dir.as_ref())?;
         let data_dir = fs::canonicalize(data_dir.as_ref())?;
+        let scratchpads = workspace.prepare_scratchpads(&data_dir)?;
+        scratchpads.sweep_workspace()?;
         let jobs = data_dir.join("jobs");
         if let Ok(metadata) = fs::symlink_metadata(&jobs) {
             ensure!(
@@ -611,21 +621,20 @@ impl ProcessTools {
         ensure!(!context.cancellation.is_cancelled(), "cancelled");
         let cwd_arg = optional_string(input, "cwd")?;
         let workdir_arg = optional_string(input, "workdir")?;
-        let cwd = self
-            .workspace
-            .existing(cwd_arg.or(workdir_arg).unwrap_or("."))?;
+        let cwd = self.workdir(context, cwd_arg.or(workdir_arg).unwrap_or("."))?;
         if let (Some(_), Some(workdir)) = (cwd_arg, workdir_arg) {
             ensure!(
-                cwd == self.workspace.existing(workdir)?,
+                cwd == self.workdir(context, workdir)?,
                 "cwd and workdir must refer to the same directory"
             );
         }
         ensure!(cwd.is_dir(), "cwd is not a directory");
         let prepared = prepare(&input["command"])?;
+        let is_shell = matches!(&prepared.execution, CommandExecution::Shell { .. });
         let display_command = prepared.rendered.chars().take(512).collect::<String>();
         let id = uuid::Uuid::new_v4().to_string();
-        // The shell exit handler writes a marker only on a directory change;
-        // the marker shares the job's existing spool lifetime.
+        // The shell reports its final directory through a private marker,
+        // sharing the job's existing spool lifetime.
         let marker = match (&self.spool_root, cfg!(any(unix, windows))) {
             (Some(root), true) => {
                 Some(spool_directory(root, &context.session_id).join(format!("{id}.cwd")))
@@ -649,19 +658,7 @@ impl ProcessTools {
                     c
                 }
                 CommandExecution::Shell { script } => {
-                    let script = match &marker {
-                        Some(marker) => with_cwd_marker(&script, &cwd, marker),
-                        None => script,
-                    };
-                    #[cfg(windows)]
-                    let mut c = Command::new("powershell.exe");
-                    #[cfg(windows)]
-                    c.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-                    #[cfg(not(windows))]
-                    let mut c = Command::new("sh");
-                    #[cfg(not(windows))]
-                    c.args(["-c", &script]);
-                    c
+                    shell_command(&script, &cwd, marker.as_deref())
                 }
             };
             command.stdin(Stdio::null());
@@ -673,6 +670,9 @@ impl ProcessTools {
             {
                 // The snapshot replaces the host environment: host-only values stay out.
                 command.env_clear().envs(env.iter().cloned());
+            }
+            if is_shell {
+                shell::configure_marker_environment(&mut command, marker.as_deref());
             }
             command
         };
@@ -823,6 +823,9 @@ impl ProcessTools {
                 Some(marker) if !cancelled && !timed_out => cwd_note(marker, &start),
                 _ => None,
             };
+            if let Some(marker) = &marker {
+                let _ = fs::remove_file(marker);
+            }
             let notice = if let Ok(mut state) = owned.state.lock() {
                 state.status = Some(ProcessStatus {
                     exit_code: exit,
@@ -1415,109 +1418,6 @@ fn spool_directory(root: &Path, owner: &str) -> PathBuf {
     };
     root.join(owner)
 }
-/// Wraps a POSIX script so the shell records its final directory on exit, but
-/// only when it differs from `start`; unchanged runs leave no spool file. The
-/// trap writes only the marker file, so stdout, stderr and the exit status are
-/// unchanged. The trap sits on line 1, so script line numbers in diagnostics stay.
-#[cfg(unix)]
-fn with_cwd_marker(script: &str, start: &Path, marker: &Path) -> String {
-    fn quote(text: &str) -> String {
-        format!("'{}'", text.replace('\'', "'\\''"))
-    }
-    let report = format!(
-        "if [ \"$(pwd -P)\" != {} ]; then pwd -P >{}; fi 2>/dev/null",
-        quote(&start.to_string_lossy()),
-        quote(&marker.to_string_lossy())
-    );
-    format!("trap {} EXIT; {script}", quote(&report))
-}
-/// PowerShell's `finally` runs for explicit exit as well as ordinary completion.
-/// Save `$?` before marker housekeeping and restore -Command's 0/1 success exit
-/// convention afterward. Explicit exit skips that suffix, preserving its code;
-/// terminating errors propagate with their original diagnostic text.
-#[cfg(windows)]
-fn with_cwd_marker(script: &str, start: &Path, marker: &Path) -> String {
-    fn quote(text: &str) -> String {
-        format!("'{}'", text.replace('\'', "''"))
-    }
-    format!(
-        r#"try {{
-{script}
-$__bubblepaw_exec_success = $?
-}} finally {{
-    try {{
-        $__bubblepaw_exec_cwd = $pwd.ProviderPath
-        if (![StringComparer]::OrdinalIgnoreCase.Equals($__bubblepaw_exec_cwd, {start})) {{
-            [IO.File]::WriteAllText({marker}, $__bubblepaw_exec_cwd + "`n", [Text.UTF8Encoding]::new($false))
-        }}
-    }} catch {{}}
-}}
-if (!$__bubblepaw_exec_success) {{ exit 1 }}
-exit 0"#,
-        start = quote(&windows_path_text(start)),
-        marker = quote(&windows_path_text(marker)),
-    )
-}
-#[cfg(not(any(unix, windows)))]
-fn with_cwd_marker(script: &str, _start: &Path, _marker: &Path) -> String {
-    script.to_owned()
-}
-/// The reset note when the marker reports a final directory other than the
-/// start directory. A missing, empty or partial marker yields no note.
-#[cfg(unix)]
-fn cwd_note(marker: &Path, start: &Path) -> Option<String> {
-    use std::os::unix::ffi::OsStrExt;
-    let length = fs::metadata(marker).ok()?.len();
-    if length == 0 || length > 4096 {
-        return None;
-    }
-    let bytes = fs::read(marker).ok()?;
-    // `pwd -P` ends with a newline; anything else is a partial write.
-    let reported = bytes.strip_suffix(b"\n")?;
-    if reported.is_empty() {
-        return None;
-    }
-    // Both sides are physical paths: `pwd -P` and the canonical start directory.
-    if Path::new(std::ffi::OsStr::from_bytes(reported)) == start {
-        return None;
-    }
-    Some(cwd_reset_note(start))
-}
-#[cfg(windows)]
-fn cwd_note(marker: &Path, start: &Path) -> Option<String> {
-    let length = fs::metadata(marker).ok()?.len();
-    if length == 0 || length > 4096 {
-        return None;
-    }
-    let bytes = fs::read(marker).ok()?;
-    let reported = std::str::from_utf8(bytes.strip_suffix(b"\n")?).ok()?;
-    if reported.is_empty() || reported.eq_ignore_ascii_case(&windows_path_text(start)) {
-        return None;
-    }
-    Some(cwd_reset_note(start))
-}
-/// PowerShell's FileSystem provider reports ordinary drive/UNC paths, while
-/// workspace canonicalization uses extended-length Windows path prefixes.
-#[cfg(windows)]
-fn windows_path_text(path: &Path) -> String {
-    let text = path.to_string_lossy();
-    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
-        format!(r"\\{unc}")
-    } else {
-        text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
-    }
-}
-#[cfg(not(any(unix, windows)))]
-fn cwd_note(_marker: &Path, _start: &Path) -> Option<String> {
-    None
-}
-#[cfg(any(unix, windows))]
-fn cwd_reset_note(start: &Path) -> String {
-    format!(
-        "Working directory reset to {}; each exec starts there. Pass `cwd` to run elsewhere.",
-        start.display()
-    )
-}
 async fn cancel(session: &ProcessSession) {
     session.stop.cancel();
     let _ = await_session(session, Some(8_000), &CancellationToken::new()).await;
@@ -1586,7 +1486,7 @@ impl Tool for ProcessTool {
     fn definition(&self) -> ToolDefinition {
         let (description, properties, required) = match self.name {
             "exec" => (
-                "Execute a command string in a fresh shell with closed stdin and pipes. An experimental command object {parts,values} runs one executable with literal arguments; values must occupy complete unquoted arguments. cwd defaults to workspace. Sync by default, up to exec.sync_timeout_secs (default 300); returns status:backgrounded with reason:sync_timeout without killing. User backgrounding returns reason:user; explicit host wait release retains reason:steer. Ordinary steering does not release foreground waits. background:true returns immediately with a running handle. Explicit yieldMs collects foreground output up to the sync timeout. timeoutMs is a hard deadline that kills. Output uses byte cursors and 4 KiB-per-stream head/tail previews. Completed output over 64 KiB returns a fullOutput absolute text path when its spool is complete, or fullOutputError when capture was incomplete. Read saved output with read line ranges. The process may access files outside workspace.",
+                "Run a single program directly with argv {parts,values}, closed stdin and pipes. Example: {command:{parts:[\"python \",\"\"],values:[\"script.py\"]}}. Values occupy complete unquoted arguments. Use strings only for pipes, redirects and && chains: cmd.exe /d /s /c on Windows, sh -c on Unix. Use file tools to read, search and edit. Write code to a scratchpad file and run it in the same batch; no python -c, node -e or inline PowerShell. PowerShell runs only through argv as powershell -NoProfile -File <file>. cwd/workdir defaults to workspace and accepts the chat and project scratchpads named in the prompt. Sync by default, up to exec.sync_timeout_secs (default 300); returns status:backgrounded with reason:sync_timeout without killing. User backgrounding returns reason:user; explicit host wait release retains reason:steer. Ordinary steering does not release foreground waits. background:true returns immediately with a running handle. Explicit yieldMs collects foreground output up to the sync timeout. timeoutMs is a hard deadline that kills. Output uses byte cursors and 4 KiB-per-stream head/tail previews. Completed output over 64 KiB returns a fullOutput absolute text path when its spool is complete, or fullOutputError when capture was incomplete. Read saved output with read line ranges. The process may access files outside workspace.",
                 json!({"command":{"oneOf":[{"type":"string"},{"type":"object","properties":{"parts":{"type":"array","items":{"type":"string"}},"values":{"type":"array","items":{"type":"string"}}},"required":["parts","values"],"additionalProperties":false}]},"cwd":{"type":"string"},"workdir":{"type":"string"},"yieldMs":{"type":"integer","minimum":0},"timeoutMs":{"type":"integer","minimum":1},"background":{"type":"boolean"}}),
                 vec!["command"],
             ),
@@ -1637,6 +1537,7 @@ impl Tool for ProcessTool {
         dispatcher: ToolDispatcher,
     ) -> Result<ToolResult> {
         ensure!(!context.cancellation.is_cancelled(), "cancelled");
+        self.processes.set_store(dispatcher.store().clone());
         let value = self
             .processes
             .execute(self.name, context.clone(), input)

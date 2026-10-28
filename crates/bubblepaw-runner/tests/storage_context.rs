@@ -138,6 +138,8 @@ async fn frozen_runtime_request_skips_unreadable_cold_rows_and_keeps_exact_wire_
         threshold: 256_000,
         budget: 128_000,
         tokens: 1000,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     };
     store.save_context_view(&view)?;
     let (provider, captured, server) = server().await?;

@@ -8,6 +8,9 @@ use serde_json::Value;
 pub(crate) const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS host_state(session_id TEXT NOT NULL REFERENCES sessions(id),key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(session_id,key));";
 const MAX_STATE_BYTES: usize = 64 * 1024;
 
+#[path = "host_state_projection.rs"]
+mod projection;
+
 #[derive(Deserialize, Serialize)]
 struct Snapshot {
     // A state change occurs after this canonical message. Selecting the owning

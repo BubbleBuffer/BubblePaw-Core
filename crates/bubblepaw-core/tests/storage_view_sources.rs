@@ -19,6 +19,8 @@ fn view(session: &str, prefix: Vec<Message>) -> ContextView {
         threshold: 200,
         budget: 100,
         tokens: 20,
+        blocks: Vec::new(),
+        blocks_estimated: true,
     }
 }
 fn unreadable(store: &Store, session: &str, id: &str) -> Result<()> {

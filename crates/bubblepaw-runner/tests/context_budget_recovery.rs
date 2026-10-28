@@ -188,6 +188,8 @@ impl EpisodeModels for ScriptedModels {
             summary: SUMMARY.into(),
             related_ids: vec![],
             related_evidence: vec![],
+            decisions: None,
+            sections: None,
             model: "script".into(),
             usage: Usage::default(),
             reasoning: None,

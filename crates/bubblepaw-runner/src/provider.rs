@@ -9,6 +9,8 @@ mod http_dump;
 mod http_error;
 mod live_provider;
 mod messages;
+mod metering;
+pub(crate) use metering::PhysicalRequest;
 mod registry;
 pub(crate) mod replay_state;
 mod responses_body;
@@ -451,7 +453,11 @@ impl ResponsesProvider {
             Ok((response, _)) => response.usage.as_ref(),
             Err(error) => ProviderError::of(error).and_then(|error| error.usage.as_ref()),
         };
-        meter.finish(usage, result.is_err());
+        if let Ok((response, ..)) = &result {
+            meter.finish_response(response);
+        } else {
+            meter.finish(usage, true);
+        }
         result
     }
 }
@@ -658,42 +664,6 @@ impl ResponsesProvider {
         )
         .await
         .map_err(|error| mark_published(error, published.load(Ordering::Acquire)))
-    }
-}
-
-/// One physical transport request. A dropped request is recorded as failed;
-/// known usage is filled before provider continuation totals are accumulated.
-pub(crate) struct PhysicalRequest(Option<bubblepaw_core::RequestUsage>);
-impl PhysicalRequest {
-    pub(crate) fn new(provider: &str, model: &str) -> Self {
-        Self(Some(bubblepaw_core::RequestUsage::new(provider, model)))
-    }
-    pub(crate) fn name_model(&mut self, model: &str) {
-        if let Some(record) = self.0.as_mut() {
-            record.model = model.to_owned();
-        }
-    }
-    pub(crate) fn finish(&mut self, usage: Option<&Usage>, failed: bool) {
-        if let Some(mut record) = self.0.take() {
-            record.usage = usage.cloned().unwrap_or_default();
-            record.failed = failed;
-            bubblepaw_core::record_request_usage(record);
-        }
-    }
-    pub(crate) fn finish_result(&mut self, result: &Result<ModelResponse>) {
-        let usage = match result {
-            Ok(response) => response.usage.as_ref(),
-            Err(error) => ProviderError::of(error).and_then(|error| error.usage.as_ref()),
-        };
-        self.finish(usage, result.is_err());
-    }
-}
-impl Drop for PhysicalRequest {
-    fn drop(&mut self) {
-        if let Some(mut record) = self.0.take() {
-            record.failed = true;
-            bubblepaw_core::record_request_usage(record);
-        }
     }
 }
 

@@ -10,12 +10,11 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 
 #[cfg(windows)]
-const SLEEP: &str = "Start-Sleep -Seconds 30";
+const SLEEP: &str = "ping -n 31 127.0.0.1 >nul";
 #[cfg(not(windows))]
 const SLEEP: &str = "sleep 30";
 #[cfg(windows)]
-const WRITE: &str =
-    "[IO.File]::WriteAllText((Join-Path (Get-Location) 'view.txt'),'child workspace')";
+const WRITE: &str = "<nul set /p=child workspace>view.txt& cmd /c exit 0";
 #[cfg(not(windows))]
 const WRITE: &str = "printf 'child workspace' > view.txt";
 

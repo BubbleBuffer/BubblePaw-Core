@@ -88,6 +88,32 @@ code span. Preserve its
 reported usage, retry/fallback under the configured policy and leave coverage
 unchanged if no valid summary is available. No arbitrary minimum prose length.
 
+The episode summary prompt is `summary_prompt_v2.txt` unless
+`context.lcm.episode_prompt = "v3"` selects `summary_prompt_v3.txt` (2026-10-27,
+revised as v3.1 on 2026-10-28; the first draft remains only as the bench-only
+`v3-draft` value).
+v3 keeps v2's rules and length limits and adds a line-2 gist and an `Actions:`
+log before `Open:` for the compacted-history UI; see
+[config](config.md#lcm-sizes-and-background-gathering) and the
+[v3 comparison](lcm-episode-v3-comparison.md). Validation is the same for both;
+a v3 summary missing its `Actions:` section is still accepted as memory.
+Chapter synthesis defaults to `context.lcm.chapter_prompt = "v1"`. Opting into
+`"v2"` adds two blocks after the prose: `Decisions:` followed by `- <decision>`
+lines of at most 100 characters, or `Decisions: none`; and `Sections:` followed
+by `- <name> | episodes <first>-<last>` lines. Names contain one to five words.
+The episode numbers are the ordinals shown in the chapter input. Sections cover
+every member episode in order, with no gaps or overlaps; even a one-episode
+chapter has one section. Decisions must be grounded in the episodes, including
+their decision and user correction Actions where available. Both fields are
+plain copy for later display.
+
+On a valid v2 response, the chapter's existing SQLite JSON `data` includes
+`decisions` (an array of strings, empty for `none`) and `sections` (objects with
+`name`, `first_episode` and `last_episode`). No migration is needed; v1 chapters
+have neither key. If either block is malformed or sections fail to cover the
+chapter, the close still stores the description and summary and emits a parse
+warning, without either new key.
+
 An empty text reply (including reasoning-only output) gets one additional attempt
 with a short host-generated user nudge to write the requested summary now; a second
 empty reply still fails with `empty_output`, without advancing coverage. This
@@ -226,6 +252,41 @@ so inventory growth does not explain the failure. Trace metadata does not expose
 the exact split between cold notes, reminder overhead and calibration residual.
 
 ## Verification
+
+### Recorded compaction facts (2026-10-27)
+
+The chat database records `episode_written`, `chapter_closed` and `applied`
+events with exact source ranges, episode/summary IDs and token counts. Triggers
+are `source_size`, `subject_change`, `pressure`, `emergency` and `manual`.
+Explanations are bounded metadata, never copied message or summary content.
+Automatic admission applies from both `PrepareMode::Request` and
+`PrepareMode::Pressure` record `pressure`; explicit `Compact` records `manual`.
+Reusing the frozen view records nothing.
+
+`tokens_before` is optional: it is null when any covered originals lack stored
+source counts, including inherited imported summaries and legacy checkpoints.
+The apply event and its full covered range are still recorded, even when a view
+only freezes inherited memory. Never load cold originals solely to count them,
+and never substitute a fabricated count. Native episode gathers retain their
+known source counts; `tokens_after` measures the summary text.
+
+Applied events capture the admission estimate before and after publication,
+including system instructions and tools. The applied view records its ordered
+block token partition; per-message reads distinguish provider-reported assistant
+output tokens from read-time O200k estimates. Existing stores have no backfilled
+events and their older view rows remain readable without block metadata.
+Core reads expose reported counts only. The SDK combines them with estimates
+from the runner's existing estimator; core has no tokenizer dependency.
+
+Gather events share the episode batch transaction. Applied events share the
+existing chat validation transaction for the view, including central layouts
+whose disposable view lives in `serving.db`. Message usage links share existing
+assistant writes. Ordinary turns reusing a view add zero transactions. Detailed
+field meanings and trigger rules are in [context compaction](context-compaction.md).
+Each fact also emits `context_compaction` on the session event stream. Its
+notification shares the single-file transaction or the central layout's existing
+buffered serving flush; it adds no independent commit. The stdio `context`
+feature and matching HTTP reads are described in [Session API](session-api.md).
 
 Required behavior checks cover request-prefix preservation, independent background
 completion, exact source coverage and raw suffix, no memory-body omission,

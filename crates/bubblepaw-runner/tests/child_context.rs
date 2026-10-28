@@ -30,6 +30,10 @@ use std::{
     time::Duration,
 };
 
+#[cfg(windows)]
+#[path = "support/windows_command.rs"]
+mod windows_command;
+
 #[path = "support/eventually.rs"]
 mod eventually;
 use eventually::eventually;
@@ -316,55 +320,6 @@ fn hash(bytes: &[u8]) -> u64 {
         (hash * 31 + u64::from(*byte)) % 2_147_483_647
     })
 }
-/// Writes a marker into the working directory, then prints 20,000 lines. The
-/// full result crosses the inline limit and must spill.
-#[cfg(windows)]
-fn spill_command(marker: &str) -> String {
-    format!(
-        "[IO.File]::WriteAllText('{marker}','{marker}'); 0..19999 | ForEach-Object {{ 'line-{{0:D5}} payload' -f $_ }}"
-    )
-}
-#[cfg(not(windows))]
-fn spill_command(marker: &str) -> String {
-    format!(
-        "printf '%s' '{marker}' > {marker}; awk 'BEGIN {{ for(i=0;i<20000;i++) printf \"line-%05d payload\\n\", i }}'"
-    )
-}
-#[cfg(windows)]
-fn long_command(marker: &str) -> String {
-    format!("[IO.File]::WriteAllText('{marker}','{marker}'); Start-Sleep -Seconds 30")
-}
-#[cfg(not(windows))]
-fn long_command(marker: &str) -> String {
-    format!("printf '%s' '{marker}' > {marker}; sleep 30")
-}
-#[cfg(windows)]
-fn quick_command() -> &'static str {
-    "Write-Output ok"
-}
-#[cfg(not(windows))]
-fn quick_command() -> &'static str {
-    "true"
-}
-
-const SPILL_CODE: &str = "const rows=Array.from({length:6000},(_,i)=>'row-'+String(i).padStart(5,'0')+' '+'j'.repeat(40)); return {rows};";
-
-/// Reads the external skill body and helper, runs a large exec, then pages its full
-/// spill back through tools.read and returns a checksum of exactly what was read.
-fn work_code(tag: &str, body_literal: &str, helper_literal: &str) -> String {
-    let command = json!(spill_command(&format!("cwd-{tag}.txt")));
-    format!(
-        "const body=await tools.read({{path:{body_literal}}}); \
-const helper=await tools.read({{path:{helper_literal}}}); \
-const run=await tools.exec({{command:{command}}}); \
-if(run.exitCode!==0||!run.fullOutput) throw Error(JSON.stringify(run)); \
-const path=run.fullOutput.path; let full='', start=1, pages=0; \
-for(;;) {{ const page=await tools.read({{path,startLine:start,lineCount:1000}}); full+=page.content; pages++; \
-if(page.returnedLines===0||start+page.returnedLines>page.totalLines) break; start+=page.returnedLines; }} \
-let hash=0; for(let i=0;i<full.length;i++) hash=(hash*31+full.charCodeAt(i))%2147483647; \
-return {{tag:'{tag}',external:{{body:body.content.includes('EXTERNAL-BODY-TOKEN'),helper:helper.content.includes('EXTERNAL-HELPER-TOKEN')}},exec:{{path,bytes:full.length,pages,hash}}}};"
-    )
-}
 fn prefix_code(path: &Path) -> String {
     format!(
         "const page=await tools.read({{path:{}, startLine:1, lineCount:1}}); return {{prefix:page.content.startsWith('{{\"rows\":[\"row-00000 '), totalLines:page.totalLines}};",
@@ -457,7 +412,10 @@ async fn isolated_children_keep_skills_external_resources_and_owned_spills() -> 
     let helper = json!(external.join("helper.txt")).to_string();
 
     // Child: committed catalog, external reads, exec spill and JS spill readback.
-    let child = host.spawn(&owner, &work_code("child", &body, &helper))?;
+    let child = host.spawn(
+        &owner,
+        &work_code("child", &body, &helper, directory.path()),
+    )?;
     host.finish(&owner, &child).await?;
     let child_path = worktrees::get(&host.store, &child)?.unwrap().path;
     let prompt = host.first_prompt(&child);
@@ -515,7 +473,7 @@ async fn isolated_children_keep_skills_external_resources_and_owned_spills() -> 
             .contains("CHILD-ADDED-DESCRIPTION")
     );
 
-    let grandchild_code = work_code("grandchild", &body, &helper);
+    let grandchild_code = work_code("grandchild", &body, &helper, directory.path());
     host.send(
         &owner,
         &child,
@@ -586,3 +544,7 @@ async fn isolated_children_keep_skills_external_resources_and_owned_spills() -> 
 
 #[path = "child_context/process_lifetime.rs"]
 mod process_lifetime;
+
+#[path = "child_context/exec.rs"]
+mod exec;
+use exec::{SPILL_CODE, long_command, quick_command, work_code};

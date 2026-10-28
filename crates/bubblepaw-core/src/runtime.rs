@@ -1,9 +1,9 @@
 use crate::event_log::ContentRef;
 use crate::{
     CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, ModelRequest,
-    ModelResponse, Observation, ObservationScope, Provider, QueuedInput, RequestKind, RequestUsage,
-    Role, Run, RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolDispatcher,
-    ToolRegistry, ToolResult, Usage, capture_request_usage_with_store, id, now, stream::Paragraphs,
+    ModelResponse, Observation, ObservationScope, Provider, QueuedInput, RequestUsage, Role, Run,
+    RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolDispatcher, ToolRegistry,
+    ToolResult, Usage, id, now, stream::Paragraphs,
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use async_trait::async_trait;
@@ -42,6 +42,11 @@ mod runtime_supervision;
 #[path = "runtime_tools.rs"]
 mod runtime_tools;
 use crate::submit_result::is_submission;
+
+#[path = "runtime_records.rs"]
+mod records;
+pub(crate) use records::Active;
+use records::{CallbackLifetime, SingleToolRun, TurnOutcome};
 
 /// Resolve the host's default model and request client as one snapshot.
 pub type ProviderResolver = Arc<dyn Fn() -> (String, Arc<dyn Provider>) + Send + Sync>;
@@ -116,34 +121,6 @@ impl Default for HarnessConfig {
             auto_approval: None,
             event_retention_days: None,
         }
-    }
-}
-pub(crate) struct Active {
-    run_id: String,
-    cancellation: CancellationToken,
-    notify: Arc<Notify>,
-    finished: Option<Run>,
-    /// The turn panicked; `finished` is the failed record every waiter reports.
-    panicked: Option<String>,
-    /// The settled boundary is committed; maintenance precedes idle notification.
-    finalizing: bool,
-    /// The client whose cancel stopped this run; RunFinished carries it.
-    cancelled_by: Option<ClientInfo>,
-}
-struct CallbackLifetime(Arc<AtomicBool>);
-struct TurnOutcome {
-    text: String,
-    result_message_id: String,
-    final_message: Option<Message>,
-}
-struct SingleToolRun {
-    call: ToolCall,
-    result: Arc<Mutex<Option<ToolResult>>>,
-    completion: tokio::sync::oneshot::Sender<Run>,
-}
-impl Drop for CallbackLifetime {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Relaxed);
     }
 }
 #[derive(Default)]
@@ -841,6 +818,7 @@ impl Harness {
             .await;
             let mut result_message_id = None;
             let mut final_message = None;
+            let mut request_ids = Vec::new();
             match result {
                 Ok(outcome) => {
                     run.status = "completed".into();
@@ -848,6 +826,7 @@ impl Harness {
                     run.usage = Some(usage.unwrap_or_default());
                     result_message_id = Some(outcome.result_message_id);
                     final_message = outcome.final_message;
+                    request_ids = outcome.request_ids;
                 }
                 Err(error) => {
                     run.usage = usage;
@@ -911,8 +890,15 @@ impl Harness {
                     .commit(&self.store, &run.session_id, &run.id, origin, |tx| {
                         if let Some(message) = &final_message {
                             Store::insert_message(tx, message)?;
+                            Store::insert_message_request_usage_tx(
+                                tx,
+                                message,
+                                &request_usage,
+                                &request_ids,
+                            )?;
+                        } else {
+                            Store::insert_request_usage_tx(tx, &request_usage)?;
                         }
-                        Store::insert_request_usage_tx(tx, &request_usage)?;
                         Store::finish_run_tx(tx, &run, result_message_id.as_deref())?;
                         let mut events = vec![(
                             EventKind::RunFinished {
@@ -1090,16 +1076,21 @@ impl Harness {
                 .clone()
                 .with_auto_approval(self.config.auto_approval.clone(), user_request.clone());
             let mut tools_round = runtime_reminders::ToolsRound::Open;
-            let (response, dispatcher) = if let Some(execution) = single_tool {
+            let (response, dispatcher, request_ids) = if let Some(execution) = single_tool {
                 (
                     ModelResponse {
                         tool_calls: vec![execution.call.clone()],
                         ..Default::default()
                     },
                     dispatcher.clone(),
+                    Vec::new(),
                 )
             } else if let Some(code) = &options.script {
-                (crate::script::response(code), dispatcher.clone())
+                (
+                    crate::script::response(code),
+                    dispatcher.clone(),
+                    Vec::new(),
+                )
             } else {
                 let (default_model, request_provider) = self.provider_binding();
                 tools_round = self.queue_run_reminders(run, options, &dispatcher, &mut reminders);
@@ -1334,14 +1325,21 @@ impl Harness {
                     &request,
                     request_provider.clone(),
                 );
-                let (mut response_result, mut captured_usage) = capture_request_usage_with_store(
-                    &self.store, &run.session_id, Some(&run.id), RequestKind::Main,
+                let (mut response_result, mut captured_usage, mut request_ids) = crate::request_usage::capture_message_request_usage(
+                    &self.store, &run.session_id, &run.id,
                     async { tokio::select! {biased; _=cancellation.cancelled()=>Err(anyhow!("Cancelled during provider request")), result=request_provider.generate(request,callback,cancellation.clone())=>result} },
                 ).await;
                 if captured_usage.is_empty() {
                     match &response_result {
                         Ok(response) => {
                             fallback_usage.usage = response.usage.clone().unwrap_or_default();
+                            let output_reported = match &response.last_request_usage {
+                                Some(usage) => usage.output_tokens.is_some(),
+                                None => response.usage.is_some(),
+                            };
+                            if output_reported {
+                                request_ids.push(fallback_usage.request_id.clone());
+                            }
                             if let Some((provider, model)) = response
                                 .provider_state
                                 .as_ref()
@@ -1423,7 +1421,7 @@ impl Harness {
                 if let Some(value) = &response.usage {
                     usage.get_or_insert_with(Usage::default).add(value);
                 }
-                (response, dispatcher)
+                (response, dispatcher, request_ids)
             };
             // Reissuing a durable call ID is never a new invocation, including after
             // an unknown outcome. The host must resolve that effect explicitly.
@@ -1452,7 +1450,13 @@ impl Harness {
                 && options.output_schema.is_some()
             {
                 user_request = self
-                    .nudge_required_result(run, &message, request_usage, &mut result_nudged)?
+                    .nudge_required_result(
+                        run,
+                        &message,
+                        request_usage,
+                        &request_ids,
+                        &mut result_nudged,
+                    )?
                     .unwrap_or(user_request);
                 result_retry_pending = true;
                 continue;
@@ -1465,7 +1469,7 @@ impl Harness {
                     .iter()
                     .any(|input| input.state == "pending" && input.kind == crate::InputKind::Steer)
             {
-                return Ok(runtime_result::text_outcome(message, true));
+                return Ok(runtime_result::text_outcome(message, true, request_ids));
             }
             // The dispatcher admits every route. A sole Allow call can still
             // batch its assistant reply and dispatch marker in one transaction.
@@ -1497,12 +1501,13 @@ impl Harness {
                 Some(dispatcher.commit_reply_dispatch(
                     &message,
                     request_usage,
+                    &request_ids,
                     single_prepared.as_ref().expect("single prepared call"),
                 )?)
             } else {
                 self.state.log.settle_text(&run.session_id, || {
                     self.store
-                        .append_with_request_usage(&message, request_usage)
+                        .append_with_request_usage(&message, request_usage, &request_ids)
                 })?;
                 None
             };
@@ -1586,6 +1591,7 @@ impl Harness {
                         text,
                         result_message_id,
                         final_message: None,
+                        request_ids: Vec::new(),
                     }
                 });
             }
@@ -1596,26 +1602,12 @@ impl Harness {
                 user_request = self.latest_user_request(&run.session_id)?;
             }
             if options.output_schema.is_none() && response.tool_calls.is_empty() && steered == 0 {
-                return Ok(runtime_result::text_outcome(message, false));
+                return Ok(runtime_result::text_outcome(message, false, request_ids));
             }
         }
     }
 }
-pub(crate) fn bounded(text: &str, max: usize) -> String {
-    if text.len() <= max {
-        return text.into();
-    }
-    const MARKER: &str = "\n[tool result truncated]";
-    let room = max.saturating_sub(MARKER.len());
-    let mut end = room.min(text.len());
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    if max < MARKER.len() {
-        return MARKER[..max].into();
-    }
-    format!("{}{}", &text[..end], MARKER)
-}
+pub(crate) use crate::stream::bounded;
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]

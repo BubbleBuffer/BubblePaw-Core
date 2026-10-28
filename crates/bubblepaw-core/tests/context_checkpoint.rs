@@ -204,7 +204,7 @@ async fn existing_v1_and_v2_archives_migrate_without_rewriting_messages() -> Res
         let conn = rusqlite::Connection::open(store.chat_path(&session.id)?.unwrap())?;
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-            11
+            12
         );
         assert_eq!(
             conn.query_row(

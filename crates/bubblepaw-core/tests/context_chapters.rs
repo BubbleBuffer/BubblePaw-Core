@@ -116,7 +116,7 @@ async fn chapters_append_contiguously_across_foreign_seq_gaps_restart_and_fork()
     let conn = rusqlite::Connection::open(reopened.chat_path(&session.id)?.unwrap())?;
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        11
+        12
     );
     let mut statement = conn.prepare("PRAGMA foreign_key_list(context_chapters)")?;
     let references = statement
@@ -328,7 +328,7 @@ async fn v3_checkpoint_migrates_and_new_chapters_start_after_legacy_cutoff() -> 
     let conn = rusqlite::Connection::open(store.chat_path(&session.id)?.unwrap())?;
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        11
+        12
     );
     assert_eq!(
         durable_json(&conn.query_row(

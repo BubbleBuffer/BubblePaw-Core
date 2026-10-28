@@ -81,10 +81,12 @@ impl Harness {
         run: &Run,
         message: &Message,
         request_usage: &mut Vec<RequestUsage>,
+        request_ids: &[String],
         nudged: &mut bool,
     ) -> Result<Option<String>> {
         self.state.log.settle_text(&run.session_id, || {
-            self.store.append_with_request_usage(message, request_usage)
+            self.store
+                .append_with_request_usage(message, request_usage, request_ids)
         })?;
         request_usage.clear();
         ensure!(
@@ -110,13 +112,19 @@ pub(super) fn outcome(run: &Run, value: serde_json::Value) -> Result<TurnOutcome
         text,
         result_message_id: final_message.id.clone(),
         final_message: Some(final_message),
+        request_ids: Vec::new(),
     })
 }
 
-pub(super) fn text_outcome(message: Message, needs_commit: bool) -> TurnOutcome {
+pub(super) fn text_outcome(
+    message: Message,
+    needs_commit: bool,
+    request_ids: Vec<String>,
+) -> TurnOutcome {
     TurnOutcome {
         text: message.content.clone(),
         result_message_id: message.id.clone(),
         final_message: needs_commit.then_some(message),
+        request_ids,
     }
 }

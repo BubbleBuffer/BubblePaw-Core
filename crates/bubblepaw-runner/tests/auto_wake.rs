@@ -563,7 +563,7 @@ async fn mixed_child_and_exec_completions_batch_into_one_parent_turn() -> Result
         .unwrap()
         .invoke(
             fixture.context(&fixture.parent),
-            json!({"command":gated_completion_command(),"background":true,
+            json!({"command":gated_completion_command(workspace.path()),"background":true,
                 "timeoutMs":exec_test_timeout().as_millis()}),
         )
         .await?;
@@ -783,7 +783,7 @@ async fn concurrent_steering_and_exec_completion_do_not_deadlock_or_duplicate() 
             .unwrap()
             .invoke(
                 fixture.context(&fixture.parent),
-                json!({"command":gated_completion_command(),"background":true,
+                json!({"command":gated_completion_command(workspace.path()),"background":true,
                     "timeoutMs":exec_test_timeout().as_millis()}),
             )
             .await?;

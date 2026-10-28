@@ -209,11 +209,11 @@ fn initialize(path: &Path) -> Result<()> {
 }
 
 #[cfg(windows)]
-const WRITE_EXEC: &str = "[IO.File]::WriteAllText('exec.txt','owned child process')";
+const WRITE_EXEC: &str = "<nul set /p=owned child process>exec.txt& cmd /c exit 0";
 #[cfg(not(windows))]
 const WRITE_EXEC: &str = "printf 'owned child process' > exec.txt";
 #[cfg(windows)]
-const WRITE_RESTORED_EXEC: &str = "[IO.File]::WriteAllText('restored-exec.txt','restored command')";
+const WRITE_RESTORED_EXEC: &str = "<nul set /p=restored command>restored-exec.txt& cmd /c exit 0";
 #[cfg(not(windows))]
 const WRITE_RESTORED_EXEC: &str = "printf 'restored command' > restored-exec.txt";
 
