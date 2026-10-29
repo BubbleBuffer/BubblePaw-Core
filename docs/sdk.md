@@ -11,10 +11,10 @@ tag, so embedders do not depend on internal crate paths.
 ## Depend on it
 
 ```toml
-bubblepaw-sdk = { git = "https://github.com/BubbleBuffer/BubblePaw-Core", tag = "v0.2.1" }
+bubblepaw-sdk = { git = "https://github.com/BubbleBuffer/BubblePaw-Core", tag = "v0.3.0" }
 ```
 
-`v0.2.0` is the first tag with the SDK; `v0.2.1` adds the todo module, redacted fatal error text and the fork and spool-sweep race fixes. The crates are not published to
+`v0.2.0` is the first tag with the SDK; `v0.2.1` adds the todo module, redacted fatal error text and the fork and spool-sweep race fixes; `v0.3.0` adds the cmd shell and scratchpads for exec on Windows and the opt-in chapter prompt v2. The crates are not published to
 crates.io, and the SDK is not a protocol client.
 
 Fixes reach BubblePaw-Core only through a sync: once they are merged into the

@@ -10,6 +10,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 - [lcm-contract](lcm-contract.md) — Gather/apply facts, trigger mapping and transaction budget; opt-in chapter v2 decisions and sections, exact timeline, prefix preservation and fallback.
 - [lcm-episode-v3-comparison](lcm-episode-v3-comparison.md) — Measured 2026-10-28: episode summary prompt v2, the v3 draft and v3.1 (three rounds) (gist + `Actions:` log, `context.lcm.episode_prompt`) on DeepSeek Flash over recorded episodes; verdict keeps v2 the default.
+- [lcm-chapter-v2-comparison](lcm-chapter-v2-comparison.md) — Measured 2026-10-29: chapter prompt v1 against v2 (Decisions and Sections blocks, `context.lcm.chapter_prompt`) on DeepSeek Flash over five frozen chapters, two rounds; parse rate, grounding, sections, size, cost and the cause of each fallback.
 - [context-compaction](context-compaction.md) — 2026-10-27: durable compaction events, applied-view block tokens, reported/estimated message tokens and SDK reads.
 - [memory-files](memory-files.md) — Runner memory files: frozen AGENTS.md and CLAUDE.md context, bounded content and one-time live change notes.
 - [skills](skills.md) — Frozen SKILL.md catalogs, ordinary body reads, per-session folder access and durable live diffs.
@@ -30,7 +31,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [host-attach](host-attach.md) — 2026-10-21: local run/delegate attachment to the central store's host, per-chat workspaces, request config and host lifetime; verification status and Windows smoke commands.
 - [sdk](sdk.md) — Updated 2026-10-27: context events, view blocks, message-token reads, and host answers and pending reads for child questions; the Rust facade, `HostBuilder`, Claude Code helper, todo module and stability policy.
 - [storage-model](storage-model.md) — Updated 2026-10-27: schema 12 compaction facts and message usage links without extra ordinary transactions; central storage, legacy import, lean chats, archives and disposable serving.
-- [session-api](session-api.md) — Built; current 2026-10-27: session snapshots, durable events, Context reads over stdio, compaction notifications, direct-parent child run/question events (`child_events`) and `question.answer_child`.
+- [session-api](session-api.md) — Built; current 2026-10-29: stdio provider and main-role controls, paged session lists and child cancellation; session snapshots, durable events, Context reads and direct-parent child events.
 - [usage tracking](usage-tracking.md) - Durable per-request tokens and SDK-reported model IDs, one dated price table, grouped reports and the fixed `bubblepaw.usage.v1` JSONL export.
 - [quota](quota.md) — Native subscription/rate-limit/credit readings, change-only history, rejection-specific waits and restart recovery; piggybacked balances with explicit standalone recording times; OpenCode Go meters through a BubblePaw-owned console login (`bubblepaw login opencode`).
 - [rewind](rewind.md) — Built 2026-10-15; edit/write updated 2026-10-20: file checkpoints, content-addressed originals, conflict-safe session rewind, and rewind limited to the latest turn (a typed user row or ChildTask instruction; host notices never count), with checkpoints pruned to the current and previous turn.

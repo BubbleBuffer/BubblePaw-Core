@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Instant};
 
 use crate::{
-    episode_models::{ChapterInput, EpisodeModelConfig, EpisodeModels, HttpEpisodeModels},
+    episode_models::{ChapterInput, EpisodeModelConfig, HttpEpisodeModels},
     episodes::{ChapterPrompt, EpisodeConfig},
     model_roles::ModelRoles,
     provider::{ProviderRegistry, ScriptedProvider, ScriptedStep},
@@ -171,8 +171,8 @@ pub async fn run(
         for (name, models) in &arms {
             spend.check()?;
             let started = Instant::now();
-            let result = models
-                .close_chapter(input.clone())
+            let (result, metadata_text, metadata_error) = models
+                .close_chapter_with_metadata(input.clone())
                 .await
                 .with_context(|| format!("{name} chapter for fixture {}", fixture.id))?;
             if options.dry_run {
@@ -185,7 +185,8 @@ pub async fn run(
                 (*name).into(),
                 json!({"input_sha256": fingerprint, "description": result.description,
                     "summary": result.summary, "decisions": result.decisions,
-                    "sections": result.sections, "related_ids": result.related_ids,
+                    "sections": result.sections, "metadata_text": metadata_text,
+                    "metadata_error": metadata_error, "related_ids": result.related_ids,
                     "related_evidence": result.related_evidence, "model": result.model,
                     "usage": result.usage, "elapsed_ms": started.elapsed().as_millis()}),
             );

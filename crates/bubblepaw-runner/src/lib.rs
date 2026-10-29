@@ -50,6 +50,7 @@ pub mod probes;
 mod process_output;
 pub mod profiles;
 pub mod provider;
+pub mod provider_setup;
 pub mod question;
 pub mod quota;
 pub mod quota_recovery;

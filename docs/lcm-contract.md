@@ -100,7 +100,7 @@ a v3 summary missing its `Actions:` section is still accepted as memory.
 Chapter synthesis defaults to `context.lcm.chapter_prompt = "v1"`. Opting into
 `"v2"` adds two blocks after the prose: `Decisions:` followed by `- <decision>`
 lines of at most 100 characters, or `Decisions: none`; and `Sections:` followed
-by `- <name> | episodes <first>-<last>` lines. Names contain one to five words.
+by `- <name> | episodes <first>-<last>` lines (`episode N` is read as `episodes N-N`, and an en dash is accepted in the range). Names contain one to five words.
 The episode numbers are the ordinals shown in the chapter input. Sections cover
 every member episode in order, with no gaps or overlaps; even a one-episode
 chapter has one section. Decisions must be grounded in the episodes, including

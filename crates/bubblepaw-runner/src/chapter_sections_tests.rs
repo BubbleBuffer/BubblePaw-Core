@@ -67,6 +67,7 @@ fn rejects_missing_empty_duplicate_reordered_and_malformed_blocks() {
         "Decisions:\n- \nSections:\n- Work | episodes 7-10",
         "Decisions: None\nSections:\n- Work | episodes 7-10",
         "Decisions: none\nSections:\n- Work | episode 7-10",
+        "Decisions: none\nSections:\n- Work | episode 7",
         "Decisions: none\nSections:\n- Work | episodes +7-10",
         "Decisions: none\nSections:\n- Work | episodes 7-10\nExtra commentary",
     ] {
@@ -89,6 +90,8 @@ fn rejects_ranges_without_exact_contiguous_coverage() {
         "- Work | episodes 7-7\n- More | episodes 9-10",
         "- Work | episodes 9-10\n- More | episodes 7-8",
         "- Work | episodes 7-10\n- More | episodes 10-10",
+        "- Work | episodes 7-8\n- More | episode 8\n- Rest | episodes 9-10",
+        "- Work | episodes 7-8\n- More | episode 10",
         "- Work | episodes 7-99999999999999999999999999999999999999",
     ] {
         let text = output(&format!("Decisions: none\nSections:\n{rows}"));
@@ -186,4 +189,41 @@ fn related_final_line_is_parsed_before_retrieval_blocks() {
     assert!(links.is_empty() && evidence.is_empty());
     assert!(parse(&clean, &episodes()).is_ok());
     assert!(!prose(&clean).contains("Related:"));
+}
+
+fn seven() -> Vec<String> {
+    (1..=7)
+        .map(|ordinal| format!("EPISODE {ordinal} [source a..b]\nmemory"))
+        .collect()
+}
+
+#[test]
+fn single_episode_row_parses_as_one_episode_range() {
+    let text = output(
+        "Decisions: none\nSections:\n- Reconnaissance and version design | episodes 1-4\n- Core numbered migration edits | episode 5\n- Fixtures, tests and docs | episodes 6-7",
+    );
+    let sections = parse(&text, &seven()).unwrap().sections;
+    let ranges: Vec<_> = sections
+        .iter()
+        .map(|section| (section.first_episode, section.last_episode))
+        .collect();
+    assert_eq!(ranges, [(1, 4), (5, 5), (6, 7)]);
+    assert_eq!(sections[1].name, "Core numbered migration edits");
+}
+
+#[test]
+fn en_dash_range_parses() {
+    let text = output(
+        "Decisions: none\nSections:\n- Parser fix | episodes 7\u{2013}8\n- Rest | episodes 9\u{2013}10",
+    );
+    let sections = parse(&text, &episodes()).unwrap().sections;
+    assert_eq!(sections.len(), 2);
+    assert_eq!(
+        (sections[0].first_episode, sections[0].last_episode),
+        (7, 8)
+    );
+    assert_eq!(
+        (sections[1].first_episode, sections[1].last_episode),
+        (9, 10)
+    );
 }

@@ -1,7 +1,8 @@
 //! Provider setup and live apply. Merge this router before the host's local boundary.
-use crate::config::{EffectiveConfig, LoadOptions, ProviderModelSettings, ProviderSettings};
-use crate::provider::LiveProviderConfig;
-use anyhow::{Context, Result, ensure};
+use crate::config::{EffectiveConfig, ProviderModelSettings, ProviderSettings};
+pub use crate::provider_setup::ProviderSetup;
+use crate::provider_setup::*;
+use anyhow::{Result, ensure};
 use axum::{
     Json, Router,
     body::Bytes,
@@ -18,106 +19,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashSet},
-    io::Write,
     path::{Path as FilePath, PathBuf},
-    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use toml_edit::{DocumentMut, Item, Table, value};
 
-const KINDS: &[&str] = &[
-    "codex",
-    "scripted",
-    "responses",
-    "chat-completions",
-    "anthropic-messages",
-    "decisions",
-    "openai-decisions",
-    "openrouter-decisions",
-];
 const BODY_CAP: usize = 2 * 1024 * 1024;
-
-#[derive(Clone)]
-pub struct ProviderSetup(Arc<SetupState>);
-
-struct SetupState {
-    target: PathBuf,
-    layer: &'static str,
-    inputs: LoadOptions,
-    launched: Value,
-    launched_main: String,
-    live: Option<Arc<LiveProviderConfig>>,
-    host_config: Option<Arc<crate::live_config::LiveConfig>>,
-    // Serialize reads and writes within this host; a second process is not locked.
-    files: Mutex<()>,
-}
-
-impl ProviderSetup {
-    /// Inputs must be captured before startup rewrites CLI fields from settings.
-    pub fn new(mut inputs: LoadOptions, launched: &EffectiveConfig) -> Result<Self> {
-        // Public load_options intentionally redacts process inputs. Setup must
-        // retain the invoking environment when rebuilding a saved candidate.
-        inputs.env = launched.runtime_environment();
-        let custom = inputs.custom_file.clone().or_else(|| {
-            inputs
-                .env
-                .iter()
-                .find(|(key, _)| key == "BUBBLEPAW_CONFIG")
-                .map(|(_, path)| PathBuf::from(path))
-        });
-        let (target, layer) = match custom {
-            Some(path) => (path, "custom"),
-            None => (
-                inputs
-                    .home
-                    .as_ref()
-                    .context("Provider setup needs a home directory")?
-                    .join(".bubblepaw/config.toml"),
-                "user",
-            ),
-        };
-        let target = absolute(&target)?;
-        if layer == "custom" {
-            inputs.custom_file = Some(target.clone());
-        }
-        // Use absolute layer paths for stable provenance and relative auth-file resolution.
-        inputs.workspace = absolute(&inputs.workspace)?;
-        inputs.home = inputs.home.as_deref().map(absolute).transpose()?;
-        let launched_main = main_model(launched)?;
-        let launched = snapshot(launched)?;
-        Ok(Self(Arc::new(SetupState {
-            target,
-            layer,
-            inputs,
-            launched,
-            launched_main,
-            live: None,
-            host_config: None,
-            files: Mutex::new(()),
-        })))
-    }
-    /// Bind setup writes and reloads to the running host's provider snapshots.
-    pub fn with_live(mut self, live: Arc<LiveProviderConfig>) -> Self {
-        Arc::get_mut(&mut self.0)
-            .expect("bind live providers before cloning setup")
-            .live = Some(live);
-        self
-    }
-    pub fn with_host_config(mut self, live: Arc<crate::live_config::LiveConfig>) -> Self {
-        Arc::get_mut(&mut self.0)
-            .expect("bind host config before cloning setup")
-            .host_config = Some(live);
-        self
-    }
-}
-
-fn absolute(path: &FilePath) -> Result<PathBuf> {
-    Ok(if path.is_absolute() {
-        path.to_owned()
-    } else {
-        std::env::current_dir()?.join(path)
-    })
-}
 
 /// Own state is already supplied; the returned router can be merged into any host.
 pub fn router(state: ProviderSetup) -> Router {
@@ -130,39 +37,13 @@ pub fn router(state: ProviderSetup) -> Router {
         .with_state(state)
 }
 
-struct ApiError(StatusCode, String);
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.0, Json(json!({"error": self.1}))).into_response()
     }
 }
-type ApiResult<T> = std::result::Result<T, ApiError>;
-fn bad() -> ApiError {
-    ApiError(
-        StatusCode::BAD_REQUEST,
-        "Invalid provider configuration".into(),
-    )
-}
-fn conflict() -> ApiError {
-    ApiError(
-        StatusCode::CONFLICT,
-        "A later configuration layer overrides the saved settings".into(),
-    )
-}
-fn io_error() -> ApiError {
-    ApiError(
-        StatusCode::CONFLICT,
-        "Cannot read or write provider configuration".into(),
-    )
-}
 fn body<T>(input: std::result::Result<Json<T>, JsonRejection>) -> ApiResult<T> {
     input.map(|Json(input)| input).map_err(|_| bad())
-}
-fn valid_name(name: &str) -> bool {
-    (1..=64).contains(&name.len())
-        && name
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-')
 }
 fn valid_env(name: &str) -> bool {
     (1..=128).contains(&name.len())
@@ -289,218 +170,6 @@ fn model_json(model: &ProviderModelSettings) -> Value {
     value
 }
 
-fn provider_json(provider: &ProviderSettings) -> Value {
-    let kind = provider.kind.as_deref().unwrap_or("chat-completions");
-    let default_replay = if kind == "chat-completions" {
-        bubblepaw_core::ReasoningReplay::default()
-    } else {
-        bubblepaw_core::ReasoningReplay::None
-    };
-    json!({
-        "kind": kind,
-        "base_url": provider.base_url,
-        "key_env": provider.key_env,
-        "auth_file": provider.auth_file,
-        "reasoning": provider.reasoning,
-        "models": provider.models.iter().map(|model| json!({
-            "id": model.id,
-            "image_input": model.image_input.unwrap_or(matches!(kind, "codex" | "responses" | "chat-completions" | "anthropic-messages")),
-            "reasoning_replay": model.reasoning_replay.unwrap_or(default_replay),
-        })).collect::<Vec<_>>(),
-    })
-}
-fn main_model(config: &EffectiveConfig) -> Result<String> {
-    let settings = config.settings()?;
-    Ok(settings.main_model)
-}
-fn snapshot(config: &EffectiveConfig) -> Result<Value> {
-    let settings = config.settings()?;
-    let mut providers = BTreeMap::new();
-    for (name, provider) in &settings.providers {
-        let mut entry = provider_json(provider);
-        if let Some(path) = &provider.auth_file {
-            entry["auth_file"] = json!(absolute(path)?);
-        }
-        providers.insert(name.clone(), entry);
-    }
-    Ok(json!({
-        "providers": providers,
-        "main": main_model(config)?,
-    }))
-}
-fn provider_source(config: &EffectiveConfig, name: &str) -> String {
-    fn visit<'a>(
-        config: &'a EffectiveConfig,
-        path: &str,
-        node: &toml::Value,
-        sources: &mut Vec<&'a str>,
-    ) {
-        if let Some(source) = config.source(path) {
-            sources.push(source);
-        }
-        if let Some(table) = node.as_table() {
-            for (key, val) in table {
-                visit(config, &format!("{path}.{key}"), val, sources);
-            }
-        }
-    }
-    let path = format!("providers.{name}");
-    let mut sources = Vec::new();
-    if let Some(node) = config.value(&path) {
-        visit(config, &path, node, &mut sources);
-    }
-    sources
-        .into_iter()
-        .filter_map(|source| source.split_once(": "))
-        .max_by_key(|(layer, _)| match *layer {
-            "custom" => 3,
-            "project" => 2,
-            "user" => 1,
-            _ => 0,
-        })
-        .map_or_else(|| "defaults".into(), |(_, path)| path.to_owned())
-}
-
-impl SetupState {
-    fn lower(&self) -> ApiResult<EffectiveConfig> {
-        // Both permitted write targets sit immediately above defaults. Custom
-        // configuration replaces user/project files; user is the first file layer.
-        let mut inputs = self.inputs.clone();
-        inputs.custom_file = Some(self.target.clone());
-        inputs.env.clear();
-        inputs.cli.clear();
-        EffectiveConfig::load_with_file(inputs, &self.target, "").map_err(|_| bad())
-    }
-    fn document(&self) -> ApiResult<DocumentMut> {
-        match std::fs::read_to_string(&self.target) {
-            Ok(text) => text.parse().map_err(|_| io_error()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(DocumentMut::new()),
-            Err(_) => Err(io_error()),
-        }
-    }
-    fn load(&self) -> ApiResult<EffectiveConfig> {
-        EffectiveConfig::load(self.inputs.clone()).map_err(|_| bad())
-    }
-    fn payload(&self) -> ApiResult<Value> {
-        let config = self.load()?;
-        let doc = self.document()?;
-        self.payload_for(&config, &doc, false, None)
-    }
-    fn payload_for(
-        &self,
-        config: &EffectiveConfig,
-        doc: &DocumentMut,
-        applying: bool,
-        applied_main: Option<&str>,
-    ) -> ApiResult<Value> {
-        let settings = config.settings().map_err(|_| bad())?;
-        let lower = self.lower()?;
-        let providers = settings
-            .providers
-            .iter()
-            .map(|(name, provider)| {
-                let mut entry = provider_json(provider);
-                entry["name"] = json!(name);
-                entry["key_present"] = json!(
-                    provider
-                        .key_env
-                        .as_ref()
-                        .and_then(|name| config.environment(name))
-                        .is_some_and(|value| !value.is_empty())
-                );
-                // File provenance can differ by field in a merged provider table.
-                entry["source"] = json!(provider_source(config, name));
-                entry["inherited_fields"] = json!(
-                    lower
-                        .value(&format!("providers.{name}"))
-                        .and_then(toml::Value::as_table)
-                        .map(|fields| fields.keys().cloned().collect::<Vec<_>>())
-                        .unwrap_or_default()
-                );
-                entry["editable"] = json!(true);
-                entry["deletable"] = json!(target_provider(doc, name));
-                entry
-            })
-            .collect::<Vec<_>>();
-        let active = self.live.as_ref().map(|live| live.snapshot());
-        let active_config = active.as_ref().map(|generation| &generation.effective);
-        let reload_needed = !(applying && self.live.is_some())
-            && active_config
-                .map(|active| !active.same_provider_config(config))
-                .unwrap_or_else(|| snapshot(config).ok().as_ref() != Some(&self.launched));
-        let active_main = if let Some(main) = applied_main {
-            main.to_owned()
-        } else {
-            active
-                .as_ref()
-                .map(|generation| generation.settings.main_model.clone())
-                .unwrap_or_else(|| self.launched_main.clone())
-        };
-        Ok(json!({
-            "target": {"path": self.target, "layer": self.layer, "exists": applying || self.target.exists()},
-            "kinds": KINDS, "main": main_model(config).map_err(|_| bad())?,
-            "launched_main": self.launched_main,
-            "active_main": active_main,
-            "reload_needed": reload_needed,
-            "allowed_key_envs": settings.web.provider_key_envs,
-            "restart_needed": self.live.as_ref().map(|live| config.restart_needed(live.startup_config()))
-                .unwrap_or_else(|| snapshot(config).ok().as_ref() != Some(&self.launched)),
-            "providers": providers,
-        }))
-    }
-    fn candidate(&self, doc: &DocumentMut) -> ApiResult<EffectiveConfig> {
-        EffectiveConfig::load_with_file(self.inputs.clone(), &self.target, &doc.to_string())
-            .map_err(|_| bad())
-    }
-    fn write(&self, doc: &DocumentMut) -> ApiResult<()> {
-        let parent = self.target.parent().ok_or_else(io_error)?;
-        std::fs::create_dir_all(parent).map_err(|_| io_error())?;
-        let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|_| io_error())?;
-        if let Ok(metadata) = std::fs::metadata(&self.target) {
-            file.as_file()
-                .set_permissions(metadata.permissions())
-                .map_err(|_| io_error())?;
-        }
-        file.write_all(doc.to_string().as_bytes())
-            .map_err(|_| io_error())?;
-        file.as_file().sync_all().map_err(|_| io_error())?;
-        file.persist(&self.target).map_err(|_| io_error())?;
-        Ok(())
-    }
-    fn write_apply(&self, doc: &DocumentMut, candidate: EffectiveConfig) -> ApiResult<Value> {
-        let prepared = self
-            .live
-            .as_ref()
-            .map(|live| live.prepare(candidate.clone()))
-            .transpose()
-            .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))?;
-        let reply = self.payload_for(
-            &candidate,
-            doc,
-            true,
-            prepared.as_ref().map(|candidate| candidate.main_model()),
-        )?;
-        // All fallible preparation precedes the file replacement. Publication is infallible.
-        self.write(doc)?;
-        if let (Some(live), Some(prepared)) = (&self.live, prepared) {
-            live.apply_prepared(prepared);
-        }
-        Ok(reply)
-    }
-}
-fn target_provider(doc: &DocumentMut, name: &str) -> bool {
-    doc.get("providers")
-        .and_then(|item| item.get(name))
-        .is_some_and(|item| item.is_table_like())
-}
-fn table<'a>(doc: &'a mut DocumentMut, name: &str) -> ApiResult<&'a mut dyn toml_edit::TableLike> {
-    if !doc.contains_key(name) {
-        doc.insert(name, Item::Table(Table::new()));
-    }
-    doc.get_mut(name)
-        .and_then(Item::as_table_like_mut)
-        .ok_or_else(bad)
-}
 fn provider_table(provider: &ProviderSettings, previous: Option<&Item>) -> ApiResult<Item> {
     // Omitted optional scalars are removed from the target table. The save
     // handler refuses such removal if a lower layer would supply them again.
@@ -731,43 +400,8 @@ async fn save_main(
     State(state): State<ProviderSetup>,
     input: std::result::Result<Json<MainInput>, JsonRejection>,
 ) -> ApiResult<Json<Value>> {
-    let _host_update = match &state.0.host_config {
-        Some(host) => Some(host.lock_update().await),
-        None => None,
-    };
     let model = body(input)?.model;
-    let (provider, id) = model.split_once('/').ok_or_else(bad)?;
-    if !valid_name(provider)
-        || id.is_empty()
-        || id.chars().any(|c| c.is_whitespace() || c.is_control())
-    {
-        return Err(bad());
-    }
-    let _guard = state.0.files.lock().map_err(|_| io_error())?;
-    let _update = state
-        .0
-        .live
-        .as_ref()
-        .map(|live| live.lock_update())
-        .transpose()
-        .map_err(|_| io_error())?;
-    if !state
-        .0
-        .load()?
-        .settings()
-        .map_err(|_| bad())?
-        .providers
-        .contains_key(provider)
-    {
-        return Err(bad());
-    }
-    let mut doc = state.0.document()?;
-    table(&mut doc, "model")?.insert("main", value(&model));
-    let candidate = state.0.candidate(&doc)?;
-    if main_model(&candidate).map_err(|_| bad())? != model {
-        return Err(conflict());
-    }
-    state.0.write_apply(&doc, candidate).map(Json)
+    state.set_main_inner(&model).await.map(Json)
 }
 
 #[derive(Default, Deserialize)]
@@ -1137,6 +771,8 @@ async fn probe(name: &str, provider: &ProviderSettings, config: &EffectiveConfig
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{config::LoadOptions, provider::LiveProviderConfig};
+    use std::sync::Arc;
     #[test]
     fn provider_save_preserves_invoking_environment_without_disclosing_it() -> Result<()> {
         let workspace = tempfile::tempdir()?;

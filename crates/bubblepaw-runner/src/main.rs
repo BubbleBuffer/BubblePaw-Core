@@ -8,6 +8,8 @@ mod question_stdio;
 mod session_host;
 mod source_fingerprint;
 mod stdio_context;
+mod stdio_parity;
+mod stdio_sessions;
 use anyhow::{Context, Result, bail, ensure};
 use bubblepaw_core::{
     ApprovalState, AutoApprovalConfig, CancellationToken, ContextStrategy, Decision, EventKind,
@@ -30,6 +32,7 @@ use bubblepaw_runner::{
     pricing::PriceTable,
     profiles::child_agent_host_live,
     provider::LiveProviderConfig,
+    provider_setup::ProviderSetup,
     question::QuestionTools,
     register_native_tools_with_exec,
     root_prompt::root_system_prompt,
@@ -1153,6 +1156,7 @@ fn read_record(reader: &mut impl std::io::BufRead) -> Result<Option<Vec<u8>>> {
 }
 
 struct StdioServices {
+    providers: ProviderSetup,
     scope: SessionScope,
     storage_policy: bubblepaw_core::RootStoragePolicy,
     usage: UsageSettings,
@@ -1335,7 +1339,7 @@ async fn command(
             serde_json::to_value(services.live_config.reload(params["server"].as_str()).await)?
         }
         "initialize" => {
-            json!({"protocol_version":"0.1","features":["sessions","tools","paragraphs","steer","follow_up","cancel","codemode","environments","outputs","approvals","events","processes","config_reload","compact","todo","question","question.answer_child","child_events","rewind","context"],"transport":"stdio","input_limits":input_limits})
+            json!({"protocol_version":"0.1","features":["sessions","tools","paragraphs","steer","follow_up","cancel","codemode","environments","outputs","approvals","events","processes","config_reload","compact","todo","question","question.answer_child","child_events","rewind","context","providers.list","roles.set_main","session.list.pagination","child.cancel"],"transport":"stdio","input_limits":input_limits})
         }
         "session.open" => {
             let parent = params["parent_session_id"]
@@ -1371,13 +1375,9 @@ async fn command(
             }
             serde_json::to_value(session)?
         }
-        "session.list" => serde_json::to_value(
-            store
-                .list_visible_sessions()?
-                .iter()
-                .map(|session| session_with_usage(store, session, &services.usage))
-                .collect::<Result<Vec<_>>>()?,
-        )?,
+        "providers.list" | "roles.set_main" | "session.list" | "child.cancel" => {
+            stdio_parity::command(store, services, method, params).await?
+        }
         "session.rename" => {
             let title = params["title"].as_str().context("title is required")?;
             control
@@ -1403,10 +1403,11 @@ async fn command(
                 .await?
         }
         "session.delete" => {
-            services.agents.wake_coordinator().suppress(session_id()?);
-            let worktrees = bubblepaw_runner::worktrees::delete_session(store, session_id()?)?;
-            services.processes.cancel_owner(session_id()?).await;
-            json!({"deleted":session_id()?,"worktrees":worktrees})
+            let id = session_id()?;
+            services.agents.wake_coordinator().suppress(id);
+            let worktrees = bubblepaw_runner::worktrees::delete_session(store, id)?;
+            services.processes.cancel_owner(id).await;
+            json!({"deleted":id,"worktrees":worktrees})
         }
         "session.state" => {
             // Store reads only inside: `seq` is the last durable event they reflect.
@@ -1536,8 +1537,7 @@ async fn command(
             )?,
         )?,
         "storage.stats" => serde_json::to_value(store.storage_stats()?)?,
-        // The stdio loop exits after this reply; request cleanup drains its own
-        // sessions. Shared runtime shutdown belongs to HostLifetime.
+        // After the reply, exit and drain sessions; HostLifetime owns shared shutdown.
         "shutdown" => json!({"stopped":true}),
         _ => stdio_context::command(store, method, params, session_id)?,
     })

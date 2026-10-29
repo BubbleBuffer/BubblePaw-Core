@@ -27,11 +27,36 @@ pub struct ChapterResult {
     pub usage: Usage,
     pub reasoning: Option<String>,
 }
+/// v2 retrieval-block diagnostics: the raw text after the prose and the parser
+/// error, if any. Both stay `None` for v1. Only the bench reports them.
+type MetadataProbe = (Option<String>, Option<&'static str>);
+
 pub(super) async fn close_chapter(
     models: &HttpEpisodeModels,
     input: ChapterInput,
     fork: Option<EpisodeFork>,
 ) -> Result<ChapterResult> {
+    Ok(close_chapter_probed(models, input, fork).await?.0)
+}
+
+#[cfg(feature = "bench")]
+impl HttpEpisodeModels {
+    /// Closes a fresh chapter like `close_chapter` and also returns the raw v2
+    /// Decisions/Sections text and the parser error, for prompt comparison.
+    pub async fn close_chapter_with_metadata(
+        &self,
+        input: ChapterInput,
+    ) -> Result<(ChapterResult, Option<String>, Option<&'static str>)> {
+        let (result, (text, error)) = close_chapter_probed(self, input, None).await?;
+        Ok((result, text, error))
+    }
+}
+
+async fn close_chapter_probed(
+    models: &HttpEpisodeModels,
+    input: ChapterInput,
+    fork: Option<EpisodeFork>,
+) -> Result<(ChapterResult, MetadataProbe)> {
     let (system, user) = chapter_prompt(models, &input);
     let forked = match &fork {
         Some(fork) => chapter_fork(models, &input.session_id, fork, &system, &user).await?,
@@ -54,11 +79,15 @@ pub(super) async fn close_chapter(
         &input.typed_user_texts,
         &input.task_instructions,
     );
+    let mut probe: MetadataProbe = (None, None);
     let (memory, decisions, sections) =
         if models.episode_config.chapter_prompt == crate::episodes::ChapterPrompt::V2 {
+            let body = chapter_sections::prose(&clean).len();
+            probe.0 = Some(clean[body..].trim().to_owned());
             let metadata = match chapter_sections::parse(&clean, &input.episodes) {
                 Ok(metadata) => Some(metadata),
                 Err(reason) => {
+                    probe.1 = Some(reason);
                     tracing::warn!(
                         event = "chapter_metadata_invalid", session = %input.session_id,
                         reason, "Invalid chapter v2 metadata; retaining ordinary chapter memory"
@@ -88,7 +117,7 @@ pub(super) async fn close_chapter(
     );
     // Size targets guide the model. Never truncate exact facts or retry merely
     // for length; serving budgets bound how much is applied to active context.
-    Ok(ChapterResult {
+    let result = ChapterResult {
         description,
         summary,
         decisions,
@@ -98,7 +127,8 @@ pub(super) async fn close_chapter(
         model: response.model,
         usage: response.usage,
         reasoning: response.reasoning,
-    })
+    };
+    Ok((result, probe))
 }
 
 fn chapter_prompt(models: &HttpEpisodeModels, input: &ChapterInput) -> (String, String) {

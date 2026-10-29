@@ -1,4 +1,5 @@
 use super::*;
+use crate::episode_models::EpisodeModels;
 use async_trait::async_trait;
 use bubblepaw_core::{CancellationToken, ModelRequest, ModelResponse, Provider, TextCallback};
 use std::sync::Mutex;
@@ -114,6 +115,44 @@ async fn dry_run_writes_two_arms_with_shared_input_fingerprints() {
                 fixture["input_sha256"]
             );
             assert_eq!(fixture["arms"][arm]["description"], "Scripted chapter");
+            assert!(fixture["arms"][arm]["metadata_error"].is_null());
         }
+        assert!(fixture["arms"]["v1"]["metadata_text"].is_null());
+        let text = fixture["arms"]["v2"]["metadata_text"].as_str().unwrap();
+        assert!(text.starts_with("Decisions: none") && text.contains("Sections:"));
     }
+}
+
+#[tokio::test]
+async fn v2_fallback_reports_raw_blocks_and_parser_error() {
+    let fixture = fixtures().remove(0);
+    let blocks = "Decisions:\n- Keep the reader\n\nSections:\n- Import repair | episodes 1-9";
+    let registry = Arc::new(
+        ProviderRegistry::new(
+            "opencode",
+            Arc::new(ScriptedProvider::with_steps(
+                vec![ScriptedStep::Text {
+                    text: format!("# Import repair\nProse.\n\n{blocks}\nRelated: none"),
+                }],
+                "",
+            )),
+        )
+        .with_strict_routes(),
+    );
+    let input = ChapterInput {
+        session_id: fixture.session_id,
+        episodes: fixture.episodes,
+        previous_chapters: fixture.previous_chapters,
+        typed_user_texts: fixture.typed_user_texts,
+        task_instructions: fixture.task_instructions,
+    };
+    let (result, text, error) = models(registry, ChapterPrompt::V2)
+        .unwrap()
+        .close_chapter_with_metadata(input)
+        .await
+        .unwrap();
+    assert!(result.decisions.is_none() && result.sections.is_none());
+    assert!(!result.summary.contains("Decisions:"));
+    assert_eq!(text.as_deref(), Some(blocks));
+    assert_eq!(error, Some("section_coverage"));
 }

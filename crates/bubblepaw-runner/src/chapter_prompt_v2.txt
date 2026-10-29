@@ -23,4 +23,5 @@ Use one bullet per decision. If no decisions are recorded, write the single line
 Sections:
 - <name of 1 to 5 words> | episodes <first>-<last>
 
+For a single episode write `episodes N-N`.
 Use names in plain words. Each section is a contiguous inclusive episode range. Use the actual episode ordinals shown in the EPISODE headers, not positions starting at 1. In order, the sections must tile every supplied episode exactly once: no gaps, overlaps, reversals or outside episodes. A single section is valid. Do not add commentary, extra headings or text after these blocks except the required Related line.

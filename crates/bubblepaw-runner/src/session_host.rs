@@ -1,4 +1,5 @@
 use super::*;
+use crate::stdio_parity::providers;
 mod open;
 #[path = "session_prompts.rs"]
 mod prompts;
@@ -413,14 +414,11 @@ pub(super) async fn execute(
         match &cli.command {
             #[cfg(feature = "web")]
             Command::Web { port, assets } => {
-                let provider_routes = bubblepaw_runner::web_providers::router(
-                    bubblepaw_runner::web_providers::ProviderSetup::new(
-                        effective.load_options(),
-                        &effective,
-                    )?
-                    .with_live(model_provider.clone())
-                    .with_host_config(live_config.clone()),
-                );
+                let provider_routes = bubblepaw_runner::web_providers::router(providers(
+                    &effective,
+                    &model_provider,
+                    &live_config,
+                )?);
                 let listener =
                     tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, *port)).await?;
                 let address = listener.local_addr()?;
@@ -475,6 +473,7 @@ pub(super) async fn execute(
                     harness.clone(),
                     store.clone(),
                     StdioServices {
+                        providers: providers(&effective, &model_provider, &live_config)?,
                         usage: usage_settings.clone(),
                         workspace: workspace.clone(),
                         repl: repl.clone(),

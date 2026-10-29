@@ -61,14 +61,30 @@ pub(super) fn parse(text: &str, episodes: &[String]) -> Result<Metadata, &'stati
     let mut sections = Vec::new();
     for line in lines {
         let row = line.strip_prefix("- ").ok_or("invalid_section")?;
-        let (name, range) = row.split_once(" | episodes ").ok_or("invalid_section")?;
+        // A single episode may be written `episode N`, meaning `episodes N-N`.
+        let (name, range, single) = match row.split_once(" | episodes ") {
+            Some((name, range)) => (name, range, false),
+            None => {
+                let (name, range) = row.split_once(" | episode ").ok_or("invalid_section")?;
+                (name, range, true)
+            }
+        };
         let words = name.split_whitespace().count();
         if !(1..=5).contains(&words) || name.contains('|') || name != name.trim() {
             return Err("invalid_section_name");
         }
-        let (first, last) = range.split_once('-').ok_or("invalid_section_range")?;
-        let first = ordinal(first).ok_or("invalid_section_range")?;
-        let last = ordinal(last).ok_or("invalid_section_range")?;
+        let (first, last) = if single {
+            let only = ordinal(range).ok_or("invalid_section_range")?;
+            (only, only)
+        } else {
+            let (first, last) = range
+                .split_once(['-', '\u{2013}'])
+                .ok_or("invalid_section_range")?;
+            (
+                ordinal(first).ok_or("invalid_section_range")?,
+                ordinal(last).ok_or("invalid_section_range")?,
+            )
+        };
         if first > last || ordinals.get(covered) != Some(&first) {
             return Err("section_coverage");
         }

@@ -49,13 +49,13 @@ crates/bubblepaw-runner/src/provider/registry.rs 1109
 crates/bubblepaw-runner/src/quota.rs 647
 crates/bubblepaw-runner/src/quota_sources.rs 1087
 crates/bubblepaw-runner/src/replay.rs 4447
-crates/bubblepaw-runner/src/session_host.rs 674
+crates/bubblepaw-runner/src/session_host.rs 673
 crates/bubblepaw-runner/src/summarization.rs 1759
 crates/bubblepaw-runner/src/tools/process.rs 1689
 crates/bubblepaw-runner/src/trace.rs 833
 crates/bubblepaw-runner/src/usage_report.rs 601
 crates/bubblepaw-runner/src/web.rs 1803
-crates/bubblepaw-runner/src/web_providers.rs 1370
+crates/bubblepaw-runner/src/web_providers.rs 1006
 crates/bubblepaw-runner/src/worktrees.rs 1418
 crates/bubblepaw-runner/tests/agents.rs 528
 crates/bubblepaw-runner/tests/auto_wake.rs 939

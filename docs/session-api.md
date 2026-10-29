@@ -1,11 +1,41 @@
 # Session API: several clients on one session
 
-Status: built; current as of 2026-10-27.
+Status: built; current as of 2026-10-29.
 
 Several clients (a desktop, a phone, a script) can watch and drive one session
 at once. Each loads a snapshot, then follows one event stream from the snapshot's
 position. Nothing is missed or applied twice, and every client sees which client
 started, steered, cancelled or approved what.
+
+## Stdio host controls (2026-10-29)
+
+`initialize.features` advertises `providers.list`, `roles.set_main`,
+`session.list.pagination` and `child.cancel`; the protocol remains `0.1`.
+These methods are available in ordinary stdio builds, including builds without
+the optional web feature.
+
+| Method | Params | Result |
+|---|---|---|
+| `providers.list` | None | The same redacted setup snapshot as `GET /api/providers`: configured providers/models, provenance and target file, `main`, `active_main`, `launched_main`, `reload_needed` and `restart_needed`. Credential values are omitted; `key_present` reports availability. |
+| `roles.set_main` | `model: "provider/model"` | The updated provider setup snapshot, using the same validation, configuration layering, atomic file replacement and live apply as `PUT /api/roles/main`. The provider must exist. Later-layer overrides reject the write. No model request or session is created. |
+| `session.list` | Optional `limit`, `cursor` | Without either parameter, the existing session array and ordering. With either parameter, `{sessions, next_cursor}`; the last page has `next_cursor: null`. Hidden sessions are excluded and each entry retains its `usage` field. |
+| `child.cancel` | `parent`, `child` (session IDs) | The ordinary child cancellation result (`sessionId`, `handle`, `status`, and available result fields). Cancels the addressed child and its subtree and awaits cleanup through the existing child runtime. Both IDs must belong to this workspace, and `parent` must be the direct parent. |
+
+Paged lists accept an integer `limit` from 1 through 1000 (default 100 when
+only `cursor` is supplied). Omit `cursor` or send `null` for the first page;
+pass the returned string unchanged for the next page. Invalid limits and cursors
+are errors. Paged ordering is immutable `created_at` descending, then session ID
+descending, so renames and new activity do not move entries between pages. The
+cursor is URL-safe unpadded base64 of versioned JSON containing `version: 1`,
+`created_at` and `id`. It remains usable after the boundary session is deleted.
+Pagination reads current metadata, not a frozen snapshot: concurrent creation or
+deletion can change membership. It bounds returned entries and usage reads;
+the existing store still loads visible session metadata to order the page.
+
+Child cancellation keeps ordinary direct-parent ownership, restored-child binding,
+question cancellation, descendant cleanup and unknown-effect rules. It creates
+no new cancellation mechanism and never resumes or replays an effect. Root/run
+cancellation remains `run.cancel`.
 
 ## Context reads and compaction notifications (2026-10-27)
 

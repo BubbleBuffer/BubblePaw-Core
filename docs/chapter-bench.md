@@ -23,7 +23,11 @@ bubblepaw-episode-prompt-bench --chapter-fixtures crates/bubblepaw-runner/tests/
 The fixture JSON supplies episode memories with their original `EPISODE N
 [source ...]` headers, typed requests, delegated instructions and optional
 earlier chapters. The report contains the shared input fingerprint, each arm's
-output, usage and elapsed time. `--dry-run` uses an in-process scripted provider
+output, usage and elapsed time. For v2 it also keeps the raw text after the prose
+(`metadata_text`, the Decisions and Sections blocks as the model wrote them) and
+the parser error (`metadata_error`, null when the blocks parsed), so a fallback
+can be explained without another call; both are null for v1. The runner's
+storage path is unchanged and still drops invalid blocks. `--dry-run` uses an in-process scripted provider
 and does not load credentials; it checks the machinery, not model quality.
 Omitting it invokes `opencode/deepseek-v4.1-flash` through the configured provider
 registry and can incur charges; only run that comparison with the owner's
