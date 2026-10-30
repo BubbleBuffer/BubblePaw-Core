@@ -159,7 +159,7 @@ Human task (source 6c42ae3d-e445-4d2e-b873-86ec5ab35b89, delegated Typed request
 
 Measured 2026-10-28 with `bubblepaw-episode-prompt-bench` (bench feature, dev-only) on `opencode/deepseek-v4.1-flash`. The bench copies a store and plans episodes the way the live worker does (default `EpisodeConfig`, 24k-token source target). It summarizes the same episode-only input once with `episode_prompt = "v2"` and once with `"v3"`; each arm chains its own previous summary. It then closes one chapter with chapter prompt v1 over the v3 summaries. Spend for all 17 calls: $0.197.
 
-Source: the recorded BubblePaw-base coding chat `791b9ca4`, which converted five per-open SQLite migrations to numbered `user_version` steps. Its episodes 1-8 are used in order; episode 8 is the chat's unclosed tail. The other five candidate chats were never reached because this one alone yielded eight episodes. Chats with credential-like text were left out before the run. The bench also skips any episode that matches its credential pattern; none did.
+Source: the recorded coding chat `791b9ca4`, which converted five per-open SQLite migrations to numbered `user_version` steps. Its episodes 1-8 are used in order; episode 8 is the chat's unclosed tail. The other five candidate chats were never reached because this one alone yielded eight episodes. Chats with credential-like text were left out before the run. The bench also skips any episode that matches its credential pattern; none did.
 
 ### Metrics
 

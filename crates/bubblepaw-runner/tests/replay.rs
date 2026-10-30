@@ -152,7 +152,7 @@ async fn unplanned_probes_are_rejected_before_any_store_or_provider_dispatch() -
         recorded_model: None,
         context_window: None,
         instructions: String::new(),
-        messages: vec![message(1, Role::User, "BubblePlay was blue".into())],
+        messages: vec![message(1, Role::User, "Garden was blue".into())],
         message_metadata: json!([]),
         boundary_gold: None,
         relates_gold: vec![],

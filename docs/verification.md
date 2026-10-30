@@ -1,6 +1,6 @@
 # Verification
 
-Status: current as of 2026-10-24.
+Status: current as of 2026-10-29.
 
 How BubblePaw is verified now. Dated measurements and investigation logs are not
 kept in the repository. Per-provider live results are in
@@ -67,6 +67,16 @@ Results are reported separately by level:
   and JSON boundaries.
 
 Helpers shared by several integration files live once, in `crates/bubblepaw-core/tests/support/` and `crates/bubblepaw-runner/tests/support/`; add new shared helpers there, not in a test file. Tests that wait for state use a condition or event wait (`support/eventually.rs` in the runner) rather than a fixed sleep; fixed sleeps remain only inside polling loops, in fakes that simulate slowness, and in checks that a deadline elapses or nothing happens within a window.
+
+The [host API](host-api.md) adds scripted capability-group tests under
+`host_api`, CLI delete/cancel cascade tests, a table-driven stdio/HTTP RPC parity
+test (including both caller read scopes), and a transport guard
+that names any file bypassing the shared dispatcher. Parity fixtures must cover
+every descriptor; adding a method without a fixture fails explicitly. Existing
+stdio and web contract tests remain the compatibility checks. The file-size
+ratchet covers the new modules and requires lowering ceilings for files that
+shrink. These checks use scripted providers and local transports; they establish
+no live-model acceptance.
 
 ## Live tests
 

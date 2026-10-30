@@ -23,6 +23,12 @@ impl<'a> ContextWriter<'a> {
     pub fn remind_fresh(&self, kind: &str, text: &str) {
         self.state.remind_fresh(self.session, "root", kind, text);
     }
+    /// Discard unsent host facts already represented by a successfully committed
+    /// snapshot. Accepted inputs and reminders carrying delivery identities stay.
+    pub fn discard_pending_reminders(&self, prefixes: &[&str]) {
+        self.state
+            .discard_pending_reminders(self.session, "root", prefixes);
+    }
     /// Stage a note for the end of the cold tier (see ContextState::cold_note).
     pub fn cold_note(&self, kind: &str, text: &str) {
         self.state.cold_note(self.session, kind, text);

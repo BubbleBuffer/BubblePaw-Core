@@ -1,0 +1,150 @@
+//! Fixtures for the services group: startup and config, providers and roles,
+//! storage, environments, processes, approvals, attachments and artifacts.
+//! Anything a fixture changes it restores before it ends, so the second
+//! transport starts from the same services the first one saw.
+use super::fixtures::*;
+use serde_json::json;
+
+/// A scripted provider that exists only for the duration of its fixture.
+fn scratch_provider(name: &str) -> serde_json::Value {
+    json!({
+        "name": name,
+        "input": {"kind": "scripted", "models": [{"id": "first"}]},
+    })
+}
+
+pub fn all() -> Vec<Fixture> {
+    vec![
+        fixture("initialize", vec![ok("initialize", json!({}))]),
+        fixture("config.get", vec![ok("config.get", json!({}))]),
+        fixture("config.reload", vec![ok("config.reload", json!({}))]),
+        fixture("providers.list", vec![ok("providers.list", json!({}))]),
+        fixture(
+            "providers.save",
+            vec![
+                ok("providers.save", scratch_provider("parity-$role")),
+                ok("providers.remove", json!({"name": "parity-$role"})),
+            ],
+        ),
+        fixture(
+            "providers.remove",
+            vec![
+                ok("providers.save", scratch_provider("parity-$role")),
+                ok("providers.remove", json!({"name": "parity-$role"})),
+            ],
+        ),
+        // The scripted `demo` provider is local and offline, so the test never
+        // reaches a real endpoint.
+        fixture(
+            "providers.test",
+            vec![ok("providers.test", json!({"name": "demo"}))],
+        ),
+        fixture("providers.reload", vec![ok("providers.reload", json!({}))]),
+        fixture(
+            "roles.set_main",
+            vec![
+                ok("roles.set_main", json!({"model": "demo/second"})),
+                ok("roles.set_main", json!({"model": "demo/first"})),
+            ],
+        ),
+        fixture(
+            "storage.stats",
+            vec![ok("storage.stats", json!({})).shape()],
+        ),
+        fixture(
+            "environment.inspect",
+            vec![
+                open("environment", "s"),
+                ok("environment.inspect", json!({"session_id": "$s"})),
+            ],
+        ),
+        fixture(
+            "environment.control",
+            vec![
+                open("environment-control", "s"),
+                // No control action is given, so the default inspect action runs on both transports.
+                ok("environment.control", json!({"session_id": "$s"})),
+            ],
+        ),
+        fixture(
+            "process.list",
+            vec![
+                open("process", "s"),
+                ok("process.list", json!({"session_id": "$s"})),
+            ],
+        ),
+        fixture(
+            "process.background",
+            vec![
+                open("background", "s"),
+                // No process has this handle, so the call is refused on both transports.
+                any_err(
+                    "process.background",
+                    json!({"session_id": "$s", "handle": "parity-missing-handle"}),
+                ),
+            ],
+        ),
+        fixture(
+            "approval.list",
+            vec![
+                open("approval", "s"),
+                ok("approval.list", json!({"session_id": "$s"})),
+            ],
+        ),
+        fixture(
+            "approval.decide",
+            vec![
+                // A valid decision for an approval that does not exist, so the call is
+                // refused by the approval lookup on both transports.
+                any_err(
+                    "approval.decide",
+                    json!({"approval_id": "parity-missing-approval", "decision": "deny"}),
+                ),
+            ],
+        ),
+        fixture(
+            "attachments.add",
+            vec![
+                open("attachments-add", "s"),
+                ok(
+                    "attachments.add",
+                    json!({"session_id": "$s", "name": "parity-$role.txt", "data": "cGFyaXR5"}),
+                )
+                .bind("att", "/id"),
+            ],
+        ),
+        fixture(
+            "attachments.read",
+            vec![
+                open("attachments-read", "s"),
+                ok(
+                    "attachments.add",
+                    json!({"session_id": "$s", "name": "parity-$role.txt", "data": "cGFyaXR5"}),
+                )
+                .bind("att", "/id"),
+                ok(
+                    "attachments.read",
+                    json!({"session_id": "$s", "id": "$att"}),
+                ),
+            ],
+        ),
+        fixture(
+            "artifacts.list",
+            vec![
+                open("artifacts-list", "s"),
+                ok("artifacts.list", json!({"session_id": "$s"})),
+            ],
+        ),
+        fixture(
+            "artifacts.read",
+            vec![
+                open("artifacts-read", "s"),
+                // No artifact has this id, so the call is refused on both transports.
+                any_err(
+                    "artifacts.read",
+                    json!({"session_id": "$s", "id": "parity-missing-artifact"}),
+                ),
+            ],
+        ),
+    ]
+}

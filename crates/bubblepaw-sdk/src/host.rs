@@ -1,5 +1,6 @@
 //! The ordinary embedder wiring, and the host it builds.
 
+use crate::host_api::{self, HostCtx, Profile, ReadScope, dispatch};
 use crate::questions::{ChildQuestionAnswerError, PendingChildQuestion, QuestionTools};
 use anyhow::{Context, Result, ensure};
 use bubblepaw_core::{
@@ -14,6 +15,7 @@ use bubblepaw_runner::{
     todo::{self, TodoItem},
     tools::register_history_tools,
 };
+use serde_json::json;
 use std::{path::PathBuf, sync::Arc};
 
 type Wrapper = Arc<dyn Fn(Arc<dyn Tool>) -> Arc<dyn Tool> + Send + Sync>;
@@ -21,7 +23,7 @@ type ContextWrapper = Arc<dyn Fn(SummarizingContext) -> Arc<dyn ContextPreparati
 
 /// A built host: the harness plus the pieces an embedder keeps using.
 pub struct Host {
-    /// The harness to admit runs on.
+    /// The underlying harness. Host operations are available through [`Self::api`].
     pub harness: Arc<Harness>,
     /// The authoritative store the harness persists to.
     pub store: Store,
@@ -32,56 +34,23 @@ pub struct Host {
     /// A snapshot of the final registry the harness was built with, for hosts
     /// that also serve its tools outside a run (a gateway, tool listings).
     pub tools: ToolRegistry,
-    questions: Option<Arc<QuestionTools>>,
+    api: HostCtx,
 }
 
 impl Host {
-    /// The chat's latest todo list; empty when the model never set one.
-    pub fn todo(&self, session_id: &str) -> Result<Vec<TodoItem>> {
-        todo::list(&self.store, session_id)
+    /// Shared host context for typed or JSON method dispatch.
+    pub fn api(&self) -> &HostCtx {
+        &self.api
     }
 
-    /// Read a child's durable pending question, including when the question
-    /// service is disabled. Missing, archived and root sessions return `None`.
+    /// The chat's latest todo list; empty when the model never set one.
+    pub fn todo(&self, session_id: &str) -> Result<Vec<TodoItem>> {
+        host_api::sessions::todo(&self.api, session_id).map_err(Into::into)
+    }
+
+    /// Read a child's durable pending question without opening archived chats.
     pub fn pending_child_question(&self, child: &str) -> Result<Option<PendingChildQuestion>> {
-        if !self
-            .store
-            .active_session_metadata(child)?
-            .is_some_and(|session| session.parent_session_id.is_some())
-        {
-            return Ok(None);
-        }
-        let Some(value) = self
-            .store
-            .host_state(child, "question")?
-            .filter(|value| value["status"] == "pending")
-        else {
-            return Ok(None);
-        };
-        let Some(parent) = value["parent_session_id"].as_str() else {
-            return Ok(None);
-        };
-        Ok(Some(PendingChildQuestion {
-            id: value["id"]
-                .as_str()
-                .context("question id is missing")?
-                .into(),
-            text: value["text"]
-                .as_str()
-                .context("question text is missing")?
-                .into(),
-            options: value["options"]
-                .as_array()
-                .map(|options| {
-                    options
-                        .iter()
-                        .filter_map(|value| value.as_str().map(str::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            asked_at: value["asked_at"].as_str().map(str::to_owned),
-            parent_session_id: parent.into(),
-        }))
+        host_api::questions::pending_child(&self.api, child).map_err(Into::into)
     }
 
     /// Answer a direct child's pending question as the host user.
@@ -92,12 +61,21 @@ impl Host {
         question_id: &str,
         text: &str,
     ) -> std::result::Result<(), ChildQuestionAnswerError> {
-        let questions = self.questions.as_ref().ok_or_else(|| {
-            ChildQuestionAnswerError::Internal(anyhow::anyhow!("Question service unavailable"))
-        })?;
-        questions
-            .answer_child_as_user(parent, child, question_id, text)
-            .await
+        dispatch(
+            &self.api,
+            Profile::Full,
+            "question.answer_child",
+            json!({"parent":parent,"child":child,"question_id":question_id,"text":text}),
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| {
+            let error = error.into_inner();
+            match error.downcast::<ChildQuestionAnswerError>() {
+                Ok(error) => error,
+                Err(error) => ChildQuestionAnswerError::Internal(error),
+            }
+        })
     }
 }
 
@@ -262,14 +240,18 @@ impl HostBuilder {
                 .register(&mut support)
                 .context("cannot register the question tool")?;
         }
+        let mut artifact_store = None;
         let code_mode = match code_mode {
             Some(artifacts_dir) => {
-                let artifacts = ArtifactStore::new(&workspace, artifacts_dir)
-                    .context("cannot open artifact storage")?;
+                let artifacts = Arc::new(
+                    ArtifactStore::new(&workspace, artifacts_dir)
+                        .context("cannot open artifact storage")?,
+                );
                 let code_mode = Arc::new(
-                    CodeMode::new(workspace.clone(), Arc::new(artifacts))
+                    CodeMode::new(workspace.clone(), artifacts.clone())
                         .context("cannot start the JavaScript adapter")?,
                 );
+                artifact_store = Some(artifacts);
                 code_mode
                     .register(&mut support)
                     .context("cannot register the JavaScript adapter")?;
@@ -330,13 +312,18 @@ impl HostBuilder {
         if let Some(questions) = &questions {
             questions.set_child_answer_harness(harness.clone())?;
         }
+        let mut api = HostCtx::new(harness.clone(), store.clone(), workspace.clone());
+        api.read_scope = ReadScope::Workspace(workspace);
+        api.repl = code_mode.clone();
+        api.artifacts = artifact_store;
+        api.questions = questions;
         Ok(Host {
             harness,
             store,
             providers,
             code_mode,
             tools,
-            questions,
+            api,
         })
     }
 }

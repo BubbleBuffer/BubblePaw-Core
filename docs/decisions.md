@@ -462,10 +462,9 @@ package/plugin platform, experimental memory/context systems and migration of th
 old database are deferred. Existing BubblePaw repositories remain intact.
 The MCP deferral is lifted for client tools only (2026-10-13): see [mcp](mcp.md).
 Resources, prompts, sampling and elicitation stay deferred.
-Approved 2026-10-19: BubblePaw may be served as an MCP server for the notes-app
-agent gateway. Web chat apps get the `js` tool (plus `environments`) through one
+Approved 2026-10-19: BubblePaw may be served as an MCP server for an agent
+gateway. Web chat apps get the `js` tool (plus `environments`) through one
 hosted OAuth URL; what is available inside `js` follows the host agent's settings.
-See notes-app `wiki/integrations/agent-gateway.md`.
 Approved 2026-10-14: live config refresh, including MCP servers, approval,
 agents and exec; see [live-config](live-config.md). Hooks and plugins stay deferred.
 

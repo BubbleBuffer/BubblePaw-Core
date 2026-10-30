@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/bubblepaw-core", "crates/bubblepaw-mcp", "crates/bubblepaw-process", "crates/bubblepaw-runner", "crates/bubblepaw-sdk"]
+members = ["crates/bubblepaw-core", "crates/bubblepaw-mcp", "crates/bubblepaw-process", "crates/bubblepaw-runner", "crates/bubblepaw-sdk", "crates/bubblepaw-remote"]
 resolver = "2"
 
 [workspace.package]

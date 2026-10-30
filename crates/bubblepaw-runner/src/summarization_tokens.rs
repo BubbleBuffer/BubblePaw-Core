@@ -111,3 +111,107 @@ pub(super) fn message_fingerprint(message: &Message) -> [u8; 32] {
     }
     hasher.finalize().into()
 }
+
+impl SummarizingContext {
+    pub(crate) fn message_tokens(&self, message: &Message) -> usize {
+        let key = message_fingerprint(message);
+        if let Some(count) = self.token_cache.lock().unwrap().counts.get(&key).copied() {
+            return count;
+        }
+        let count = self.uncached_message_tokens(message);
+        let mut cache = self.token_cache.lock().unwrap();
+        #[cfg(test)]
+        {
+            cache.computations += 1;
+        }
+        cache.insert(key, count);
+        count
+    }
+    pub(super) fn uncached_message_tokens(&self, message: &Message) -> usize {
+        canonical_message_tokens(message)
+    }
+    /// Source cadence includes readable reasoning produced by native models,
+    /// even when a later serving policy no longer replays that older state.
+    pub(crate) fn source_message_tokens(&self, message: &Message) -> usize {
+        let mut count = self.message_tokens(message);
+        let Some(state) = &message.provider_state else {
+            return count;
+        };
+        if state["adapter"] == "anthropic-messages" {
+            return count.saturating_add(self.readable_thinking_tokens(&state["content"], true));
+        }
+        if state["adapter"] != "chat-completions"
+            && !(state.get("adapter").is_none()
+                && state.as_object().is_some_and(|fields| {
+                    fields.len() == 1 && fields.contains_key("reasoning_content")
+                }))
+        {
+            return count;
+        }
+        let add_fields = |fields: &Value| {
+            let plain = ["reasoning_content", "reasoning"]
+                .iter()
+                .filter_map(|key| fields[*key].as_str())
+                .map(|text| self.tokens(text))
+                .sum::<usize>();
+            let details = fields["reasoning_details"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .flat_map(|detail| [detail["text"].as_str(), detail["summary"].as_str()])
+                .flatten()
+                .map(|text| self.tokens(text))
+                .sum::<usize>();
+            plain.saturating_add(details)
+        };
+        if let Some(rounds) = state["rounds"]
+            .as_array()
+            .filter(|rounds| !rounds.is_empty())
+        {
+            for round in rounds {
+                count = count.saturating_add(add_fields(&round["message_fields"]));
+            }
+        } else {
+            count = count.saturating_add(add_fields(state.get("message_fields").unwrap_or(state)));
+        }
+        count
+    }
+    pub(super) fn readable_thinking_tokens(&self, blocks: &Value, include_withheld: bool) -> usize {
+        blocks
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|block| block["type"] == "thinking")
+            .filter(|block| include_withheld || block["unsigned_cut"] != true)
+            .filter_map(|block| block["thinking"].as_str())
+            .map(|text| self.tokens(text))
+            .sum()
+    }
+    pub fn estimated_tokens(&self, request: &ModelRequest) -> usize {
+        self.estimated_input(request).0
+    }
+    pub(super) fn estimated_input(&self, request: &ModelRequest) -> (usize, bool) {
+        // The adapter supplies the same messages/schema it uses on the wire,
+        // including its replay policy and route/model compatibility checks.
+        // Unavailable projections retain the existing canonical estimate.
+        let canonical = self.tokens(&request.system_prompt)
+            + self.tokens(&json!(request.tools).to_string())
+            + 8
+            + request
+                .messages
+                .iter()
+                .map(|m| self.message_tokens(m))
+                .sum::<usize>();
+        match self
+            .provider
+            .estimate_input_tokens(request, &|input| {
+                self.tokens(&input.to_string()).saturating_add(8)
+            })
+            .ok()
+            .flatten()
+        {
+            Some(estimate) => (canonical.max(estimate), true),
+            None => (canonical, false),
+        }
+    }
+}

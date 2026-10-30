@@ -814,44 +814,8 @@ async fn provider_routes_share_the_hosts_origin_host_and_json_boundary() {
     server.stop().await;
 }
 
-#[tokio::test]
-async fn workspace_guard_rejects_foreign_roots_without_running_them() {
-    let server = Server::start(
-        Arc::new(ScriptedProvider::new("fixture")),
-        ToolRegistry::new(),
-    )
-    .await;
-    let foreign = tempfile::tempdir().unwrap();
-    let session = server
-        .harness
-        .store()
-        .create_session_with_workspace("another workspace", foreign.path())
-        .unwrap();
-    for action in ["run", "resume", "cancel"] {
-        let (status, value) = server
-            .post(
-                &format!("/api/sessions/{}/{action}", session.id),
-                json!({"text":"must not run here"}),
-            )
-            .await;
-        assert_eq!(status, StatusCode::CONFLICT, "{value}");
-        assert!(
-            value["error"]
-                .as_str()
-                .unwrap()
-                .contains("another workspace")
-        );
-    }
-    assert!(
-        server
-            .harness
-            .store()
-            .messages(&session.id)
-            .unwrap()
-            .is_empty()
-    );
-    server.stop().await;
-}
+#[path = "web_transport/scope.rs"]
+mod scope;
 
 #[tokio::test]
 async fn local_boundary_rejects_foreign_origins_hosts_and_invalid_json() {

@@ -1,4 +1,4 @@
-//! Explicit idle compaction preserves the chat prefix and refreshes its cold catalog.
+//! Explicit idle compaction may rebind host prompt content and refreshes its cold catalog.
 use super::*;
 
 impl Harness {

@@ -62,8 +62,8 @@ pub use cache_accounting::{
     request_components,
 };
 pub use context_facts::{
-    ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextTrigger,
-    MessageTokenSource, MessageTokens, ReportedMessageTokens,
+    ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextSurfaceRebind,
+    ContextTrigger, MessageTokenSource, MessageTokens, ReportedMessageTokens,
 };
 pub use context_state::{
     BuiltContext, CacheTiers, ContextBuild, ContextClassification, ContextState, ContextWriter,

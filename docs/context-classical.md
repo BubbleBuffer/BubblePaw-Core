@@ -18,6 +18,11 @@ Manual `/compact [focus]` is available only for LCM sessions. Classical sessions
 reject it without changing their selected strategy or checkpoint. Automatic classical
 summarization remains unchanged.
 
+Applied classical compaction rebinds the skill catalog and memory-file prefix
+from current state, just like [LCM apply](lcm-contract.md#apply). Covered change
+notices leave the serving view; the durable snapshot becomes the baseline for
+later notices. Prefix bytes stay fixed between compactions.
+
 The core `ContextPreparation` boundary has an optional explicit-compaction hook. The runner uses one
 `ContextSummaryStrategy` interface with two concrete policies, sharing
 `SummarizingContext`, its production O200kBase estimator, threshold

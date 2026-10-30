@@ -4,7 +4,10 @@ Status: in progress; P6 to P8 built through 2026-10-21, broader tool declaration
 
 2026-10-23 chat-prefix rule: tools precede system in the cached prefix, so both
 are persisted when a chat first binds its tool surface and reused across runs
-and restarts. Reload and LCM apply never rebuild either field. Added tools stay
+and restarts. Reload never rebuilds either field. The 2026-10-30 amendment lets
+LCM and classical apply rebind only the skill catalog and memory-file content
+from current state, retaining the original for history. Tool declarations stay
+fixed. Added tools stay
 behind `tool_search`/`call_tool`, including core tools; a new chat declares the
 current core set. This replaces the earlier per-run or compaction rebuild rule.
 There is no separate full-prefix reset command in this checkout.
@@ -14,7 +17,7 @@ anchors and changes since the initial inventory. Deferred additions and removals
 use names; core additions and updated definitions include full definitions and
 compact JSON schemas. Deferred updates use names and server names. Covered
 notices fold away with summarized history. Subsequent requests
-reuse the catalog until another apply, without changing tools or system bytes.
+reuse the catalog until another apply. System bytes stay fixed between applies.
 
 The initial `submit_result` declaration (or its absence) is also fixed. A changed
 run schema is delivered as a full-definition host notice, and both direct and
@@ -222,15 +225,16 @@ upgrade, its verified old source text and record ID travel as migration-only
 `legacy_sources` provenance; this small compatibility case retains an extra copy
 of the old text. Recovery can inspect that provenance after restart without
 parsing the new combined message. Existing Generated origin remains available
-to consumers such as the notes-app gateway. Dedicated server-assembled decision
+to host consumers. Dedicated server-assembled decision
 APIs remain excluded as documented above.
 
 ## Cold tier from the LCM view (P4, 2026-10-21)
 
-An LCM apply changes only the cold tier. The view no longer stores or swaps the
-system prompt, so the frozen tier (system prompt and tool declarations) is
-byte-identical across an apply, and the next request classifies as one
-`cold_change` declared `lcm_apply`, never a `frozen_change`.
+An LCM apply changes the cold tier. Under the 2026-10-30 amendment it may also
+rebind the skill and memory-file content of the system prompt. Unchanged content
+still permits a `cold_change`; changed prompt bytes produce a `frozen_change`,
+declared `lcm_apply`. Tool declarations remain fixed. The earlier P4 guarantee
+of byte-identical system prompts across every apply is superseded.
 
 The view also no longer embeds a runtime inventory. When the
 runner's `SummarizingContext` consumes the `lcm_apply` declaration it queues the
@@ -387,7 +391,7 @@ Tools-off shaping happens after restoration and retains the wire declarations.
 prompt. Later runs reuse the persisted text. Hosts publish subsequent memory or
 skills changes through notices rather than replacing that prompt.
 
-notes-app's `DesktopContext` was the first user: it appended the current project
+An early desktop host appended the current project
 and the owned processes to the system prompt on every request, and its run
 prompt carried the project name and folder, busting the whole cache on every
 switch or process state change. It now sends `remind("project", ...)` and
@@ -501,14 +505,14 @@ be tested; a server cache hit is still best effort and must be measured.
 
 | Area | Current behavior | Consequence / required change |
 |---|---|---|
-| Memory and skills | Initial file content, skill catalog and resolved base prompt are frozen per chat; changes become durable generated notices. | Later run options and resolver changes do not replace the persisted prompt. |
+| Memory and skills | File content and skill catalog are frozen between compactions; changes become durable generated notices. Applied compaction rebinds their snapshot from current state. | The resolved base prompt remains fixed. Reopen restores the latest snapshot plus subsequent notices. |
 | Runtime state | Initial inventory and actual changes append durable Generated-user reminders (`<harness kind="runtime_inventory">`). Unchanged inventory is quiet, also across process restarts: the first preparation seeds the comparison from the latest stored notice, using structured reminder metadata. Prior notices retain their positions. After an LCM apply, the full snapshot (saved key names and REPL generations) is sent once as the `runtime_inventory` tail reminder; the view prefix carries none (P4). Explicit compaction publishes the same full form. Ordinary steps publish only live facts: running, waiting or backgrounded REPL cells, commands that are running or backgrounded or exited without their terminal status returned (marked `unread`), and agents that are running or have an unread result. A finished command or agent whose result a tool already returned is not listed. With nothing live the notice is one fixed line, so it stays quiet. | The old disposable system tail is removed. Chat preserves these notices in position; Messages no longer hoists runtime inventory into its system block. Local transport fixtures verify this layout; fresh live cache qualification remains separate. |
 | Chat adapter | Historical `Role::System` messages remain in their conversation positions. | A tail system/control message can preserve earlier input. Test on the actual route. |
 | Claude Messages adapter | Only the system prompt goes in `system`; historical `Role::System` messages render in place as user text (P5). | A late system message no longer rewrites the opening block. |
 | Explicit cache markers | Messages places up to four ephemeral breakpoints at the tier ends: frozen end, cold end, previous request tail and last block (P5). | Qualify provider-native cache placement/retention alongside prefix equality; do not assume a stable request alone guarantees the desired cached tail. |
 | Responses adapter | Base instructions use `instructions`; historical system messages stay in `input`. | Preserve their positions. Qualify the provider's accepted control role and cache behavior rather than assuming Chat rules apply. |
 | Tools-off rounds | For ordinary runs, the first final-budget round keeps `tools` unchanged, queues the `tools_off` reminder and sends no tool-choice change. Only if the model still calls a tool does an enforcement round move definitions from `tools` to `disabled_tools`, keep them on the wire in order, and send the provider's tool choice off (`none`), declaring `tools_off_enforced`. Call parsing accepts only active tools. Required-result runs instead retain `submit_result` and its access wrappers after exhaustion; ordinary targets remain blocked. Missing-result reminders also leave declarations unchanged. | The reminder round is an `append` with the same declared set and tool choice. The enforcement round is a `frozen_change`, because the active/inactive split moves. Changing API `tool_choice` can lose reuse on the tested route (controlled fork below). Chat and Responses `tool_choice: none` is not measured yet. |
-| Execution modes and live tools | Native core declarations or the opt-in `js` declaration are persisted for the whole chat. Live tool publication updates dispatch and discovery. | Notices announce changes; apply refreshes the cold catalog. Neither changes the frozen declarations or system prompt. |
+| Execution modes and live tools | Native core declarations or the opt-in `js` declaration are persisted for the whole chat. Live tool publication updates dispatch and discovery. | Notices announce changes; apply refreshes the cold catalog. Declarations stay fixed; only the skill and memory-file prompt content may be rebound at apply. |
 | Chat reasoning replay | Default `tool_loop` remains configurable; the DeepSeek Flash free/Go worker models explicitly select `all`, matching their tool-use contract. | Preserve compatible native reasoning across completed turns and length continuations; retain adapter/model/route guards. |
 | Episode summaries | Default `summary_input = "fork"` captures the final main request and appends branch-local system/user controls through the selected complete episode boundary. The opening prompt, declarations and compatible native reasoning are preserved. | Same source route and provider generation; no branch tool dispatch or main mirror mutation. Compact episode input remains explicit/configurable fallback with categorical diagnostics. |
 | Background LCM / apply | Gathering is independent; apply freezes ready chapters/episodes plus an exact uncovered suffix until the next apply. The r5 repair removes masked raw refilling; oversized completed batches can be summarized whole under pressure. | Gathering must not update the live index, chapter descriptions or old raw results in the main prefix. A complete call/result boundary and actual advancing summary coverage are required for replacement. |

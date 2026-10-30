@@ -1,4 +1,4 @@
-//! The chat's immutable provider prefix and its independently refreshed inventory.
+//! The chat's persisted provider prefix and its independently refreshed inventory.
 use super::*;
 use crate::ToolDefinition;
 use crate::store::tool_surface::ChatToolSurface;
@@ -79,7 +79,8 @@ pub(super) fn deferred_anchors(tools: &ToolRegistry) -> String {
 
 impl Harness {
     /// Missing snapshots on legacy chats bind from their first use; an existing
-    /// snapshot is never replaced by a config reload, model switch or context apply.
+    /// snapshot is never replaced by a config reload or model switch. Applied
+    /// compaction may rebind host-owned prompt content through the store.
     pub(super) fn initial_chat_surface(
         &self,
         session: &str,
@@ -219,6 +220,7 @@ impl Harness {
         *tools = self.refresh_run_tools(session, options, tools)?;
         self.update_applied_catalog(session, tools)?;
         self.refresh_result_schema_notice(session, options, tools)?;
+        surface.saved = self.chat_surface(session, options, true)?;
         surface.restore(request);
         Ok(true)
     }

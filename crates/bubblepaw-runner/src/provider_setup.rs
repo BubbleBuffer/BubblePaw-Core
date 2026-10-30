@@ -12,6 +12,14 @@ use std::{
 };
 use toml_edit::{DocumentMut, Item, Table, value};
 
+mod input;
+mod probe;
+mod save;
+#[cfg(all(test, feature = "web"))]
+pub(crate) use input::loopback_url;
+#[cfg(all(test, feature = "web"))]
+pub(crate) use probe::{ConfirmedHost, auth_status, codex_auth_file, confirmed_host, model_url};
+
 pub(crate) const KINDS: &[&str] = &[
     "codex",
     "scripted",

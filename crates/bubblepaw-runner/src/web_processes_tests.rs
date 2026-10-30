@@ -1,7 +1,15 @@
 //! HTTP handlers for owned command jobs: listing and user backgrounding.
-use super::*;
+use super::{
+    sessions::{background_process, list_processes},
+    *,
+};
 use crate::{config::ExecConfig, tools::WorkspaceTools};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+};
 use bubblepaw_core::{HarnessConfig, ToolRegistry};
+use serde_json::json;
 
 fn state_with(services: WebServices) -> Arc<WebState> {
     let store = Store::in_memory().unwrap();
@@ -12,7 +20,6 @@ fn state_with(services: WebServices) -> Arc<WebState> {
         HarnessConfig::default(),
     ));
     let (events, _) = broadcast::channel(4);
-    let control = SessionControl::new(harness.clone(), store.clone(), "fixture");
     Arc::new(WebState {
         harness,
         store,
@@ -23,13 +30,12 @@ fn state_with(services: WebServices) -> Arc<WebState> {
             read_only: false,
         },
         port: 8788,
-        serving: Mutex::new(ServingView::new().unwrap()),
+        serving: Arc::new(Mutex::new(ServingView::new().unwrap())),
         transient: Mutex::default(),
         events,
         refresh: Arc::new(Notify::new()),
         stop: CancellationToken::new(),
         services,
-        control,
         wake: None,
         wake_host: Mutex::new(None),
     })

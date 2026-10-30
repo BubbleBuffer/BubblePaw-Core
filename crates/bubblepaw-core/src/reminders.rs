@@ -93,6 +93,35 @@ impl ReminderQueue {
     }
 }
 impl ContextState {
+    pub(super) fn discard_pending_reminders(
+        &self,
+        session: &str,
+        request_kind: &str,
+        prefixes: &[&str],
+    ) {
+        let mut queues = self.reminders.lock().unwrap();
+        let Some(queue) = queues.get_mut(&(session.into(), request_kind.into())) else {
+            return;
+        };
+        let discarded: HashSet<_> = queue
+            .pending
+            .iter()
+            .filter(|reminder| {
+                reminder.deliveries.is_empty()
+                    && queue.direct_kinds.contains(&reminder.kind)
+                    && prefixes
+                        .iter()
+                        .any(|prefix| reminder.kind.starts_with(prefix))
+            })
+            .map(|reminder| reminder.kind.clone())
+            .collect();
+        queue
+            .pending
+            .retain(|reminder| !discarded.contains(&reminder.kind));
+        queue.fresh.retain(|kind| !discarded.contains(kind));
+        queue.direct_kinds.retain(|kind| !discarded.contains(kind));
+    }
+
     /// Queue replaceable, unsent host facts: the latest text per kind wins.
     /// Persistence begins at flush; typed accepted user input is unaffected.
     /// Discrete delivery events must use identity-scoped kinds.

@@ -128,7 +128,7 @@ impl SummarizingContext {
             .is_ok_and(|value| value.is_some());
         let worker = self.worker.lock().unwrap().upgrade();
         if live
-            && self.automatic
+            && self.automatic()
             && let Ok(runtime) = tokio::runtime::Handle::try_current()
             && let Some(worker) = worker
         {

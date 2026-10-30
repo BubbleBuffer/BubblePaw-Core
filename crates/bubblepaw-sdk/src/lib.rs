@@ -33,8 +33,10 @@
 //!     .summarize(SummaryConfig::default())
 //!     .config(HarnessConfig { model: "scripted".into(), ..Default::default() })
 //!     .build()?;
-//! host.harness.start(&session.id, "Hello", RunOptions::default())?;
-//! let run = host.harness.wait_for_idle(&session.id).await?;
+//! dispatch(host.api(), Profile::Full, "run.start",
+//!     serde_json::json!({"session_id":session.id,"text":"Hello"})).await?;
+//! let run = dispatch(host.api(), Profile::Full, "run.wait",
+//!     serde_json::json!({"session_id":session.id})).await?;
 //! ```
 
 pub mod approvals;
@@ -58,6 +60,10 @@ pub use bubblepaw_core as core;
 /// crate docs.
 pub use bubblepaw_runner as runner;
 
+/// The same typed host method table used by stdio, HTTP and the CLI.
+pub use bubblepaw_runner::host_api;
+pub use host_api::{HostCtx, HostError, Method, Profile, ReadScope, dispatch};
+
 pub use host::{Host, HostBuilder};
 
 /// The items nearly every embedder needs.
@@ -68,6 +74,7 @@ pub mod prelude {
         CancellationToken, ExecutionMode, Harness, HarnessConfig, RunOptions,
     };
     pub use crate::host::{Host, HostBuilder};
+    pub use crate::host_api::{HostCtx, HostError, Method, Profile, ReadScope, dispatch};
     pub use crate::providers::{Provider, ProviderRegistry, ScriptedProvider, ScriptedStep};
     pub use crate::store::{Message, Role, Session, Store};
     pub use crate::tools::{Tool, ToolDefinition, ToolRegistry, ToolResult};

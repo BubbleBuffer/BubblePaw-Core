@@ -49,7 +49,7 @@ impl InputLimits {
     pub fn validate_prompt(&self, text: &str) -> Result<()> {
         self.validate_message(text, false)
     }
-    fn validate_message(&self, text: &str, attachments: bool) -> Result<()> {
+    pub(crate) fn validate_message(&self, text: &str, attachments: bool) -> Result<()> {
         ensure!(
             text.chars().count() <= self.prompt_chars,
             "Prompt exceeds the {} Unicode character limit; attach larger text as a file",

@@ -15,6 +15,15 @@ use crate::live_config::{FileStamp, file_stamps};
 
 pub const MAX_MEMORY_BYTES: usize = 32 * 1024;
 const ATTACHMENT: &str = "bubblepaw-memory-files-v1";
+fn binding_key(session: &str) -> String {
+    format!("memory_files_snapshot:{session}")
+}
+
+#[derive(Serialize, Deserialize)]
+struct FrozenMemory {
+    through: i64,
+    snapshot: Snapshot,
+}
 const NOTICE: &str = "Memory files changed (the session system prefix stays frozen):\n";
 const PREFIX: &str = "Repository memory files (frozen at session start):\n";
 const TRUNCATED: &str = "\n[Memory files truncated at 32 KiB; remaining content omitted.]\n";
@@ -75,6 +84,7 @@ struct SessionMemory {
     observed: Snapshot,
     stamps: Vec<FileStamp>,
     pending: Vec<String>,
+    binding: Option<String>,
 }
 
 pub struct MemoryFiles {
@@ -107,20 +117,40 @@ impl MemoryFiles {
             return Ok(());
         }
         let mut sessions = self.sessions.lock().unwrap();
+        let binding = self.store.chat_metadata(session, &binding_key(session))?;
+        if sessions
+            .get(session)
+            .is_some_and(|state| state.binding != binding)
+        {
+            sessions.remove(session);
+        }
         let workspace = crate::worktrees::workspace(&self.store, session, &self.workspace)?;
         let paths = discover(&workspace, self.user_directory.as_deref())?;
         let stamps = file_stamps(paths)?;
         if !sessions.contains_key(session) {
             let current = load(&stamps)?;
+            let latest = binding
+                .as_deref()
+                .map(serde_json::from_str::<FrozenMemory>)
+                .transpose()?;
             let (frozen, mut observed) = match self.store.attachment(session, ATTACHMENT)? {
                 Some((_, bytes)) => {
-                    let frozen: Snapshot = serde_json::from_slice(&bytes)
-                        .context("Invalid saved memory-file snapshot")?;
+                    let (frozen, through) = match latest {
+                        Some(latest) => (latest.snapshot, latest.through),
+                        None => (
+                            serde_json::from_slice::<Snapshot>(&bytes)
+                                .context("Invalid saved memory-file snapshot")?,
+                            0,
+                        ),
+                    };
                     let mut observed = frozen.clone();
                     // Notices are canonical complete messages. Replaying their
                     // tiny diffs here prevents redelivery after a host restart.
-                    self.store
-                        .for_each_message_range(session, 0, i64::MAX, |_, message| {
+                    self.store.for_each_message_range(
+                        session,
+                        through.saturating_add(1),
+                        i64::MAX,
+                        |_, message| {
                             if message.origin == Some(MessageOrigin::Generated) {
                                 for changes in message.content.split(NOTICE).skip(1) {
                                     if let Some(Ok(changes)) =
@@ -133,7 +163,8 @@ impl MemoryFiles {
                                 }
                             }
                             Ok(())
-                        })?;
+                        },
+                    )?;
                     (frozen.prompt(), observed)
                 }
                 None => {
@@ -157,6 +188,7 @@ impl MemoryFiles {
                     observed,
                     stamps,
                     pending,
+                    binding,
                 },
             );
             return Ok(());
@@ -176,7 +208,7 @@ impl MemoryFiles {
     }
 
     pub fn system_prompt(&self, session: &str, base: &str) -> Result<String> {
-        if self.enabled && !self.sessions.lock().unwrap().contains_key(session) {
+        if self.enabled {
             self.check(session)?;
         }
         let sessions = self.sessions.lock().unwrap();
@@ -192,12 +224,47 @@ impl MemoryFiles {
     }
 
     pub fn take_changes(&self, session: &str) -> Vec<String> {
+        let committed = self.store.chat_metadata(session, &binding_key(session));
         self.sessions
             .lock()
             .unwrap()
             .get_mut(session)
-            .map(|state| std::mem::take(&mut state.pending))
+            .map(|state| {
+                // An apply can absorb a change before another turn-start check.
+                // Do not requeue that superseded delta during a tool round.
+                if committed
+                    .as_ref()
+                    .is_ok_and(|binding| *binding != state.binding)
+                {
+                    state.pending.clear();
+                }
+                std::mem::take(&mut state.pending)
+            })
             .unwrap_or_default()
+    }
+
+    /// Prepare a new bounded prefix snapshot without publishing it. Its metadata
+    /// must be committed with the applied view before subsequent checks adopt it.
+    pub(crate) fn compaction_snapshot(
+        &self,
+        session: &str,
+        through: i64,
+    ) -> Result<(String, Option<(String, String)>)> {
+        self.check(session)?;
+        let sessions = self.sessions.lock().unwrap();
+        let Some(state) = sessions.get(session) else {
+            return Ok((String::new(), None));
+        };
+        Ok((
+            state.observed.prompt(),
+            Some((
+                binding_key(session),
+                serde_json::to_string(&FrozenMemory {
+                    through,
+                    snapshot: state.observed.clone(),
+                })?,
+            )),
+        ))
     }
 }
 
@@ -348,5 +415,71 @@ fn truncate_utf8(text: &mut String, limit: usize) {
             end -= 1;
         }
         text.truncate(end);
+    }
+}
+
+#[cfg(test)]
+mod compaction_tests {
+    use super::*;
+
+    #[test]
+    fn applied_snapshot_preserves_original_and_replays_only_later_notices() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("AGENTS.md");
+        std::fs::write(&path, "ORIGINAL")?;
+        let store = Store::in_memory()?;
+        let session = store.create_session("memory snapshot")?.id;
+        let memory = MemoryFiles::new(store.clone(), dir.path().into(), None, true);
+        let original_prompt = memory.system_prompt(&session, "custom base")?;
+        let original = store.attachment(&session, ATTACHMENT)?;
+        std::fs::write(&path, "CURRENT AT APPLY")?;
+        memory.check(&session)?;
+        let notice = memory.take_changes(&session).join("\n");
+        assert!(!notice.is_empty());
+        let message = bubblepaw_core::Message {
+            id: "covered-notice".into(),
+            session_id: session.clone(),
+            role: bubblepaw_core::Role::User,
+            content: notice,
+            origin: Some(MessageOrigin::Generated),
+            tool_calls: vec![],
+            tool_call_id: None,
+            provider_state: None,
+            is_error: false,
+            created_at: "2026-10-30T00:00:00Z".into(),
+        };
+        store.append_batch(std::slice::from_ref(&message))?;
+        let through = store.message_seq(&session, &message.id)?;
+        std::fs::write(&path, "CURRENT AT APPLY - UNSENT")?;
+        memory.check(&session)?;
+        let (prompt, metadata) = memory.compaction_snapshot(&session, through)?;
+        assert!(prompt.contains("CURRENT AT APPLY"));
+        assert_eq!(
+            memory.system_prompt(&session, "custom base")?,
+            original_prompt
+        );
+        let (key, value) = metadata.unwrap();
+        store.set_chat_metadata(&key, &value)?;
+        assert!(
+            memory.take_changes(&session).is_empty(),
+            "same-turn tool rounds must not requeue absorbed changes"
+        );
+        memory.check(&session)?;
+        assert!(memory.take_changes(&session).is_empty());
+        assert!(
+            memory
+                .system_prompt(&session, "custom base")?
+                .contains("CURRENT AT APPLY")
+        );
+        assert_eq!(store.attachment(&session, ATTACHMENT)?, original);
+        let reopened = MemoryFiles::new(store.clone(), dir.path().into(), None, true);
+        reopened.check(&session)?;
+        assert!(reopened.take_changes(&session).is_empty());
+        std::fs::write(&path, "AFTER APPLY - DELIVER ONCE")?;
+        reopened.check(&session)?;
+        assert_eq!(reopened.take_changes(&session).len(), 1);
+        reopened.check(&session)?;
+        assert!(reopened.take_changes(&session).is_empty());
+        Ok(())
     }
 }

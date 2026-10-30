@@ -1,6 +1,10 @@
-//! Immutable chat prefix and its replaceable, apply-time tool catalog.
+//! Chat prefix frozen between applies and its replaceable, apply-time tool catalog.
 use super::*;
 use crate::ToolDefinition;
+
+#[cfg(test)]
+#[path = "store_surface_rebind_tests.rs"]
+mod rebind_tests;
 
 pub(crate) fn key(session: &str) -> String {
     format!("tool_surface:{session}")
@@ -29,6 +33,45 @@ pub(crate) struct ChatToolSurface {
 }
 
 impl Store {
+    pub(super) fn rebind_chat_surface_tx(
+        tx: &Connection,
+        session: &str,
+        rebind: &ContextSurfaceRebind,
+    ) -> Result<()> {
+        let current_key = key(session);
+        let original_key = format!("original_tool_surface:{session}");
+        let encoded: String = tx.query_row(
+            "SELECT value FROM metadata WHERE key=?1",
+            [&current_key],
+            |row| row.get(0),
+        )?;
+        let mut surface: ChatToolSurface = serde_json::from_str(&encoded)?;
+        anyhow::ensure!(
+            surface.system_prompt == rebind.expected_system_prompt,
+            "Chat surface changed while preparing compaction"
+        );
+        tx.execute(
+            "INSERT OR IGNORE INTO metadata VALUES(?1,?2)",
+            params![original_key, encoded],
+        )?;
+        surface.system_prompt.clone_from(&rebind.system_prompt);
+        tx.execute(
+            "UPDATE metadata SET value=?2 WHERE key=?1",
+            params![current_key, serde_json::to_string(&surface)?],
+        )?;
+        for (name, value) in &rebind.metadata {
+            anyhow::ensure!(
+                name != &current_key && name != &original_key,
+                "Host surface metadata conflicts with core surface metadata"
+            );
+            tx.execute(
+                "INSERT INTO metadata(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                params![name, value],
+            )?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn chat_tool_surface(&self, session: &str) -> Result<Option<ChatToolSurface>> {
         self.chat_metadata(session, &key(session))?
             .map(|value| serde_json::from_str(&value).map_err(Into::into))

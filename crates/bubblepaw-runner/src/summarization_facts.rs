@@ -1,4 +1,6 @@
 //! Persisted measurements of an apply, without changing its rendered input.
+#[cfg(all(test, feature = "bench"))]
+use super::summarization_tokens::message_fingerprint;
 use super::*;
 
 impl SummarizingContext {

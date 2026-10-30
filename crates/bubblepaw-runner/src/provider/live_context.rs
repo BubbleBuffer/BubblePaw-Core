@@ -1,6 +1,29 @@
 //! Host attachment and quota bindings are independent of immutable generations.
 use super::*;
 
+impl ProviderGeneration {
+    /// Explicit context capacity wins; otherwise use Codex metadata for the
+    /// requested route's model, including after a main-model reload.
+    pub fn context_window(&self, model: &str) -> Option<usize> {
+        self.settings.context_window_tokens.or_else(|| {
+            let (provider, _, model) = self.registry.route(model);
+            if self
+                .settings
+                .providers
+                .get(&provider)
+                .is_some_and(|settings| settings.kind.as_deref() == Some("codex"))
+            {
+                self.effective
+                    .codex_models_cache()
+                    .as_ref()
+                    .and_then(|path| crate::summarization::cached_context_window(path, &model))
+            } else {
+                None
+            }
+        })
+    }
+}
+
 impl LiveProviderConfig {
     /// Bind canonical attachments once; every generation and child binding uses it.
     pub fn with_image_store(mut self, store: Store) -> Self {

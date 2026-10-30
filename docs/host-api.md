@@ -1,0 +1,182 @@
+# Host API
+
+Status: built 2026-10-29. Shared host dispatch, profiles and caller read scopes are implemented.
+
+Every front end calls the method table in
+[`bubblepaw_runner::host_api`](../crates/bubblepaw-runner/src/host_api/mod.rs).
+The library owns authorization, parameter validation, session admission and host
+effects. SQLite remains authoritative. Transport adapters own framing, response
+presentation and live delivery; the web serving view remains disposable.
+
+```rust,ignore
+use bubblepaw_sdk::{dispatch, Profile};
+let opened = dispatch(host.api(), Profile::Full, "session.open",
+    serde_json::json!({"title":"Working session"})).await?;
+let state = dispatch(host.api(), Profile::Full, "session.state",
+    serde_json::json!({"session_id":opened["id"]})).await?;
+```
+
+## Caller read scope
+
+`HostCtx.read_scope` is independent of the method profile and mutation workspace.
+`ReadScope::Host` permits reads across the host's projects; `ReadScope::Workspace(path)`
+limits session reads, lists and events to that workspace. Hidden-session visibility
+still applies. Event visibility also respects the host's run ownership scope.
+Read-scope checks use metadata only: they do not bind legacy sessions, restore
+archives or write transactions. Capability reads retain their existing storage
+behavior, including access to archived history.
+
+HTTP uses `Host`, so the Desktop chat list can browse all host projects. A later
+remote adapter will use the same scope. stdio uses `Workspace(its workspace)`.
+The CLI uses `Host` for host-wide listing and `Workspace` for workspace commands.
+An explicit CLI session target retains the target's existing workspace handling.
+Mutations continue to enforce the execution workspace regardless of read scope.
+Embedders can set the context's read scope explicitly; HTTP embedders can override
+its default with `WebServices.read_scope`.
+
+Workspace-filtered search and sidebar retain the existing bounded global query
+and ordering, then filter its results. A page can therefore contain fewer rows
+when other projects occupy the query window. Session-list filtering happens
+before pagination.
+
+REST adapters reject malformed request bodies with HTTP 400 before dispatch.
+Handlers receive decoded typed parameters; request validation has no host effects.
+The shared JSON-RPC adapter retains the protocol 0.1 error envelope and codes.
+
+## Table and profiles
+
+`Method` contains its wire name, minimum `Profile`, optional legacy feature flag
+and erased handler. `dispatch(&HostCtx, Profile, name, Value)` finds that entry,
+checks the caller profile, decodes parameters and invokes the shared handler.
+Typed parameters and results live beside their capability implementation and are
+re-exported through the SDK's `host_api` module.
+
+Profiles are cumulative: `Read` permits reads, `Edit` also permits model runs,
+session changes and approval/question answers, and `Full` also permits provider
+and configuration changes, process/environment control and deletion. All local
+adapters pass `Full`. A profile refusal uses JSON-RPC code `-32003` and HTTP 403
+before a handler can perform effects. A later remote adapter can supply the paired
+device's profile without introducing another host implementation.
+
+| Method | Minimum profile |
+|---|---|
+| `initialize` | Read |
+| `config.get` | Read |
+| `config.reload` | Full |
+| `providers.list` | Read |
+| `providers.save` | Full |
+| `providers.remove` | Full |
+| `providers.test` | Full |
+| `providers.reload` | Full |
+| `roles.set_main` | Full |
+| `session.open` | Edit |
+| `session.list` | Read |
+| `session.view` | Read |
+| `session.sidebar` | Read |
+| `session.rename` | Edit |
+| `session.rewind` | Edit |
+| `session.compact` | Edit |
+| `session.delete` | Full |
+| `session.archive` | Edit |
+| `session.unarchive` | Edit |
+| `session.search` | Read |
+| `session.fork` | Edit |
+| `session.state` | Read |
+| `session.history` | Read |
+| `session.import` | Full |
+| `todo.list` | Read |
+| `question.pending_child` | Read |
+| `host.command` | Edit |
+| `events.after` | Read |
+| `context.view` | Read |
+| `context.structure` | Read |
+| `context.summary` | Read |
+| `context.events` | Read |
+| `history.range` | Read |
+| `history.messages` | Read |
+| `environment.inspect` | Read |
+| `environment.control` | Full |
+| `run.start` | Edit |
+| `run.resume` | Edit |
+| `run.steer` | Edit |
+| `run.follow_up` | Edit |
+| `run.cancel` | Edit |
+| `run.wait` | Read |
+| `child.cancel` | Edit |
+| `process.background` | Full |
+| `process.list` | Read |
+| `approval.list` | Read |
+| `approval.decide` | Edit |
+| `question.answer` | Edit |
+| `question.answer_child` | Edit |
+| `attachments.add` | Edit |
+| `attachments.read` | Read |
+| `artifacts.list` | Read |
+| `artifacts.read` | Read |
+| `storage.stats` | Read |
+| `shutdown` | Full |
+
+`initialize` keeps protocol version `0.1`, its existing legacy feature flags and
+input limits. Advertising is generated from the descriptors, including method
+names, so an added entry is visible to callers. Existing stdio method names and
+result shapes are preserved. New methods expose capabilities previously limited
+to HTTP, the CLI or the SDK.
+
+## Capability modules
+
+The modules under `host_api/` separate sessions, runs, approvals, questions,
+providers, context, processes, events, environments, attachments, forks, artifacts
+and configuration, plus bounded session views and their SQLite cache. `HostCtx` contains the harness/store/workspace and optional
+host services. Reduced hosts expose the same table and return a shared error
+when a required service is unavailable. `HostCtx::for_store` creates an offline
+context for store commands without starting providers or MCP servers.
+
+`HostError` owns the application error's JSON-RPC code and HTTP status. JSON-RPC
+framing uses `rpc::handle` or `rpc::handle_bytes`: malformed JSON is `-32700`,
+invalid request envelopes are `-32600`, and ordinary application errors retain
+`-32000`. Notifications execute without a response. The HTTP adapter maps the
+shared status to its existing REST error envelope.
+
+## Adapters
+
+- **stdio:** reads bounded JSON records, invokes the shared JSON-RPC handler and
+  writes replies. Live events are notifications; shutdown drains the host.
+- **HTTP:** existing `/api/...` REST routes keep their web UI shapes and project
+  the shared method result. `POST /rpc` accepts stdio JSON-RPC objects, including
+  notifications. Existing local Host/Origin and body-size boundaries also apply
+  to `/rpc`. `/api/events` remains SSE.
+- **CLI:** session listing, history, search, import, archive/unarchive, delete,
+  run/resume, cancellation and slash commands use the table. Presentation and
+  host startup remain CLI responsibilities. Delete suppresses completion wakes
+  and cancels owned processes. Cancellation resolves pending questions and
+  cancels child work through the same control as the other front ends. Session
+  listing includes usage. Catalog, quota, export, usage and serving maintenance
+  retain their separate command entry points.
+- **SDK:** re-exports `dispatch`, `Method`, `Profile`, `ReadScope`, `HostCtx`, `HostError` and
+  the typed capability API. `Host::api()` supplies the built host's context.
+  Existing todo/question helpers call the same implementations.
+
+Live delivery uses `events::subscribe`: subscribe first, capture the durable
+boundary, then replay. Both transports use its replay/reset and visibility
+rules. `events.after` is the ordinary paged table method. Stream fragments stay
+transient and external effects with unknown outcomes are never replayed.
+
+## Add a method
+
+1. Add public serde parameter/result types and the implementation in the matching
+   capability file. Keep new source files below 500 lines.
+2. Add one descriptor with a stable wire name, minimum profile, optional legacy
+   flag and handler. Keep authorization ahead of effects; a slash command must
+   also enforce the profile of the operation it invokes.
+3. Add a demo/scripted behavior test and a fixture in the table-driven transport
+   parity test. An uncovered descriptor fails that test explicitly.
+4. Add REST/CLI presentation only if needed, calling the descriptor through
+   `dispatch`. Update this table and the applicable protocol contract.
+5. Run focused remote tests, then the CI formatting, strict Clippy, full suite
+   and file-size ratchet. No paid model is needed for these checks.
+
+The transport guard rejects direct session control, admission, run-start,
+approval-decision and question-tracker calls in transport source. It reports the
+file and forbidden identifier. See [verification](verification.md) for acceptance
+levels and [session API](session-api.md) / [web contract](web-contract.md) for the
+wire contracts.

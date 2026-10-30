@@ -1,6 +1,6 @@
 # Rust SDK
 
-Status: built through 2026-10-27, including additive context-fact reads and host user answers to child questions.
+Status: built through 2026-10-29, including the shared host method table, context-fact reads and host user answers to child questions.
 
 `bubblepaw-sdk` is the supported Rust surface for embedding BubblePaw. It is the
 one dependency an outside program needs. It re-exports curated types from
@@ -22,6 +22,19 @@ development repo's `release` branch, `scripts/publish-public.sh --push` (run fro
 `release`) commits the exported tree to BubblePaw-Core. Consumers that pin a Core
 revision or tag, such as Scratch, then bump that pin. The 2026-10-25 todo SDK
 module and the redacted fatal error text reach consumers this way.
+
+## Shared host methods
+
+`bubblepaw_sdk::host_api` re-exports the runner's single method table and all its
+public typed parameters/results. `dispatch`, `Method`, `Profile`, `ReadScope`, `HostCtx` and
+`HostError` are also available at the SDK root and in the prelude. Use
+`dispatch(host.api(), Profile::Full, name, params).await` for the same behavior
+as stdio, HTTP RPC and CLI. `Host::api()` retains the builder's workspace, harness
+and optional question/code-mode services. Existing todo and question helpers use
+the shared capability implementation. See [host API](host-api.md) for profiles,
+method names and adapter responsibilities. The builder defaults to workspace-scoped
+reads. For host-wide browsing, clone `host.api()` and set its `read_scope` to
+`ReadScope::Host`; the mutation workspace stays unchanged.
 
 ## Modules
 

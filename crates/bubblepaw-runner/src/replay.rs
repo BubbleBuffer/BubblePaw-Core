@@ -3434,7 +3434,7 @@ mod tests {
             session_id: "original".into(),
             role,
             origin: None,
-            content: "BubblePlay blue".into(),
+            content: "Garden blue".into(),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,

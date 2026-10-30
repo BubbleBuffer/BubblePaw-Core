@@ -1,6 +1,6 @@
-//! Session control shared by every host transport: slash commands, cancel and
-//! the workspace binding check. Stdio, web and the CLI are thin adapters over
-//! [`SessionControl`], so one command behaves the same on each of them.
+//! Internal session controls used by the shared host method table: slash
+//! commands, cancellation and the workspace binding check. Front ends invoke
+//! [`crate::host_api::dispatch`], which owns access to these operations.
 
 use std::{
     fmt,

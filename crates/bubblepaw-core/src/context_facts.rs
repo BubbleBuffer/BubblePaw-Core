@@ -97,6 +97,16 @@ pub struct ContextCheckpoint {
     pub usage: Option<Usage>,
 }
 
+/// A host-owned prompt snapshot published atomically with an applied view.
+/// Tool declarations are retained. Metadata keys belong to the host and must
+/// be scoped to the session; the original chat surface remains available.
+#[derive(Debug, Clone)]
+pub struct ContextSurfaceRebind {
+    pub expected_system_prompt: String,
+    pub system_prompt: String,
+    pub metadata: Vec<(String, String)>,
+}
+
 /// A frozen, disposable serving view; canonical history remains unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContextView {

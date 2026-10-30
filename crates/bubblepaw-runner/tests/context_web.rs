@@ -7,6 +7,7 @@ use anyhow::Result;
 use bubblepaw_core::{ContextStrategy, Harness, HarnessConfig, Store, ToolRegistry};
 use bubblepaw_runner::{
     context_reads,
+    host_api::ReadScope,
     provider::ScriptedProvider,
     web::{WebConfig, WebServices, serve_with_services},
 };
@@ -17,6 +18,15 @@ use std::sync::Arc;
 #[tokio::test]
 async fn context_get_routes_match_shared_reads_and_enforce_range_and_workspace_rules() -> Result<()>
 {
+    check_context_routes(true).await
+}
+
+#[tokio::test]
+async fn context_get_routes_allow_other_projects_with_default_host_scope() -> Result<()> {
+    check_context_routes(false).await
+}
+
+async fn check_context_routes(workspace_scope: bool) -> Result<()> {
     let f = Fixture::new().await?;
     let harness = Arc::new(Harness::new(
         f.store.clone(),
@@ -43,7 +53,10 @@ async fn context_get_routes_match_shared_reads_and_enforce_range_and_workspace_r
             read_only: false,
         },
         assets,
-        WebServices::default(),
+        WebServices {
+            read_scope: workspace_scope.then(|| ReadScope::Workspace(f.root.path().into())),
+            ..Default::default()
+        },
         async {
             let _ = receive.await;
         },
@@ -149,7 +162,13 @@ async fn context_get_routes_match_shared_reads_and_enforce_range_and_workspace_r
                 .send()
                 .await?
                 .status(),
-            reqwest::StatusCode::CONFLICT
+            if workspace_scope {
+                reqwest::StatusCode::CONFLICT
+            } else if suffix.starts_with("context/summary") {
+                reqwest::StatusCode::NOT_FOUND
+            } else {
+                reqwest::StatusCode::OK
+            }
         );
     }
     assert_eq!(f.store.messages(&f.session)?, f.history);

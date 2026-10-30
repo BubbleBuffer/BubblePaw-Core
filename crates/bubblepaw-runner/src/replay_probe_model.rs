@@ -99,7 +99,7 @@ impl ReplayProbeModel {
         let message = if kind == "judge" {
             json!({"role":"assistant","content":"{\"grade\":\"supported\",\"reason\":\"Scripted plumbing grade; no recall quality claim.\"}"})
         } else if !has_tool_result && body["tools"].is_array() {
-            json!({"role":"assistant","content":null,"tool_calls":[{"id":"scripted-history-search","type":"function","function":{"name":"history_search","arguments":"{\"query\":\"BubblePlay\",\"limit\":1}"}}]})
+            json!({"role":"assistant","content":null,"tool_calls":[{"id":"scripted-history-search","type":"function","function":{"name":"history_search","arguments":"{\"query\":\"Garden\",\"limit\":1}"}}]})
         } else {
             json!({"role":"assistant","content":"Scripted probe answer after session-local history lookup. No model recall quality measured."})
         };

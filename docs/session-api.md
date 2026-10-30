@@ -7,6 +7,14 @@ at once. Each loads a snapshot, then follows one event stream from the snapshot'
 position. Nothing is missed or applied twice, and every client sees which client
 started, steered, cancelled or approved what.
 
+## Shared implementation
+
+All host commands are entries in the [host API table](host-api.md) in the runner
+library. stdio, HTTP `POST /rpc`, REST routes, CLI session commands and SDK callers
+invoke that table; all local adapters use `Profile::Full`. Protocol 0.1 names and
+shapes remain compatible. Capability advertising comes from the table. The CLI
+now uses the same delete/cancel cascades and includes usage in session listings.
+
 ## Stdio host controls (2026-10-29)
 
 `initialize.features` advertises `providers.list`, `roles.set_main`,
@@ -147,7 +155,7 @@ usable for a later `prompt`.
 `/rename <title>`, `/rewind <message-id>`, `/compact [focus]` and
 `/reload [server]` typed as the whole input of a run, steer or follow-up are host
 commands: they never reach the model or start a run. One library executor,
-`bubblepaw_runner::session_control::SessionControl` (parse with `SlashCommand`),
+the shared `bubblepaw_runner::host_api` method table (which owns `SessionControl` internally),
 runs them for stdio, web and CLI `run`, so each returns the same JSON on every
 transport: rename returns the session, rewind the rewind result, compact
 `{notice}` and reload `{reload: diff}`. Cancel (`run.cancel`, `POST .../cancel`)

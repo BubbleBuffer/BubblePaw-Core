@@ -19,8 +19,8 @@ detected without retaining an unlimited file body.
 ## Frozen sessions and live changes
 
 At the first turn, one immutable session attachment stores the bounded initial
-snapshot. Every model request derives the same system prefix from it; neither
-later file edits nor reopening the host rewrites that prefix. This also preserves
+snapshot. Until compaction, every model request derives the same system prefix
+from it; neither later file edits nor reopening the host rewrites that prefix. This also preserves
 the initial absence of memory files. The host's base instructions and explicit
 per-run system prompt remain the base, with the session instructions appended.
 
@@ -33,14 +33,27 @@ content; `content: null` means removal. A change has a fresh 32 KiB note budget,
 so a file behind an unchanged full prefix can still deliver its new instructions.
 Oversized changed text has `truncated: true`. Several changed files share that
 budget. Original history and the frozen system prefix remain available.
+At applied compaction (LCM or classical), the memory-file prefix is rebound from
+current state. Covered change notices leave the serving view, and subsequent
+diffs use the new snapshot as their baseline. The latest snapshot is durable;
+reopening uses it and only later notices, while the original snapshot remains
+available for history. Prefix bytes stay unchanged between compactions.
+
+The host also stores one small initial prompt-binding attachment (base text,
+component length and hash). It adds one initial transaction, including for
+disabled/empty catalogs, without duplicating memory-file content. Apply stores
+the latest snapshots and prompt binding in its existing canonical transaction;
+a no-op compaction does not update them. The historical storage measurements
+below predate this binding attachment.
 
 The reminder is stored as an ordinary Generated message with `reminder_metadata`.
 On process reopen the host seeds the last-sent hash for each kind from that
 metadata, so content the session has already seen is not delivered again. Unchanged checks create no messages, attachments, application
-transactions or WAL growth. No store schema is added. Core has only a generic
-session system-prompt resolver; discovery, persistence and notices are runner code.
+transactions or WAL growth. No store schema is added. Core exposes a generic
+session prompt resolver and atomic surface/view publication; discovery, snapshot
+contents and notices remain runner code.
 
-Each child has its own immutable snapshot, loaded at its own first turn using its
+Each child has its own initial snapshot, loaded at its own first turn using its
 host workspace. It does not copy the parent's frozen content. Current standard
 child profiles share the parent's workspace, so a child started after an edit
 sees the updated instructions while the parent retains its original prefix. A

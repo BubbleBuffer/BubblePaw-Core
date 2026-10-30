@@ -275,11 +275,17 @@ endpoint. States without the route tag inherit the current route when
 adapter/model match, preserving plain-upgrade compatibility.
 
 Live fields are providers, `[model] main`/`provider`, named model roles (including
-effort), approval modes and the approver prompt `approvals.auto_prompt`, agent settings, exec settings,
-MCP servers and web enable/exposure, backends, credentials by environment name,
-address policy, user agent, cooldown and call budgets. Storage, context,
-extensions and `web.cache_ttl_secs`/`cache_max_bytes` require a restart and retain
-`restart_needed`. Running children and exec jobs keep their admitted budgets,
+effort), approval modes, `approvals.read_only` and the approver prompt
+`approvals.auto_prompt`, agent settings, exec settings, MCP servers and web
+enable/exposure, backends, credentials by environment name, address policy, user
+agent, cooldown and call budgets. The context controls `context.window_tokens`,
+`context.compact_threshold_tokens` and `context.auto_summarize` also apply live.
+Session model reporting, context-window lookup and compaction use the accepted
+snapshot, and `config.get` refreshes its model, read-only and context metadata
+from that snapshot. CLI overrides still take precedence after reload. All other
+`context.*` keys, storage, extensions and `web.cache_ttl_secs`/`cache_max_bytes`
+require a restart and retain `restart_needed`. Context diff notices identify
+each changed restart-only key. Running children and exec jobs keep their admitted budgets,
 timeouts and output limits; future calls and wakes use the new settings.
 
 Invalid config leaves the previous configuration serving. Reload returns a

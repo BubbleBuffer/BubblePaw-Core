@@ -36,7 +36,7 @@ async fn local_http_probes_use_metered_history_tools_record_bad_judge_and_block_
         session_id: session.id.clone(),
         role: Role::User,
         origin: None,
-        content: "BubblePlay was blue".into(),
+        content: "Garden was blue".into(),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
@@ -123,10 +123,7 @@ async fn local_http_probes_use_metered_history_tools_record_bad_judge_and_block_
         );
         assert!(requests[1]["messages"].as_array().unwrap().iter().any(|m| {
             m["tool_call_id"] == "read-original"
-                && m["content"]
-                    .as_str()
-                    .unwrap()
-                    .contains("BubblePlay was blue")
+                && m["content"].as_str().unwrap().contains("Garden was blue")
         }));
         assert!(requests[2]["tools"].is_null());
         assert_eq!(requests[0]["max_tokens"], crate::probes::MAX_OUTPUT_TOKENS);

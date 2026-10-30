@@ -1,5 +1,14 @@
-//! Thin GET mappings into shared context reads, plus existing history pagination.
-use super::*;
+//! Thin GET mappings into the host's context reads and history pagination.
+use super::{WebState, errors::ApiError, host::call};
+use axum::{
+    Json, Router,
+    extract::{Path, Query, State, rejection::QueryRejection},
+    http::StatusCode,
+    routing::get,
+};
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::{collections::HashMap, sync::Arc};
 
 pub(super) fn routes() -> Router<Arc<WebState>> {
     Router::new()
@@ -7,42 +16,11 @@ pub(super) fn routes() -> Router<Arc<WebState>> {
         .route("/api/sessions/{id}/history/range", get(history_range))
 }
 
-fn read_error(error: anyhow::Error) -> ApiError {
-    if error
-        .downcast_ref::<crate::context_reads::InvalidContextRead>()
-        .is_some()
-    {
-        ApiError(StatusCode::BAD_REQUEST, error.to_string())
-    } else {
-        error.into()
-    }
-}
-
-async fn serve(
-    state: Arc<WebState>,
-    id: String,
-    method: &'static str,
-    params: Value,
-) -> std::result::Result<Json<Value>, ApiError> {
-    blocking(move || {
-        Ok(crate::context_reads::read(
-            &state.store,
-            &id,
-            method,
-            &params,
-        ))
-    })
-    .await?
-    .map(Json)
-    .map_err(read_error)
-}
-
 async fn context(
     State(state): State<Arc<WebState>>,
     Path((id, resource)): Path<(String, String)>,
     query: std::result::Result<Query<HashMap<String, String>>, QueryRejection>,
 ) -> std::result::Result<Json<Value>, ApiError> {
-    ensure_workspace(&state, &id)?;
     let method = match resource.as_str() {
         "view" => "context.view",
         "structure" => "context.structure",
@@ -57,7 +35,9 @@ async fn context(
     };
     let Query(query) =
         query.map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.body_text()))?;
-    serve(state, id, method, json!(query)).await
+    let mut params = json!(query);
+    params["session_id"] = json!(id);
+    call(&state, method, params).await.map(Json)
 }
 
 async fn history_range(
@@ -65,10 +45,11 @@ async fn history_range(
     Path(id): Path<String>,
     query: std::result::Result<Query<crate::context_reads::HistoryRange>, QueryRejection>,
 ) -> std::result::Result<Json<Value>, ApiError> {
-    ensure_workspace(&state, &id)?;
     let Query(query) =
         query.map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.body_text()))?;
-    serve(state, id, "history.range", json!(query)).await
+    let mut params = json!(query);
+    params["session_id"] = json!(id);
+    call(&state, "history.range", params).await.map(Json)
 }
 
 #[derive(Deserialize)]
@@ -76,42 +57,18 @@ pub(super) struct MessagesQuery {
     before: Option<String>,
     limit: Option<usize>,
 }
-#[derive(Serialize)]
-pub(super) struct MessagesPage {
-    messages: Vec<Message>,
-    has_more: bool,
-}
 pub(super) async fn messages(
     State(state): State<Arc<WebState>>,
     Path(id): Path<String>,
     query: std::result::Result<Query<MessagesQuery>, QueryRejection>,
-) -> std::result::Result<Json<MessagesPage>, ApiError> {
+) -> std::result::Result<Json<Value>, ApiError> {
     let Query(query) =
         query.map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.body_text()))?;
-    let limit = query.limit.unwrap_or(100);
-    if !(1..=MESSAGE_LIMIT).contains(&limit) {
-        return Err(ApiError(
-            StatusCode::BAD_REQUEST,
-            format!("Limit must be between 1 and {MESSAGE_LIMIT}"),
-        ));
-    }
-    let rows = blocking(move || {
-        state.store.session(&id)?;
-        state
-            .store
-            .messages_before(&id, query.before.as_deref(), limit + 1)
-    })
-    .await?
-    .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "Unknown before message id".into()))?;
-    let has_more = rows.len() > limit;
-    // The read is ascending, so discard the oldest extra row for continuation.
-    let messages = rows
-        .into_iter()
-        .skip(usize::from(has_more))
-        .map(|(_, mut message)| {
-            message.provider_state = None;
-            message
-        })
-        .collect();
-    Ok(Json(MessagesPage { messages, has_more }))
+    call(
+        &state,
+        "history.messages",
+        json!({"session_id": id, "before": query.before, "limit": query.limit}),
+    )
+    .await
+    .map(Json)
 }

@@ -1,8 +1,6 @@
 # CI for the public BubblePaw-Core repo, on GitHub-hosted runners.
 #
-# This file lives in BubblePaw-base under .github/public/ so it never runs
-# there; scripts/publish-public.sh moves it to .github/workflows/ci.yml in the
-# export. Pushes to main and every pull request run all jobs; nothing here
+# Pushes to main and every pull request run all jobs; nothing here
 # calls a paid model.
 name: ci
 

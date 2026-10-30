@@ -2,6 +2,13 @@
 use super::*;
 
 impl LiveConfig {
+    /// Begin observing host config changes without replaying older reloads.
+    pub(crate) fn initialize_config_cursor(&self, session: &str) {
+        let mut state = self.state.lock().unwrap();
+        let through = state.notices.len();
+        state.consumed.entry(session.into()).or_insert(through);
+    }
+
     pub fn take_reminders(&self, session: &str) -> Vec<bubblepaw_core::Reminder> {
         let mut reminders = Vec::new();
         for (kind, notices) in [
@@ -20,7 +27,10 @@ impl LiveConfig {
     fn take_config_notice(&self, session: &str) -> Option<String> {
         let mut state = self.state.lock().unwrap();
         let through = state.notices.len();
-        let start = state.consumed.insert(session.into(), through).unwrap_or(0);
+        let start = state
+            .consumed
+            .insert(session.into(), through)
+            .unwrap_or(through);
         if start == through {
             return None;
         }
@@ -56,13 +66,14 @@ impl LiveConfig {
     /// The session's system prompt. Root sessions get the access sentence from the
     /// live read-only setting, before the memory files; children keep the static
     /// access text in their own prompts.
-    pub(crate) fn system_prompt(&self, session: &str, base: &str) -> Result<String> {
+    pub(crate) fn system_prompt_base(&self, session: &str, base: &str) -> Result<String> {
+        self.initialize_config_cursor(session);
         let base = if self.store.session(session)?.parent_session_id.is_some() {
             base.to_owned()
         } else {
             let read_only = self.providers.snapshot().settings.approvals.read_only;
             format!("{base} {}", root_access_line(read_only))
         };
-        self.memory.system_prompt(session, &base)
+        Ok(base)
     }
 }

@@ -98,7 +98,7 @@ impl SummarizingContext {
                 .is_some_and(|reason| reason == "lcm_apply")
             {
                 writer.remind_fresh("runtime_inventory", &notes.note(session));
-            } else if self.automatic || view.is_some() {
+            } else if self.automatic() || view.is_some() {
                 writer.remind("runtime_inventory", &notes.live_note(session));
             }
         }
@@ -149,6 +149,9 @@ impl ContextPreparation for SummarizingContext {
         let prepared = bound
             .prepare_context(session, request, cancellation, manual, focus, pressure)
             .await?;
+        if bound.surface_rebinds.lock().unwrap().remove(session) {
+            writer.discard_pending_reminders(&["memory_files:", "skills:"]);
+        }
         // Written only after preparation succeeded: it may have applied a view,
         // which decides what the inventory and cold notes state.
         bound.write_context_notes(session, writer, manual)?;

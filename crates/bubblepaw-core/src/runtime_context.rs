@@ -33,7 +33,7 @@ impl Harness {
     ) -> Result<PreparedContext> {
         let context = self.context_state();
         context.clear_cold_notes(session);
-        let before = ModelRequest {
+        let mut before = ModelRequest {
             system_prompt: request.system_prompt.clone(),
             tools: request.tools.clone(),
             disabled_tools: request.disabled_tools.clone(),
@@ -53,6 +53,15 @@ impl Harness {
             })
             .await?;
         if !matches!(mode, PrepareMode::Compact { .. }) {
+            // A committed apply may deliberately rebind host prompt content.
+            // Keep arbitrary hook edits detectable, but compare against the new
+            // authoritative surface when the prepared prompt exactly matches it.
+            if before.system_prompt != prepared.request.system_prompt
+                && let Some(surface) = self.store.chat_tool_surface(session)?
+                && surface.system_prompt == prepared.request.system_prompt
+            {
+                before.system_prompt = surface.system_prompt;
+            }
             context.note_preparation(session, "root", &before, &prepared.request);
         } else if let Some(reason) = self.config.context.take_prefix_change(session) {
             self.declare_context_change(session, &reason);

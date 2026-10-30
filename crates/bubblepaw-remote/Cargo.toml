@@ -1,0 +1,32 @@
+[package]
+name = "bubblepaw-remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Paired device identities, encrypted transport and a metadata-only relay"
+
+[dependencies]
+aes-gcm = { version = "0.10.3", features = ["zeroize"] }
+argon2 = { version = "0.5.3", default-features = false, features = ["alloc", "zeroize"] }
+async-trait.workspace = true
+base64 = "0.22"
+curve25519-dalek = "4"
+ed25519-dalek = { version = "2.2.0", features = ["rand_core", "zeroize"] }
+futures-util = { version = "0.3", features = ["sink"] }
+rand_core = { version = "0.6.4", features = ["getrandom"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10.9"
+snow = "0.9.6"
+thiserror = "2"
+tokio = { workspace = true, features = ["net"] }
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-native-roots"] }
+zeroize = { version = "1.9.0", features = ["alloc"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

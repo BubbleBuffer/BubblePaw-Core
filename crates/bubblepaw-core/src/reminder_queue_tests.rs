@@ -2,6 +2,50 @@ use super::*;
 use crate::InputKind;
 
 #[test]
+fn snapshot_discards_only_unsent_host_facts_in_its_families() -> Result<()> {
+    let store = Store::in_memory()?;
+    let session = store.create_session("snapshot reminders")?.id;
+    store.queue_reminder(
+        &session,
+        InputKind::Steer,
+        Reminder::new("skills:accepted", "accepted input"),
+    )?;
+    store.consume(&session, true, false)?;
+    let context = ContextState::default();
+    context.remind(&session, "root", "skills:old", "superseded skill delta");
+    context.remind_fresh(
+        &session,
+        "root",
+        "memory_files:old",
+        "superseded memory delta",
+    );
+    context.remind(&session, "root", "live_config:keep", "config remains");
+    context.remind_with_metadata(
+        &session,
+        "root",
+        Reminder::new("skills:delivery", "delivery remains").with_delivery("external", "id"),
+    );
+    context.preview_reminder_message(&session, "root", &store)?;
+    crate::ContextWriter::new(&context, &session)
+        .discard_pending_reminders(&["skills:", "memory_files:"]);
+    let built = context.build_persisted(
+        ModelRequest::default(),
+        &session,
+        "root",
+        &[],
+        &store,
+        |_| Ok(()),
+    )?;
+    let text = &built.request.messages[0].content;
+    assert!(!text.contains("superseded"));
+    assert!(text.contains("accepted input"));
+    assert!(text.contains("config remains"));
+    assert!(text.contains("delivery remains"));
+    assert_eq!(store.messages(&session)?.len(), 1);
+    Ok(())
+}
+
+#[test]
 fn replayed_staged_sources_cannot_overwrite_a_newer_direct_fact() -> Result<()> {
     for preview_first in [false, true] {
         let store = Store::in_memory()?;

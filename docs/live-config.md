@@ -1,6 +1,6 @@
 # Live config refresh
 
-Status: Built through 2026-10-15. Hooks and plugins stay deferred
+Status: Built through 2026-10-30. Live session model and compaction controls; hooks and plugins stay deferred
 ([decisions](decisions.md)).
 
 The approved refresh path is implemented in the runner: turn-start file stats,
@@ -23,6 +23,13 @@ stable kind containing live facts only. Child/process completion and question
 recovery use persisted kind and delivery identity metadata; legacy prefix
 matching is limited to records predating migration. See the
 [queue and storage contract](prefix-cache-design.md#tail-reminders-p2-2026-10-21).
+
+A session's config-notice cursor starts at the current end of the host's notice
+list when the session is first seen, including an explicit `session.open` before
+its first model turn. Reopening an already observed session keeps its cursor.
+It receives later reloads once, rather than replaying reloads that preceded it. Applied compaction rebinds the skill catalog
+and memory-file prefix from current state and drops covered change notices; see
+[skills](skills.md) and [memory files](memory-files.md).
 
 ## Intent
 
@@ -88,7 +95,12 @@ the model.
 
 Every live section is applied from the new config:
 
-- **Providers, roles and web:** the existing live apply.
+- **Providers, roles and web:** the existing live apply. Session model reporting and
+  context-window lookup use the current model.
+- **Context controls:** `context.window_tokens`, `context.compact_threshold_tokens`
+  and `context.auto_summarize` apply to subsequent context preparation. Other
+  `context.*` keys remain restart-only, including strategy, memory-file enablement,
+  retry timing, classical settings and LCM settings.
 - **Approval modes and deny rules:** apply to the next tool call. Configured
   denies precede session allowances and every mode, including a pinned per-run
   override. Children union parent denies with their own policy.
@@ -106,9 +118,12 @@ Every live section is applied from the new config:
   filters apply to registration and `list_changed` refreshes. Other servers
   keep running.
 
-Storage, context and cache settings stay restart-only. Changing them under a
-live session would mean moving or reinterpreting stored data. A change there
-still shows `restart_needed`.
+Storage, extensions, web cache settings and the remaining context settings stay
+restart-only. Context diff notices name each changed frozen key and mark it
+`restart needed`; changes to the three live context controls do not set that flag.
+`config.get` reads the accepted live snapshot for model, provider, read-only
+status and the live context controls. CLI overrides retain their original layer
+precedence on reload.
 
 The explicit `config.reload` and the HTTP route run the same check immediately.
 

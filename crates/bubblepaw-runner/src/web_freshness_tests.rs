@@ -1,7 +1,9 @@
 //! Cached serving views must match a cold rebuild after every kind of write on
 //! a directory store, including writes that never touch a chat record.
-use super::*;
-use bubblepaw_core::{HarnessConfig, ToolRegistry};
+use super::{host::host_ctx, *};
+use crate::host_api::{EmptyParams, SessionParams, views};
+use bubblepaw_core::{HarnessConfig, RunOptions, ToolRegistry};
+use serde_json::json;
 
 fn state_for(store: Store) -> Arc<WebState> {
     let harness = Arc::new(Harness::new(
@@ -11,7 +13,6 @@ fn state_for(store: Store) -> Arc<WebState> {
         HarnessConfig::default(),
     ));
     let (events, _) = broadcast::channel(4);
-    let control = SessionControl::new(harness.clone(), store.clone(), "fixture");
     Arc::new(WebState {
         harness,
         store,
@@ -22,27 +23,35 @@ fn state_for(store: Store) -> Arc<WebState> {
             read_only: false,
         },
         port: 8788,
-        serving: Mutex::new(ServingView::new().unwrap()),
+        serving: Arc::new(Mutex::new(ServingView::new().unwrap())),
         transient: Mutex::default(),
         events,
         refresh: Arc::new(Notify::new()),
         stop: CancellationToken::new(),
         services: WebServices::default(),
-        control,
         wake: None,
         wake_host: Mutex::new(None),
     })
 }
 
-/// Read through the warm cache, then compare with a fresh serving view.
+/// Reads through the warm shared cache, then compares with a cold view: the same
+/// host calls with a new cache over the same store.
 fn assert_fresh(state: &WebState, id: &str, step: &str) {
-    let mut warm = state.serving.lock().unwrap();
-    let mut cold = ServingView::new().unwrap();
-    let cached = serde_json::to_value(refresh_list(state, &mut warm).unwrap()).unwrap();
-    let rebuilt = serde_json::to_value(refresh_list(state, &mut cold).unwrap()).unwrap();
-    assert_eq!(cached, rebuilt, "session list is stale after {step}");
-    let (cached, _) = refresh_session(state, &mut warm, id).unwrap();
-    let (rebuilt, _) = refresh_session(state, &mut cold, id).unwrap();
+    let warm = host_ctx(state);
+    let mut cold = host_ctx(state);
+    cold.views = Some(Arc::new(Mutex::new(ServingView::new().unwrap())));
+    let (cached, _) = views::sidebar(&warm, EmptyParams {}).unwrap();
+    let (rebuilt, _) = views::sidebar(&cold, EmptyParams {}).unwrap();
+    assert_eq!(
+        serde_json::to_value(cached).unwrap(),
+        serde_json::to_value(rebuilt).unwrap(),
+        "session list is stale after {step}"
+    );
+    let params = SessionParams {
+        session_id: id.to_owned(),
+    };
+    let (cached, _) = views::session(&warm, params.clone()).unwrap();
+    let (rebuilt, _) = views::session(&cold, params).unwrap();
     assert_eq!(
         serde_json::to_value(cached).unwrap(),
         serde_json::to_value(rebuilt).unwrap(),

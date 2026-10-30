@@ -34,6 +34,7 @@ pub mod episode_worker;
 pub mod episodes;
 pub mod execution_mode;
 mod history_snapshot;
+pub mod host_api;
 pub mod host_transport;
 pub mod images;
 pub mod input_files;

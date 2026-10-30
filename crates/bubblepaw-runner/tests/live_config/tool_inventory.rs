@@ -89,7 +89,8 @@ async fn reload_tool_refreshes_next_round_and_diff_is_one_durable_message() {
             .iter()
             .filter(|m| m.content.contains("<harness kind=\"live_config:"))
             .count(),
-        1
+        0,
+        "new chats bind current configuration without replaying historical reload notices"
     );
     assert!(
         fixture

@@ -1,25 +1,22 @@
 #[cfg(feature = "bench")]
 mod chapter_bench_cli;
 mod cli;
+mod cli_store;
 mod ephemeral_dir;
 mod host_attach;
 mod host_lifetime;
-mod question_stdio;
 mod session_host;
 mod source_fingerprint;
-mod stdio_context;
-mod stdio_parity;
-mod stdio_sessions;
+mod stdio_transport;
 use anyhow::{Context, Result, bail, ensure};
 use bubblepaw_core::{
-    ApprovalState, AutoApprovalConfig, CancellationToken, ContextStrategy, Decision, EventKind,
-    ExecutionMode, Harness, HarnessConfig, HarnessEvent, MessageOrigin, RunOptions, Store,
-    StoreOptions, ToolRegistry,
+    AutoApprovalConfig, CancellationToken, ExecutionMode, Harness, HarnessConfig, HarnessEvent,
+    Store, StoreOptions, ToolRegistry,
 };
 use bubblepaw_mcp::McpHost;
 use bubblepaw_runner::{
     agent_handles::register_agent_handles,
-    agents::{AgentRegistry, AgentTools},
+    agents::AgentRegistry,
     artifacts::ArtifactStore,
     codemode::CodeMode,
     config::{EffectiveConfig, LoadOptions, Override, Settings, selected_main_provider},
@@ -37,12 +34,11 @@ use bubblepaw_runner::{
     register_native_tools_with_exec,
     root_prompt::root_system_prompt,
     runtime_note::RuntimeNotes,
-    session_control::{SessionControl, SlashCommand},
     sessions::title as session_title,
-    summarization::{SummarizingContext, SummaryConfig, cached_context_window},
-    tools::{ProcessTools, register_history_tools},
+    summarization::{SummarizingContext, SummaryConfig},
+    tools::register_history_tools,
     trace::{JsonlTrace, TraceConfig, read_report},
-    usage::{UsageContext, UsageSettings, session_usage},
+    usage::{UsageContext, UsageSettings},
     usage_report,
     wake::WakeCoordinator,
 };
@@ -51,8 +47,8 @@ use bubblepaw_runner::{cli_output::Output, session_scope::SessionScope};
 use clap::Parser;
 use clap::{CommandFactory, FromArgMatches};
 use cli::{
-    CatalogCommand, Cli, Command, DelegationsCommand, LoginProvider, ProviderChoice, QuotaCommand,
-    ServingCommand, TraceMode, TranscriptFormat, UsageCommand,
+    Cli, Command, DelegationsCommand, LoginProvider, ProviderChoice, QuotaCommand, TraceMode,
+    UsageCommand,
 };
 use host_attach::PreparedRequest;
 use host_lifetime::HostLifetime;
@@ -493,7 +489,7 @@ async fn run_cli() -> Result<()> {
         }
     }
     let matches = command.get_matches_from(parse_arguments);
-    let mut cli = Cli::from_arg_matches(&matches)?;
+    let cli = Cli::from_arg_matches(&matches)?;
     let mut effective = load_config(&cli, &arguments)?;
     // A delegation picks its model before anything else reads the configuration;
     // the choice is applied as the last CLI override so every role follows it.
@@ -552,11 +548,6 @@ async fn run_cli() -> Result<()> {
         } => Some(run_prompt(prompt.as_deref(), prompt_file.as_deref())?),
         _ => None,
     };
-    cli.model = settings.main_model.clone();
-    cli.read_only = settings.approvals.read_only;
-    cli.context_window_tokens = settings.context_window_tokens;
-    cli.compact_threshold_tokens = settings.compact_threshold_tokens;
-    cli.no_auto_summarize = !settings.auto_summarize;
     #[cfg(feature = "bench")]
     if let Command::ChapterBench(args) = &cli.command {
         return print_json(&chapter_bench_cli::run(args, &settings).await?);
@@ -883,95 +874,8 @@ async fn run_cli() -> Result<()> {
     for report in bubblepaw_runner::worktrees::cleanup_inactive(&store)? {
         eprintln!("Child worktree {}: {}", report.session_id, report.note);
     }
-    match &cli.command {
-        Command::Sessions => return print_json(&store.list_visible_sessions()?),
-        Command::History { session } => {
-            use std::io::Write;
-            let mut writer = std::io::stdout().lock();
-            writer.write_all(b"[\n")?;
-            let mut first = true;
-            store.for_each_message_range(session, 0, i64::MAX, |_, message| {
-                if !first {
-                    writer.write_all(b",\n")?;
-                }
-                first = false;
-                serde_json::to_writer(&mut writer, &message)?;
-                Ok(())
-            })?;
-            writer.write_all(b"\n]\n")?;
-            writer.flush()?;
-            return Ok(());
-        }
-        Command::Stats => {
-            let mut stats = serde_json::to_value(store.storage_stats()?)?;
-            stats["sessions"] = serde_json::to_value(
-                store
-                    .list_visible_sessions()?
-                    .iter()
-                    .map(|session| session_with_usage(&store, session, &usage_settings))
-                    .collect::<Result<Vec<_>>>()?,
-            )?;
-            return print_json(&stats);
-        }
-        Command::Import {
-            format,
-            file,
-            title,
-            children,
-        } => {
-            let format = match format {
-                TranscriptFormat::ClaudeCode => bubblepaw_core::ImportFormat::Claude,
-                TranscriptFormat::Codex => bubblepaw_core::ImportFormat::Codex,
-            };
-            return print_json(&bubblepaw_core::import_file(
-                &store,
-                file,
-                format,
-                &bubblepaw_core::ImportOptions {
-                    title: title.clone(),
-                    adjacent_agent_paths: children.clone(),
-                    ..Default::default()
-                },
-            )?);
-        }
-        Command::Archive { chat } => {
-            let (changed, worktrees) = bubblepaw_runner::worktrees::archive_chat(&store, chat)?;
-            return print_json(&json!({"chat":chat,"changed":changed,"worktrees":worktrees}));
-        }
-        Command::Unarchive { chat } => {
-            store.session(chat)?;
-            return print_json(&json!({"chat":chat,"storage_state":"active"}));
-        }
-        Command::Search { query, chat } => {
-            while !store.reindex_search(chat.as_deref(), 512)?.complete {}
-            let hits: Vec<_> = store
-                .search_messages(query, chat.as_deref(), 50)?
-                .into_iter()
-                .filter(|hit| {
-                    chat.is_some()
-                        || store
-                            .session(&hit.session_id)
-                            .is_ok_and(|session| !session.hidden)
-                })
-                .collect();
-            return print_json(&hits);
-        }
-        Command::Catalog {
-            command: CatalogCommand::Rebuild,
-        } => {
-            return print_json(&json!({"sessions":store.catalog_rebuild()?}));
-        }
-        Command::Serving {
-            command: ServingCommand::Wipe,
-        } => {
-            store.serving_wipe()?;
-            return print_json(&json!({"wiped":true}));
-        }
-        Command::Delete { session } => {
-            let worktrees = bubblepaw_runner::worktrees::delete_session(&store, session)?;
-            return print_json(&json!({"deleted":session,"worktrees":worktrees}));
-        }
-        _ => {}
+    if one_shot {
+        return cli_store::run(&cli.command, store, &workspace, usage_settings).await;
     }
     let request = PreparedRequest {
         cli,
@@ -983,564 +887,6 @@ async fn run_cli() -> Result<()> {
         legacy_db,
     };
     Box::pin(host_attach::serve(request, store, importing)).await
-}
-
-fn session_with_usage(
-    store: &Store,
-    session: &bubblepaw_core::Session,
-    settings: &UsageSettings,
-) -> Result<Value> {
-    let mut value = serde_json::to_value(session)?;
-    value["usage"] = if store.active_session_metadata(&session.id)?.is_some() {
-        serde_json::to_value(session_usage(store, &session.id, settings)?)?
-    } else {
-        Value::Null
-    };
-    Ok(value)
-}
-
-const UNATTENDED: &str = "no client to approve; use --approve-all";
-
-/// Without a client, an approval that would wait is denied at once.
-fn deny_unattended(
-    harness: Arc<Harness>,
-    store: Store,
-    mut events: tokio::sync::broadcast::Receiver<HarnessEvent>,
-    scope: SessionScope,
-) -> tokio::task::JoinHandle<()> {
-    let deny = Decision::Deny {
-        reason: Some(UNATTENDED.into()),
-    };
-    tokio::spawn(async move {
-        loop {
-            match events.recv().await {
-                Ok(HarnessEvent {
-                    kind: EventKind::ApprovalRequested { approval },
-                    ..
-                }) if approval.state == ApprovalState::Pending
-                    && scope.contains(&store, &approval.session_id) =>
-                {
-                    let _ = harness.decide(&approval.id, deny.clone());
-                }
-                Ok(_) => {}
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
-                    for session in store
-                        .list_sessions()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|session| scope.contains(&store, &session.id))
-                    {
-                        for approval in harness.pending_approvals(&session.id).unwrap_or_default() {
-                            let _ = harness.decide(&approval.id, deny.clone());
-                        }
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-    })
-}
-
-async fn run_once(
-    harness: Arc<Harness>,
-    session: &str,
-    prompt: Option<&str>,
-    json_output: bool,
-    output: Output,
-    cancellation: CancellationToken,
-    scope: SessionScope,
-) -> Result<()> {
-    run_once_with(
-        harness,
-        session,
-        prompt,
-        RunOptions::default(),
-        json_output,
-        output,
-        cancellation,
-        scope,
-    )
-    .await
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn run_once_with(
-    harness: Arc<Harness>,
-    session: &str,
-    prompt: Option<&str>,
-    options: RunOptions,
-    json_output: bool,
-    output: Output,
-    cancellation: CancellationToken,
-    scope: SessionScope,
-) -> Result<()> {
-    let script = options.script.is_some();
-    let mut events = harness.subscribe();
-    output.stderr(format!("session: {session}\n"))?;
-    ensure!(
-        !cancellation.is_cancelled(),
-        "run cancelled before admission"
-    );
-    scope.admit(harness.store(), session, true, || match prompt {
-        Some(text) => harness.start(session, text, options),
-        None => harness.start_resume(session, options),
-    })?;
-    let target = session.to_owned();
-    let display_output = output.clone();
-    let mut display = tokio::spawn(async move {
-        while let Ok(event) = events.recv().await {
-            if event.session_id != target {
-                continue;
-            }
-            display_output.event(&event, json_output)?;
-            if matches!(event.kind, EventKind::SessionSettled {}) {
-                break;
-            }
-        }
-        Ok::<_, anyhow::Error>(())
-    });
-    let run = harness.wait_for_idle(session);
-    tokio::pin!(run);
-    let result = tokio::select! {
-        biased;
-        result = &mut run => result,
-        _ = cancellation.cancelled() => { harness.cancel(session); run.await }
-    };
-    match tokio::time::timeout(Duration::from_secs(2), &mut display).await {
-        Ok(task) => task??,
-        Err(_) => {
-            display.abort();
-            let _ = display.await;
-            output.stderr("presentation ended before all events were displayed\n")?;
-        }
-    }
-    let result = result?;
-    if json_output {
-        output.json(&json!({"type":"result","session_id":session,"run":result}))?;
-    } else if script && result.status == "completed" {
-        output.stdout(format!("{}\n", result.text.as_deref().unwrap_or_default()))?;
-    }
-    if result.status != "completed" {
-        bail!(
-            "run {}: {}",
-            result.status,
-            result.error.unwrap_or_default()
-        );
-    }
-    Ok(())
-}
-
-fn read_record(reader: &mut impl std::io::BufRead) -> Result<Option<Vec<u8>>> {
-    let mut record = Vec::new();
-    loop {
-        let buffer = reader.fill_buf()?;
-        if buffer.is_empty() {
-            return Ok((!record.is_empty()).then_some(record));
-        }
-        let end = buffer
-            .iter()
-            .position(|b| *b == b'\n')
-            .map(|i| i + 1)
-            .unwrap_or(buffer.len());
-        ensure!(
-            record.len() + end <= 1024 * 1024,
-            "protocol record exceeds 1 MiB"
-        );
-        let complete = buffer[end - 1] == b'\n';
-        record.extend_from_slice(&buffer[..end]);
-        reader.consume(end);
-        if complete {
-            return Ok(Some(record));
-        }
-    }
-}
-
-struct StdioServices {
-    providers: ProviderSetup,
-    scope: SessionScope,
-    storage_policy: bubblepaw_core::RootStoragePolicy,
-    usage: UsageSettings,
-    workspace: PathBuf,
-    questions: Arc<QuestionTools>,
-    live_config: Arc<LiveConfig>,
-    repl: Arc<CodeMode>,
-    processes: Arc<ProcessTools>,
-    context_strategy: ContextStrategy,
-    agents: Arc<AgentTools>,
-    control: SessionControl,
-}
-
-async fn run_stdio(
-    harness: Arc<Harness>,
-    store: Store,
-    services: StdioServices,
-    input_limits: InputLimits,
-    cancellation: CancellationToken,
-) -> Result<()> {
-    let wake = services.agents.wake_coordinator();
-    services
-        .questions
-        .set_child_answer_harness(harness.clone())?;
-    services.processes.set_wake(wake.clone());
-    services.processes.set_store(store.clone());
-    let wake_registration = wake.register_harness_scoped(harness.clone(), services.scope.clone());
-    let wake_driver = wake.start_driver();
-    let (output, mut records) = mpsc::channel::<Value>(128);
-    // Console/anonymous-pipe IO can block forever on Windows. Dedicated OS
-    // threads keep it out of Tokio's blocking pool so shutdown remains bounded.
-    let writer = std::thread::spawn(move || {
-        use std::io::Write;
-        let mut stdout = std::io::stdout().lock();
-        while let Some(record) = records.blocking_recv() {
-            serde_json::to_writer(&mut stdout, &record)?;
-            writeln!(stdout)?;
-            stdout.flush()?;
-        }
-        Ok::<_, anyhow::Error>(())
-    });
-    let mut events = harness.subscribe();
-    let notifications = output.clone();
-    let start = harness.last_sequence();
-    let event_store = store.clone();
-    let event_scope = services.scope.clone();
-    let event_forwarder = tokio::spawn(async move {
-        let mut skipped = 0u64;
-        // The last durable sequence forwarded; a gap is recovered with events.after from it.
-        let mut forwarded = start;
-        loop {
-            let event: HarnessEvent = match events.recv().await {
-                Ok(event) => event,
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
-                    skipped += count;
-                    continue;
-                }
-                Err(_) => break,
-            };
-            if !event_scope.contains(&event_store, &event.session_id)
-                || !event_store
-                    .session(&event.session_id)
-                    .is_ok_and(|session| !session.hidden)
-            {
-                if event.durable && skipped == 0 {
-                    forwarded = forwarded.max(event.sequence);
-                }
-                continue;
-            }
-            if skipped > 0 {
-                if notifications.try_send(json!({"jsonrpc":"2.0","method":"events.gap","params":{"skipped":skipped,"after":forwarded,"recover_with":"events.after"}})).is_err() { skipped += 1; continue; }
-                skipped = 0;
-            }
-            let (durable, sequence) = (event.durable, event.sequence);
-            if notifications
-                .try_send(json!({"jsonrpc":"2.0","method":"event","params":event}))
-                .is_err()
-            {
-                skipped += 1;
-            } else if durable {
-                forwarded = forwarded.max(sequence);
-            }
-        }
-    });
-    let (input, mut incoming) = mpsc::channel(16);
-    std::thread::spawn(move || {
-        let mut stdin = std::io::stdin().lock();
-        loop {
-            let record = read_record(&mut stdin);
-            let terminal = !matches!(&record, Ok(Some(_)));
-            if input.blocking_send(record).is_err() || terminal {
-                break;
-            }
-        }
-    });
-    let loop_result = tokio::select! {
-        biased;
-        _ = cancellation.cancelled() => Ok(()),
-        result = async {
-        loop {
-            let record = tokio::select! {
-                _ = cancellation.cancelled() => break,
-                record = incoming.recv() => match record { Some(record) => record?, None => break },
-                _ = tokio::signal::ctrl_c() => break,
-            };
-            let Some(record) = record else { break; };
-            let request: Value = match serde_json::from_slice(&record) {
-                Ok(request) => request,
-                Err(_) => { output.send(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"invalid JSON"}})).await?; continue; }
-            };
-            let id = request.get("id").cloned();
-            if request["jsonrpc"] != "2.0" || !request["method"].is_string() || id.as_ref().is_some_and(|v| !v.is_string() && !v.is_number() && !v.is_null()) {
-                output.send(json!({"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"invalid request"}})).await?;
-                continue;
-            }
-            let method = request["method"].as_str().unwrap();
-            let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
-            let quit = method == "shutdown";
-            let response = tokio::select! {
-                _ = cancellation.cancelled() => break,
-                response = command(&harness, &store, &services, &input_limits, method, &params) => response,
-            };
-            if let Some(id) = id {
-                let record = match response {
-                    Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
-                    Err(error) => json!({"jsonrpc":"2.0","id":id,"error":{"code":-32000,"message":error.to_string()}}),
-                };
-                output.send(record).await?;
-            }
-            if quit { break; }
-        }
-        Ok::<_, anyhow::Error>(())
-        } => result,
-    };
-    drop(incoming);
-    wake_driver.shutdown().await;
-    drop(wake_registration);
-    event_forwarder.abort();
-    let _ = event_forwarder.await;
-    drop(output);
-    let until = tokio::time::Instant::now() + Duration::from_secs(2);
-    while !writer.is_finished() && tokio::time::Instant::now() < until {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    if writer.is_finished() {
-        writer
-            .join()
-            .map_err(|_| anyhow::anyhow!("stdout writer panicked"))??;
-    }
-    loop_result
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn command(
-    harness: &Arc<Harness>,
-    store: &Store,
-    services: &StdioServices,
-    input_limits: &InputLimits,
-    method: &str,
-    params: &Value,
-) -> Result<Value> {
-    let repl = &services.repl;
-    let context_strategy = services.context_strategy;
-    let control = &services.control;
-    let session_id = || {
-        let session = params["session_id"]
-            .as_str()
-            .context("session_id is required")?;
-        control.ensure_workspace(session)?;
-        Ok::<_, anyhow::Error>(session)
-    };
-    let client = || bubblepaw_core::client_param(params.get("client"));
-    let text = || {
-        let text = params["text"].as_str().context("text is required")?;
-        input_limits.validate_prompt(text)?;
-        Ok::<_, anyhow::Error>(text)
-    };
-    Ok(match method {
-        "config.reload" => {
-            serde_json::to_value(services.live_config.reload(params["server"].as_str()).await)?
-        }
-        "initialize" => {
-            json!({"protocol_version":"0.1","features":["sessions","tools","paragraphs","steer","follow_up","cancel","codemode","environments","outputs","approvals","events","processes","config_reload","compact","todo","question","question.answer_child","child_events","rewind","context","providers.list","roles.set_main","session.list.pagination","child.cancel"],"transport":"stdio","input_limits":input_limits})
-        }
-        "session.open" => {
-            let parent = params["parent_session_id"]
-                .as_str()
-                .or_else(|| params["parent_id"].as_str());
-            let title = session_title(
-                params["title"].as_str().or_else(|| params["name"].as_str()),
-                "New session",
-            )?;
-            let session = match params["session_id"].as_str() {
-                Some(_) => store.session(session_id()?)?,
-                None => match parent {
-                    Some(parent) => {
-                        if let Some(bound) = store.session_workspace(parent)? {
-                            ensure!(
-                                bound == services.workspace,
-                                "Parent belongs to another workspace: {}",
-                                bound.display()
-                            );
-                        }
-                        store.create_session_with_parent(title, context_strategy, Some(parent))?
-                    }
-                    None => store.create_session_with_policy(
-                        title,
-                        context_strategy,
-                        &services.workspace,
-                        services.storage_policy,
-                    )?,
-                },
-            };
-            if params["session_id"].is_null() {
-                services.scope.adopt_idle_root(&session.id);
-            }
-            serde_json::to_value(session)?
-        }
-        "providers.list" | "roles.set_main" | "session.list" | "child.cancel" => {
-            stdio_parity::command(store, services, method, params).await?
-        }
-        "session.rename" => {
-            let title = params["title"].as_str().context("title is required")?;
-            control
-                .execute(Some(session_id()?), SlashCommand::Rename(title))
-                .await?
-        }
-        "session.rewind" => {
-            let message = params["message_id"]
-                .as_str()
-                .context("message_id is required")?;
-            control
-                .execute(Some(session_id()?), SlashCommand::Rewind(message))
-                .await?
-        }
-        "session.compact" => {
-            let focus = match params.get("focus") {
-                None | Some(Value::Null) => None,
-                Some(Value::String(focus)) => Some(focus.as_str()),
-                _ => bail!("focus must be a string"),
-            };
-            control
-                .execute(Some(session_id()?), SlashCommand::Compact(focus))
-                .await?
-        }
-        "session.delete" => {
-            let id = session_id()?;
-            services.agents.wake_coordinator().suppress(id);
-            let worktrees = bubblepaw_runner::worktrees::delete_session(store, id)?;
-            services.processes.cancel_owner(id).await;
-            json!({"deleted":id,"worktrees":worktrees})
-        }
-        "session.state" => {
-            // Store reads only inside: `seq` is the last durable event they reflect.
-            let id = session_id()?;
-            let (mut state, position) = harness.snapshot_with(id, || {
-                Ok(json!({"session":store.session(id)?,"messages":store.messages(id)?,"runs":store.runs(id)?,"inputs":store.queued_inputs(id)?,"outputs":store.outputs(id,128)?,"pending_effects":store.pending_effects(id)?,"todo":bubblepaw_runner::todo::list(store,id)?,"question":services.questions.pending(id)?,"usage":session_usage(store,id,&services.usage)?}))
-            })?;
-            state["repl"] = repl.status(id);
-            state["seq"] = json!(position.seq);
-            state["streaming_text"] = json!(position.streaming_text);
-            state
-        }
-        "events.after" => {
-            let after = match params.get("after") {
-                None | Some(Value::Null) => 0,
-                Some(value) => value.as_u64().context("after must be a sequence number")?,
-            };
-            let limit = match params.get("limit") {
-                None | Some(Value::Null) => bubblepaw_core::EVENTS_AFTER_LIMIT,
-                Some(value) => value.as_u64().context("limit must be a number")? as usize,
-            };
-            let events: Vec<_> = harness
-                .events_after(after, params["session_id"].as_str(), limit)?
-                .into_iter()
-                .filter(|event| {
-                    params["session_id"].is_string()
-                        || store
-                            .session(&event.session_id)
-                            .is_ok_and(|session| !session.hidden)
-                })
-                .collect();
-            // resync: events after `after` were pruned, so reload session.state instead.
-            json!({"events":events,"last_seq":harness.last_sequence(),"resync":!harness.can_resume_from(after)})
-        }
-        "environment.inspect" => {
-            store.session(session_id()?)?;
-            repl.status(session_id()?)
-        }
-        "environment.control" => {
-            store.session(session_id()?)?;
-            repl.control(
-                session_id()?,
-                params
-                    .get("control")
-                    .cloned()
-                    .unwrap_or_else(|| json!({"action":"inspect"})),
-            )?
-        }
-        "run.start" => {
-            let text = text()?;
-            if let Some(value) = control.run_command(Some(session_id()?), text).await? {
-                return Ok(value);
-            }
-            let mut options: RunOptions = serde_json::from_value(
-                params.get("options").cloned().unwrap_or_else(|| json!({})),
-            )?;
-            options.origin = MessageOrigin::Typed;
-            if let Some(script) = params["script"].as_str() {
-                options.script = Some(script.into());
-            }
-            options.client = client()?;
-            let run = services.scope.admit(store, session_id()?, false, || {
-                harness.start(session_id()?, text, options)
-            })?;
-            services.agents.wake_coordinator().user_input(session_id()?);
-            serde_json::to_value(run)?
-        }
-        "run.resume" => {
-            let mut options: RunOptions = serde_json::from_value(
-                params.get("options").cloned().unwrap_or_else(|| json!({})),
-            )?;
-            options.client = client()?;
-            let run = services.scope.admit(store, session_id()?, false, || {
-                harness.start_resume(session_id()?, options)
-            })?;
-            serde_json::to_value(run)?
-        }
-        "run.steer" => {
-            let text = text()?;
-            if let Some(value) = control.run_command(Some(session_id()?), text).await? {
-                return Ok(value);
-            }
-            let input = harness.steer_from(session_id()?, text, client()?)?;
-            services.agents.wake_coordinator().user_input(session_id()?);
-            serde_json::to_value(input)?
-        }
-        "run.follow_up" => {
-            let text = text()?;
-            if let Some(value) = control.run_command(Some(session_id()?), text).await? {
-                return Ok(value);
-            }
-            let input = harness.followup_from(session_id()?, text, client()?)?;
-            services.agents.wake_coordinator().user_input(session_id()?);
-            serde_json::to_value(input)?
-        }
-        "run.cancel" => {
-            let requested = control.cancel(session_id()?, client()?).await?;
-            json!({"requested":requested})
-        }
-        "process.background" => {
-            store.session(session_id()?)?;
-            services.processes.background(
-                session_id()?,
-                params["handle"].as_str().context("handle is required")?,
-            )?
-        }
-        "process.list" => {
-            store.session(session_id()?)?;
-            services.processes.jobs(session_id()?)?
-        }
-        "approval.list" => serde_json::to_value(harness.pending_approvals(session_id()?)?)?,
-        "question.answer" | "question.answer_child" => {
-            question_stdio::answer(harness, store, services, input_limits, method, params).await?
-        }
-        "approval.decide" => serde_json::to_value(
-            harness.decide_from(
-                params["approval_id"]
-                    .as_str()
-                    .context("approval_id is required")?,
-                Decision::parse(
-                    params["decision"]
-                        .as_str()
-                        .context("decision is required")?,
-                    params["reason"].as_str().map(str::to_owned),
-                )?,
-                client()?,
-            )?,
-        )?,
-        "storage.stats" => serde_json::to_value(store.storage_stats()?)?,
-        // After the reply, exit and drain sessions; HostLifetime owns shared shutdown.
-        "shutdown" => json!({"stopped":true}),
-        _ => stdio_context::command(store, method, params, session_id)?,
-    })
 }
 
 #[cfg(test)]

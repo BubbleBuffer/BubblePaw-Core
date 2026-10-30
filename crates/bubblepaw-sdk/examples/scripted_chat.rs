@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_sdk::HostBuilder;
 use bubblepaw_sdk::approvals::Approval;
-use bubblepaw_sdk::harness::{HarnessConfig, RunOptions};
+use bubblepaw_sdk::harness::HarnessConfig;
 use bubblepaw_sdk::providers::{ProviderRegistry, ScriptedProvider, ScriptedStep};
 use bubblepaw_sdk::store::Store;
 use bubblepaw_sdk::tools::{Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult};
@@ -82,10 +82,21 @@ async fn main() -> Result<()> {
         })
         .build()?;
 
-    host.harness
-        .start(&session.id, "Use the echo tool.", RunOptions::default())?;
-    let run = host.harness.wait_for_idle(&session.id).await?;
-    println!("{}", run.text.unwrap_or_default());
+    bubblepaw_sdk::dispatch(
+        host.api(),
+        bubblepaw_sdk::Profile::Full,
+        "run.start",
+        json!({"session_id":session.id,"text":"Use the echo tool."}),
+    )
+    .await?;
+    let run = bubblepaw_sdk::dispatch(
+        host.api(),
+        bubblepaw_sdk::Profile::Full,
+        "run.wait",
+        json!({"session_id":session.id}),
+    )
+    .await?;
+    println!("{}", run["text"].as_str().unwrap_or_default());
     assert!(ran.load(Ordering::SeqCst), "the echo tool did not run");
     Ok(())
 }

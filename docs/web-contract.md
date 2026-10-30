@@ -1,10 +1,23 @@
 # Web host contract
 
-Status: built; current as of 2026-10-27.
+Status: built; current as of 2026-10-29.
 
 The web host embeds the library and owns a disposable in-memory serving SQLite
 view. Core SQLite remains authoritative. The web feature is optional; default
 CLI/library builds stay independent.
+
+## Shared host API
+
+The REST routes project results from the [shared host method table](host-api.md).
+`POST /rpc` accepts the same JSON-RPC 2.0 request objects as stdio protocol 0.1,
+with the same method names, parameters, results and error codes. All local calls
+use `Profile::Full`; id-less notifications execute without a JSON-RPC reply.
+The existing local boundary and request-size limits also protect `/rpc`.
+SSE remains a transport concern and uses the shared subscribe/replay helper.
+
+HTTP uses host-wide read scope so the chat list spans projects. Mutation workspace
+checks remain in force. Malformed REST bodies return HTTP 400 before dispatch;
+request size and content-type limits retain their own statuses.
 
 ## Startup
 

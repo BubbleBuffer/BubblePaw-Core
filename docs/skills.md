@@ -56,9 +56,18 @@ and size helper as [memory files](memory-files.md). It stats candidate files and
 directories, including missing candidates. Changed catalogs produce one durable
 diff with added, removed and changed names, current metadata and bounded skip
 warnings. Body-only edits count as changes; an identical rewrite does not.
-The original system prefix stays frozen. Reopening a session restores its initial
-catalog and replays durable diffs to avoid delivering the same change again.
+The system prefix stays frozen between compactions. Reopening a session restores
+its latest catalog snapshot and replays subsequent durable diffs to avoid
+delivering the same change again.
 Each child freezes its own catalog at its own first turn.
+At applied compaction (LCM or classical), the session catalog is rebound from
+current state. Covered change notices leave the serving view, and subsequent
+diffs use the new snapshot as their baseline. The latest snapshot is durable;
+reopening uses it and only later notices, while the original snapshot remains
+available for history. Prefix bytes stay unchanged between compactions.
+Rebinding affects only the compacted session; existing children retain their own
+snapshots until their own compactions. Tool declarations and base instructions
+are preserved.
 Isolated children discover project skills from their worktree. Rebound file
 adapters share the host's session-keyed external read grants, so listed external
 skills remain readable without granting access to another session's spill files.
@@ -72,7 +81,7 @@ workspace boundary; skills add only ordinary `read` access.
 
 Even initial absence or disabled skills produce an empty frozen attachment, so
 enabling skills after a host restart cannot rewrite an existing session's system
-prefix. Unchanged turns add no skill messages, attachments or application write
+prefix before compaction. Unchanged turns add no skill messages, attachments or application write
 transactions. No schema is added. `tests/skills.rs` covers discovery precedence,
 duplicates, YAML errors, the byte cap, body edits, exact-once durable notices,
 reopen behavior and read boundaries. `tests/live_config.rs` covers the configured

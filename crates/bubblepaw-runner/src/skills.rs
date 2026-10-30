@@ -1,20 +1,31 @@
 //! Host-owned skill catalogs. Bodies remain ordinary files, never prompt attachments.
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use bubblepaw_core::{MessageOrigin, Store};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
-    io::Read,
     path::{Path, PathBuf},
     sync::Mutex,
 };
 
 use crate::live_config::{FileStamp, file_stamps};
 
+#[path = "skills_discovery.rs"]
+mod discovery;
+use discovery::{discover, load};
+
 pub const MAX_SKILL_BYTES: usize = 8 * 1024;
-const MAX_FRONTMATTER: usize = 64 * 1024;
 const ATTACHMENT: &str = "bubblepaw-skills-v1";
+fn binding_key(session: &str) -> String {
+    format!("skills_snapshot:{session}")
+}
+
+#[derive(Serialize, Deserialize)]
+struct FrozenCatalog {
+    through: i64,
+    catalog: Catalog,
+    read_roots: Vec<PathBuf>,
+}
 const NOTICE: &str = "Skills changed (the session system catalog stays frozen):\n";
 const PREFIX: &str = "Available skills (frozen at session start). Read a skill's SKILL.md with the ordinary read tool when its description matches the task. Paths are absolute; supporting files in each listed skill folder are also readable.\n";
 const TRUNCATED: &str = "[Skill catalog truncated at 8 KiB; remaining skills omitted.]\n";
@@ -74,6 +85,7 @@ struct SessionSkills {
     read_roots: HashSet<PathBuf>,
     stamps: Vec<FileStamp>,
     pending: Vec<String>,
+    binding: Option<String>,
 }
 
 pub struct Skills {
@@ -103,6 +115,13 @@ impl Skills {
         };
         let stamps = file_stamps(paths)?;
         let mut sessions = self.sessions.lock().unwrap();
+        let binding = self.store.chat_metadata(session, &binding_key(session))?;
+        if sessions
+            .get(session)
+            .is_some_and(|state| state.binding != binding)
+        {
+            sessions.remove(session);
+        }
         if let Some(state) = sessions.get_mut(session) {
             if state.stamps != stamps {
                 let current = load(&files)?;
@@ -115,17 +134,34 @@ impl Skills {
         }
         let current = load(&files)?;
         let mut read_roots = HashSet::new();
+        let latest = binding
+            .as_deref()
+            .map(serde_json::from_str::<FrozenCatalog>)
+            .transpose()?;
         let (frozen, mut observed, mut pending) =
             match self.store.attachment(session, ATTACHMENT)? {
                 Some((_, bytes)) => {
-                    let frozen: Catalog =
+                    let original: Catalog =
                         serde_json::from_slice(&bytes).context("Invalid saved skill catalog")?;
+                    read_roots.extend(roots(&original));
+                    let (frozen, through) = match latest {
+                        Some(latest) => {
+                            read_roots.extend(latest.read_roots);
+                            (latest.catalog, latest.through)
+                        }
+                        None => (original, 0),
+                    };
                     let mut observed = frozen.clone();
                     // Initial warnings are delivered through notices, not the frozen prompt.
                     // Retry them after interruption until a durable notice records delivery.
-                    observed.warnings.clear();
-                    self.store
-                        .for_each_message_range(session, 0, i64::MAX, |_, message| {
+                    if through == 0 {
+                        observed.warnings.clear();
+                    }
+                    self.store.for_each_message_range(
+                        session,
+                        through.saturating_add(1),
+                        i64::MAX,
+                        |_, message| {
                             if message.origin == Some(MessageOrigin::Generated) {
                                 for change in message.content.split(NOTICE).skip(1) {
                                     if let Some(Ok(delta)) =
@@ -141,7 +177,8 @@ impl Skills {
                                 }
                             }
                             Ok(())
-                        })?;
+                        },
+                    )?;
                     (frozen, observed, Vec::new())
                 }
                 None => {
@@ -178,6 +215,7 @@ impl Skills {
                 read_roots,
                 stamps,
                 pending,
+                binding,
             },
         );
         Ok(())
@@ -211,12 +249,45 @@ impl Skills {
     }
 
     pub fn take_changes(&self, session: &str) -> Vec<String> {
+        let committed = self.store.chat_metadata(session, &binding_key(session));
         self.sessions
             .lock()
             .unwrap()
             .get_mut(session)
-            .map(|state| std::mem::take(&mut state.pending))
+            .map(|state| {
+                if committed
+                    .as_ref()
+                    .is_ok_and(|binding| *binding != state.binding)
+                {
+                    state.pending.clear();
+                }
+                std::mem::take(&mut state.pending)
+            })
             .unwrap_or_default()
+    }
+
+    pub(crate) fn compaction_snapshot(
+        &self,
+        session: &str,
+        through: i64,
+    ) -> Result<(String, Option<(String, String)>)> {
+        let sessions = self.sessions.lock().unwrap();
+        let Some(state) = sessions.get(session) else {
+            return Ok((String::new(), None));
+        };
+        let mut read_roots = state.read_roots.iter().cloned().collect::<Vec<_>>();
+        read_roots.sort();
+        Ok((
+            state.observed.prompt(),
+            Some((
+                binding_key(session),
+                serde_json::to_string(&FrozenCatalog {
+                    through,
+                    catalog: state.observed.clone(),
+                    read_roots,
+                })?,
+            )),
+        ))
     }
 }
 
@@ -233,176 +304,6 @@ fn catalog_line(skill: &Skill) -> String {
         "- {}\n",
         serde_json::json!({"name":skill.name,"description":skill.description,"path":skill.path})
     )
-}
-
-fn discover(
-    workspace: &Path,
-    user: Option<&Path>,
-    extra: &[PathBuf],
-) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
-    let workspace = workspace
-        .canonicalize()
-        .context("Skill workspace must exist")?;
-    ensure!(workspace.is_dir(), "Skill workspace must be a directory");
-    let root = workspace
-        .ancestors()
-        .find(|directory| directory.join(".git").exists())
-        .unwrap_or(&workspace);
-    let mut directories = Vec::new();
-    for directory in workspace.ancestors() {
-        directories.push(directory.join(".agents/skills"));
-        directories.push(directory.join(".claude/skills"));
-        if directory == root {
-            break;
-        }
-    }
-    if let Some(user) = user {
-        directories.push(user.to_owned());
-    }
-    directories.extend_from_slice(extra);
-    let mut stamps = Vec::new();
-    let mut files = Vec::new();
-    let mut seen = HashSet::new();
-    for directory in directories {
-        if !seen.insert(directory.clone()) {
-            continue;
-        }
-        stamps.push(directory.clone());
-        stamps.push(directory.join("SKILL.md"));
-        if directory.join("SKILL.md").is_file() {
-            files.push(directory.join("SKILL.md"));
-            continue;
-        }
-        let entries = match std::fs::read_dir(&directory) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => {
-                return Err(error).with_context(|| {
-                    format!("Cannot list skill directory {}", directory.display())
-                });
-            }
-        };
-        let mut children = entries
-            .map(|entry| entry.map(|entry| entry.path()))
-            .collect::<std::io::Result<Vec<_>>>()?;
-        children.sort();
-        for child in children {
-            if child.is_dir() {
-                stamps.push(child.clone());
-                let file = child.join("SKILL.md");
-                stamps.push(file.clone());
-                if file.is_file() {
-                    files.push(file);
-                }
-            }
-        }
-    }
-    Ok((stamps, files))
-}
-
-fn load(files: &[PathBuf]) -> Result<Catalog> {
-    let mut catalog = Catalog::default();
-    let mut seen = HashSet::new();
-    let mut used = PREFIX.len() + TRUNCATED.len();
-    for path in files {
-        match load_skill(path) {
-            Ok(skill) => {
-                if !seen.insert(skill.name.clone()) {
-                    continue;
-                }
-                let size = catalog_line(&skill).len();
-                if used + size <= MAX_SKILL_BYTES {
-                    used += size;
-                    catalog.skills.push(skill);
-                } else {
-                    catalog.truncated = true;
-                }
-            }
-            Err(_) => {
-                // Do not echo YAML parser input: frontmatter is user-controlled content.
-                let warning = format!(
-                    "Skipped skill {}: invalid or unreadable YAML frontmatter; nonempty string name and description are required",
-                    path.display()
-                );
-                if catalog.warnings.iter().map(String::len).sum::<usize>() + warning.len()
-                    < MAX_SKILL_BYTES
-                {
-                    catalog.warnings.push(warning);
-                }
-            }
-        }
-    }
-    Ok(catalog)
-}
-
-fn load_skill(path: &Path) -> Result<Skill> {
-    let folder = path
-        .parent()
-        .context("Skill needs a folder")?
-        .canonicalize()?;
-    let path = path.canonicalize()?;
-    ensure!(path.starts_with(&folder), "Skill file escapes its folder");
-    let mut reader = std::fs::File::open(&path)?;
-    let mut hash = Sha256::new();
-    let mut header = Vec::new();
-    let mut buffer = [0; 8192];
-    loop {
-        let count = reader.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        hash.update(&buffer[..count]);
-        let keep = count.min((MAX_FRONTMATTER + 1).saturating_sub(header.len()));
-        header.extend_from_slice(&buffer[..keep]);
-    }
-    // Only parse the header; the bounded buffer may end midway through a body character.
-    let end = header
-        .split_inclusive(|byte| *byte == b'\n')
-        .scan(0usize, |offset, line| {
-            *offset += line.len();
-            Some((*offset, line))
-        })
-        .skip(1)
-        .find(|(_, line)| line.trim_ascii_end() == b"---" || line.trim_ascii_end() == b"...")
-        .map(|(end, _)| end)
-        .context("Unclosed YAML frontmatter")?;
-    let header = std::str::from_utf8(&header[..end])?;
-    let mut lines = header.split_inclusive('\n');
-    ensure!(
-        lines.next().is_some_and(|line| line.trim_end() == "---"),
-        "Missing YAML frontmatter"
-    );
-    let mut yaml = String::new();
-    let mut closed = false;
-    for line in lines {
-        if line.trim_end() == "---" || line.trim_end() == "..." {
-            closed = true;
-            break;
-        }
-        yaml.push_str(line);
-    }
-    ensure!(
-        closed && yaml.len() <= MAX_FRONTMATTER,
-        "Unclosed or oversized YAML frontmatter"
-    );
-    #[derive(Deserialize)]
-    struct Frontmatter {
-        name: String,
-        description: String,
-    }
-    let front: Frontmatter = serde_yaml::from_str(&yaml)?;
-    let name = front.name.trim().to_owned();
-    let description = front.description.trim().to_owned();
-    ensure!(
-        !name.is_empty() && !description.is_empty() && !name.chars().any(char::is_control),
-        "Invalid skill metadata"
-    );
-    Ok(Skill {
-        name,
-        description,
-        path,
-        digest: format!("{:x}", hash.finalize()),
-    })
 }
 
 fn changes(before: &Catalog, after: &Catalog) -> Result<Vec<String>> {
@@ -441,4 +342,54 @@ fn changes(before: &Catalog, after: &Catalog) -> Result<Vec<String>> {
             warnings: after.warnings.clone()
         })?
     )])
+}
+
+#[cfg(test)]
+mod compaction_tests {
+    use super::*;
+
+    #[test]
+    fn applied_catalog_keeps_original_snapshot_and_external_read_grants() -> Result<()> {
+        let workspace = tempfile::tempdir()?;
+        let external = tempfile::tempdir()?;
+        let folder = external.path().join("removed");
+        std::fs::create_dir_all(&folder)?;
+        let canonical_folder = folder.canonicalize()?;
+        let path = folder.join("SKILL.md");
+        std::fs::write(
+            &path,
+            "---\nname: original\ndescription: Original external skill\n---\nbody",
+        )?;
+        let store = Store::in_memory()?;
+        let session = store.create_session("skill snapshot")?.id;
+        let skills = Skills::new(store.clone(), workspace.path().into(), None);
+        let dirs = [external.path().to_owned()];
+        skills.check(&session, true, &dirs)?;
+        let original = store.attachment(&session, ATTACHMENT)?;
+        assert!(
+            skills
+                .system_prompt(&session, "base")
+                .contains("Original external skill")
+        );
+        std::fs::remove_file(&path)?;
+        skills.check(&session, true, &dirs)?;
+        let (prompt, metadata) = skills.compaction_snapshot(&session, 0)?;
+        assert!(prompt.is_empty());
+        let (key, value) = metadata.unwrap();
+        store.set_chat_metadata(&key, &value)?;
+        assert!(
+            skills.take_changes(&session).is_empty(),
+            "same-turn tool rounds must not requeue absorbed changes"
+        );
+        skills.check(&session, true, &dirs)?;
+        assert_eq!(skills.system_prompt(&session, "base"), "base");
+        assert!(skills.take_changes(&session).is_empty());
+        assert!(skills.read_roots(&session).contains(&canonical_folder));
+        assert_eq!(store.attachment(&session, ATTACHMENT)?, original);
+        let reopened = Skills::new(store, workspace.path().into(), None);
+        reopened.check(&session, true, &dirs)?;
+        assert!(reopened.take_changes(&session).is_empty());
+        assert!(reopened.read_roots(&session).contains(&canonical_folder));
+        Ok(())
+    }
 }

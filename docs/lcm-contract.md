@@ -14,9 +14,11 @@ benchmark demonstrated malformed episode memory actually served to a worker.
 
 ## Chat prefix and tool catalog (2026-10-23)
 
-The chat's initial tool declarations and system prompt are persisted and reused
-across runs and process restarts. Neither reload nor summary apply replaces
-them. The callable inventory stays current through `tool_search` and `call_tool`;
+The chat's initial tool declarations are persisted and reused across runs and
+process restarts. Neither reload nor summary apply replaces them. The system
+prompt is also persisted; apply may rebind its skill catalog and memory files
+from current state (approved 2026-10-30), while ordinary turns and reloads keep
+it fixed. The callable inventory stays current through `tool_search` and `call_tool`;
 a new chat declares the core tools available when it starts.
 
 At apply, rebuild a cold tool catalog with current deferred-server anchors and
@@ -26,7 +28,8 @@ compact JSON schemas. Removals carry names only. Ordering is deterministic.
 Updated definitions use the same core/deferred forms.
 Persist this catalog until the next apply. Covered tool-change notices leave the
 serving history with the rest of the summarized messages; canonical history stays
-intact. The frozen system prompt and declarations remain byte-identical.
+intact. The declarations remain byte-identical; the system prompt is stable
+between compactions.
 
 A chat also retains its initial `submit_result` declaration, or its absence.
 A later run with a new or different schema announces the full current definition
@@ -180,10 +183,18 @@ Under pressure, wait for needed gathering and publish an admissible view with:
 6. Complete episodes of the current open chapter.
 7. The exact uncovered raw suffix, including its existing generated notices.
 
-The view never replaces or extends the system prompt and carries no runtime
-inventory. After an apply the system prompt and tool declarations are
-byte-identical to before; only the cold tier changes, as one `cold_change`
-declared `lcm_apply`. View-dependent instructions, such as the short
+Applied compaction may rebind the session's chat surface: the skill catalog and
+memory-file prefix are rebuilt from current state, and covered change notices
+leave the serving view. The new snapshot becomes the durable current surface;
+the original remains available for history. Change detection restarts from the
+new snapshot, and reopen replays only notices after that snapshot. Classical
+summarization follows the same rule. This happens only at applied compaction;
+there is no independent size-based rebuild trigger.
+
+The view carries no runtime inventory. Between compactions the system prompt is
+byte-identical; an apply may also rebind its skill and memory-file content as
+described above. Tool declarations retain their existing ordering and behavior.
+The apply declares its prefix change as `lcm_apply`. View-dependent instructions, such as the short
 original-history lookup note, are cold notes: one Generated message at the end of
 the cold tier, `<harness kind="history_lookup">…</harness>`, ordered by kind and
 then insertion. The lookup note is derived from the view on each build; the tool

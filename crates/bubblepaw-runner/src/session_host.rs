@@ -1,9 +1,17 @@
 use super::*;
-use crate::stdio_parity::providers;
+use crate::stdio_transport;
+use bubblepaw_runner::host_api::{
+    HostCtx, Profile, ReadScope, approvals::deny_unattended, dispatch,
+};
+mod cli_run;
 mod open;
 #[path = "session_prompts.rs"]
 mod prompts;
-use open::{open_or_create, workspace_roots};
+use cli_run::{OneShot, run_session};
+use open::{open_session, providers, workspace_roots};
+
+/// Reason recorded on every approval a one-shot run denies without a client.
+const UNATTENDED: &str = "no client to approve; use --approve-all";
 
 pub(super) async fn execute(
     request: PreparedRequest,
@@ -101,6 +109,13 @@ pub(super) async fn execute(
     }
     let artifacts = Arc::new(ArtifactStore::new(&workspace, data_dir.join("artifacts"))?);
     let repl = Arc::new(CodeMode::new(workspace.clone(), artifacts.clone())?);
+    let quota_host = host.quota_for(&store, &settings, &effective)?;
+    let model_provider = Arc::new(
+        LiveProviderConfig::new(effective.clone())?
+            .with_image_store(store.clone())
+            .with_quota_host(quota_host),
+    );
+    let settings = model_provider.snapshot().settings.clone();
     let trace = if let Some(path) = &cli.trace_file {
         let path = if path.is_absolute() {
             path.clone()
@@ -129,11 +144,11 @@ pub(super) async fn execute(
             "package_version":env!("CARGO_PKG_VERSION"),
             "source_fingerprint":crate::source_fingerprint::source_fingerprint(),
             "source_fingerprint_scope":"main,source_fingerprint,root_prompt,host_attach,host_attach_io,host_lifetime,session_host,cli_output,session_scope,host_transport,config,codemode,input_files,agents,agent_handles,episodes,episode_models,episode_fork,history_snapshot,model_roles,registry,live_provider,images,retry,endpoints,decisions,chat,episode_worker,episode_background,summary_prompt_v2,summary_prompt_v3,chapter_prompt_v1,summarization,summary_prompt,runtime_note,command_template,trace,todo,question,process,core_lib,runtime,dispatch,decision,approvals,observation,host_state",
-            "model":cli.model,
+            "model":settings.main_model,
             "provider":selected_main_provider(&settings),
             "platform":std::env::consts::OS,
             "shell":bubblepaw_runner::command_template::shell_name(),
-            "read_only":cli.read_only,
+            "read_only":settings.approvals.read_only,
             "input_limits":input_limits
         }));
         diagnostic!(
@@ -148,12 +163,6 @@ pub(super) async fn execute(
     } else {
         None
     };
-    let quota_host = host.quota_for(&store, &settings, &effective)?;
-    let model_provider = Arc::new(
-        LiveProviderConfig::new(effective.clone())?
-            .with_image_store(store.clone())
-            .with_quota_host(quota_host),
-    );
     let live_config = LiveConfig::new(
         effective.clone(),
         model_provider.clone(),
@@ -229,23 +238,11 @@ pub(super) async fn execute(
     }
     let episode_services;
     {
-        ensure!(
-            cli.context_window_tokens != Some(0),
-            "context-window-tokens must be positive"
-        );
-        let cache = effective.codex_models_cache();
-        let window = cli.context_window_tokens.or_else(|| {
-            if selected_main_provider(&settings) == "codex" {
-                cache
-                    .as_ref()
-                    .and_then(|p| cached_context_window(p, &cli.model))
-            } else {
-                None
-            }
-        });
+        let generation = model_provider.snapshot();
+        let window = generation.context_window(&generation.settings.main_model);
         let summary_config = SummaryConfig {
             context_window: window,
-            threshold_cap: cli.compact_threshold_tokens,
+            threshold_cap: settings.compact_threshold_tokens,
             verbatim_user_tokens: settings.verbatim_user_tokens,
             max_request_bytes: config.max_request_bytes,
             lcm: settings.lcm.clone(),
@@ -253,26 +250,20 @@ pub(super) async fn execute(
         };
         diagnostic!(
             "Context compaction: automatic={}, threshold={} tokens, model window={}; estimates calibrated by per-request usage",
-            !cli.no_auto_summarize,
+            settings.auto_summarize,
             summary_config.threshold(),
             window
                 .map(|n| n.to_string())
                 .unwrap_or_else(|| "unknown; set --context-window-tokens".into())
         );
-        let mut summary = SummarizingContext::new(
+        let summary = SummarizingContext::new(
             store.clone(),
             model_provider.clone(),
             summary_config,
             Some(notes.clone()),
         )?
-        .with_auto_summarize(!cli.no_auto_summarize);
-        if cli.context_window_tokens.is_none()
-            && selected_main_provider(&settings) == "codex"
-            && let Some(cache) = cache
-        {
-            summary = summary.with_model_metadata(cli.model.clone(), cache);
-        }
-        let summary = Arc::new(summary);
+        .with_live_config(model_provider.clone());
+        let summary = Arc::new(summary.with_surface_refresh(live_config.surface_refresh()));
         let models = Arc::new(
             HttpEpisodeModels::from_live(
                 episode_config.expect("episode settings"),
@@ -344,12 +335,37 @@ pub(super) async fn execute(
         config,
     ));
     host.register(harness.clone());
-    // One control per host: stdio, the CLI run and cancel all go through it.
-    let control = SessionControl::new(harness.clone(), store.clone(), workspace.clone())
-        .with_live_config(Some(live_config.clone()))
-        .with_questions(Some(questions.clone()))
-        .with_agents(Some(agents.clone()))
-        .with_wake(Some(agents.wake_coordinator()));
+    // Attachments are one host capability: stdio, the CLI and the web share these files.
+    let input_files = Arc::new(
+        bubblepaw_runner::input_files::InputFiles::new(&workspace, input_limits)?
+            .with_store(store.clone()),
+    );
+    // Preserve host metadata; config.get overlays accepted live settings.
+    let launch = json!({
+        "workspace": workspace.to_string_lossy(),
+        "model": settings.main_model,
+        "provider": selected_main_provider(&settings),
+        "read_only": settings.approvals.read_only,
+    });
+    // One context per host: stdio, the web and the CLI all dispatch through it.
+    let mut ctx = HostCtx::new(harness.clone(), store.clone(), workspace.clone());
+    ctx.read_scope = ReadScope::Workspace(workspace.clone());
+    ctx.scope = scope.clone();
+    ctx.context_strategy = settings.context_strategy;
+    ctx.storage_policy = Some(settings.root_storage_policy());
+    ctx.hold_admission = scoped_request;
+    ctx.input_limits = input_limits;
+    ctx.usage = usage_settings.clone();
+    ctx.config = launch;
+    ctx.providers = Some(providers(&effective, &model_provider, &live_config)?);
+    ctx.provider_config = Some(model_provider.clone());
+    ctx.live_config = Some(live_config.clone());
+    ctx.agents = Some(agents.clone());
+    ctx.repl = Some(repl.clone());
+    ctx.artifacts = Some(artifacts.clone());
+    ctx.input_files = Some(input_files.clone());
+    ctx.processes = Some(processes.clone());
+    ctx.questions = Some(questions.clone());
     // Resolved per trigger, so the episode worker sees the live prompt and tools.
     let weak_harness = Arc::downgrade(&harness);
     let episode_template: EpisodeTemplate = Arc::new(move |session: &str| {
@@ -369,14 +385,9 @@ pub(super) async fn execute(
     if !scoped_request {
         agents.recover_questions()?;
     }
-    let unattended = one_shot.then(|| {
-        deny_unattended(
-            harness.clone(),
-            store.clone(),
-            harness.subscribe(),
-            scope.clone(),
-        )
-    });
+    let unattended = one_shot
+        .then(|| deny_unattended(ctx.clone(), UNATTENDED.to_owned()))
+        .transpose()?;
     let resume_quota: bubblepaw_runner::quota_recovery::ResumeQuota = {
         let harness = harness.clone();
         let agents = agents.clone();
@@ -414,20 +425,20 @@ pub(super) async fn execute(
         match &cli.command {
             #[cfg(feature = "web")]
             Command::Web { port, assets } => {
-                let provider_routes = bubblepaw_runner::web_providers::router(providers(
-                    &effective,
-                    &model_provider,
-                    &live_config,
-                )?);
+                let provider_setup = providers(&effective, &model_provider, &live_config)?;
+                let provider_routes =
+                    bubblepaw_runner::web_providers::router(provider_setup.clone());
                 let listener =
                     tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, *port)).await?;
                 let address = listener.local_addr()?;
                 diagnostic!("BubblePaw workbench: http://{address}");
+                let generation = model_provider.snapshot();
+                let settings = generation.settings.clone();
                 let config = bubblepaw_runner::web::WebConfig {
                     workspace: workspace.to_string_lossy().into_owned(),
-                    model: cli.model.clone(),
+                    model: settings.main_model.clone(),
                     provider: selected_main_provider(&settings).to_owned(),
-                    read_only: cli.read_only,
+                    read_only: settings.approvals.read_only,
                 };
                 bubblepaw_runner::web::serve_with_services(
                     listener,
@@ -436,8 +447,10 @@ pub(super) async fn execute(
                     config,
                     assets.clone(),
                     bubblepaw_runner::web::WebServices {
+                        read_scope: None,
                         session_scope: Some(scope.clone()),
                         storage_policy: Some(settings.root_storage_policy()),
+                        provider_setup: Some(provider_setup),
                         provider_routes: Some(provider_routes),
                         providers: Some(model_provider.clone()),
                         live_config: Some(live_config.clone()),
@@ -447,13 +460,7 @@ pub(super) async fn execute(
                         processes: Some(processes.clone()),
                         questions: Some(questions.clone()),
                         artifacts: Some(artifacts.clone()),
-                        input_files: Some(Arc::new(
-                            bubblepaw_runner::input_files::InputFiles::new(
-                                &workspace,
-                                input_limits,
-                            )?
-                            .with_store(store.clone()),
-                        )),
+                        input_files: Some(input_files.clone()),
                         codex_models_cache: effective.codex_models_cache(),
                     },
                     {
@@ -468,64 +475,34 @@ pub(super) async fn execute(
                 )
                 .await
             }
-            Command::Stdio => {
-                run_stdio(
-                    harness.clone(),
-                    store.clone(),
-                    StdioServices {
-                        providers: providers(&effective, &model_provider, &live_config)?,
-                        usage: usage_settings.clone(),
-                        workspace: workspace.clone(),
-                        repl: repl.clone(),
-                        processes: processes.clone(),
-                        context_strategy: settings.context_strategy,
-                        agents: agents.clone(),
-                        live_config: live_config.clone(),
-                        questions: questions.clone(),
-                        scope: scope.clone(),
-                        storage_policy: settings.root_storage_policy(),
-                        control: control.clone(),
-                    },
-                    input_limits,
-                    cancellation.clone(),
-                )
-                .await
-            }
+            Command::Stdio => stdio_transport::run(ctx.clone(), cancellation.clone()).await,
             Command::Run { session, name, .. } => {
                 let prompt = task_prompt
                     .as_deref()
                     .expect("run prompt resolved before startup");
-                let command = SlashCommand::parse(prompt);
-                if let Some(command) = command.filter(|command| !command.needs_session()) {
+                let direct =
+                    dispatch(&ctx, Profile::Full, "host.command", json!({"text": prompt})).await?;
+                if !direct.is_null() && direct["needs_session"] != true {
                     // /reload needs no session, so none is created for it.
-                    output.json(&control.execute(None, command).await?)
+                    output.json(&direct)
                 } else {
-                    let session = open_or_create(&store, session.as_deref(), {
-                        let (name, workspace) = (name.clone(), workspace.clone());
-                        let strategy = settings.context_strategy;
-                        let policy = settings.root_storage_policy();
-                        move |store| {
-                            let title = session_title(name.as_deref(), "New session")?;
-                            store.create_session_with_policy(title, strategy, &workspace, policy)
-                        }
-                    })
-                    .await?;
-                    match command {
-                        Some(command) => {
-                            output.json(&control.execute(Some(&session.id), command).await?)
-                        }
-                        None => {
-                            run_once(
-                                harness.clone(),
-                                &session.id,
-                                Some(prompt),
-                                cli.json,
-                                output.clone(),
-                                cancellation.clone(),
-                                scope.clone(),
-                            )
-                            .await
-                        }
+                    let id = open_session(&ctx, session.as_deref(), name.as_deref(), "New session")
+                        .await?;
+                    if direct.is_null() {
+                        let request = OneShot::Prompt(prompt);
+                        run_session(
+                            &ctx,
+                            &id,
+                            request,
+                            cli.json,
+                            output.clone(),
+                            cancellation.clone(),
+                        )
+                        .await
+                    } else {
+                        let params = json!({"session_id": id, "text": prompt});
+                        let result = dispatch(&ctx, Profile::Full, "host.command", params).await?;
+                        output.json(&result)
                     }
                 }
             }
@@ -581,45 +558,32 @@ pub(super) async fn execute(
                 name,
                 ..
             } => {
-                let options = RunOptions {
-                    script: Some(
-                        std::fs::read_to_string(file)
-                            .with_context(|| format!("read {}", file.display()))?,
-                    ),
-                    ..RunOptions::default()
-                };
-                let session = open_or_create(&store, session.as_deref(), {
-                    let (name, workspace) = (name.clone(), workspace.clone());
-                    let strategy = settings.context_strategy;
-                    let policy = settings.root_storage_policy();
-                    move |store| {
-                        let title = session_title(name.as_deref(), "Script")?;
-                        store.create_session_with_policy(title, strategy, &workspace, policy)
-                    }
-                })
-                .await?;
+                let body = std::fs::read_to_string(file)
+                    .with_context(|| format!("read {}", file.display()))?;
+                let id = open_session(&ctx, session.as_deref(), name.as_deref(), "Script").await?;
                 let label = format!("[script] {}", file.display());
-                run_once_with(
-                    harness.clone(),
-                    &session.id,
-                    Some(&label),
-                    options,
+                let request = OneShot::Script {
+                    label: &label,
+                    body,
+                };
+                run_session(
+                    &ctx,
+                    &id,
+                    request,
                     cli.json,
                     output.clone(),
                     cancellation.clone(),
-                    scope.clone(),
                 )
                 .await
             }
             Command::Resume { session } => {
-                run_once(
-                    harness.clone(),
+                run_session(
+                    &ctx,
                     session,
-                    None,
+                    OneShot::Resume,
                     cli.json,
                     output.clone(),
                     cancellation.clone(),
-                    scope.clone(),
                 )
                 .await
             }
@@ -637,10 +601,23 @@ pub(super) async fn execute(
         .into_iter()
         .filter(|_| !scoped_request)
     {
-        if scope.hold_owned_for_cleanup(&store, &session.id)? && harness.cancel(&session.id) {
-            let _ =
-                tokio::time::timeout(Duration::from_secs(5), harness.wait_for_idle(&session.id))
-                    .await;
+        if scope.hold_owned_for_cleanup(&store, &session.id)? {
+            let cancelled = dispatch(
+                &ctx,
+                Profile::Full,
+                "run.cancel",
+                json!({"session_id": session.id}),
+            )
+            .await;
+            if cancelled.is_ok_and(|reply| reply["requested"] == true) {
+                let waited = dispatch(
+                    &ctx,
+                    Profile::Full,
+                    "run.wait",
+                    json!({"session_id": session.id}),
+                );
+                let _ = tokio::time::timeout(Duration::from_secs(5), waited).await;
+            }
         }
     }
     let children_stopped = agents.shutdown().await;

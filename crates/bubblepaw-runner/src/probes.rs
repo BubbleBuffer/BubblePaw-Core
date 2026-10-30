@@ -985,7 +985,7 @@ mod tests {
             session_id: session.into(),
             role: Role::User,
             origin: None,
-            content: "BubblePlay colour was blue".into(),
+            content: "Garden colour was blue".into(),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,

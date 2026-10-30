@@ -22,7 +22,9 @@ use std::{
     time::SystemTime,
 };
 
+mod diff;
 mod reload_tool;
+use diff::{add_mcp_diff, config_diff};
 mod turn_start;
 pub(crate) use reload_tool::register_reload_tool;
 use turn_start::ConfigTurnStart;
@@ -71,6 +73,8 @@ struct State {
     last_warning: Option<String>,
 }
 
+#[path = "live_context_surface.rs"]
+mod context_surface;
 #[path = "live_reminders.rs"]
 mod reminder_notices;
 
@@ -155,8 +159,11 @@ impl LiveConfig {
                 if !live.skills.initialized(session) {
                     live.check_skills(session, &live.providers.snapshot().settings)?;
                 }
-                let base = live.system_prompt(session, base)?;
-                Ok(live.skills.system_prompt(session, &base))
+                let base = live.system_prompt_base(session, base)?;
+                let memory = live.memory.system_prompt(session, &base)?;
+                let prompt = live.skills.system_prompt(session, &memory);
+                live.bind_context_prompt(session, &base, &prompt)?;
+                Ok(prompt)
             }
             None => Ok(base.to_owned()),
         }));
@@ -425,107 +432,6 @@ pub fn approval_policy(settings: &Settings) -> Result<ApprovalPolicy> {
         hardline: settings.approvals.hardline,
     })
 }
-fn config_diff(old: &EffectiveConfig, new: &EffectiveConfig) -> Vec<String> {
-    let mut diff = Vec::new();
-    for section in [
-        "model",
-        "providers",
-        "roles",
-        "web",
-        "agents",
-        "exec",
-        "mcp",
-        "skills",
-    ] {
-        if old.value(section) != new.value(section) {
-            diff.push(format!("{section} updated"));
-        }
-    }
-    if old.value("approvals") != new.value("approvals") {
-        let before = old.settings().expect("accepted config").approvals;
-        let after = new.settings().expect("validated config").approvals;
-        if before.confirm != after.confirm {
-            diff.push(format!(
-                "approval default: {} → {}",
-                before.confirm, after.confirm
-            ));
-        }
-        let names: std::collections::BTreeSet<_> =
-            before.tools.keys().chain(after.tools.keys()).collect();
-        for name in names {
-            let from = before
-                .tools
-                .get(name)
-                .map(String::as_str)
-                .unwrap_or("default");
-            let to = after
-                .tools
-                .get(name)
-                .map(String::as_str)
-                .unwrap_or("default");
-            if from != to {
-                diff.push(format!("approval for {name}: {from} → {to}"));
-            }
-        }
-        if before.deny != after.deny {
-            diff.push(format!(
-                "approval deny rules: {} → {}",
-                before.deny.join(", "),
-                after.deny.join(", ")
-            ));
-        }
-        if before.read_only != after.read_only {
-            diff.push("approval read-only setting updated".into());
-        }
-        if before.hardline != after.hardline {
-            let label = |on: bool| if on { "on" } else { "off" };
-            diff.push(format!(
-                "approval hardline floor: {} → {}",
-                label(before.hardline),
-                label(after.hardline)
-            ));
-        }
-    }
-    for section in ["storage", "context", "extensions"] {
-        if old.value(section) != new.value(section) {
-            diff.push(format!("{section} updated (restart needed)"));
-        }
-    }
-    diff
-}
-fn add_mcp_diff(report: &mut ReloadReport, diff: &bubblepaw_mcp::McpDiff) {
-    report
-        .changed
-        .extend(diff.added.iter().map(|name| format!("+ {name}")));
-    report
-        .changed
-        .extend(diff.removed.iter().map(|name| format!("− {name}")));
-    report
-        .changed
-        .extend(diff.changed.iter().map(|name| format!("~ {name}")));
-    report.changed.extend(
-        diff.started
-            .iter()
-            .map(|name| format!("server {name} started")),
-    );
-    report.changed.extend(
-        diff.stopped
-            .iter()
-            .map(|name| format!("server {name} stopped: config removed or disabled")),
-    );
-    report.changed.extend(
-        diff.restarted
-            .iter()
-            .map(|name| format!("server {name} restarted")),
-    );
-    report.errors.extend(diff.warnings.iter().cloned());
-    report.changed.extend(
-        diff.filtered
-            .iter()
-            .map(|name| format!("server {name} tool visibility settings updated")),
-    );
-}
-
 /// Recognize only an exact host command; ordinary prompts keep their contents.
 pub fn reload_command(text: &str) -> Option<Option<&str>> {
     let mut words = text.split_whitespace();

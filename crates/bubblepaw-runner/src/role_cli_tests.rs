@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(feature = "bench")]
+use bubblepaw_core::ContextStrategy;
 
 #[test]
 fn login_provider_does_not_collide_with_global_provider() {
@@ -317,4 +319,76 @@ fn changing_decider_leaves_the_approver_unconfigured() {
     assert!(!roles.decider.models.is_empty());
     // The approver has no built-in chain, so --decider does not set it.
     assert!(roles.approver.models.is_empty());
+}
+
+#[test]
+fn live_controls_keep_ordered_cli_overrides_after_disk_reload() -> Result<()> {
+    for flags_last in [false, true] {
+        let root = tempfile::tempdir()?;
+        let file = root.path().join("config.toml");
+        std::fs::write(&file, "[model]\nmain='demo/disk'\n")?;
+        let flags = [
+            "--model",
+            "demo/flag",
+            "--read-only",
+            "--context-window-tokens",
+            "120000",
+            "--compact-threshold-tokens",
+            "110000",
+            "--no-auto-summarize",
+        ];
+        let sets = [
+            "--set",
+            "model.main=demo/pinned",
+            "--set",
+            "approvals.read_only=false",
+            "--set",
+            "context.window_tokens=140000",
+            "--set",
+            "context.compact_threshold_tokens=125000",
+            "--set",
+            "context.auto_summarize=true",
+        ];
+        let mut arguments = vec!["bubblepaw"];
+        if flags_last {
+            arguments.extend(sets);
+            arguments.extend(flags);
+        } else {
+            arguments.extend(flags);
+            arguments.extend(sets);
+        }
+        arguments.extend(["run", "hello"]);
+        let cli = Cli::try_parse_from(&arguments)?;
+        let arguments: Vec<_> = arguments.into_iter().map(str::to_owned).collect();
+        let effective = EffectiveConfig::load(LoadOptions {
+            workspace: root.path().into(),
+            home: None,
+            custom_file: Some(file.clone()),
+            env: vec![],
+            cli: config_overrides(&cli, &arguments, "demo")?,
+        })?;
+        let live = LiveProviderConfig::new(effective)?;
+        let expected = if flags_last {
+            ("demo/flag", true, 120000, 110000, false)
+        } else {
+            ("demo/pinned", false, 140000, 125000, true)
+        };
+        for reloaded in [false, true] {
+            if reloaded {
+                std::fs::write(
+                    &file,
+                    "[model]\nmain='demo/changed-on-disk'\n[approvals]\nread_only=false\n[context]\nwindow_tokens=180000\ncompact_threshold_tokens=170000\nauto_summarize=false\n",
+                )?;
+                live.reload()?;
+            }
+            let generation = live.snapshot();
+            let settings = &generation.settings;
+            assert_eq!(settings.main_model, expected.0);
+            assert_eq!(settings.approvals.read_only, expected.1);
+            assert_eq!(settings.context_window_tokens, Some(expected.2));
+            assert_eq!(settings.compact_threshold_tokens, expected.3);
+            assert_eq!(settings.auto_summarize, expected.4);
+        }
+    }
+    Ok(())
 }

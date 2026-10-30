@@ -2,8 +2,6 @@
 # bubblepaw binary for Linux and Windows, with default features and with the
 # web feature, and attaches the archives to a GitHub release for that tag.
 #
-# Lives in BubblePaw-base under .github/public/; scripts/publish-public.sh
-# moves it to .github/workflows/release.yml in the export.
 name: release
 
 on:

@@ -38,7 +38,7 @@ impl SummarizingContext {
     ) -> Result<()> {
         // Ordinary no-auto history already bypasses summary admission, including
         // when a previously applied view exists. The core byte guard still runs.
-        if !self.automatic {
+        if !self.automatic() {
             return Ok(());
         }
         let bound = Self {

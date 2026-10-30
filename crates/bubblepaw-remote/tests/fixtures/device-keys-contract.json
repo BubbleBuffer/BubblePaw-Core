@@ -1,0 +1,306 @@
+{
+  "version": 1,
+  "notes": "See docs/architecture/device-keys.md, Phase 0 results. TEST ONLY: all private keys, passphrases, salts and nonces are public deterministic vectors; never use them in production. Binary JSON fields use unpadded base64url unless named Hex; plaintextUtf8 and aadUtf8 are exact UTF-8 strings.",
+  "ids": [
+    {
+      "name": "viewer",
+      "seedHex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+      "sha256Hex": "21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9",
+      "id": "47Z3-3QX1-AJH6-2RKB"
+    },
+    {
+      "name": "pc",
+      "seedHex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+      "public": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "sha256Hex": "39f713d0a644253f04529421b9f51b9b08979d08295959c4f3990ee617f5139f",
+      "id": "77VH-7M56-8GJK-Y12J"
+    },
+    {
+      "name": "crockford-aliases",
+      "seedHex": "0000000000000000000000000000000000000000000000000000000000000006",
+      "public": "tMkq-zulfzq5Wf_m0xnJhISiFVoPTGWyw3AR_9GXsHU",
+      "sha256Hex": "8d40be0b8605ee10d0879ee8546c62280007de30f6ae889e44575c2e539663e2",
+      "id": "HN0B-W2W6-0QQ1-1M47",
+      "parse": {
+        "input": "hnobw2w6oqqilm47",
+        "canonical": "HN0B-W2W6-0QQ1-1M47"
+      }
+    }
+  ],
+  "keyFiles": {
+    "plain": {
+      "seedHex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+      "file": {
+        "format": "bubblebuffer-device-key",
+        "version": 1,
+        "type": "ed25519",
+        "id": "77VH-7M56-8GJK-Y12J",
+        "label": "PC test",
+        "created": "2026-10-13T09:30:00Z",
+        "public": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+        "kdf": null,
+        "aead": null,
+        "private": "TM0Imyj_ltqdtsNG7BFOD1uKMZ81q6Yk2oz27U-4pvs"
+      }
+    },
+    "passphrase": {
+      "seedHex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "passphrase": "correct horse battery staple",
+      "kdfKeyHex": "0d1a3c6523c8f06e4e0af9c515aa5b5448cfebd6838f2d52c3d8b6ef8ddc3c2e",
+      "aadUtf8": "{\"aead\":{\"alg\":\"aes-256-gcm\"},\"created\":\"2026-10-13T09:30:00Z\",\"format\":\"bubblebuffer-device-key\",\"id\":\"47Z3-3QX1-AJH6-2RKB\",\"kdf\":{\"alg\":\"argon2id\",\"m\":65536,\"p\":1,\"salt\":\"AAECAwQFBgcICQoLDA0ODw\",\"t\":3},\"label\":\"Viewer \\\"test\\\" café\",\"public\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"type\":\"ed25519\",\"version\":1}",
+      "aadHex": "7b2261656164223a7b22616c67223a226165732d3235362d67636d227d2c2263726561746564223a22323032362d31302d31335430393a33303a30305a222c22666f726d6174223a22627562626c656275666665722d6465766963652d6b6579222c226964223a2234375a332d335158312d414a48362d32524b42222c226b6466223a7b22616c67223a226172676f6e326964222c226d223a36353533362c2270223a312c2273616c74223a2241414543417751464267634943516f4c4441304f4477222c2274223a337d2c226c6162656c223a22566965776572205c22746573745c2220636166c3a9222c227075626c6963223a223131715941594b7843726656535f3754795751484f6737686376506170694d6c727749616150634855526f222c2274797065223a2265643235353139222c2276657273696f6e223a317d",
+      "file": {
+        "format": "bubblebuffer-device-key",
+        "version": 1,
+        "type": "ed25519",
+        "id": "47Z3-3QX1-AJH6-2RKB",
+        "label": "Viewer \"test\" café",
+        "created": "2026-10-13T09:30:00Z",
+        "public": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+        "kdf": {
+          "alg": "argon2id",
+          "m": 65536,
+          "t": 3,
+          "p": 1,
+          "salt": "AAECAwQFBgcICQoLDA0ODw"
+        },
+        "aead": {
+          "alg": "aes-256-gcm",
+          "nonce": "EBESExQVFhcYGRob"
+        },
+        "private": "gQy8pM6yr_hP5gH01VFFsghDwGJ0cKyVDh9AuGdFGNkRiQitxMdk5uYXuNwx_Pge"
+      }
+    },
+    "failures": [
+      {
+        "name": "wrong-passphrase",
+        "passphrase": "incorrect horse battery staple",
+        "file": {
+          "format": "bubblebuffer-device-key",
+          "version": 1,
+          "type": "ed25519",
+          "id": "47Z3-3QX1-AJH6-2RKB",
+          "label": "Viewer \"test\" café",
+          "created": "2026-10-13T09:30:00Z",
+          "public": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "kdf": {
+            "alg": "argon2id",
+            "m": 65536,
+            "t": 3,
+            "p": 1,
+            "salt": "AAECAwQFBgcICQoLDA0ODw"
+          },
+          "aead": {
+            "alg": "aes-256-gcm",
+            "nonce": "EBESExQVFhcYGRob"
+          },
+          "private": "gQy8pM6yr_hP5gH01VFFsghDwGJ0cKyVDh9AuGdFGNkRiQitxMdk5uYXuNwx_Pge"
+        },
+        "expected": "authentication-failed"
+      },
+      {
+        "name": "tampered-aad",
+        "passphrase": "correct horse battery staple",
+        "file": {
+          "format": "bubblebuffer-device-key",
+          "version": 1,
+          "type": "ed25519",
+          "id": "47Z3-3QX1-AJH6-2RKB",
+          "label": "Tampered viewer label",
+          "created": "2026-10-13T09:30:00Z",
+          "public": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+          "kdf": {
+            "alg": "argon2id",
+            "m": 65536,
+            "t": 3,
+            "p": 1,
+            "salt": "AAECAwQFBgcICQoLDA0ODw"
+          },
+          "aead": {
+            "alg": "aes-256-gcm",
+            "nonce": "EBESExQVFhcYGRob"
+          },
+          "private": "gQy8pM6yr_hP5gH01VFFsghDwGJ0cKyVDh9AuGdFGNkRiQitxMdk5uYXuNwx_Pge"
+        },
+        "expected": "authentication-failed"
+      }
+    ]
+  },
+  "handshake": {
+    "relayOrigin": "https://example.test",
+    "sessionEpoch": "9007199254740993",
+    "viewer": {
+      "seedHex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "id": "47Z3-3QX1-AJH6-2RKB",
+      "public": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+      "nonce": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+      "ephemeralPrivateHex": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+      "ephemeral": "eaYx7t4b-cmPEgMs3q3Q56B5OY_HhriMyEbsia-FpRo"
+    },
+    "pc": {
+      "seedHex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+      "id": "77VH-7M56-8GJK-Y12J",
+      "public": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+      "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+      "ephemeralPrivateHex": "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+      "ephemeral": "ST6C_HRGSlkmiBdiPSBTxeuOLMSpiLT-4XnsawENUx0"
+    },
+    "transcriptHex": "00000012627562626c65706c61792d617574682d76310000001468747470733a2f2f6578616d706c652e7465737400000010393030373139393235343734303939330000001334375a332d335158312d414a48362d32524b4200000020d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a00000013373756482d374d35362d38474a4b2d5931324a000000203d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c00000020202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f00000020606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f0000002079a631eede1bf9c98f12032cdeadd0e7a079398fc786b88cc846ec89af85a51a00000020493e82fc74464a59268817623d2053c5eb8e2cc4a988b4fee179ec6b010d531d",
+    "transcriptHashHex": "b57d64e60130ff4a0f16564bb5cc20e6ff0f6feccafaa5c84eeaa736706f056d",
+    "pcSignedBytesHex": "627562626c65706c61792d617574682d686f73742d7631b57d64e60130ff4a0f16564bb5cc20e6ff0f6feccafaa5c84eeaa736706f056d",
+    "pcSignature": "K8umWmG69jVJVhy8eqVxZZ2NXDTRynB8ihj1sjfRp2SOJMJWDucv5rtBw8wx7yEN4AbLz9L_dqWqw7h69aU3BA",
+    "viewerSignedBytesHex": "627562626c65706c61792d617574682d7669657765722d7631b57d64e60130ff4a0f16564bb5cc20e6ff0f6feccafaa5c84eeaa736706f056d2bcba65a61baf63549561cbc7aa571659d8d5c34d1ca707c8a18f5b237d1a7648e24c2560ee72fe6bb41c3cc31ef210de006cbcfd2ff76a5aac3b87af5a53704",
+    "viewerSignature": "cQ5Oz2KELLu_AzgaQHpGoqk3FR2JSTM8x6nx47skLMDtVxYb2Y9funaKY8Syest93N9ZLujPDPYGVnOW9rwUAw",
+    "sharedSecretHex": "dcd77236231add34de0561c47859a65d304f2a8550e8df98df053cf5dfabea0b",
+    "controlKeys": {
+      "viewerToPcHex": "3752d297ccfc2c6f77c0172c1dd7ba60906b06e88bfc3ef31e59111272974d75",
+      "pcToViewerHex": "c9bf88ba84ecd91b8c6b41be2fb6880909947e379a040bec464d0abf24b0371e"
+    },
+    "controlMessages": [
+      {
+        "direction": "viewer-to-pc",
+        "sequence": 0,
+        "type": "input",
+        "plaintextUtf8": "{\"type\":\"input\",\"action\":\"key\",\"key\":\"A\"}",
+        "nonceHex": "000000000000000000000000",
+        "ciphertext": "9cMzlqYOC1LwM1P7RExaSRe4gMcGIiA01xX8KisW61uoZibjhbrb_btRbeZownxyEnfaSaStu3py"
+      },
+      {
+        "direction": "viewer-to-pc",
+        "sequence": 1,
+        "type": "input",
+        "plaintextUtf8": "{\"type\":\"input\",\"action\":\"key\",\"key\":\"B\"}",
+        "nonceHex": "000000000000000000000001",
+        "ciphertext": "L0G2inDfbZUxJT1E5R2NgY0i95Kv3ZgUlWtVpvvXImvV9VKoQNHGJ4XJJybUXxucCysNVv3j0_OJ"
+      },
+      {
+        "direction": "pc-to-viewer",
+        "sequence": 0,
+        "type": "clipboard",
+        "plaintextUtf8": "{\"type\":\"clipboard\",\"text\":\"hello\"}",
+        "nonceHex": "000000000000000000000000",
+        "ciphertext": "NJUIqSfWnPP7qt_KfQDBGGov087nWlhowKe9Xs56-yYLsmg1ZLXx5warfPwlAa772Jbw"
+      },
+      {
+        "direction": "pc-to-viewer",
+        "sequence": 1,
+        "type": "clipboard",
+        "plaintextUtf8": "{\"type\":\"clipboard\",\"text\":\"world\"}",
+        "nonceHex": "000000000000000000000001",
+        "ciphertext": "GKvvqTHnB0if2MFZ0IKGycOyyHjvcsSEdVTYB29H3eYYtYcIr22HVykuoR4yxO5yJB-7"
+      }
+    ],
+    "dtls": {
+      "viewer": {
+        "localFingerprint": "sha-256 A0:A1:A2:A3:A4:A5:A6:A7:A8:A9:AA:AB:AC:AD:AE:AF:B0:B1:B2:B3:B4:B5:B6:B7:B8:B9:BA:BB:BC:BD:BE:BF",
+        "remoteFingerprint": "sha-256 C0:C1:C2:C3:C4:C5:C6:C7:C8:C9:CA:CB:CC:CD:CE:CF:D0:D1:D2:D3:D4:D5:D6:D7:D8:D9:DA:DB:DC:DD:DE:DF",
+        "signedBytesHex": "627562626c65706c61792d64746c732d7631b57d64e60130ff4a0f16564bb5cc20e6ff0f6feccafaa5c84eeaa736706f056d7368612d3235362041303a41313a41323a41333a41343a41353a41363a41373a41383a41393a41413a41423a41433a41443a41453a41463a42303a42313a42323a42333a42343a42353a42363a42373a42383a42393a42413a42423a42433a42443a42453a42460a7368612d3235362043303a43313a43323a43333a43343a43353a43363a43373a43383a43393a43413a43423a43433a43443a43453a43463a44303a44313a44323a44333a44343a44353a44363a44373a44383a44393a44413a44423a44433a44443a44453a4446",
+        "signature": "0R94dRISC4LRC9JJ-QyBCc1ud8WxZ_VXostTuF4CEERjyasJDDUOa5wlVCIToBHnDULeyY-7vyADuP80sADfBA"
+      },
+      "pc": {
+        "localFingerprint": "sha-256 C0:C1:C2:C3:C4:C5:C6:C7:C8:C9:CA:CB:CC:CD:CE:CF:D0:D1:D2:D3:D4:D5:D6:D7:D8:D9:DA:DB:DC:DD:DE:DF",
+        "remoteFingerprint": "sha-256 A0:A1:A2:A3:A4:A5:A6:A7:A8:A9:AA:AB:AC:AD:AE:AF:B0:B1:B2:B3:B4:B5:B6:B7:B8:B9:BA:BB:BC:BD:BE:BF",
+        "signedBytesHex": "627562626c65706c61792d64746c732d7631b57d64e60130ff4a0f16564bb5cc20e6ff0f6feccafaa5c84eeaa736706f056d7368612d3235362043303a43313a43323a43333a43343a43353a43363a43373a43383a43393a43413a43423a43433a43443a43453a43463a44303a44313a44323a44333a44343a44353a44363a44373a44383a44393a44413a44423a44433a44443a44453a44460a7368612d3235362041303a41313a41323a41333a41343a41353a41363a41373a41383a41393a41413a41423a41433a41443a41453a41463a42303a42313a42323a42333a42343a42353a42363a42373a42383a42393a42413a42423a42433a42443a42453a4246",
+        "signature": "Gb_DstpSErqaRpE_UeV0KEVgKHLdvdWq9PUCau2Uc1tt1xQ9xjzLYd6E3aMIbE_rgOqo1t6Te4gSE2HFvi3hBA"
+      }
+    },
+    "messages": {
+      "authHello": {
+        "type": "auth-hello",
+        "id": "47Z3-3QX1-AJH6-2RKB",
+        "public": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+        "nonce": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8",
+        "ephemeral": "eaYx7t4b-cmPEgMs3q3Q56B5OY_HhriMyEbsia-FpRo",
+        "caps": [
+          "control-aead-v1",
+          "dtls-bind-v1"
+        ]
+      },
+      "authHost": {
+        "type": "auth-host",
+        "id": "77VH-7M56-8GJK-Y12J",
+        "public": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+        "nonce": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8",
+        "ephemeral": "ST6C_HRGSlkmiBdiPSBTxeuOLMSpiLT-4XnsawENUx0",
+        "signature": "K8umWmG69jVJVhy8eqVxZZ2NXDTRynB8ihj1sjfRp2SOJMJWDucv5rtBw8wx7yEN4AbLz9L_dqWqw7h69aU3BA"
+      },
+      "authFinish": {
+        "type": "auth-finish",
+        "signature": "cQ5Oz2KELLu_AzgaQHpGoqk3FR2JSTM8x6nx47skLMDtVxYb2Y9funaKY8Syest93N9ZLujPDPYGVnOW9rwUAw"
+      },
+      "authBind": {
+        "type": "auth-bind",
+        "signature": "0R94dRISC4LRC9JJ-QyBCc1ud8WxZ_VXostTuF4CEERjyasJDDUOa5wlVCIToBHnDULeyY-7vyADuP80sADfBA"
+      },
+      "authBindPc": {
+        "type": "auth-bind",
+        "signature": "Gb_DstpSErqaRpE_UeV0KEVgKHLdvdWq9PUCau2Uc1tt1xQ9xjzLYd6E3aMIbE_rgOqo1t6Te4gSE2HFvi3hBA"
+      }
+    }
+  },
+  "relayProof": {
+    "vectors": [
+      {
+        "name": "host",
+        "role": "host",
+        "origin": "https://example.test",
+        "nonceHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "nonce": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+        "id": "77VH-7M56-8GJK-Y12J",
+        "public": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+        "encodingHex": "00000013627562626c65706c61792d72656c61792d763100000004686f73740000001468747470733a2f2f6578616d706c652e7465737400000020a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf00000013373756482d374d35362d38474a4b2d5931324a000000203d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+        "sha256Hex": "df2c862f3fa48c91d6e82a02786e2698e979f4495a96f9953664124a93d5fea8",
+        "signature": "uj2YRQ3602XVQfnEt2qj-wQEj2-Qu__4TehqQ2DgidBzCRWYe-BRXp1-9MCIxo_uhhNJ77CL-eRZQdC9PCh6Bw",
+        "expected": "valid"
+      },
+      {
+        "name": "viewer",
+        "role": "viewer",
+        "origin": "https://example.test",
+        "nonceHex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+        "nonce": "wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t8",
+        "id": "47Z3-3QX1-AJH6-2RKB",
+        "public": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo",
+        "encodingHex": "00000013627562626c65706c61792d72656c61792d7631000000067669657765720000001468747470733a2f2f6578616d706c652e7465737400000020c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf0000001334375a332d335158312d414a48362d32524b4200000020d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+        "sha256Hex": "11af7f6619396b695a3752c741399a691b8e621d97c775a1169bb2676dc0da61",
+        "signature": "xtUZN_vvz_xAvZ1W1g8tiKaBhpdqFcjv0hfWq5qsMLZLuuof0WA8hdcwaUM8OZmK6WGfJaZ5AQca6n4kyEgHCQ",
+        "expected": "valid"
+      },
+      {
+        "name": "wrong-origin",
+        "role": "host",
+        "origin": "https://other-relay.example.test",
+        "nonceHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "nonce": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8",
+        "id": "77VH-7M56-8GJK-Y12J",
+        "public": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw",
+        "encodingHex": "00000013627562626c65706c61792d72656c61792d763100000004686f73740000002068747470733a2f2f6f746865722d72656c61792e6578616d706c652e7465737400000020a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf00000013373756482d374d35362d38474a4b2d5931324a000000203d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+        "sha256Hex": "1edb5e841c000647490820aef65f74e513cdc564ceeb5e7509ed377ce752689b",
+        "signature": "uj2YRQ3602XVQfnEt2qj-wQEj2-Qu__4TehqQ2DgidBzCRWYe-BRXp1-9MCIxo_uhhNJ77CL-eRZQdC9PCh6Bw",
+        "expected": "invalid"
+      }
+    ],
+    "messages": {
+      "hello": {
+        "type": "hello",
+        "role": "host",
+        "token": "test-only-registration-token",
+        "id": "77VH-7M56-8GJK-Y12J",
+        "public": "PUAXw-hDiVqStwqnTRt-vJyYLM8uxJaMwM1V8Sr0Zgw"
+      },
+      "registerChallenge": {
+        "type": "register-challenge",
+        "nonce": "oKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr8"
+      },
+      "registerProof": {
+        "type": "register-proof",
+        "signature": "uj2YRQ3602XVQfnEt2qj-wQEj2-Qu__4TehqQ2DgidBzCRWYe-BRXp1-9MCIxo_uhhNJ77CL-eRZQdC9PCh6Bw"
+      },
+      "helloOk": {
+        "type": "hello-ok",
+        "ticket": "4OHi4-Tl5ufo6err7O3u7_Dx8vP09fb3-Pn6-_z9_v8"
+      }
+    }
+  }
+}

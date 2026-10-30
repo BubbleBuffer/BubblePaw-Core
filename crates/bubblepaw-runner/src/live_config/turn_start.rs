@@ -6,6 +6,7 @@ pub(super) struct ConfigTurnStart(pub(super) Weak<LiveConfig>);
 impl TurnStart for ConfigTurnStart {
     async fn before_turn(&self, session: &str, cancellation: CancellationToken) -> Result<()> {
         if let Some(live) = self.0.upgrade() {
+            live.initialize_config_cursor(session);
             let agents = live.agents.lock().unwrap().upgrade();
             if let Some(agents) = agents {
                 agents.report_worktree_cleanup().await;

@@ -1,6 +1,13 @@
-//! HTTP question answer routes, including explicit host user answers to children.
-use super::errors::ChildSessionRefusal;
-use super::*;
+//! HTTP question routes. The host answers; a child answer is an explicit host
+//! user action, and both are refused or accepted by `host_api::questions`.
+use super::{WebState, body, errors::ApiError, host::call};
+use axum::{
+    Json,
+    extract::{Path, State, rejection::JsonRejection},
+};
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -23,29 +30,15 @@ pub(super) async fn answer_child_question(
     Path((parent, child)): Path<(String, String)>,
     input: std::result::Result<Json<ChildQuestionAnswerBody>, JsonRejection>,
 ) -> std::result::Result<Json<Value>, ApiError> {
-    ensure_workspace(&state, &parent)?;
-    ensure_workspace(&state, &child)?;
     let input = body(input)?;
-    let questions = state
-        .services
-        .questions
-        .as_ref()
-        .context("Question service unavailable")?;
-    questions
-        .answer_child_as_user(&parent, &child, &input.question_id, &input.text)
-        .await
-        .map_err(|error| {
-            use crate::question::ChildQuestionAnswerError;
-            let status = match &error {
-                ChildQuestionAnswerError::NotFound => StatusCode::NOT_FOUND,
-                ChildQuestionAnswerError::Conflict => StatusCode::CONFLICT,
-                ChildQuestionAnswerError::Invalid => StatusCode::BAD_REQUEST,
-                ChildQuestionAnswerError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            ApiError(status, error.to_string())
-        })?;
+    let reply = call(
+        &state,
+        "question.answer_child",
+        json!({"parent": parent, "child": child, "question_id": input.question_id, "text": input.text}),
+    )
+    .await?;
     state.refresh.notify_one();
-    Ok(Json(json!({"answered":true})))
+    Ok(Json(reply))
 }
 
 pub(super) async fn answer_question(
@@ -53,27 +46,13 @@ pub(super) async fn answer_question(
     Path(id): Path<String>,
     input: std::result::Result<Json<QuestionAnswerBody>, JsonRejection>,
 ) -> std::result::Result<Json<Value>, ApiError> {
-    ensure_workspace(&state, &id)?;
     let input = body(input)?;
-    let origin = client(&input.client)?;
-    let answering = state.clone();
-    let answer = blocking(move || {
-        let state = answering;
-        if state.store.session(&id)?.parent_session_id.is_some() {
-            return Err(ChildSessionRefusal.into());
-        }
-        let questions = state
-            .services
-            .questions
-            .as_ref()
-            .context("Question service unavailable")?;
-        let answer = questions.answer(&state.harness, &id, &input.question_id, &input.text)?;
-        if !answer.live {
-            crate::question::continue_answer(&state.harness, &state.store, &id, &answer, origin)?;
-        }
-        Ok(answer)
-    })
+    let reply = call(
+        &state,
+        "question.answer",
+        json!({"session_id": id, "question_id": input.question_id, "text": input.text, "client": input.client}),
+    )
     .await?;
     state.refresh.notify_one();
-    Ok(Json(json!({"question":answer.question,"live":answer.live})))
+    Ok(Json(reply))
 }

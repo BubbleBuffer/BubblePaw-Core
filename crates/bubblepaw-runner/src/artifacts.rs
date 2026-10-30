@@ -121,16 +121,7 @@ impl ArtifactStore {
     pub fn read(&self, session: &str, id: &str) -> Result<(ArtifactRef, Vec<u8>)> {
         valid_id(id)?;
         let session_dir = self.session_dir(session, false)?;
-        let metadata_bytes =
-            read_regular(&session_dir.join(format!("{id}.json")), MAX_METADATA_BYTES)?;
-        let artifact: ArtifactRef = serde_json::from_slice(&metadata_bytes)?;
-        if artifact.id != id
-            || artifact.name != safe_name(&artifact.name)
-            || artifact.size > MAX_BYTES
-            || !allowed_mime(&artifact.mime)
-        {
-            bail!("Artifact metadata is invalid");
-        }
+        let artifact = read_reference(&session_dir, id)?;
         let bytes = read_regular(&session_dir.join(format!("{id}.bin")), MAX_BYTES)?;
         if bytes.len() as u64 != artifact.size {
             bail!("Artifact data does not match its metadata");
@@ -140,6 +131,32 @@ impl ArtifactStore {
             bail!("Artifact image type is invalid");
         }
         Ok((artifact, bytes))
+    }
+
+    /// List validated session-owned references in stable identifier order.
+    pub fn list(&self, session: &str) -> Result<Vec<ArtifactRef>> {
+        valid_id(session)?;
+        let directory = self.directory.join(session);
+        if !directory.exists() {
+            return Ok(Vec::new());
+        }
+        let directory = self.session_dir(session, false)?;
+        let mut artifacts = Vec::new();
+        for entry in fs::read_dir(&directory)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let id = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .context("Invalid artifact ID")?;
+            valid_id(id)?;
+            artifacts.push(read_reference(&directory, id)?);
+        }
+        artifacts.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(artifacts)
     }
 
     fn session_dir(&self, session: &str, create: bool) -> Result<PathBuf> {
@@ -162,6 +179,19 @@ impl ArtifactStore {
         }
         Ok(directory)
     }
+}
+
+fn read_reference(directory: &Path, id: &str) -> Result<ArtifactRef> {
+    let bytes = read_regular(&directory.join(format!("{id}.json")), MAX_METADATA_BYTES)?;
+    let artifact: ArtifactRef = serde_json::from_slice(&bytes)?;
+    if artifact.id != id
+        || artifact.name != safe_name(&artifact.name)
+        || artifact.size > MAX_BYTES
+        || !allowed_mime(&artifact.mime)
+    {
+        bail!("Artifact metadata is invalid");
+    }
+    Ok(artifact)
 }
 
 fn valid_id(value: &str) -> Result<()> {

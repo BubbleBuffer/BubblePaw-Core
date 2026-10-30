@@ -1,4 +1,4 @@
-use crate::{ContextEvent, ContextEventKind};
+use crate::{ContextEvent, ContextEventKind, ContextSurfaceRebind};
 use crate::{
     ContextStrategy, Message, MessageOrigin, OutputRecord, RequestUsage, Role, Run, Session,
     ToolCall, ToolResult, Usage, id, is_typed_user, now,
@@ -27,6 +27,8 @@ pub use chapters::{ChapterSection, ContextSubjectChapter};
 mod cold;
 #[path = "store_context_events.rs"]
 mod context_events;
+#[path = "store_context_view.rs"]
+mod context_view;
 #[path = "store_episodes.rs"]
 mod episodes;
 #[path = "store_execution_mode.rs"]
@@ -2494,79 +2496,6 @@ impl Store {
                 .context("View frontier does not belong to the session")
             })
             .transpose()
-    }
-
-    /// Replace all view data in exactly one transaction after validating its references.
-    pub fn save_context_view(&self, view: &ContextView) -> Result<()> {
-        self.save_context_view_events(view, &[])
-    }
-
-    /// Publish a view with an authoritative apply fact in its existing validation transaction.
-    pub fn save_context_view_with_event(
-        &self,
-        view: &ContextView,
-        event: &ContextEvent,
-    ) -> Result<()> {
-        anyhow::ensure!(
-            event.kind == ContextEventKind::Applied,
-            "View requires an applied event"
-        );
-        self.save_context_view_events(view, std::slice::from_ref(event))
-    }
-
-    fn save_context_view_events(&self, view: &ContextView, events: &[ContextEvent]) -> Result<()> {
-        if let Some(store) = self.scoped(&view.session_id)? {
-            return store.save_context_view_events(view, events);
-        }
-        anyhow::ensure!(
-            !view.session_id.trim().is_empty(),
-            "View session ID is empty"
-        );
-        anyhow::ensure!(
-            !view.created_at.trim().is_empty(),
-            "View creation time is empty"
-        );
-        self.write_context_view_events(view, events, |tx| {
-            let session = Self::session_from_connection(tx, &view.session_id)?;
-            if let Some(frontier) = view.frontier {
-                let member: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM messages WHERE session_id=?1 AND seq=?2)", params![view.session_id, frontier], |row| row.get(0))?;
-                anyhow::ensure!(member, "View frontier does not belong to the session");
-                if session.context_strategy == ContextStrategy::Classical {
-                    // A ready summary snapshot may be applied while the worker
-                    // advances the latest checkpoint. Its frozen prefix owns
-                    // that snapshot's text independently of the latest pointer.
-                    let covered: bool = tx.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM context_checkpoints WHERE session_id=?1 AND through_message_seq>=?2)",
-                        params![view.session_id, frontier], |row| row.get(0),
-                    )?;
-                    let source_boundary = Self::imported_history_seed_at(tx,&view.session_id)?.0;
-                    anyhow::ensure!(covered || source_boundary==Some(frontier), "Classical view frontier must be covered by a checkpoint or imported summary");
-                    Self::validate_complete_frontier(tx, &view.session_id, frontier)?;
-                } else {
-                    let boundary: bool = tx.query_row(
-                        "SELECT EXISTS(SELECT 1 FROM context_episodes WHERE session_id=?1 AND last_message_seq=?2) OR EXISTS(SELECT 1 FROM context_chapters WHERE session_id=?1 AND last_message_seq=?2) OR EXISTS(SELECT 1 FROM context_checkpoints WHERE session_id=?1 AND through_message_seq=?2)",
-                        params![view.session_id, frontier], |row| row.get(0),
-                    )?;
-                    let source_boundary = Self::imported_history_seed_at(tx,&view.session_id)?.0;
-                    anyhow::ensure!(boundary || source_boundary==Some(frontier), "View frontier must be an episode, legacy or imported coverage boundary");
-                }
-            }
-            for message_id in &view.masked_tool_output_ids {
-                let seq = Self::session_message_seq(tx, &view.session_id, message_id)?;
-                anyhow::ensure!(view.frontier.is_none_or(|frontier| seq > frontier), "Masked output must be in the raw zone");
-                let output:bool=tx.query_row("SELECT h.role='tool' AND EXISTS(SELECT 1 FROM message_tool_calls WHERE session_id=?1 AND message_seq=?2 AND kind='result') FROM message_headers h WHERE h.session_id=?1 AND h.message_seq=?2",params![view.session_id,seq],|row|row.get(0))?;
-                anyhow::ensure!(output, "Masked message must be a tool output");
-            }
-            if !view.clipped_tool_call_ids.is_empty() {
-                for call_id in &view.clipped_tool_call_ids {
-                    let member:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM message_tool_calls WHERE session_id=?1 AND call_id=?2 AND message_seq>?3 AND kind='call')",params![view.session_id,call_id,view.frontier.unwrap_or(0)],|row|row.get(0))?;
-                    anyhow::ensure!(member, "Clipped tool call must belong to the session raw zone");
-                }
-            }
-            let data = Self::encode_context_view(tx, view)?;
-            Self::insert_context_events_tx(tx, &view.session_id, events)?;
-            Ok(data)
-        })
     }
 
     fn session_from_connection(conn: &Connection, session_id: &str) -> Result<Session> {

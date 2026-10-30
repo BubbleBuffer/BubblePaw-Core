@@ -12,8 +12,8 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [lcm-episode-v3-comparison](lcm-episode-v3-comparison.md) — Measured 2026-10-28: episode summary prompt v2, the v3 draft and v3.1 (three rounds) (gist + `Actions:` log, `context.lcm.episode_prompt`) on DeepSeek Flash over recorded episodes; verdict keeps v2 the default.
 - [lcm-chapter-v2-comparison](lcm-chapter-v2-comparison.md) — Measured 2026-10-29: chapter prompt v1 against v2 (Decisions and Sections blocks, `context.lcm.chapter_prompt`) on DeepSeek Flash over five frozen chapters, two rounds; parse rate, grounding, sections, size, cost and the cause of each fallback.
 - [context-compaction](context-compaction.md) — 2026-10-27: durable compaction events, applied-view block tokens, reported/estimated message tokens and SDK reads.
-- [memory-files](memory-files.md) — Runner memory files: frozen AGENTS.md and CLAUDE.md context, bounded content and one-time live change notes.
-- [skills](skills.md) — Frozen SKILL.md catalogs, ordinary body reads, per-session folder access and durable live diffs.
+- [memory-files](memory-files.md) — Runner memory files: bounded AGENTS.md and CLAUDE.md context, frozen between compactions and refreshed at apply, with one-time live change notes.
+- [skills](skills.md) — SKILL.md catalogs frozen between compactions, ordinary body reads, per-session folder access and durable live diffs.
 - [prefix-cache-design](prefix-cache-design.md) — 2026-10-21 P8: every request is logged by tier in the serving store, and an unexplained cache miss warns (`cache_miss_unexplained`) with expected/actual cached tokens and the gap. P7: hosts write per-request context through `ContextWriter` (tail reminders, cold notes); a hook edit to the frozen tier is an undeclared `frozen_change`, a resolver change is declared. P6: same-model side calls (summary, chapter) fork the chat context; fresh side calls declare why. 2026-10-19: prompt-cache accounting (declared busts, unexplained misses per provider/model). 2026-10-18: integrated Chat episode forks, durable runtime notices and native token projection; broader tool declarations and other protocols remain separate, with explicit signed-thinking apply limits.
 - [context-classical](context-classical.md) — Built 2026-10-09: classical rolling-summary strategy, selectable beside lcm for replay comparison.
 - [decisions](decisions.md) — Dated V0 decision log; live provider apply, default-on completion wake, silent internal workers and child controls (2026-10-14); legacy import copies spill and artifacts (2026-10-21).
@@ -27,6 +27,8 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 ## Runtime and API
 
+- [host-api](host-api.md) — One method table, caller read scopes, profiles and stdio/HTTP/CLI/SDK adapters.
+- [remote](remote.md) — Device keys, encrypted Noise streams, explicit pairing, JSON peer stores and a multiplexed metadata-only WebSocket relay; runner wiring is deferred.
 - [host-context](host-context.md) — Built 2026-10-21: the host preparation hook and `ContextWriter`, where static, derived and live host context goes, and how frozen-tier edits and resolver changes are classified.
 - [host-attach](host-attach.md) — 2026-10-21: local run/delegate attachment to the central store's host, per-chat workspaces, request config and host lifetime; verification status and Windows smoke commands.
 - [sdk](sdk.md) — Updated 2026-10-27: context events, view blocks, message-token reads, and host answers and pending reads for child questions; the Rust facade, `HostBuilder`, Claude Code helper, todo module and stability policy.
@@ -51,7 +53,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [approvals](approvals.md) — Built 2026-10-08: tool-call approval gate with ask, allow, deny and auto modes.
 - [execution modes](codemode.md) — Native default (2026-10-22), persisted chat modes and opt-in JS wrapper; shared dispatch, core/deferred tools, tool_search/call_tool, frozen declarations, server anchors and reload notices.
 - [mcp](mcp.md) — Built 2026-10-14: MCP client tools over stdio and Streamable HTTP (2026-07-28 with session-era fallback), env-only headers, approval by default, unknown outcomes never replayed. Goal: OAuth for HTTP servers (proposed 2026-10-21).
-- [live-config](live-config.md) — Built 2026-10-14: turn-start config refresh, shared reload commands, live settings, MCP generation draining and tool-list updates, and one-time durable diffs; hooks and plugins deferred.
+- [live-config](live-config.md) — Updated 2026-10-30: live model, read-only and compaction controls with per-key restart notices; turn-start config refresh, shared reload commands, live settings, MCP generation draining and tool-list updates, and one-time durable diffs; hooks and plugins deferred.
 - [exec](exec.md) — Built through 2026-10-20: larger previews, five-minute sync default, ten-minute process waits, aliases, completion wake and process ownership.
 - [web](web.md) — Research update 2026-10-13: visible research children, direct parent search/fetch, root-chat source IDs, numbered passages with BM25 and disposable shared SQLite cache.
 

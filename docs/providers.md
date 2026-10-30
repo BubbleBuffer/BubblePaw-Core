@@ -29,7 +29,7 @@ Details pinned while building:
 - With auto-summarization on (the default) the runtime note used to start a new epoch on every step, so every step rebuilt (steps 2-3 at 3,847 cache read). Since the note is ephemeral and the summary blocks have stable ids, the same task measured (2026-10-08): step 1 fresh 4,921 in / 1,697 cache read; steps 2-3 deliver 5,267/4,919 and 5,552/5,265.
 - Steering measured (haiku, a `js` cell running `ping -n 7` through `tools.exec`, `run.steer` one second in): step 2 took `deliver` with `steered 1` in the same query (6,009 in / 4,927 cache read), and the answer followed the steered message. Claude Code's session file holds the tool result (with the runtime note appended) and then the steer as a `queued_command` attachment.
 
-Why: BubblePaw is being embedded in notes-app (spec: `notes-app/wiki/integrations/agent.md`). It must drive very different models through one loop: Codex over Responses, the Anthropic API, DeepSeek, and Claude Code on a subscription, where Claude Code is driven step by step like a model (the pi-claude-bridge approach). Providers become extensions behind one interface, in process or out of process.
+Why: An embedded host must drive very different models through one loop: Codex over Responses, the Anthropic API, DeepSeek, and Claude Code on a subscription, where Claude Code is driven step by step like a model (the pi-claude-bridge approach). Providers become extensions behind one interface, in process or out of process.
 
 ## Image input (2026-10-15)
 
