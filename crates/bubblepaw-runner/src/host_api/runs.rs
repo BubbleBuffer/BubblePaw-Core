@@ -61,6 +61,7 @@ pub async fn cancel(ctx: &HostCtx, input: CancelParams) -> Result<CancelResult, 
 }
 pub async fn resume(ctx: &HostCtx, input: ResumeParams) -> Result<ResumeResult, HostError> {
     ctx.ensure_session(&input.session_id)?;
+    ctx.require_model()?;
     let mut options = input.options;
     options.client = bubblepaw_core::client_param(input.client.as_ref())
         .map_err(|e| HostError::invalid(e.to_string()))?;
@@ -78,6 +79,7 @@ pub async fn resume(ctx: &HostCtx, input: ResumeParams) -> Result<ResumeResult, 
 /// before calling this typed operation.
 pub async fn start(ctx: &HostCtx, input: StartParams) -> Result<StartResult, HostError> {
     ctx.ensure_session(&input.session_id)?;
+    ctx.require_model()?;
     let mut options = input.options;
     options.client = bubblepaw_core::client_param(input.client.as_ref())
         .map_err(|e| HostError::invalid(e.to_string()))?;

@@ -131,7 +131,15 @@ host services. Reduced hosts expose the same table and return a shared error
 when a required service is unavailable. `HostCtx::for_store` creates an offline
 context for store commands without starting providers or MCP servers.
 
-`HostError` owns the application error's JSON-RPC code and HTTP status. JSON-RPC
+`HostError` owns the application error's JSON-RPC code and HTTP status. A model
+operation (`run.start`, `run.resume`, `session.compact`, and the slash commands
+that call them) on a host whose main route has no usable provider fails with
+`-32004` (HTTP 409, `no_provider_configured`). Reads, `providers.*`,
+`roles.set_main` and `config.*` keep working in that state, so a client can
+configure a provider on the running host; `providers.list` reports the reason in
+`main_unavailable`. The message uses config keys and host methods, never CLI flags;
+only `bubblepaw run` adds flag wording for its own users. The SDK surfaces the code as
+`ClientError::NoProviderConfigured`. No other wire field changed. JSON-RPC
 framing uses `rpc::handle` or `rpc::handle_bytes`: malformed JSON is `-32700`,
 invalid request envelopes are `-32600`, and ordinary application errors retain
 `-32000`. Notifications execute without a response. The HTTP adapter maps the

@@ -26,6 +26,7 @@ const ATTACH_WAIT: Duration = Duration::from_secs(5);
 /// Every constructor and method must run inside a Tokio runtime.
 pub struct Client {
     session: HostClient,
+    /// `Some` exactly when this client embedded the host.
     embedded: Option<Embedded>,
 }
 
@@ -204,6 +205,18 @@ impl Client {
     /// `events.gap` (recover with `events.after`).
     pub fn subscribe(&self) -> Notifications {
         self.session.subscribe()
+    }
+
+    /// Whether this client is attached to a host that was already running,
+    /// reached through its published `host.json`, rather than embedding one.
+    /// It is decided when the client is created and never changes: `attach`
+    /// always returns an attached client, `embedded` and `embedded_configured`
+    /// never do, and `open` and `open_configured` return one that embedded the
+    /// host (`false`) or found its owner (`true`). An attached client's
+    /// `close` ends its own session only, and a host that has no provider yet
+    /// is configured through `providers.*` calls on either kind of client.
+    pub fn is_attached(&self) -> bool {
+        self.embedded.is_none()
     }
 
     /// The host an embedder built, or `None` when attached or configured.

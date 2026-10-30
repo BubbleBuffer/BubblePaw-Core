@@ -116,3 +116,36 @@ fn a_missing_workspace_is_a_workspace_error() {
         Err(ConfigError::Workspace { .. })
     ));
 }
+
+#[test]
+fn loads_on_a_first_run_without_any_provider_or_credential() {
+    let root = tempfile::tempdir().unwrap();
+    let config = HostConfig::load(ConfigOptions {
+        workspace: Some(root.path().to_owned()),
+        data_dir: Some(root.path().join("data")),
+        config_file: None,
+        home: Some(root.path().join("home")),
+        env: Some(Vec::new()),
+        overrides: Vec::new(),
+    })
+    .unwrap();
+    assert!(!config.settings().main_model.is_empty());
+    assert!(!config.data_dir().join("host.json").exists());
+}
+
+#[test]
+fn a_configured_provider_whose_key_is_unset_still_loads() {
+    let root = tempfile::tempdir().unwrap();
+    let config = "\
+[model]
+provider='keyed'
+main='keyed/model'
+[providers.keyed]
+kind='chat-completions'
+base_url='http://127.0.0.1:9/v1'
+key_env='KEYED_API_KEY'
+models=[{id='model'}]
+";
+    let loaded = HostConfig::load(options(root.path(), config)).unwrap();
+    assert_eq!(loaded.settings().main_model, "keyed/model");
+}

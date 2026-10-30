@@ -773,3 +773,8 @@ are historical. `--db <file>` remains only as a path selecting the sibling
 ## One schema per store (2026-10-30)
 
 Stores are created directly at their final schema (chat 12, catalog 2, serving 2, delegation ledger 1) and open only at exactly that version. Any other version, older or newer, fails with the typed `StoreSchemaError` and the file is left untouched. The step-by-step upgrade chains and their fixtures were removed. A future migration is added as a numbered step before the version check; see [storage model](storage-model.md).
+
+## A host starts without a provider (2026-10-30)
+
+An app configures providers through the host API, which needs a running host, so a first run with no provider or credentials is not a startup failure. The main route's registry slot is explicitly unavailable and `HostConfig::load` / CLI host startup succeed. Model operations fail with the typed `NoProviderConfigured` error (host-API code `-32004`, HTTP 409, `ClientError::NoProviderConfigured`) whose message uses config keys and host methods, never CLI flags; `bubblepaw run` adds flag wording for its own users. A route named by the config but missing from `providers` stays a configuration error, and a candidate that would replace a working route with an unusable one is still rejected. `Client::is_attached` reports whether a client attached or embedded.
+

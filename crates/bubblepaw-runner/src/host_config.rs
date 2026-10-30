@@ -224,7 +224,7 @@ fn local_data_home() -> anyhow::Result<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("XDG_DATA_HOME").map(PathBuf::from))
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(HOME_DATA_DIR)))
-        .context("choose --data-dir when no local data directory is available")
+        .context("set storage.data_dir when no local data directory is available")
 }
 
 /// The store retention and cold-storage options from `storage.*`.

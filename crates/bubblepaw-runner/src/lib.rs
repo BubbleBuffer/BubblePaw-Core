@@ -59,6 +59,7 @@ pub mod logging;
 pub mod memory_files;
 pub mod model_roles;
 pub mod net;
+pub mod no_provider;
 pub mod opencode_console;
 pub mod pricing;
 #[cfg(feature = "bench")]

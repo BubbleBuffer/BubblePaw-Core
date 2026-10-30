@@ -16,6 +16,9 @@ pub(super) async fn slash(
     if profile < method.profile() {
         return Err(HostError::denied(method.name()));
     }
+    if method == MethodId::SessionCompact {
+        ctx.require_model()?;
+    }
     ctx.control().execute(id, command).await.map_err(Into::into)
 }
 pub(super) async fn command(

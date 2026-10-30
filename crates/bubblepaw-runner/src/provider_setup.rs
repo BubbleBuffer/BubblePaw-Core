@@ -301,6 +301,11 @@ impl SetupState {
             "kinds": KINDS, "main": main_model(config).map_err(|_| bad())?,
             "launched_main": self.launched_main,
             "active_main": active_main,
+            // Why the active main route cannot serve a request, or null when it can.
+            "main_unavailable": active
+                .as_ref()
+                .and_then(|generation| generation.unavailable())
+                .map(ToString::to_string),
             "reload_needed": reload_needed,
             "allowed_key_envs": settings.web.provider_key_envs,
             "restart_needed": self.live.as_ref().map(|live| config.restart_needed(live.startup_config()))
@@ -338,12 +343,16 @@ impl SetupState {
             .map(|live| live.prepare(candidate.clone()))
             .transpose()
             .map_err(|error| ApiError(StatusCode::BAD_REQUEST, error.to_string()))?;
-        let reply = self.payload_for(
+        let mut reply = self.payload_for(
             &candidate,
             doc,
             true,
             prepared.as_ref().map(|candidate| candidate.main_model()),
         )?;
+        if let Some(prepared) = &prepared {
+            // The reply describes the configuration about to be published.
+            reply["main_unavailable"] = json!(prepared.unavailable().map(ToString::to_string));
+        }
         // All fallible preparation precedes the file replacement. Publication is infallible.
         self.write(doc)?;
         if let (Some(live), Some(prepared)) = (&self.live, prepared) {

@@ -86,6 +86,8 @@ for replay and retention.
 
 ## Qualification (2026-10-13)
 
+**No usable provider (2026-10-30).** A missing key variable, an unreadable Codex auth file or an empty `base_url` on the selected main route no longer stops a host from starting: that route's registry slot refuses model calls with the typed `NoProviderConfigured` error (host-API code `-32004`) until a configuration that resolves is applied through `providers.*` / `roles.set_main`. A `model.provider` that names a route absent from `providers` is still a configuration error. See [host API](host-api.md).
+
 Every built provider kind meets the 12-item bar in [provider-qualification](provider-qualification.md) at the scripted and local-transport levels: `codex` and `responses` (Responses), `anthropic-messages`, `chat-completions` (now tool-capable), and the Claude Code extension. Live acceptance is a separate, ignored suite (`tests/provider_live.rs`) that skips without credentials. Its OpenCode Go kinds have been run live: chat completions and Messages pass, with a flaky chat schema test; Responses against Go is in the same results, see [provider-qualification](provider-qualification.md).
 
 - **Codex OAuth.** BubblePaw never refreshes or writes `~/.codex/auth.json`; the Codex CLI owns refresh. The file is re-read on every attempt and again after a 401: a changed token gets one retry, an unchanged one an Auth error telling the user to refresh with `codex`. Missing or malformed files give Auth errors that name the path and never the token.

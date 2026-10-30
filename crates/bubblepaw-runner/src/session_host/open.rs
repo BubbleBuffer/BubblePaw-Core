@@ -38,6 +38,8 @@ pub(super) async fn open_session(
     name: Option<&str>,
     default: &str,
 ) -> Result<String> {
+    // Fail before a session is created that nothing can run in.
+    ctx.require_model().map_err(super::cli_run::cli_error)?;
     let title = match session {
         Some(_) => None,
         None => Some(session_title(name, default)?),

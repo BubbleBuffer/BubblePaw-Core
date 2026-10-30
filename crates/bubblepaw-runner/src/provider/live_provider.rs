@@ -1,10 +1,11 @@
 //! One immutable provider/config generation per request, replaced as a unit.
-use super::{ExtensionProvider, ProviderRegistry, ResponsesProvider, ScriptedProvider};
+use super::{ExtensionProvider, ProviderRegistry};
 use crate::{
-    config::{EffectiveConfig, LoadOptions, Settings, is_opencode_route, selected_main_provider},
+    config::{EffectiveConfig, LoadOptions, Settings, selected_main_provider},
     net::NetBackendSnapshot,
+    no_provider::NoProviderConfigured,
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Capabilities, CursorResets, DecisionProvider, DecisionRequest,
@@ -13,7 +14,6 @@ use bubblepaw_core::{
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
-    path::PathBuf,
     sync::{
         Arc, Mutex, MutexGuard, RwLock,
         atomic::{AtomicU64, Ordering},
@@ -22,6 +22,9 @@ use std::{
 
 #[path = "live_context.rs"]
 mod context_binding;
+#[path = "default_route.rs"]
+mod default_route;
+use default_route::default_route;
 
 pub struct ProviderGeneration {
     pub registry: Arc<ProviderRegistry>,
@@ -31,11 +34,17 @@ pub struct ProviderGeneration {
     id: u64,
     removed_models: BTreeSet<String>,
     known_routes: BTreeSet<String>,
+    unavailable: Option<NoProviderConfigured>,
 }
 
 impl ProviderGeneration {
     pub(crate) fn id(&self) -> u64 {
         self.id
+    }
+    /// Why the main model's route cannot serve a request, or `None` when it can.
+    /// An unavailable generation still answers configuration and read methods.
+    pub fn unavailable(&self) -> Option<&NoProviderConfigured> {
+        self.unavailable.as_ref()
     }
 }
 
@@ -47,6 +56,10 @@ pub struct PreparedProviderConfig {
 impl PreparedProviderConfig {
     pub fn main_model(&self) -> &str {
         &self.generation.settings.main_model
+    }
+    /// Why the candidate's main route cannot serve a request, or `None`.
+    pub fn unavailable(&self) -> Option<&NoProviderConfigured> {
+        self.generation.unavailable()
     }
 }
 
@@ -67,7 +80,8 @@ impl LiveProviderConfig {
         let mut settings = effective.settings()?;
         settings.validate_provider_setup()?;
         let extensions = startup_extensions(&settings, Some(effective.runtime_environment()));
-        let registry = build_registry(&settings, &extensions, &|name| effective.environment(name))?;
+        let (registry, unavailable) =
+            build_registry(&settings, &extensions, &|name| effective.environment(name))?;
         let (provider, _, model) = registry.route(&settings.main_model);
         let canonical = format!("{provider}/{model}");
         registry.checked_route(&canonical)?;
@@ -89,6 +103,7 @@ impl LiveProviderConfig {
                 id: 0,
                 removed_models: BTreeSet::new(),
                 known_routes: known_routes(&settings),
+                unavailable,
             })),
             startup: effective,
             startup_settings: settings,
@@ -163,9 +178,17 @@ impl LiveProviderConfig {
                 .cloned(),
         );
         removed.retain(|model| !configured.contains(model));
-        let mut registry = build_registry(&settings, &self.extensions, &|name| {
+        let (mut registry, unavailable) = build_registry(&settings, &self.extensions, &|name| {
             effective.environment(name)
         })?;
+        // An applied candidate must not replace a working route with an unusable
+        // one; only a host that has none yet may accept a configuration step
+        // (such as saving a provider) that still leaves the main route open.
+        if let Some(unavailable) = &unavailable
+            && previous.unavailable.is_none()
+        {
+            return Err(anyhow::Error::new(unavailable.clone()));
+        }
         registry.inherit_context_from(&previous.registry);
         if let Some(store) = &self.image_store {
             registry.set_usage_store(store.clone());
@@ -197,6 +220,7 @@ impl LiveProviderConfig {
                 id: self.next_id.fetch_add(1, Ordering::Relaxed),
                 removed_models: removed,
                 known_routes: known,
+                unavailable,
             },
         })
     }
@@ -509,9 +533,14 @@ fn startup_extensions(
         .collect()
 }
 pub fn build_provider_registry(settings: &Settings) -> Result<ProviderRegistry> {
-    build_registry(settings, &startup_extensions(settings, None), &|name| {
-        std::env::var(name).ok()
-    })
+    let (registry, unavailable) =
+        build_registry(settings, &startup_extensions(settings, None), &|name| {
+            std::env::var(name).ok()
+        })?;
+    match unavailable {
+        Some(unavailable) => Err(unavailable.into()),
+        None => Ok(registry),
+    }
 }
 fn configure_routes(settings: &Settings, registry: &mut ProviderRegistry) {
     for (route, account) in settings.provider_accounts() {
@@ -550,102 +579,10 @@ fn build_registry(
     settings: &Settings,
     extensions: &BTreeMap<String, Arc<dyn Provider>>,
     environment: &dyn Fn(&str) -> Option<String>,
-) -> Result<ProviderRegistry> {
+) -> Result<(ProviderRegistry, Option<NoProviderConfigured>)> {
     settings.validate_provider_setup()?;
     let default = selected_main_provider(settings);
-    let default_provider: Arc<dyn Provider> = if let Some(extension) = settings
-        .extensions
-        .iter()
-        .find(|extension| extension.id == default)
-    {
-        extensions
-            .get(&extension.id)
-            .context("Missing startup extension")?
-            .clone()
-    } else {
-        let transport = settings
-            .providers
-            .get(default)
-            .context("model.provider is not configured")?;
-        let base = transport.base_url.clone();
-        if transport.kind.as_deref() != Some("scripted")
-            && base.as_deref().is_none_or(|base| base.trim().is_empty())
-        {
-            bail!("Selected provider route {default} is disabled: base_url is empty");
-        }
-        match transport.kind.as_deref().unwrap_or("chat-completions") {
-            "scripted" => Arc::new(ScriptedProvider::demo(!settings.approvals.read_only)),
-            "codex" => {
-                let auth = transport
-                    .auth_file
-                    .clone()
-                    .or_else(|| {
-                        environment("CODEX_HOME").map(|p| PathBuf::from(p).join("auth.json"))
-                    })
-                    .or_else(|| {
-                        environment("USERPROFILE")
-                            .or_else(|| environment("HOME"))
-                            .map(|p| PathBuf::from(p).join(".codex/auth.json"))
-                    })
-                    .context("choose --auth-file for Codex credentials")?;
-                let mut provider = ResponsesProvider::codex_auth(
-                    auth,
-                    base.context("Codex provider needs base_url")?,
-                )?;
-                if let Some(effort) = transport
-                    .reasoning
-                    .get("reasoning_effort")
-                    .and_then(toml::Value::as_str)
-                {
-                    provider = provider.with_reasoning_effort(effort);
-                }
-                Arc::new(provider)
-            }
-            "responses" | "chat-completions" | "anthropic-messages" => {
-                let key_env = transport
-                    .key_env
-                    .as_ref()
-                    .context("Provider needs key_env")?;
-                let key = environment(key_env).ok_or_else(|| {
-                    anyhow::anyhow!("{key_env} is not set or is not UTF-8; choose --provider codex or demo explicitly")
-                })?;
-                anyhow::ensure!(
-                    reqwest::header::HeaderValue::from_str(&key).is_ok(),
-                    "Invalid credential header for provider {default}"
-                );
-                let base = base.context("Provider needs base_url")?;
-                if transport.kind.as_deref() == Some("responses") {
-                    let mut provider = ResponsesProvider::api_key(key, base)?;
-                    if is_opencode_route(default) {
-                        provider = provider.with_opencode_route();
-                    }
-                    if let Some(effort) = transport
-                        .reasoning
-                        .get("reasoning_effort")
-                        .and_then(toml::Value::as_str)
-                    {
-                        provider = provider.with_reasoning_effort(effort);
-                    }
-                    Arc::new(provider)
-                } else if transport.kind.as_deref() == Some("anthropic-messages") {
-                    let mut provider = super::MessagesProvider::api_key(key, base)?;
-                    if is_opencode_route(default) {
-                        provider = provider.with_opencode_route();
-                    }
-                    Arc::new(provider)
-                } else {
-                    let mut provider = super::ChatCompletionsProvider::api_key(key, base)?
-                        .with_reasoning_fields(serde_json::to_value(&transport.reasoning)?)?
-                        .with_reasoning_replay(transport.reasoning_replay())?;
-                    if is_opencode_route(default) {
-                        provider = provider.with_opencode_route();
-                    }
-                    Arc::new(provider)
-                }
-            }
-            _ => bail!("model.provider must select an LLM provider"),
-        }
-    };
+    let (default_provider, unavailable) = default_route(settings, extensions, environment)?;
     let mut registry = ProviderRegistry::new(default, default_provider).with_strict_routes();
     for extension in &settings.extensions {
         if extension.id != default {
@@ -666,7 +603,7 @@ fn build_registry(
         format!("{}/{}", settings.main_provider, settings.main_model)
     };
     registry.set_model_fallbacks(primary, settings.main_fallbacks.clone())?;
-    Ok(registry)
+    Ok((registry, unavailable))
 }
 
 #[cfg(test)]

@@ -34,6 +34,12 @@ Later layers win:
 Credentials never appear in the file. A provider names the environment variable
 that holds its key (`key_env`).
 
+A host starts without a usable main provider (no key variable set, no readable
+Codex auth file, or an empty `base_url` on the selected route). Configure one with
+the `providers.*` and `roles.set_main` host methods, or by editing `model.provider`
+and `providers.<id>`; until then model work fails with the typed error described in
+[host API](host-api.md). `bubblepaw run` reports it with the matching flags.
+
 ### Account quota
 
 Provider and extension entries accept optional `account = "name"`; omission

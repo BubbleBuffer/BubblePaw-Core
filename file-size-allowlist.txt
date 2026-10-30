@@ -36,7 +36,7 @@ crates/bubblepaw-runner/src/provider.rs 880
 crates/bubblepaw-runner/src/provider/chat.rs 1122
 crates/bubblepaw-runner/src/provider/decisions.rs 725
 crates/bubblepaw-runner/src/provider/extension.rs 622
-crates/bubblepaw-runner/src/provider/live_provider.rs 674
+crates/bubblepaw-runner/src/provider/live_provider.rs 611
 crates/bubblepaw-runner/src/provider/messages.rs 1156
 crates/bubblepaw-runner/src/provider/registry.rs 1109
 crates/bubblepaw-runner/src/quota.rs 647

@@ -29,6 +29,11 @@ pub enum ClientError {
         message: String,
         data: Option<Value>,
     },
+    /// The call needs a model and the host has no usable provider for the main
+    /// model's route (`-32004`). The message names the config keys and host
+    /// methods (`providers.*`, `roles.*`) that configure one; the host stays up
+    /// and the same client can configure a provider and retry.
+    NoProviderConfigured { message: String },
     /// The session ended before the reply arrived. The request may have run;
     /// it is never sent again.
     Disconnected,
@@ -42,6 +47,7 @@ impl std::fmt::Display for ClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Rpc { code, message, .. } => write!(f, "host error {code}: {message}"),
+            Self::NoProviderConfigured { message } => f.write_str(message),
             Self::Disconnected => f.write_str("the host session ended before the reply"),
             Self::Protocol(message) => write!(f, "host protocol error: {message}"),
             Self::Host(message) => write!(f, "host unavailable: {message}"),
@@ -317,6 +323,11 @@ impl Drop for HostClient {
 
 fn reply_result(mut reply: Value) -> Result<Value, ClientError> {
     if let Some(error) = reply.get("error") {
+        if error["code"].as_i64() == Some(crate::no_provider::CODE.into()) {
+            return Err(ClientError::NoProviderConfigured {
+                message: error["message"].as_str().unwrap_or_default().to_owned(),
+            });
+        }
         return Err(ClientError::Rpc {
             code: error["code"].as_i64().unwrap_or_default(),
             message: error["message"].as_str().unwrap_or_default().to_owned(),
