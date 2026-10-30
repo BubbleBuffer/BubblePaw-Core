@@ -1,7 +1,7 @@
 mod cli_store;
 mod ephemeral_dir;
 use anyhow::{Context, Result, bail, ensure};
-use bubblepaw_core::{Store, StoreOptions};
+use bubblepaw_core::Store;
 #[cfg(feature = "bench")]
 use bubblepaw_runner::{
     chapter_bench_cli, cli_host::episode_model_config, config::selected_main_provider,
@@ -9,8 +9,9 @@ use bubblepaw_runner::{
 };
 use bubblepaw_runner::{
     cli,
-    config::{EffectiveConfig, LoadOptions, Override, Settings},
+    config::{EffectiveConfig, Override, Settings},
     host_attach::{self, PreparedRequest},
+    host_config::{self, ConfigOptions},
     input_files::InputLimits,
     pricing::PriceTable,
     trace::read_report,
@@ -230,19 +231,15 @@ fn decision_override(role: &str, model: String) -> Override {
     )
 }
 
+/// The same layering as `HostConfig::load`, with the CLI's flags as overrides.
 fn load_config(cli: &Cli, arguments: &[String]) -> Result<EffectiveConfig> {
-    let home = std::env::var_os("USERPROFILE")
-        .or_else(|| std::env::var_os("HOME"))
-        .map(PathBuf::from);
-    let env: Vec<_> = std::env::vars().collect();
-    let load = |provider: &str| {
-        EffectiveConfig::layer(LoadOptions {
-            workspace: cli.workspace.clone(),
-            home: home.clone(),
-            custom_file: cli.config.clone(),
-            env: env.clone(),
-            cli: config_overrides(cli, arguments, provider)?,
-        })
+    let load = |provider: &str| -> Result<EffectiveConfig> {
+        Ok(host_config::layer(&ConfigOptions {
+            workspace: Some(cli.workspace.clone()),
+            config_file: cli.config.clone(),
+            overrides: config_overrides(cli, arguments, provider)?,
+            ..ConfigOptions::default()
+        })?)
     };
     let config = load(match cli.provider {
         ProviderChoice::Codex => "codex",
@@ -258,9 +255,6 @@ fn load_config(cli: &Cli, arguments: &[String]) -> Result<EffectiveConfig> {
     } else {
         config
     };
-    let mut config = config;
-    config.anchor_paths(&std::env::current_dir()?);
-    config.settings()?;
     Ok(config)
 }
 
@@ -294,18 +288,8 @@ fn storage_paths(cli: &Cli, settings: &Settings) -> Result<(PathBuf, PathBuf, bo
         );
         return Ok((data_dir, db.clone(), false));
     }
-    let central = settings.storage.data_dir.as_os_str().is_empty();
-    let data_dir = if central {
-        bubblepaw_runner::legacy_import::default_data_dir()?
-    } else {
-        settings.storage.data_dir.clone()
-    };
-    let legacy = if settings.storage.legacy_db.as_os_str().is_empty() {
-        data_dir.join("archive.sqlite")
-    } else {
-        settings.storage.legacy_db.clone()
-    };
-    Ok((data_dir, legacy, central))
+    let paths = host_config::storage_paths(settings)?;
+    Ok((paths.data_dir, paths.legacy_db, paths.central))
 }
 
 fn main() -> std::process::ExitCode {
@@ -687,21 +671,7 @@ async fn run_cli() -> Result<()> {
     }
     let mut election_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let store = loop {
-        let opened = Store::migrate_legacy(&legacy_db, &data_dir).and_then(|()| {
-            Store::open_with_options(
-                &data_dir,
-                StoreOptions {
-                    finished_event_retention_hours: settings.storage.finished_event_retention_hours,
-                    telemetry_retention_days: settings.storage.telemetry_retention_days,
-                    archive_after_days: settings.storage.archive_after_days,
-                    cold_tail_messages: settings.storage.cold_tail_messages,
-                    cold_min_messages: settings.storage.cold_min_messages,
-                    cold_min_bytes: settings.storage.cold_min_bytes,
-                    cold_row_min_bytes: settings.storage.cold_row_min_bytes,
-                },
-            )
-        });
-        match opened {
+        match host_config::open_store(&data_dir, &legacy_db, &settings) {
             Ok(store) => break store,
             Err(error) if host_attach::is_owned(&error) => {
                 if matches!(cli.command, Command::Run { .. } | Command::Delegate { .. }) {
@@ -759,9 +729,7 @@ async fn run_cli() -> Result<()> {
     if one_shot && let Some(importing) = importing.take() {
         importing.release().await;
     }
-    bubblepaw_runner::spill::SpillStore::new(&data_dir)?.attach(&store);
-    bubblepaw_runner::sessions::prune_archives(&store, settings.storage.archived_retention_days)?;
-    for report in bubblepaw_runner::worktrees::cleanup_inactive(&store)? {
+    for report in host_config::prepare_store(&store, &data_dir, &settings)? {
         eprintln!("Child worktree {}: {}", report.session_id, report.note);
     }
     if one_shot {

@@ -48,6 +48,7 @@ pub mod host_api;
 #[doc(hidden)]
 pub mod host_attach;
 pub mod host_client;
+pub mod host_config;
 #[doc(hidden)]
 pub mod host_lifetime;
 pub mod host_transport;

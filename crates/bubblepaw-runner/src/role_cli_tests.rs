@@ -2,6 +2,7 @@ use super::*;
 #[cfg(feature = "bench")]
 use bubblepaw_core::ContextStrategy;
 use bubblepaw_core::ExecutionMode;
+use bubblepaw_runner::config::LoadOptions;
 use bubblepaw_runner::{provider::LiveProviderConfig, root_prompt::root_system_prompt};
 
 #[test]

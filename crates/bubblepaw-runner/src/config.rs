@@ -23,7 +23,10 @@ use toml::Value;
 mod keys;
 #[path = "config/live_settings.rs"]
 mod live_settings;
+#[path = "config/roles.rs"]
+mod roles;
 use keys::known_path;
+use roles::resolve_role;
 
 const DEFAULTS: &str = include_str!("config/defaults.toml");
 
@@ -629,7 +632,7 @@ impl EffectiveConfig {
                 }
             }
         }
-        roles.validate()?;
+        roles.validate().map_err(crate::host_config::role_error)?;
         let strategy = match raw.context.strategy.as_str() {
             "lcm" => ContextStrategy::Lcm,
             "classical" => ContextStrategy::Classical,
@@ -1688,58 +1691,6 @@ impl RoleEntry {
     }
 }
 
-fn resolve_role(
-    name: &str,
-    roles: &BTreeMap<String, RoleEntry>,
-    main: &str,
-    stack: &mut Vec<String>,
-) -> Result<Vec<String>> {
-    ensure!(
-        !stack.iter().any(|entry| entry == name),
-        "Circular role reference: roles.{name}"
-    );
-    stack.push(name.into());
-    let entry = roles
-        .get(name)
-        .with_context(|| format!("Unknown role reference: roles.{name}"))?;
-    let mut models = Vec::new();
-    for model in entry.models() {
-        let (reference, llm) = model
-            .strip_prefix("llm/")
-            .map_or((model.as_str(), false), |reference| (reference, true));
-        let resolved = if reference == "main" {
-            vec![main.to_owned()]
-        } else if roles.contains_key(reference) {
-            resolve_role(reference, roles, main, stack)?
-        } else {
-            ensure!(
-                reference
-                    .split_once('/')
-                    .is_some_and(
-                        |(provider, model)| !provider.trim().is_empty() && !model.trim().is_empty()
-                    ),
-                "Invalid model reference in roles.{name}"
-            );
-            vec![reference.into()]
-        };
-        ensure!(
-            !llm || matches!(name, "decider" | "approver"),
-            "LLM decision references are only valid in decision roles: roles.{name}"
-        );
-        for value in resolved {
-            let value = if llm && !value.starts_with("llm/") {
-                format!("llm/{value}")
-            } else {
-                value
-            };
-            if !models.contains(&value) {
-                models.push(value);
-            }
-        }
-    }
-    stack.pop();
-    Ok(models)
-}
 fn endpoints(providers: &BTreeMap<String, ProviderSettings>) -> Result<ProviderEndpoints> {
     let mut result = ProviderEndpoints::default();
     if let Some(provider) = providers.get("opencode") {
