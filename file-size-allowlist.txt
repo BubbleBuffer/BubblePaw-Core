@@ -22,7 +22,7 @@ crates/bubblepaw-mcp/tests/http.rs 1852
 crates/bubblepaw-mcp/tests/stdio.rs 1010
 crates/bubblepaw-runner/src/agents.rs 3366
 crates/bubblepaw-runner/src/codemode.rs 1886
-crates/bubblepaw-runner/src/config.rs 3726
+crates/bubblepaw-runner/src/config.rs 3725
 crates/bubblepaw-runner/src/delegate/ledger.rs 519
 crates/bubblepaw-runner/src/delegate/metrics.rs 912
 crates/bubblepaw-runner/src/episode_models.rs 991
@@ -42,7 +42,7 @@ crates/bubblepaw-runner/src/provider/registry.rs 1109
 crates/bubblepaw-runner/src/quota.rs 647
 crates/bubblepaw-runner/src/quota_sources.rs 1087
 crates/bubblepaw-runner/src/replay.rs 4447
-crates/bubblepaw-runner/src/session_host.rs 652
+crates/bubblepaw-runner/src/session_host.rs 651
 crates/bubblepaw-runner/src/summarization.rs 1664
 crates/bubblepaw-runner/src/tools/process.rs 1689
 crates/bubblepaw-runner/src/trace.rs 833
@@ -55,7 +55,7 @@ crates/bubblepaw-runner/tests/child_context.rs 550
 crates/bubblepaw-runner/tests/child_controls.rs 571
 crates/bubblepaw-runner/tests/child_sessions.rs 1989
 crates/bubblepaw-runner/tests/codemode_runtime.rs 1386
-crates/bubblepaw-runner/tests/config_cli.rs 583
+crates/bubblepaw-runner/tests/config_cli.rs 579
 crates/bubblepaw-runner/tests/config_runtime.rs 506
 crates/bubblepaw-runner/tests/context_growth.rs 766
 crates/bubblepaw-runner/tests/context_strategies.rs 715
@@ -94,7 +94,7 @@ crates/bubblepaw-runner/tests/research_live400.rs 819
 crates/bubblepaw-runner/tests/rewind.rs 1583
 crates/bubblepaw-runner/tests/session_lifecycle.rs 603
 crates/bubblepaw-runner/tests/skills.rs 541
-crates/bubblepaw-runner/tests/summarization.rs 1774
+crates/bubblepaw-runner/tests/summarization.rs 1710
 crates/bubblepaw-runner/tests/usage.rs 509
 crates/bubblepaw-runner/tests/web_input_files.rs 523
 crates/bubblepaw-runner/tests/web_providers.rs 1574
