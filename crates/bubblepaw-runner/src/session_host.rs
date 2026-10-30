@@ -1,4 +1,4 @@
-use super::*;
+use crate::cli_host::*;
 use crate::stdio_transport;
 use bubblepaw_runner::host_api::{
     HostCtx, Profile, ReadScope, approvals::deny_unattended, dispatch,

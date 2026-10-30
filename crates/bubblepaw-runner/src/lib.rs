@@ -10,12 +10,22 @@
 //! without a model turn using [`bubblepaw_core::Harness::call_tool`]. Both APIs
 //! preserve session restrictions and the normal dispatch/approval policy. A
 //! single-tool call refuses an approval that needs an interactive decision.
+// The CLI request modules still name the library by its crate path.
+extern crate self as bubblepaw_runner;
+
 pub mod agent_handles;
 pub mod agents;
 pub mod artifacts;
 #[cfg(feature = "bench")]
 pub mod chapter_bench;
+#[cfg(feature = "bench")]
+#[doc(hidden)]
+pub mod chapter_bench_cli;
 mod child_workspaces;
+#[doc(hidden)]
+pub mod cli;
+#[doc(hidden)]
+pub mod cli_host;
 pub mod cli_output;
 pub mod codemode;
 pub mod command_template;
@@ -35,6 +45,10 @@ pub mod episodes;
 pub mod execution_mode;
 mod history_snapshot;
 pub mod host_api;
+#[doc(hidden)]
+pub mod host_attach;
+#[doc(hidden)]
+pub mod host_lifetime;
 pub mod host_transport;
 pub mod images;
 pub mod input_files;
@@ -65,10 +79,14 @@ pub mod root_prompt;
 pub mod runtime_note;
 pub mod scratchpads;
 pub mod session_control;
+#[doc(hidden)]
+pub mod session_host;
 pub mod session_scope;
 pub mod sessions;
 pub mod skills;
+mod source_fingerprint;
 pub mod spill;
+mod stdio_transport;
 pub mod summarization;
 pub mod todo;
 pub mod tools;

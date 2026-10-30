@@ -1,5 +1,5 @@
 //! Local CLI attachment. The Store lease elects the owner; it outlives this host.
-use super::*;
+use crate::cli_host::*;
 use bubblepaw_runner::{
     cli_output::{Record, Stream},
     delegate::{assignment::Assignment, routing::RouteChoice},
@@ -13,7 +13,7 @@ use io::{interrupt_listener, read_json, write_json};
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(super) struct PreparedRequest {
+pub struct PreparedRequest {
     pub cli: Cli,
     pub effective: EffectiveConfig,
     pub delegation: Option<(Assignment, RouteChoice)>,
@@ -23,7 +23,7 @@ pub(super) struct PreparedRequest {
     pub legacy_db: PathBuf,
 }
 
-pub(super) fn is_owned(error: &anyhow::Error) -> bool {
+pub fn is_owned(error: &anyhow::Error) -> bool {
     error.chain().any(|cause| {
         cause
             .to_string()
@@ -31,7 +31,7 @@ pub(super) fn is_owned(error: &anyhow::Error) -> bool {
     })
 }
 
-pub(super) fn ownership_error(data_dir: &std::path::Path, error: anyhow::Error) -> anyhow::Error {
+pub fn ownership_error(data_dir: &std::path::Path, error: anyhow::Error) -> anyhow::Error {
     let pid = std::fs::read(data_dir.join("host.json"))
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
@@ -42,7 +42,7 @@ pub(super) fn ownership_error(data_dir: &std::path::Path, error: anyhow::Error) 
     }
 }
 
-pub(super) async fn attach(mut request: PreparedRequest, connection: Connection) -> Result<()> {
+pub async fn attach(mut request: PreparedRequest, connection: Connection) -> Result<()> {
     request.effective.prepare_for_attach();
     let json_output = request.cli.json;
     let is_run = matches!(request.cli.command, Command::Run { .. });
@@ -136,13 +136,12 @@ pub(super) async fn attach(mut request: PreparedRequest, connection: Connection)
 }
 
 /// The client line printed while a host imports legacy stores.
-pub(super) const IMPORT_WAIT_NOTICE: &str =
-    "waiting for the host to finish importing legacy stores";
+pub const IMPORT_WAIT_NOTICE: &str = "waiting for the host to finish importing legacy stores";
 
 /// The host imported legacy stores and stops without serving (a one-shot
 /// command). The request was never read, so the client may elect again.
 #[derive(Debug)]
-pub(super) struct HostRetry;
+pub struct HostRetry;
 impl std::fmt::Display for HostRetry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("host stopped after importing legacy stores; request was not submitted")
@@ -152,7 +151,7 @@ impl std::error::Error for HostRetry {}
 
 /// A host that published its endpoint before importing legacy stores, with
 /// the clients that attached during the import. Their submissions are unread.
-pub(super) struct ImportingHost {
+pub struct ImportingHost {
     endpoint: HostEndpoint,
     waiting: Vec<Connection>,
 }
@@ -175,7 +174,7 @@ impl ImportingHost {
 /// Publish the host endpoint, then import legacy stores on a blocking thread.
 /// Clients that attach meanwhile are told once that the host is importing
 /// and wait; they are served (or released) after the import.
-pub(super) async fn import_legacy_stores(
+pub async fn import_legacy_stores(
     store: &Store,
     data_dir: &std::path::Path,
 ) -> Result<ImportingHost> {
@@ -238,7 +237,7 @@ async fn import_while_accepting(
 }
 
 #[derive(Debug)]
-pub(super) struct RemoteFailure;
+pub struct RemoteFailure;
 impl std::fmt::Display for RemoteFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("attached request failed")
@@ -246,7 +245,7 @@ impl std::fmt::Display for RemoteFailure {
 }
 impl std::error::Error for RemoteFailure {}
 
-pub(super) async fn serve(
+pub async fn serve(
     request: PreparedRequest,
     store: Store,
     importing: Option<ImportingHost>,
