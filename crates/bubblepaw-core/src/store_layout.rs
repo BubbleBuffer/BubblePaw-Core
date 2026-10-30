@@ -3,6 +3,8 @@ use super::*;
 use rusqlite::OpenFlags;
 #[path = "store_exports.rs"]
 mod exports;
+#[path = "store_layout_release.rs"]
+mod release;
 
 type InputEventRow = (String, Option<String>, Option<String>, Option<String>);
 #[cfg(test)]
@@ -2572,14 +2574,8 @@ impl Store {
         if session_id == root {
             layout.chats.lock().unwrap().remove(&root);
             layout.forget_root(&root);
-            // Release the only host-owned connection before deleting SQLite sidecars.
-            drop(chat);
-            for suffix in ["", "-wal", "-shm"] {
-                let file = PathBuf::from(format!("{}{suffix}", path.display()));
-                if file.exists() {
-                    std::fs::remove_file(file)?;
-                }
-            }
+            // Close every handle to the chat before deleting its SQLite files.
+            release::remove_chat_files(chat, &path)?;
         } else {
             chat.write(|tx| {
                 if preserve_effects {
