@@ -24,9 +24,9 @@ fn builder(store: Store, workspace: &Path) -> HostBuilder {
 }
 
 fn ids(list: &Value) -> Vec<String> {
-    let mut ids: Vec<String> = list["sessions"]
+    let mut ids: Vec<String> = list
         .as_array()
-        .expect("session.list returns sessions")
+        .unwrap_or_else(|| panic!("session.list returns an array: {list}"))
         .iter()
         .map(|session| session["id"].as_str().unwrap().to_owned())
         .collect();
@@ -69,7 +69,7 @@ async fn embedded_client_calls_the_table_and_streams_events() -> Result<()> {
 async fn embedded_host_publishes_its_endpoint_for_attached_clients() -> Result<()> {
     let root = tempfile::tempdir()?;
     let data = root.path().join("data");
-    let embedded = Client::embedded(builder(Store::open(&data)?, root.path())).await?;
+    let embedded = Client::embedded(builder(Store::open_data_dir(&data)?, root.path())).await?;
     assert!(data.join("host.json").exists(), "host.json published");
     embedded
         .call("session.open", json!({"title":"shared"}))

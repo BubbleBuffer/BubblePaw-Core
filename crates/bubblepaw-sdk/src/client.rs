@@ -94,7 +94,7 @@ impl Client {
             if own {
                 return Self::attach(data_dir).await;
             }
-            match Store::open(data_dir) {
+            match Store::open_data_dir(data_dir) {
                 Ok(store) => return Self::embedded(build(store).map_err(host_error)?).await,
                 Err(error) if host_attach::is_owned(&error) => {
                     // The owner may still be publishing, or may be stopping.
