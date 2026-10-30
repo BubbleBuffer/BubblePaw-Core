@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       github_actions:
         patterns:
@@ -12,6 +14,8 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       cargo:
         patterns:
@@ -20,6 +24,8 @@ updates:
     directory: "/extensions/claude-code"
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       bun:
         patterns:
