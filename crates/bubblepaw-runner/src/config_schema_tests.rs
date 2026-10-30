@@ -43,9 +43,7 @@ fn documented(node: Node, path: &str, value: &Value, out: &mut Vec<String>) {
 }
 
 fn docs_paths() -> Vec<String> {
-    let text =
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/config.md"))
-            .expect("docs/config.md");
+    let text = include_str!("../../../docs/config.md").replace("\r\n", "\n");
     let mut paths = Vec::new();
     for block in text.split("```toml\n").skip(1) {
         let block = block.split("```").next().unwrap();
