@@ -12,7 +12,7 @@ async fn endpoint_serves_host_api_sessions_next_to_the_host_run() {
     assert_eq!(host_json(&data).unwrap()["protocol_version"], 3);
 
     let first = HostClient::attach(&data, WAIT).await.unwrap();
-    let count = |list: &Value| list["sessions"].as_array().unwrap().len();
+    let count = |list: &Value| list.as_array().unwrap().len();
     let before = count(&first.call("session.list", json!({})).await.unwrap());
     assert!(before >= 1, "the host's own run session is listed");
     let opened = first
