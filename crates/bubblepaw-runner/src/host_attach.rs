@@ -412,6 +412,7 @@ async fn connection_request(
         lifetime,
         output.clone(),
         cancel.clone(),
+        None,
     ));
     let mut disconnected = false;
     let next = read_json(&mut reader);
