@@ -230,7 +230,11 @@ async fn invalid_result_retry_timeout_returns_only_latest_stream_fragment() -> R
     ])?;
     let child = fixture.manager.start(
         &fixture.owner,
-        json!({"task":"JSON answer","output_schema":schema(),"timeout":300}),
+        // The deadline runs from the start, and the first reply must run a js tool
+        // call (submit_result) before the retry streams. 300 ms left no slack on a
+        // loaded runner: the child timed out before the retry began, so `entered`
+        // never fired. Measured here, the retry begins after about 40 ms.
+        json!({"task":"JSON answer","output_schema":schema(),"timeout":2000}),
     )?;
     fixture.entered().await?;
     let result = fixture.wait(&child).await?;
