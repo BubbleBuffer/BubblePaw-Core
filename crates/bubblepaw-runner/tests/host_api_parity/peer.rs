@@ -72,7 +72,7 @@ enum Io {
         /// The attached host's stdin; closing it stops `bubblepaw stdio`.
         input: Option<ChildStdin>,
         /// The embedded host context and the runtime it registered in.
-        host: Option<(HostContext, HostLifetime)>,
+        host: Option<Box<(HostContext, HostLifetime)>>,
     },
 }
 
@@ -164,7 +164,7 @@ impl Peer {
                     io: Io::Client {
                         client,
                         input: None,
-                        host: Some((context, lifetime)),
+                        host: Some(Box::new((context, lifetime))),
                     },
                 }
             }
@@ -283,7 +283,8 @@ impl Peer {
             client.close().await;
             // End of stdin ends the attached host's own stdio command.
             drop(input);
-            if let Some((context, lifetime)) = host {
+            if let Some(host) = host {
+                let (context, lifetime) = *host;
                 context.shutdown().await.unwrap();
                 lifetime.shutdown().await.unwrap();
             }

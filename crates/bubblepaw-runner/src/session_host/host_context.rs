@@ -5,7 +5,7 @@ use crate::stdio_transport;
 
 /// How the `stdio` command runs: as the host-level context, which publishes
 /// its [`HostCtx`] and optionally serves stdio on it.
-pub(super) struct HostContextMode {
+pub struct HostContextMode {
     pub(super) publish: tokio::sync::oneshot::Sender<HostCtx>,
     /// Serve stdio with this cancellation, and report its result here.
     pub(super) stdio: Option<StdioPrimary>,
