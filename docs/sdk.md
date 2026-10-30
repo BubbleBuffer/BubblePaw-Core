@@ -136,6 +136,12 @@ client.close().await?;
 - `subscribe()` returns `Notifications` from now on, in the stdio shapes: `event`
   with the serialized `HarnessEvent`, and `events.gap` when the subscriber fell
   behind or the host dropped records. Recover a gap with `events.after`.
+- `is_attached() -> bool` is `true` when this client is attached to a host that
+  was already running, reached through its published `host.json`, and `false`
+  when it embedded the host. It is fixed when the client is created, so an
+  embedder need not infer it from `host.json`: `attach` is always attached,
+  `embedded` and `embedded_configured` never are, and `open` / `open_configured`
+  report which of the two they did.
 - `close()` attached ends only this session. Embedded, it ends the attached
   sessions, removes `host.json`, waits for admitted runs and stops the host.
 
@@ -163,8 +169,9 @@ let client = Client::open_configured(config).await?;   // or Client::embedded_co
   then the environment, then `overrides`. `bubblepaw` runs the same layering
   (`host_config::layer`) and places its store with the same
   `host_config::storage_paths`, `open_store` and `prepare_store`. `load` then
-  checks the provider setup, the main model's route and the model roles, the
-  checks a CLI host runs when it starts.
+  checks the provider setup syntax and the model roles. It does not require a
+  usable provider: on a first run with no provider or credentials it succeeds,
+  and the host it starts has no model until one is configured (below).
 - `ConfigOptions` fields left empty take the CLI defaults: `workspace` is the
   current directory, `data_dir` (`--data-dir`) falls back to
   `storage.data_dir` and then the central store, `home` is `USERPROFILE` or
@@ -183,6 +190,27 @@ let client = Client::open_configured(config).await?;   // or Client::embedded_co
   archives, cleans up inactive child worktrees, publishes the control endpoint
   and `host.json`, and serves the CLI's own host context (the `stdio` command's
   setup, without stdio).
+
+#### A host with no provider
+
+A CLI host starts when the main model's route has no usable provider: the
+`providers` table has no key for it, the key variable named by `key_env` is not
+set, the Codex auth file cannot be read, or `base_url` is empty. Reads and
+configuration work as usual (`config.get`, `session.*`, `providers.list`,
+`providers.save`, `providers.remove`, `providers.test`, `providers.reload`,
+`roles.set_main`), so an app can configure a provider on the running host.
+`providers.list` reports why in `main_unavailable` (`null` when the route works).
+Applying a configuration that gives the main route a provider takes effect on the
+next request without a restart; a configuration step that leaves it open, such as
+saving a provider before selecting it with `roles.set_main`, is accepted. Once a
+route works, a candidate that would leave it without a provider is rejected as before.
+
+Operations that need a model (`run.start`, `run.resume`, `session.compact`) fail
+before admitting anything with `ClientError::NoProviderConfigured { message }`,
+the host-API error code `-32004` (HTTP 409). The message names the config keys
+(`model.provider`, `providers.<id>`) and host methods (`providers.save`,
+`roles.set_main`) that fix it and never contains command-line flags. Match the
+variant, configure a provider with `call`, then retry on the same client.
 
 `HostBuilder` stays the way to build a host with custom tools or providers.
 

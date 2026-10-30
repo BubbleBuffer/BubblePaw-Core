@@ -34,6 +34,16 @@ impl HostError {
             source: None,
         }
     }
+    /// The main model route has no usable provider: `-32004` and HTTP 409, with
+    /// the message naming the config keys and host methods that fix it.
+    pub fn no_provider(error: crate::no_provider::NoProviderConfigured) -> Self {
+        Self {
+            message: error.to_string(),
+            status: 409,
+            code: crate::no_provider::CODE,
+            source: Some(error.into()),
+        }
+    }
     pub fn unknown(method: &str) -> Self {
         Self::new(400, format!("unknown method: {method}"))
     }
@@ -60,6 +70,9 @@ impl From<anyhow::Error> for HostError {
             Err(error) => error,
         };
         use crate::{context_reads::InvalidContextRead, session_control::WorkspaceMismatch};
+        if let Some(missing) = error.downcast_ref::<crate::no_provider::NoProviderConfigured>() {
+            return Self::no_provider(missing.clone());
+        }
         let text = error.to_string();
         let status = if let Some(error) =
             error.downcast_ref::<crate::question::ChildQuestionAnswerError>()

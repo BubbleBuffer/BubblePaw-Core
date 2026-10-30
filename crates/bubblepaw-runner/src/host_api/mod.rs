@@ -133,6 +133,17 @@ impl HostCtx {
                 .and_then(|setup| setup.0.live.as_ref())
         })
     }
+    /// Refuse model work while the main model's route has no usable provider.
+    /// Hosts without live provider configuration resolve their model per call.
+    pub fn require_model(&self) -> Result<(), HostError> {
+        match self.active_providers() {
+            Some(active) => match active.snapshot().unavailable() {
+                Some(unavailable) => Err(HostError::no_provider(unavailable.clone())),
+                None => Ok(()),
+            },
+            None => Ok(()),
+        }
+    }
     pub(crate) fn usage_settings(&self) -> crate::usage::UsageSettings {
         match self.active_providers() {
             Some(active) => {

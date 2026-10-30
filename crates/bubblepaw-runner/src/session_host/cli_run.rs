@@ -4,7 +4,7 @@ use anyhow::{Result, bail, ensure};
 use bubblepaw_core::{CancellationToken, EventKind};
 use bubblepaw_runner::{
     cli_output::Output,
-    host_api::{HostCtx, Profile, dispatch, events},
+    host_api::{HostCtx, HostError, Profile, dispatch, events},
 };
 use serde_json::json;
 use std::time::Duration;
@@ -15,6 +15,18 @@ pub(super) enum OneShot<'a> {
     Prompt(&'a str),
     Script { label: &'a str, body: String },
     Resume,
+}
+
+/// Host-API errors reach the CLI unchanged except for a missing provider,
+/// where only the CLI may name flags; host-API clients get config keys.
+pub(super) fn cli_error(error: HostError) -> anyhow::Error {
+    if error.code != bubblepaw_runner::no_provider::CODE {
+        return error.into();
+    }
+    anyhow::anyhow!(
+        "{error}. From the command line, choose a provider with --provider and --auth-file, \
+         or set the key variable its providers entry names"
+    )
 }
 
 pub(super) async fn run_session(
@@ -41,7 +53,9 @@ pub(super) async fn run_session(
         ),
         OneShot::Resume => ("run.resume", json!({"session_id": session})),
     };
-    dispatch(ctx, Profile::Full, method, params).await?;
+    dispatch(ctx, Profile::Full, method, params)
+        .await
+        .map_err(cli_error)?;
     let target = session.to_owned();
     let display_output = output.clone();
     let mut display = tokio::spawn(async move {
