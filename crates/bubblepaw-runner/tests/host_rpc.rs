@@ -123,6 +123,11 @@ async fn rpc_requests_run_the_shared_table_and_notifications_get_no_body() -> Re
     assert_eq!(malformed["id"], Value::Null);
     assert_eq!(malformed["error"]["code"], -32700);
 
+    // The host serves no UI: the root path is 404 with a pointer to /rpc.
+    let root = client.get(format!("{base}/")).send().await?;
+    assert_eq!(root.status(), reqwest::StatusCode::NOT_FOUND);
+    assert!(root.text().await?.contains("/rpc"));
+
     let _ = stop.send(());
     task.await??;
     Ok(())

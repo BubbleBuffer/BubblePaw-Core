@@ -1063,7 +1063,7 @@ async fn serving_view_can_be_rebuilt_from_canonical_history() {
 }
 
 #[tokio::test]
-async fn nonloopback_bind_and_missing_built_assets_fail_explicitly() {
+async fn nonloopback_bind_fails_explicitly() {
     let store = bubblepaw_core::Store::in_memory().unwrap();
     let harness = Arc::new(Harness::new(
         store.clone(),
@@ -1090,9 +1090,6 @@ async fn nonloopback_bind_and_missing_built_assets_fail_explicitly() {
     let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
     let error = serve(listener).await.unwrap_err();
     assert!(error.to_string().contains("loopback"));
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let error = serve(listener).await.unwrap_err();
-    assert!(error.to_string().contains("Build the web frontend"));
 }
 
 struct LargeWebModel;
@@ -1168,20 +1165,3 @@ fn frame_data(frame: &str) -> Value {
 
 #[path = "web_transport/sse_resume.rs"]
 mod sse_resume;
-
-#[tokio::test]
-async fn root_path_serves_no_ui_and_points_to_rpc() {
-    let server = Server::start(
-        Arc::new(ScriptedProvider::new("fixture")),
-        ToolRegistry::new(),
-    )
-    .await;
-    let response = server
-        .client
-        .get(format!("{}/", server.base))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(response.text().await.unwrap().contains("/rpc"));
-}
