@@ -62,7 +62,6 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [chapter-bench](chapter-bench.md) — How to run the chapter-selection benchmark: arms, cost cap, frozen episode stages and the report. Results of 2026-10-23 are kept in the project notes.
 - [delegation-bridge](delegation-bridge.md) — Built 2026-10-19 (v0): `bubblepaw delegate` runs an assignment with harness-run checks and rework, false-green detection, explicit class or model routing with in-class exploration, and a `delegations.db` ledger with metrics; `bubblepaw delegations report` groups outcomes by category, class and model.
 - [verification](verification.md) — How the project is verified now: CI gates (private CI also runs the claude-code extension's bun checks, 2026-10-25), the three acceptance levels, opt-in live tests and known limits.
-- [lcm-viewer](lcm-viewer.md) — Updated 2026-10-21: offline read-only viewer for chats in the central store (or any `--data-dir`), their LCM episodes, chapters, checkpoints and serving view, and replay outputs (`tools/lcm-viewer`).
 
 ## Ideas
 

@@ -741,10 +741,6 @@ compaction-only import still exports its receipt and derived records.
 Replay writes its directory layout under `<out>/store`; recall tooling observes
 filesystem sizes and runner progress without opening new chat files directly.
 
-The out-of-scope `tools/lcm-viewer` still discovers `.sqlite` files and reads
-views in that same database. Source inspection confirms it does not discover the
-new `.db` layout or combine serving views with chat records. It was not modified.
-
 ### Phase B verification (2026-10-12)
 
 All Rust checks ran on Linux with toolchain 1.97.1: workspace formatting,
