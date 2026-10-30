@@ -1,7 +1,7 @@
 //! Runner-owned layered settings. Credentials are named, never read by the loader.
 use crate::{
     model_roles::ModelRoles,
-    net::{FetchBackend, SearchBackend, WebConfig, WebExpose, one_or_many},
+    net::{FetchBackend, SearchBackend, WebConfig, one_or_many},
     provider::{
         ChatCompletionsProvider, ExtensionConfig, MessagesProvider, OpenAiDecisions,
         OpenCodeDecisions, OpenRouterDecisions, ProviderEndpoints, ProviderRegistry,
@@ -10,6 +10,10 @@ use crate::{
 };
 use anyhow::{Context, Result, bail, ensure};
 use bubblepaw_core::{ContextStrategy, ExecutionMode, ReasoningEffort, ReasoningReplay};
+use bubblepaw_core::{
+    config_schema::{LIVE, Node, RESTART},
+    config_section,
+};
 use bubblepaw_mcp::McpSettings;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -19,14 +23,22 @@ use std::{
 };
 use toml::Value;
 
-#[path = "config_keys.rs"]
-mod keys;
 #[path = "config/live_settings.rs"]
 mod live_settings;
 #[path = "config/roles.rs"]
 mod roles;
-use keys::known_path;
+#[path = "config/schema.rs"]
+mod schema;
+#[path = "config/sections.rs"]
+mod sections;
 use roles::resolve_role;
+pub use schema::Change;
+use schema::{REASONING, known_path};
+pub use sections::{
+    Agents, ApprovalSettings, DelegateSettings, ExecConfig, ModelClass, ProviderModelSettings,
+    ProviderSettings, QuotaSettings, RootAgentSettings, SkillsConfig, StorageSettings, WebExpose,
+    WebSettings,
+};
 
 const DEFAULTS: &str = include_str!("config/defaults.toml");
 
@@ -847,137 +859,6 @@ pub struct Settings {
     pub delegate: DelegateSettings,
     configured_providers: BTreeSet<String>,
 }
-/// Skill directories add collections after project and user skills.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct SkillsConfig {
-    pub enabled: bool,
-    pub dirs: Vec<PathBuf>,
-}
-
-/// Maximum automatic wait for a provider account's quota reset.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct QuotaSettings {
-    /// Zero declines automatic waiting. It does not disable quota checks.
-    pub max_wait_seconds: u64,
-}
-impl Default for QuotaSettings {
-    fn default() -> Self {
-        Self {
-            max_wait_seconds: 21600,
-        }
-    }
-}
-impl Default for SkillsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            dirs: Vec::new(),
-        }
-    }
-}
-
-/// Host limits for child sessions. `None` (unset) is unlimited. Zero depth
-/// disables new children; zero concurrency or retention is rejected.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct Agents {
-    pub max_depth: Option<usize>,
-    pub max_active_per_parent: Option<usize>,
-    pub max_active_total: Option<usize>,
-    pub max_retained: Option<usize>,
-    /// Running-child inactivity interval. Zero disables host reminders.
-    pub stale_reminder_secs: u64,
-    /// Idle completion delivery; busy request notices remain available when off.
-    pub auto_wake: bool,
-    pub wake_debounce_ms: u64,
-    /// Failed/cancelled/timed-out internal-worker chat retention.
-    pub worker_retention_days: u32,
-    /// Preserve every worker transcript, including acknowledged successes.
-    pub worker_keep_all: bool,
-}
-impl Default for Agents {
-    fn default() -> Self {
-        Self {
-            max_depth: None,
-            max_active_per_parent: None,
-            max_active_total: None,
-            max_retained: None,
-            stale_reminder_secs: 7200,
-            auto_wake: true,
-            wake_debounce_ms: 1500,
-            worker_retention_days: 7,
-            worker_keep_all: false,
-        }
-    }
-}
-impl Agents {
-    fn validate(&self) -> Result<()> {
-        for (name, value) in [
-            ("max_active_per_parent", self.max_active_per_parent),
-            ("max_active_total", self.max_active_total),
-            ("max_retained", self.max_retained),
-        ] {
-            if let Some(value) = value {
-                ensure!(value > 0, "agents.{name} must be positive");
-            }
-        }
-        Ok(())
-    }
-}
-/// An empty path selects the workspace-scoped default; file paths resolve at their layer.
-#[derive(Clone, Debug, Deserialize)]
-pub struct StorageSettings {
-    pub data_dir: PathBuf,
-    pub finished_event_retention_hours: u32,
-    pub telemetry_retention_days: u32,
-    pub archive_after_days: u32,
-    /// None keeps archived chats forever. Applied only when the host starts.
-    pub archived_retention_days: Option<u32>,
-    pub cold_tail_messages: u32,
-    pub cold_min_messages: u32,
-    pub cold_min_bytes: u64,
-    pub cold_row_min_bytes: u32,
-}
-/// Command execution limits; see docs/exec.md. An unset cap means no limit.
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default)]
-pub struct ExecConfig {
-    /// Sync `exec` calls move to background after this many seconds; 0 backgrounds at once.
-    pub sync_timeout_secs: u64,
-    pub max_jobs_per_session: Option<usize>,
-    pub max_jobs: Option<usize>,
-    /// Per-job output spool cap in bytes.
-    pub max_output_bytes: usize,
-}
-impl Default for ExecConfig {
-    fn default() -> Self {
-        Self {
-            sync_timeout_secs: 300,
-            max_jobs_per_session: None,
-            max_jobs: None,
-            max_output_bytes: 8 * 1024 * 1024,
-        }
-    }
-}
-impl ExecConfig {
-    fn validate(&self) -> Result<()> {
-        ensure!(
-            self.max_output_bytes > 0,
-            "exec.max_output_bytes must be positive"
-        );
-        ensure!(
-            self.max_jobs_per_session != Some(0),
-            "exec.max_jobs_per_session must be positive; leave it unset for no limit"
-        );
-        ensure!(
-            self.max_jobs != Some(0),
-            "exec.max_jobs must be positive; leave it unset for no limit"
-        );
-        Ok(())
-    }
-}
 impl Settings {
     pub fn root_storage_policy(&self) -> bubblepaw_core::RootStoragePolicy {
         bubblepaw_core::RootStoragePolicy {
@@ -1235,320 +1116,6 @@ pub fn selected_main_provider(settings: &Settings) -> &str {
     }
     &settings.main_provider
 }
-/// `bubblepaw delegate` model classes. Categories, the explore share and other
-/// delegation policy are constants in the delegate module, not configuration.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DelegateSettings {
-    #[serde(default)]
-    pub classes: BTreeMap<String, ModelClass>,
-}
-/// One model class: its default and the other candidates, each `provider/model`.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct ModelClass {
-    pub default: String,
-    #[serde(default)]
-    pub candidates: Vec<String>,
-}
-impl DelegateSettings {
-    fn validate(&self) -> Result<()> {
-        for (name, class) in &self.classes {
-            for model in std::iter::once(&class.default).chain(&class.candidates) {
-                ensure!(
-                    model
-                        .split_once('/')
-                        .is_some_and(|(p, m)| !p.is_empty() && !m.is_empty()),
-                    "delegate.classes.{name} models must be provider/model"
-                );
-            }
-        }
-        Ok(())
-    }
-}
-/// File-safe web settings: only the key's environment name is stored/rendered.
-#[derive(Clone, Debug, Deserialize)]
-pub struct WebSettings {
-    pub enabled: bool,
-    /// Ordered backends; a single string is a one-entry list.
-    #[serde(deserialize_with = "one_or_many")]
-    pub search: Vec<String>,
-    #[serde(deserialize_with = "one_or_many")]
-    pub fetch_backend: Vec<String>,
-    pub key_env: String,
-    pub deepseek_key_env: String,
-    pub deepseek_base_url: String,
-    /// Additional key variable names permitted by web provider setup.
-    pub provider_key_envs: Vec<String>,
-    pub allow_private: bool,
-    pub user_agent: String,
-    pub cache_ttl_secs: u64,
-    pub cache_max_bytes: usize,
-    #[serde(default)]
-    pub max_searches: Option<usize>,
-    #[serde(default)]
-    pub max_fetches: Option<usize>,
-    pub cooldown_secs: u64,
-    pub expose: WebExpose,
-}
-impl WebSettings {
-    fn search_backends(&self, api_key: &str, deepseek_key: &str) -> Result<Vec<SearchBackend>> {
-        ensure!(
-            !self.search.is_empty(),
-            "web.search must list at least one backend"
-        );
-        self.search
-            .iter()
-            .map(|value| match value.as_str() {
-                "ddg" => Ok(SearchBackend::DuckDuckGo),
-                "deepseek" => Ok(SearchBackend::DeepSeek {
-                    base_url: self.deepseek_base_url.clone(),
-                    api_key: deepseek_key.to_owned(),
-                }),
-                "brave" => Ok(SearchBackend::Brave {
-                    api_key: api_key.to_owned(),
-                }),
-                value if value.starts_with("searxng:") => Ok(SearchBackend::SearxNg {
-                    url: value[8..].to_owned(),
-                }),
-                _ => bail!("web.search must be deepseek, ddg, searxng:<url> or brave"),
-            })
-            .collect()
-    }
-    fn fetch_backends(&self) -> Result<Vec<FetchBackend>> {
-        ensure!(
-            !self.fetch_backend.is_empty(),
-            "web.fetch_backend must list at least one backend"
-        );
-        self.fetch_backend
-            .iter()
-            .map(|value| match value.as_str() {
-                "direct" => Ok(FetchBackend::Direct),
-                value => match value.strip_prefix("crawl4ai:") {
-                    Some(url) => Ok(FetchBackend::Crawl4Ai {
-                        url: url.to_owned(),
-                    }),
-                    None => bail!("web.fetch_backend must be direct or crawl4ai:<url>"),
-                },
-            })
-            .collect()
-    }
-    fn config(&self, api_key: String, deepseek_key: String) -> Result<WebConfig> {
-        Ok(WebConfig {
-            search: self.search_backends(&api_key, &deepseek_key)?,
-            fetch: self.fetch_backends()?,
-            expose: self.expose.clone(),
-            allow_private: self.allow_private,
-            user_agent: self.user_agent.clone(),
-            cache_ttl_secs: self.cache_ttl_secs,
-            cache_max_bytes: self.cache_max_bytes,
-            max_searches: self.max_searches,
-            max_fetches: self.max_fetches,
-            cooldown_secs: self.cooldown_secs,
-        })
-    }
-    fn validate(&self) -> Result<()> {
-        ensure!(
-            !self.key_env.is_empty() && !self.key_env.contains('=') && !self.key_env.contains('\0'),
-            "web.key_env must be an environment variable name"
-        );
-        ensure!(
-            !self.deepseek_key_env.is_empty()
-                && !self.deepseek_key_env.contains('=')
-                && !self.deepseek_key_env.contains('\0'),
-            "web.deepseek_key_env must be an environment variable name"
-        );
-        // Validate URL/header/limits without reading credentials, including when disabled.
-        crate::net::NetClient::new(&self.config(String::new(), String::new())?)?;
-        Ok(())
-    }
-    /// Resolve secrets only when an enabled runtime constructs its web tools.
-    pub fn net_config(&self) -> Result<Option<WebConfig>> {
-        self.net_config_with_env(&|name| std::env::var(name).ok())
-    }
-
-    pub fn net_config_with_env(
-        &self,
-        environment: &dyn Fn(&str) -> Option<String>,
-    ) -> Result<Option<WebConfig>> {
-        self.validate()?;
-        if !self.enabled {
-            return Ok(None);
-        }
-        // Missing or empty search keys are not errors: their backends skip when called.
-        let key = if self.search.iter().any(|value| value == "brave") {
-            environment(&self.key_env).unwrap_or_default()
-        } else {
-            String::new()
-        };
-        let deepseek_key = if self.search.iter().any(|value| value == "deepseek") {
-            environment(&self.deepseek_key_env).unwrap_or_default()
-        } else {
-            String::new()
-        };
-        Ok(Some(self.config(key, deepseek_key)?))
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct ApprovalSettings {
-    pub confirm: String,
-    #[serde(default)]
-    pub tools: BTreeMap<String, String>,
-    #[serde(default)]
-    pub deny: Vec<String>,
-    #[serde(default)]
-    pub read_only: bool,
-    /// The fixed exec blocklist (docs/approvals.md). On unless a config turns it off.
-    #[serde(default = "default_hardline")]
-    pub hardline: bool,
-    /// Approver prompt template; None uses `bubblepaw_core::DEFAULT_AUTO_PROMPT`.
-    pub auto_prompt: Option<String>,
-}
-fn default_hardline() -> bool {
-    true
-}
-#[derive(Clone, Debug, Deserialize)]
-pub struct ProviderSettings {
-    pub kind: Option<String>,
-    /// Stable quota identity; omission uses this provider entry's name.
-    pub account: Option<String>,
-    pub base_url: Option<String>,
-    pub key_env: Option<String>,
-    pub auth_file: Option<PathBuf>,
-    #[serde(default)]
-    pub reasoning: BTreeMap<String, Value>,
-    /// Per-model settings. Model IDs may contain dots, so they are values here,
-    /// not table keys.
-    #[serde(default)]
-    pub models: Vec<ProviderModelSettings>,
-}
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProviderModelSettings {
-    pub id: String,
-    /// Explicit selected-model override; HTTP transports otherwise accept images.
-    #[serde(default)]
-    pub image_input: Option<bool>,
-    /// Chat-completions only: which stored `reasoning_content` goes back on wire.
-    #[serde(default)]
-    pub reasoning_replay: Option<ReasoningReplay>,
-}
-impl ProviderSettings {
-    /// Exact model ID to an explicit chat replay policy; omissions use `tool_loop`.
-    pub fn reasoning_replay(&self) -> BTreeMap<String, ReasoningReplay> {
-        self.models
-            .iter()
-            .filter_map(|model| {
-                model
-                    .reasoning_replay
-                    .map(|policy| (model.id.clone(), policy))
-            })
-            .collect()
-    }
-    pub fn validate(&self, name: &str) -> Result<()> {
-        ensure!(valid_id(name), "Invalid provider id: providers.{name}");
-        validate_account(self.account.as_deref(), &format!("providers.{name}"))?;
-        let kind = self.kind.as_deref().unwrap_or("chat-completions");
-        ensure!(
-            !matches!(
-                kind,
-                "decisions" | "openai-decisions" | "openrouter-decisions" | "opencode-decisions"
-            ) || name != "llm",
-            "Invalid decision provider id: providers.{name}"
-        );
-        ensure!(
-            matches!(
-                kind,
-                "codex"
-                    | "scripted"
-                    | "responses"
-                    | "chat-completions"
-                    | "anthropic-messages"
-                    | "decisions"
-                    | "openai-decisions"
-                    | "openrouter-decisions"
-                    | "opencode-decisions"
-            ),
-            "Invalid config value: providers.{name}.kind"
-        );
-        if let Some(base) = self
-            .base_url
-            .as_ref()
-            .filter(|base| !base.trim().is_empty())
-        {
-            let parsed = reqwest::Url::parse(base)
-                .map_err(|_| anyhow::anyhow!("Invalid config value: providers.{name}.base_url"))?;
-            ensure!(
-                matches!(parsed.scheme(), "http" | "https")
-                    && parsed.username().is_empty()
-                    && parsed.password().is_none()
-                    && parsed.query().is_none()
-                    && parsed.fragment().is_none(),
-                "Invalid config value: providers.{name}.base_url"
-            );
-        }
-        if let Some(key) = &self.key_env {
-            ensure!(
-                !key.is_empty() && !key.contains(['=', '\0']),
-                "Invalid config value: providers.{name}.key_env"
-            );
-        }
-        if let Some(effort) = self.reasoning.get("reasoning_effort") {
-            ensure!(
-                effort.as_str().is_some_and(|effort| {
-                    serde_json::from_value::<ReasoningEffort>(serde_json::json!(effort)).is_ok()
-                }),
-                "Invalid config value: providers.{name}.reasoning.reasoning_effort"
-            );
-        }
-        if let Some(thinking) = self.reasoning.get("thinking") {
-            let kind = thinking
-                .as_str()
-                .or_else(|| thinking.get("type").and_then(Value::as_str));
-            ensure!(
-                matches!(kind, Some("enabled" | "adaptive")),
-                "Invalid config value: providers.{name}.reasoning.thinking; thinking must remain enabled"
-            );
-        }
-        let mut ids = BTreeSet::new();
-        for model in &self.models {
-            ensure!(
-                !model.id.is_empty()
-                    && !model
-                        .id
-                        .chars()
-                        .any(|c| c.is_whitespace() || c.is_control())
-                    && ids.insert(model.id.as_str()),
-                "Invalid config value: providers.{name}.models.id must be a unique exact model ID"
-            );
-        }
-        ensure!(
-            kind == "chat-completions"
-                || self.models.iter().all(|model| model
-                    .reasoning_replay
-                    .is_none_or(|policy| policy == ReasoningReplay::None)),
-            "providers.{name}.models.reasoning_replay applies only to chat-completions; Responses and Messages replay only to their origin provider and model"
-        );
-        ensure!(
-            kind != "anthropic-messages" || self.reasoning.is_empty(),
-            "providers.{name}.reasoning is not configurable for anthropic-messages; set roles.<role>.reasoning_effort"
-        );
-        if !matches!(kind, "codex" | "scripted") {
-            ensure!(
-                self.base_url.is_some()
-                    && (self.key_env.is_some()
-                        || (kind == "chat-completions"
-                            && self
-                                .base_url
-                                .as_deref()
-                                .is_some_and(crate::provider::is_loopback_url))),
-                "providers.{name} needs base_url and key_env"
-            );
-        }
-        Ok(())
-    }
-}
 fn valid_id(name: &str) -> bool {
     !name.is_empty() && !name.contains(['/', '.']) && !name.chars().any(char::is_whitespace)
 }
@@ -1562,64 +1129,66 @@ fn validate_account(account: Option<&str>, path: &str) -> Result<()> {
     );
     Ok(())
 }
-/// Root harness settings, resolved at host startup. None retains the runner's instructions.
-#[derive(Clone, Debug, Deserialize)]
-pub struct RootAgentSettings {
-    pub system_prompt: Option<String>,
-    pub max_rounds: Option<usize>,
-    #[serde(default)]
-    pub execution_mode: ExecutionMode,
+config_section! {
+    #[derive(Deserialize)]
+    struct RawSettings {
+        model: ModelSettings => Node::Table(ModelSettings::FIELDS),
+        agent: RootAgentSettings => Node::Table(RootAgentSettings::FIELDS),
+        storage: StorageSettings => Node::Table(StorageSettings::FIELDS),
+        exec: ExecConfig => Node::Table(ExecConfig::FIELDS),
+        quota: QuotaSettings => Node::Table(QuotaSettings::FIELDS),
+        providers: BTreeMap<String, ProviderSettings> => Node::Map(&Node::Table(ProviderSettings::FIELDS)),
+        roles: BTreeMap<String, RoleEntry> => Node::Table(roles::ROLE_FIELDS),
+        context: ContextSettings => Node::Table(ContextSettings::FIELDS),
+        skills: SkillsConfig => Node::Table(SkillsConfig::FIELDS),
+        approvals: ApprovalSettings => Node::Table(ApprovalSettings::FIELDS),
+        agents: Agents => Node::Table(Agents::FIELDS),
+        web: WebSettings => Node::Table(WebSettings::FIELDS),
+        extensions: BTreeMap<String, ExtensionSettings> => Node::Map(&Node::Table(ExtensionSettings::FIELDS)),
+        mcp: McpSettings => Node::Table(McpSettings::FIELDS),
+        delegate: DelegateSettings => Node::Table(DelegateSettings::FIELDS),
+    }
 }
-#[derive(Deserialize)]
-struct RawSettings {
-    model: ModelSettings,
-    agent: RootAgentSettings,
-    storage: StorageSettings,
-    exec: ExecConfig,
-    quota: QuotaSettings,
-    providers: BTreeMap<String, ProviderSettings>,
-    roles: BTreeMap<String, RoleEntry>,
-    context: ContextSettings,
-    skills: SkillsConfig,
-    approvals: ApprovalSettings,
-    agents: Agents,
-    web: WebSettings,
-    extensions: BTreeMap<String, ExtensionSettings>,
-    mcp: McpSettings,
-    delegate: DelegateSettings,
+config_section! {
+    #[derive(Deserialize)]
+    struct ModelSettings {
+        main: String => LIVE,
+        provider: String => LIVE,
+        #[serde(default)]
+        fallbacks: Vec<String> => LIVE,
+    }
 }
-#[derive(Deserialize)]
-struct ModelSettings {
-    main: String,
-    provider: String,
-    #[serde(default)]
-    fallbacks: Vec<String>,
+config_section! {
+    #[derive(Deserialize)]
+    struct ContextSettings {
+        strategy: String => RESTART,
+        memory_files: bool => RESTART,
+        compact_threshold_tokens: usize => LIVE,
+        window_tokens: Option<usize> => LIVE,
+        auto_summarize: bool => LIVE,
+        retry_base_ms: u64 => RESTART,
+        classical: ClassicalSettings => Node::Table(ClassicalSettings::FIELDS),
+        #[serde(default)]
+        lcm: crate::summarization::LcmConfig => Node::Table(crate::summarization::LcmConfig::FIELDS),
+    }
 }
-#[derive(Deserialize)]
-struct ContextSettings {
-    strategy: String,
-    memory_files: bool,
-    compact_threshold_tokens: usize,
-    window_tokens: Option<usize>,
-    auto_summarize: bool,
-    retry_base_ms: u64,
-    classical: ClassicalSettings,
-    #[serde(default)]
-    lcm: crate::summarization::LcmConfig,
+config_section! {
+    #[derive(Deserialize)]
+    struct ClassicalSettings {
+        verbatim_user_tokens: usize => RESTART,
+    }
 }
-#[derive(Deserialize)]
-struct ClassicalSettings {
-    verbatim_user_tokens: usize,
-}
-#[derive(Deserialize)]
-struct ExtensionSettings {
-    command: String,
-    account: Option<String>,
-    #[serde(default)]
-    args: Vec<String>,
-    cwd: Option<PathBuf>,
-    #[serde(default)]
-    env: BTreeMap<String, String>,
+config_section! {
+    #[derive(Deserialize)]
+    struct ExtensionSettings {
+        command: String => RESTART,
+        account: Option<String> => RESTART,
+        #[serde(default)]
+        args: Vec<String> => RESTART,
+        cwd: Option<PathBuf> => RESTART,
+        #[serde(default)]
+        env: BTreeMap<String, String> => Node::Map(&RESTART),
+    }
 }
 #[derive(Clone, Deserialize)]
 #[serde(untagged)]
@@ -1628,13 +1197,15 @@ enum RoleEntry {
     Models(Vec<String>),
     Table(RoleTable),
 }
-#[derive(Clone, Deserialize)]
-struct RoleTable {
-    models: Vec<String>,
-    reasoning_effort: Option<ReasoningEffort>,
-    max_output_tokens: Option<u32>,
-    repeats: Option<usize>,
-    threshold: Option<f64>,
+config_section! {
+    #[derive(Clone, Deserialize)]
+    struct RoleTable {
+        models: Vec<String> => LIVE,
+        reasoning_effort: Option<ReasoningEffort> => LIVE,
+        max_output_tokens: Option<u32> => LIVE,
+        repeats: Option<usize> => LIVE,
+        threshold: Option<f64> => LIVE,
+    }
 }
 impl RoleEntry {
     fn models(&self) -> Vec<String> {
@@ -2425,18 +1996,16 @@ cache_max_bytes = 1048576
     #[test]
     fn web_deepseek_settings_layer_reload_and_missing_key() {
         let root = tempfile::tempdir().unwrap();
-        let initial = EffectiveConfig::load(options(root.path()))
-            .unwrap()
-            .settings()
-            .unwrap();
+        let initial = EffectiveConfig::load(options(root.path())).unwrap();
         let mut opts = options(root.path());
         opts.cli = vec![
             Override::set("web.enabled=true").unwrap(),
             Override::set("web.deepseek_key_env=BUBBLEPAW_TEST_UNSET_DEEPSEEK_KEY").unwrap(),
             Override::set("web.deepseek_base_url=http://127.0.0.1:18081/v1/tools").unwrap(),
         ];
-        let candidate = EffectiveConfig::load(opts).unwrap().settings().unwrap();
-        let projected = initial.with_live_provider_settings(candidate);
+        let candidate = EffectiveConfig::load(opts).unwrap();
+        assert!(!candidate.restart_needed(&initial));
+        let projected = initial.with_live_from(&candidate).settings().unwrap();
         assert_eq!(
             projected.web.deepseek_key_env,
             "BUBBLEPAW_TEST_UNSET_DEEPSEEK_KEY"
@@ -2445,8 +2014,6 @@ cache_max_bytes = 1048576
         assert!(matches!(config.search.as_slice(),
             [SearchBackend::DeepSeek { base_url, api_key }, SearchBackend::DuckDuckGo]
                 if base_url == "http://127.0.0.1:18081/v1/tools" && api_key.is_empty()));
-        assert!(EffectiveConfig::live_paths().contains(&"web.deepseek_key_env"));
-        assert!(EffectiveConfig::live_paths().contains(&"web.deepseek_base_url"));
     }
 
     #[test]
@@ -3723,3 +3290,7 @@ mod execution_mode_tests;
 #[cfg(test)]
 #[path = "config_profile_tests.rs"]
 mod profile_tests;
+
+#[cfg(test)]
+#[path = "config_schema_tests.rs"]
+mod schema_tests;

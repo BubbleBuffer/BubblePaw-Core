@@ -66,7 +66,6 @@ impl PreparedProviderConfig {
 pub struct LiveProviderConfig {
     active: RwLock<Arc<ProviderGeneration>>,
     startup: EffectiveConfig,
-    startup_settings: Settings,
     extensions: BTreeMap<String, Arc<dyn Provider>>,
     updates: Mutex<()>,
     next_id: AtomicU64,
@@ -106,7 +105,6 @@ impl LiveProviderConfig {
                 unavailable,
             })),
             startup: effective,
-            startup_settings: settings,
             extensions,
             updates: Mutex::new(()),
             next_id: AtomicU64::new(1),
@@ -146,7 +144,8 @@ impl LiveProviderConfig {
         let candidate = effective.settings()?;
         // Validate disk settings even when the host keeps a nonlive startup field.
         candidate.validate_provider_setup()?;
-        let mut settings = self.startup_settings.with_live_provider_settings(candidate);
+        let projected = self.startup.with_live_from(&effective);
+        let mut settings = projected.settings()?;
         anyhow::ensure!(
             settings
                 .context_window_tokens
@@ -200,9 +199,7 @@ impl LiveProviderConfig {
         let (provider, _, model) = registry.route(&settings.main_model);
         let canonical = format!("{provider}/{model}");
         registry.checked_route(&canonical)?;
-        settings = self
-            .startup_settings
-            .with_live_provider_settings(effective.settings_for_main(Some(&canonical))?);
+        settings = projected.settings_for_main(Some(&canonical))?;
         settings.main_model = canonical;
         let web = settings
             .web

@@ -22,6 +22,8 @@
 //! ```
 mod approvals;
 mod cache_accounting;
+#[doc(hidden)]
+pub mod config_schema;
 mod context_facts;
 mod context_state;
 mod decision;
@@ -45,18 +47,12 @@ mod submit_result;
 mod tool_notices;
 mod tool_views;
 pub mod transcript;
-
 use anyhow::{Context, Result, ensure};
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use std::{collections::BTreeMap, sync::Arc};
-use tokio::sync::watch;
-
 pub use approvals::{
     Approval, ApprovalMode, ApprovalPolicy, ApprovalRecord, ApprovalState, AutoApprovalConfig,
     DEFAULT_AUTO_PROMPT, Decision, track_approval_waits,
 };
+use async_trait::async_trait;
 pub use cache_accounting::{
     CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, RequestKind, WireShape,
     request_components,
@@ -109,6 +105,9 @@ pub use runtime::{
     WorkspaceResolver,
 };
 pub use script::SCRIPT_MODEL;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::{collections::BTreeMap, sync::Arc};
 pub use store::{
     CHECKPOINT_PREFIX, ChapterSection, ChatOpenFailure, ChatOpenHook, CheckpointRecord,
     ContextChapter, ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter,
@@ -117,6 +116,7 @@ pub use store::{
     SessionRecord, SessionSnapshot, StorageStats, Store, StoreOptions, StoreSchemaError,
     SubjectChapterStatus,
 };
+use tokio::sync::watch;
 pub use transcript::{
     ImportDerivedRecord, ImportFormat, ImportOptions, ImportResult, ImportStats, import_file,
 };

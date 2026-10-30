@@ -1,38 +1,49 @@
 use anyhow::{Result, ensure};
-use bubblepaw_core::Approval;
+use bubblepaw_core::{
+    Approval,
+    config_schema::{LIVE, Node},
+    config_section,
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, path::PathBuf};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct McpSettings {
-    pub header_key_envs: Vec<String>,
-    pub servers: BTreeMap<String, McpServerSettings>,
+config_section! {
+    #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+    #[serde(default)]
+    pub struct McpSettings {
+        pub header_key_envs: Vec<String> => LIVE,
+        pub servers: BTreeMap<String, McpServerSettings> =>
+            Node::Map(&Node::Table(McpServerSettings::FIELDS)),
+    }
 }
 
-/// Secret values are resolved only at connection time, never during config rendering.
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct McpServerSettings {
-    pub command: String,
-    pub url: Option<String>,
-    pub headers_from: BTreeMap<String, String>,
-    pub args: Vec<String>,
-    pub cwd: Option<PathBuf>,
-    pub env: BTreeMap<String, String>,
-    pub env_from: BTreeMap<String, String>,
-    pub enabled: bool,
-    /// Discover on demand instead of declaring every server tool to the model.
-    /// Set false for servers whose tools should always be native declarations.
-    pub defer: bool,
-    pub approval: Approval,
-    pub startup_timeout_secs: u64,
-    pub call_timeout_secs: u64,
-    /// Optional allowlist. Omitted permits all; Some(empty) permits none.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub include_tools: Option<Vec<String>>,
-    pub exclude_tools: Vec<String>,
-    pub tools: BTreeMap<String, McpToolSettings>,
+config_section! {
+    /// Secret values are resolved only at connection time, never during config rendering.
+    #[derive(Clone, Serialize, Deserialize, PartialEq)]
+    #[serde(default)]
+    pub struct McpServerSettings {
+        pub command: String => LIVE,
+        pub url: Option<String> => LIVE,
+        /// Header names may contain dots, so they are free-form keys.
+        pub headers_from: BTreeMap<String, String> => Node::Free(true),
+        pub args: Vec<String> => LIVE,
+        pub cwd: Option<PathBuf> => LIVE,
+        pub env: BTreeMap<String, String> => Node::Map(&LIVE),
+        pub env_from: BTreeMap<String, String> => Node::Map(&LIVE),
+        pub enabled: bool => LIVE,
+        /// Discover on demand instead of declaring every server tool to the model.
+        /// Set false for servers whose tools should always be native declarations.
+        pub defer: bool => LIVE,
+        pub approval: Approval => LIVE,
+        pub startup_timeout_secs: u64 => LIVE,
+        pub call_timeout_secs: u64 => LIVE,
+        /// Optional allowlist. Omitted permits all; Some(empty) permits none.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub include_tools: Option<Vec<String>> => LIVE,
+        pub exclude_tools: Vec<String> => LIVE,
+        pub tools: BTreeMap<String, McpToolSettings> =>
+            Node::Map(&Node::Table(McpToolSettings::FIELDS)),
+    }
 }
 
 impl Default for McpServerSettings {
@@ -255,11 +266,13 @@ fn reserved_header(name: &str) -> bool {
     ) || name.starts_with("mcp-")
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct McpToolSettings {
-    /// An omitted override inherits the server's policy.
-    pub approval: Option<Approval>,
+config_section! {
+    #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+    #[serde(default)]
+    pub struct McpToolSettings {
+        /// An omitted override inherits the server's policy.
+        pub approval: Option<Approval> => LIVE,
+    }
 }
 
 #[cfg(test)]

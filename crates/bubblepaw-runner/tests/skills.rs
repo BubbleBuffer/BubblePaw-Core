@@ -395,25 +395,17 @@ fn config_skill_defaults_paths_and_live_classification() {
     let changed = EffectiveConfig::load(changed).unwrap();
     assert!(!changed.settings().unwrap().skills.enabled);
     assert!(!changed.restart_needed(&original));
-    let published = original
-        .settings()
-        .unwrap()
-        .with_live_provider_settings(changed.settings().unwrap());
+    let published = original.with_live_from(&changed).settings().unwrap();
     assert!(!published.skills.enabled);
     let mut table_override = options.clone();
     table_override
         .cli
         .push(Override::set("skills={enabled=false,dirs=['cli-skills']}").unwrap());
-    let table_settings = EffectiveConfig::load(table_override)
-        .unwrap()
-        .settings()
-        .unwrap();
+    let table_config = EffectiveConfig::load(table_override).unwrap();
+    let table_settings = table_config.settings().unwrap();
     assert!(!table_settings.skills.enabled);
     assert_eq!(table_settings.skills.dirs, [root.path().join("cli-skills")]);
-    let published = original
-        .settings()
-        .unwrap()
-        .with_live_provider_settings(table_settings);
+    let published = original.with_live_from(&table_config).settings().unwrap();
     assert_eq!(published.skills.dirs, [root.path().join("cli-skills")]);
     for invalid in [
         "skills.typo=true",

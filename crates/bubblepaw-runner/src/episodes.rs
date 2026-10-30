@@ -1,6 +1,10 @@
 //! Pure episode planning over canonical history. Nothing here writes coverage or prepares context.
 use anyhow::{Context, Result, ensure};
-use bubblepaw_core::{Message, MessageOrigin, Role, is_typed_user};
+use bubblepaw_core::{
+    Message, MessageOrigin, Role,
+    config_schema::{Node, RESTART},
+    config_section, is_typed_user,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -22,30 +26,32 @@ pub enum EpisodeSummaryInput {
 mod prompts;
 pub use prompts::{ChapterPrompt, EpisodePrompt};
 
-/// Gathering policy, independent of the serving context pressure threshold.
-/// Token counts use the runner's canonical estimator; targets are not word counts.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(default)]
-pub struct EpisodeConfig {
-    pub summary_input: EpisodeSummaryInput,
-    /// Episode summary prompt; `v2` unless explicitly selected.
-    pub episode_prompt: EpisodePrompt,
-    /// Chapter synthesis prompt; `v1` unless explicitly selected.
-    pub chapter_prompt: ChapterPrompt,
-    /// Semantic chapter decisions; disabling leaves only explicit volume rollover.
-    pub decider_enabled: bool,
-    pub source_target_tokens: usize,
-    pub source_max_tokens: usize,
-    pub summary_target_tokens: usize,
-    /// Accumulated open-chapter state supplied to each phase decision.
-    pub decision_context_tokens: usize,
-    pub chapter_summary_max_tokens: usize,
-    pub chapter_description_tokens: usize,
-    /// Optional volume rollover; zero keeps a chapter open until a semantic boundary.
-    pub chapter_rollover_tokens: usize,
-    /// Episode-only input: 0 retains complete tool results/arguments; positive values
-    /// explicitly opt into a shared lossy budget. Fork source is always unchanged.
-    pub tool_evidence_tokens: usize,
+config_section! {
+    /// Gathering policy, independent of the serving context pressure threshold.
+    /// Token counts use the runner's canonical estimator; targets are not word counts.
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+    #[serde(default)]
+    pub struct EpisodeConfig {
+        pub summary_input: EpisodeSummaryInput => RESTART,
+        /// Episode summary prompt; `v2` unless explicitly selected.
+        pub episode_prompt: EpisodePrompt => RESTART,
+        /// Chapter synthesis prompt; `v1` unless explicitly selected.
+        pub chapter_prompt: ChapterPrompt => RESTART,
+        /// Semantic chapter decisions; disabling leaves only explicit volume rollover.
+        pub decider_enabled: bool => RESTART,
+        pub source_target_tokens: usize => RESTART,
+        pub source_max_tokens: usize => RESTART,
+        pub summary_target_tokens: usize => RESTART,
+        /// Accumulated open-chapter state supplied to each phase decision.
+        pub decision_context_tokens: usize => RESTART,
+        pub chapter_summary_max_tokens: usize => RESTART,
+        pub chapter_description_tokens: usize => RESTART,
+        /// Optional volume rollover; zero keeps a chapter open until a semantic boundary.
+        pub chapter_rollover_tokens: usize => RESTART,
+        /// Episode-only input: 0 retains complete tool results/arguments; positive values
+        /// explicitly opt into a shared lossy budget. Fork source is always unchanged.
+        pub tool_evidence_tokens: usize => RESTART,
+    }
 }
 impl Default for EpisodeConfig {
     fn default() -> Self {
@@ -62,6 +68,35 @@ impl Default for EpisodeConfig {
             chapter_description_tokens: 300,
             chapter_rollover_tokens: 0,
             tool_evidence_tokens: 0,
+        }
+    }
+}
+config_section! {
+    /// Gather and serving allocations are token targets, independent of agent lifetime.
+    #[derive(Clone, Debug, Deserialize, Serialize)]
+    #[serde(default)]
+    pub struct LcmConfig {
+        #[serde(flatten)]
+        pub episodes: EpisodeConfig => Node::Flatten(EpisodeConfig::FIELDS),
+        /// Recent-tail target for explicit manual and Classical compaction. Automatic
+        /// LCM apply starts raw history immediately after all ready episode coverage.
+        pub raw_tail_tokens: usize => RESTART,
+        pub index_tokens: usize => RESTART,
+        pub output_reserve_tokens: usize => RESTART,
+        pub apply_target_tokens: Option<usize> => RESTART,
+        #[serde(default)]
+        pub child_compact_threshold_tokens: Option<usize> => RESTART,
+    }
+}
+impl Default for LcmConfig {
+    fn default() -> Self {
+        Self {
+            episodes: Default::default(),
+            raw_tail_tokens: 32_000,
+            index_tokens: 2_000,
+            output_reserve_tokens: 16_000,
+            apply_target_tokens: None,
+            child_compact_threshold_tokens: Some(100_000),
         }
     }
 }
