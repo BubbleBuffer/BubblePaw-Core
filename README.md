@@ -20,7 +20,6 @@
 - **MCP client.** Connects to external MCP servers over stdio and Streamable HTTP. Every MCP tool call is a durable, approval-gated effect. The runner exposes no MCP server.
 - **Providers and extensions.** The runner ships Codex (the default), an OpenAI API provider and an offline `demo` provider. A Bun extension in `extensions/claude-code` drives Claude Code one model step at a time.
 - **Host API and SDK.** One method table sits behind the stdio, HTTP, CLI and Rust SDK front ends. Rust embedders use `bubblepaw-sdk`.
-- **Local web workbench.** The optional `web` feature serves a workbench on loopback from the same process. Its frontend is not in this repository yet.
 
 ## How it fits together
 
@@ -28,7 +27,6 @@
 flowchart LR
   desktop["Apps such as<br/>BubblePaw Desktop"] -- "stdio" --> host
   term["Terminal"] -- "CLI" --> host
-  browser["Browser"] -- "web" --> host
   rust["Rust apps"] -- "SDK" --> host
 
   subgraph host["Host (bubblepaw-runner)"]
@@ -43,7 +41,7 @@ flowchart LR
   tools -- "runs" --> procs["Shell and<br/>subprocesses"]
 ```
 
-Apps reach the host in one of four ways: BubblePaw Desktop starts it as a child and talks JSON-RPC over stdio, the CLI and the web workbench run inside it, and Rust apps embed it through `bubblepaw-sdk`. The host runs each chat through the agent loop in `bubblepaw-core`, which stores every accepted input and finished message in SQLite. Each step asks a model for its next move, then runs the tools it calls: workspace tools, CodeMode or MCP servers (through `bubblepaw-mcp`). Child processes run in owned process trees (`bubblepaw-process`). `bubblepaw-remote` is a library for paired devices; nothing uses it yet.
+Apps reach the host in one of three ways: BubblePaw Desktop starts it as a child and talks JSON-RPC over stdio, the CLI runs inside it, and Rust apps embed it through `bubblepaw-sdk`. The host runs each chat through the agent loop in `bubblepaw-core`, which stores every accepted input and finished message in SQLite. Each step asks a model for its next move, then runs the tools it calls: workspace tools, CodeMode or MCP servers (through `bubblepaw-mcp`). Child processes run in owned process trees (`bubblepaw-process`). `bubblepaw-remote` is a library for paired devices; nothing uses it yet.
 
 | Crate | Path | What it does |
 | --- | --- | --- |
