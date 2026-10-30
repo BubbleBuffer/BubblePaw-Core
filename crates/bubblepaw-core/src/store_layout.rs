@@ -3,6 +3,8 @@ use super::*;
 use rusqlite::OpenFlags;
 #[path = "store_exports.rs"]
 mod exports;
+#[path = "store_layout_release.rs"]
+mod release;
 
 type InputEventRow = (String, Option<String>, Option<String>, Option<String>);
 #[cfg(test)]
@@ -88,6 +90,8 @@ pub(super) struct Layout {
     pub(super) recovery: super::recovery::RecoveryEvents,
     pub(super) serving_transactions: AtomicU64,
     chat_open_hooks: Mutex<Vec<(&'static str, ChatOpenHook)>>,
+    /// Roots whose chat files a delete is removing; they must not reopen.
+    deleting: Mutex<std::collections::HashSet<String>>,
 }
 
 /// Runs once for each chat store, the first time the process opens it. A failed
@@ -790,6 +794,7 @@ impl Store {
                 recovery: Default::default(),
                 serving_transactions: AtomicU64::new(0),
                 chat_open_hooks: Mutex::default(),
+                deleting: Mutex::default(),
             })),
             host: None,
             transactions: Arc::new(AtomicU64::new(0)),
@@ -903,6 +908,7 @@ impl Store {
             );
         }
         let mut chats = layout.chats.lock().unwrap();
+        release::ensure_not_deleting(layout, root)?;
         if let Some(store) = chats.get(root) {
             anyhow::ensure!(
                 store.0.path.as_ref() == Some(&path),
@@ -2569,17 +2575,11 @@ impl Store {
         layout.forget_sessions(&removed);
         let path = chat.0.path.clone().unwrap();
         let root = path.file_stem().unwrap().to_string_lossy().into_owned();
+        let _deleting = (session_id == root).then(|| release::Deleting::evict(layout, &root));
         if session_id == root {
-            layout.chats.lock().unwrap().remove(&root);
             layout.forget_root(&root);
-            // Release the only host-owned connection before deleting SQLite sidecars.
-            drop(chat);
-            for suffix in ["", "-wal", "-shm"] {
-                let file = PathBuf::from(format!("{}{suffix}", path.display()));
-                if file.exists() {
-                    std::fs::remove_file(file)?;
-                }
-            }
+            // Close every handle to the chat before deleting its SQLite files.
+            release::remove_chat_files(chat, &path)?;
         } else {
             chat.write(|tx| {
                 if preserve_effects {
