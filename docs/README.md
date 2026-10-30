@@ -41,7 +41,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [child-worktrees](child-worktrees.md) — Built 2026-10-15: opt-in child git workspaces, safe archive/delete cleanup and explicit continuation.
 - [child-sessions](child-sessions.md) — Built through 2026-10-27: durable run/question projections on the direct parent's event stream; user answers with atomic resolution, attribution and parent notice; recursive controls, acknowledgement and retention; hidden workers stay silent toward their callers.
 - [tracing](tracing.md) — Experimental, optional: disposable JSONL behavior tracing, off by default, with metadata or contents modes; prompt-cache events.
-- [config](config.md) — Built through 2026-10-21: central default data dir, layered TOML, live provider apply and explicit reload, default-on completion wake/debounce, worker retention, chat reasoning replay and stale-child reminders.
+- [config](config.md) — Built through 2026-10-30 (settings sections: one schema for keys and live classification); central default data dir, layered TOML, live provider apply and explicit reload, default-on completion wake/debounce, worker retention, chat reasoning replay and stale-child reminders.
 - [local-worker](local-worker.md) — Local Windows worker launch (own data dir; shared dirs attach), OpenCode Go profile, task-file input and full Windows/live LCM qualification (2026-10-18).
 
 ## Approvals and tools

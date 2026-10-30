@@ -16,7 +16,6 @@ use bubblepaw_core::{
     ModelResponse, PrepareCall, PrepareMode, PreparedContext, Provider, Role, Store,
     SubjectChapterStatus, is_typed_user,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -43,38 +42,12 @@ pub use summarization_settings::SurfaceRefresh;
 mod summarization_tokens;
 #[path = "summarization_view.rs"]
 mod summarization_view;
+pub use crate::episodes::LcmConfig;
 #[cfg(test)]
 use summarization_hook::{built_after_prepare, has_inventory, prepare_main};
 use summarization_tokens::TokenCache;
 pub use summarization_tokens::canonical_message_tokens;
 
-/// Gather and serving allocations are token targets, independent of agent lifetime.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(default)]
-pub struct LcmConfig {
-    #[serde(flatten)]
-    pub episodes: crate::episodes::EpisodeConfig,
-    /// Recent-tail target for explicit manual and Classical compaction. Automatic
-    /// LCM apply starts raw history immediately after all ready episode coverage.
-    pub raw_tail_tokens: usize,
-    pub index_tokens: usize,
-    pub output_reserve_tokens: usize,
-    pub apply_target_tokens: Option<usize>,
-    #[serde(default)]
-    pub child_compact_threshold_tokens: Option<usize>,
-}
-impl Default for LcmConfig {
-    fn default() -> Self {
-        Self {
-            episodes: Default::default(),
-            raw_tail_tokens: 32_000,
-            index_tokens: 2_000,
-            output_reserve_tokens: 16_000,
-            apply_target_tokens: None,
-            child_compact_threshold_tokens: Some(100_000),
-        }
-    }
-}
 impl LcmConfig {
     pub fn validate(&self) -> Result<()> {
         self.episodes.validate()?;
