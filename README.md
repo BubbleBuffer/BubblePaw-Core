@@ -26,21 +26,24 @@
 
 ```mermaid
 flowchart LR
-  cli["bubblepaw CLI<br/>and stdio"] --> runner[bubblepaw-runner]
-  web["Web workbench<br/>(feature web)"] --> runner
-  embed["Rust embedders"] --> sdk[bubblepaw-sdk]
-  sdk --> runner
-  sdk --> core[bubblepaw-core]
-  runner --> core
-  runner --> mcp[bubblepaw-mcp]
-  runner --> process[bubblepaw-process]
-  mcp --> core
-  mcp --> process
-  core --> store[("SQLite chats<br/>and catalog")]
-  mcp -- "stdio or HTTP" --> servers["MCP servers"]
-  runner -- "JSON-RPC" --> ext["extensions/claude-code"]
-  remote["bubblepaw-remote<br/>(library, not wired in)"]
+  desktop["Apps such as<br/>BubblePaw Desktop"] -- "stdio" --> host
+  term["Terminal"] -- "CLI" --> host
+  browser["Browser"] -- "web" --> host
+  rust["Rust apps"] -- "SDK" --> host
+
+  subgraph host["Host (bubblepaw-runner)"]
+    loop["Agent loop<br/>(bubblepaw-core)"]
+  end
+
+  loop <--> store[("SQLite chats<br/>and catalog")]
+  loop -- "model steps" --> models["Model APIs"]
+  loop -- "model steps" --> cc["Claude Code<br/>(extensions/claude-code)"]
+  loop -- "tool calls" --> tools["Workspace tools<br/>and CodeMode"]
+  loop -- "tool calls" --> mcp["MCP servers"]
+  tools -- "runs" --> procs["Shell and<br/>subprocesses"]
 ```
+
+Apps reach the host in one of four ways: BubblePaw Desktop starts it as a child and talks JSON-RPC over stdio, the CLI and the web workbench run inside it, and Rust apps embed it through `bubblepaw-sdk`. The host runs each chat through the agent loop in `bubblepaw-core`, which stores every accepted input and finished message in SQLite. Each step asks a model for its next move, then runs the tools it calls: workspace tools, CodeMode or MCP servers (through `bubblepaw-mcp`). Child processes run in owned process trees (`bubblepaw-process`). `bubblepaw-remote` is a library for paired devices; nothing uses it yet.
 
 | Crate | Path | What it does |
 | --- | --- | --- |
