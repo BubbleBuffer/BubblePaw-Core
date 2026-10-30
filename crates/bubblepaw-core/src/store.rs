@@ -53,12 +53,6 @@ pub use search::{SearchHit, SearchIndexProgress};
 mod import;
 #[path = "store_inputs.rs"]
 mod inputs;
-#[path = "store_legacy.rs"]
-mod legacy;
-pub use legacy::{
-    LEGACY_IMPORT_BATCH, LegacyImportReport, LegacyImportStatus, LegacyImportSummary,
-    LegacySnapshot,
-};
 #[path = "store_ownership.rs"]
 mod ownership;
 #[path = "store_recovery.rs"]
@@ -355,9 +349,7 @@ impl Store {
         if path.is_dir() {
             return Self::open_data_dir(path);
         }
-        let data_dir = Self::legacy_data_dir(path);
-        Self::migrate_legacy(path, &data_dir)?;
-        Self::open_data_dir(data_dir)
+        Self::open_data_dir(Self::legacy_data_dir(path))
     }
     pub fn in_memory() -> Result<Self> {
         Self::initialize(Connection::open_in_memory()?, None)

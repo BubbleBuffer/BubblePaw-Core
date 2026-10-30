@@ -69,38 +69,6 @@ fn cli_trace_modes_report_and_default_off() {
 }
 
 #[test]
-fn trace_paths_cannot_target_archive_or_sidecars_including_rotation() {
-    let temp = tempfile::tempdir().unwrap();
-    let binary = env!("CARGO_BIN_EXE_bubblepaw");
-    for name in [
-        "archive.sqlite",
-        "archive.sqlite-wal",
-        "archive.sqlite-shm",
-        "trace.jsonl",
-    ] {
-        let db = temp.path().join(if name == "trace.jsonl" {
-            "trace.jsonl.1"
-        } else {
-            "archive.sqlite"
-        });
-        let output = Command::new(binary)
-            .args(["--provider", "demo", "--workspace"])
-            .arg(temp.path())
-            .arg("--db")
-            .arg(&db)
-            .arg("--trace-file")
-            .arg(temp.path().join(name))
-            .args(["run", "must be rejected before execution"])
-            .output()
-            .unwrap();
-        assert!(!output.status.success());
-        assert!(String::from_utf8_lossy(&output.stderr).contains("must be separate"));
-        let catalog = bubblepaw_core::Store::legacy_data_dir(&db).join("catalog.db");
-        assert_eq!(&std::fs::read(catalog).unwrap()[..16], b"SQLite format 3\0");
-    }
-}
-
-#[test]
 fn trace_paths_cannot_target_split_store_files_or_chat_directory() {
     let temp = tempfile::tempdir().unwrap();
     let data = temp.path().join("data");

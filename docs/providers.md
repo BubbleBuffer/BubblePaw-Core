@@ -165,10 +165,9 @@ these settings and adds all adapters whose keys are present to the shared
 `ProviderRegistry`. `register_with_keys` accepts explicit `ProviderKeys` for
 isolated tests and replay's local relay. Empty or missing keys skip registration.
 These settings are separate from `ModelRoles`, which episodes and approvals use
-to choose models. The legacy `--episode-summary-base-url`,
-`--episode-summary-key-env` and `--episode-summary-reasoning-fields` flags (and
-their `BUBBLEPAW_EPISODE_SUMMARY_*` environment settings) configure the opencode
-endpoint; an empty base URL disables that adapter. See
+to choose models. The `--episode-summary-base-url`,
+`--episode-summary-key-env` and `--episode-summary-reasoning-fields` flags
+configure the opencode endpoint; an empty base URL disables that adapter. See
 [decision-providers.md](decision-providers.md) for decision roles and calibration.
 
 ## Chat completions (2026-10-13)

@@ -1,11 +1,10 @@
 use super::*;
 
 #[tokio::test]
-async fn deny_rules_reload_with_alias_and_survive_run_override() {
+async fn deny_rules_reload_and_survive_run_override() {
     let fixture = Fixture::new(&config("")).await;
     fixture.turn("initial deny config").await;
-    // The singular spelling publishes the same policy as the canonical plural.
-    fixture.write(&config("").replace("[approvals]", "[approval]\ndeny=['exec']"));
+    fixture.write(&config("").replace("[approvals]", "[approvals]\ndeny=['exec']"));
     fixture.code("denied override", "try { await tools.exec({command:'printf forbidden'}); throw Error('deny bypassed'); } catch(e) { if(!String(e).includes('deny rule exec')) throw e; } return 'denied';");
     let run = fixture
         .harness

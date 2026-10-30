@@ -424,18 +424,6 @@ fn dictionary_rows_preserve_requests_view_references_and_hot_tail() -> Result<()
     );
     assert_eq!(reopened.message_bounds(&session.id)?.2, 80);
     reopened.idle_checkpoint()?;
-    let source_path = reopened.chat_path(&session.id)?.unwrap();
-    drop(reopened);
-    let migration = tempfile::tempdir()?;
-    let source = migration.path().join("legacy.sqlite");
-    std::fs::copy(source_path, &source)?;
-    // A legacy schema-7 fixture retains its ordinary view table in the file.
-    Connection::open(&source)?.execute_batch("CREATE TABLE context_views(session_id TEXT PRIMARY KEY REFERENCES sessions(id),data TEXT NOT NULL);")?;
-    let source_bytes = std::fs::read(&source)?;
-    Store::migrate_legacy(&source, migration.path().join("converted"))?;
-    assert_eq!(source_bytes, std::fs::read(&source)?);
-    let migrated = Store::open_with_options(migration.path().join("converted"), options())?;
-    assert_eq!(before, request(migrated.messages(&session.id)?)?);
     Ok(())
 }
 

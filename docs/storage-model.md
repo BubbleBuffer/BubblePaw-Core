@@ -237,7 +237,7 @@ see [web tools](web.md) for configuration and measured file/WAL sizes.
 - **Per turn:** about 7 fsyncs.
 - **Size:** about 3 KB per message on disk; Needle, 2,492 messages, is 8 MB.
 
-## Central store and legacy import (2026-10-21)
+## Central store (2026-10-21)
 
 Each user and machine has one central store, by default
 `<local data home>/BubblePaw-Core/store` (`LOCALAPPDATA`, then `XDG_DATA_HOME`,
@@ -246,129 +246,9 @@ chat carries its own `root_workspace:<root-id>` binding. The first process to
 take its lease hosts it, and later `run` and `delegate` processes
 [attach](host-attach.md). Shared state (`quota_history` in `catalog.db`,
 `delegations.db`, `web-cache.db`) lives in this store and is written by the host.
-`--data-dir` or `storage.data_dir` selects an isolated store and never imports.
+`--data-dir` or `storage.data_dir` selects an isolated store.
 
-**Rename (2026-10-24).** The default folder was `BubblePaw-base` until the
-rename to `BubblePaw-Core`, so that the UI, SDK and other repos share one name.
-The old central store `<local data home>/BubblePaw-base/store` is a legacy
-source of the new default: the first start imports it through the steps below,
-along with the per-workspace stores beside it. Its catalog receipts name the
-per-workspace stores it had already absorbed; those receipts are copied with
-its own import, so they are not copied again. The old folder is only read and
-never deleted, and a second start imports nothing. Only the default location does
-this; `--data-dir` and `storage.data_dir` never import from it.
-
-The host imports the old per-workspace stores once, right after opening the
-central store and before serving work. Candidates are sibling directories whose
-names are 64 hexadecimal characters, plus the previous default store and the
-sibling directories beside it (see Rename above). When one still needs importing, the host
-first publishes `host.json` and accepts connections; a client that attaches
-during the import prints `waiting for the host to finish importing legacy
-stores` once and waits without a deadline. Its submission stays unread until
-the import ends: a `run` or `delegate` host then serves it, while a one-shot
-command (`sessions`, `history`, ...) tells it to elect again, which is safe
-because nothing was submitted. `Store::import_legacy_stores` in core:
-
-1. Skips sources already recorded as `legacy_import:<directory-name>` in the
-   central `catalog.db` metadata. Catalog rebuild keeps these receipts.
-2. Opens the source's `store.lock` read-only and takes a shared lease. A live
-   owner holds it exclusively, so the source is reported as locked and retried
-   on the next start. A directory without `catalog.db` or `store.lock` is
-   reported as skipped and retried. A directory holding only an unmigrated
-   `archive.sqlite` is reported once and recorded as `unsupported`; it is
-   neither migrated nor written, and is retried only once it has a
-   `catalog.db` (after the user opens it with `--data-dir`).
-3. Byte-copies the source's top-level databases except `serving.db` and
-   `web-cache.db`, and its `chats/*.db` and `*.db.zst`, each with a non-empty WAL,
-   into a private numbered staging directory, `<central>/legacy-import/<n>/`
-   (receipt names such as `central:<parent>/store` are no Windows file names). The
-   lease is then released. Sources are never written, moved, lock-broken or
-   deleted; no SQLite connection is opened on a source file.
-4. For each staged root chat (archives are unpacked and installed active, so idle
-   housekeeping archives them again under the central policy): if the chat has
-   no `root_workspace:<root>` binding, it receives its old chat-level
-   `workspace`, else the source catalog's store-wide `workspace`. It also
-   receives `legacy_import_source` provenance. That is one transaction in the
-   staged copy, which is checkpointed and renamed into `chats/`. A central chat
-   with the same root id and the same provenance is an earlier interrupted
-   install and is kept as is. Otherwise the two files are compared by session
-   count, message count, last message sequence and a SHA-256 of that message's
-   session and stored data: equal means the same chat (listed under
-   `duplicates` in the receipt, not copied); different means the staged chat
-   gets new session ids. Each new id is derived from the source path and the old
-   id, so a resumed import finds what it installed; every session id in every
-   text cell of the copy is rewritten, except where it is a path component. The
-   copy's `request_usage` rows whose request id the original chat already has
-   are the history both share and are dropped, so reports count that part once
-   and the copy only adds its own requests. The receipt maps old to new root
-   ids under `renamed`, and the start prints a notice. A collision never fails a
-   source or makes it retry.
-
-   Before each installed chat's transaction, the snapshot's `spill/<session>/`
-   and `artifacts/<session>/` files of every session in it (copied from the
-   source under its shared lease, regular files only, no spill `.lock`) are
-   moved into the central store under the session's target id, so a renamed
-   chat's files sit under its new ids. A file already there is kept. In the
-   same transaction, stored spill paths `<legacy>/spill/<old>` (raw and
-   JSON-escaped) become `<central>/spill/<new>`, for the source directory and
-   any legacy sibling, since a copied store still points into the store it was
-   copied from. Artifact references hold only ids and need no rewrite. All of
-   this happens before the receipt, so an interrupted import redoes it from a
-   fresh snapshot and never records a half-copied directory.
-5. Merges `quota_history` from every staged catalog with the central history in
-   time order. Exact duplicate rows are dropped, and so is a reading equal (same
-   percentage and reset) to the previous change of its account/window in the
-   merged order; a reading older than the central latest change is history and
-   is kept. When the result is the central history followed by new rows, the
-   new rows are appended; otherwise the history is rebuilt in time order in a
-   side table `quota_history_next` and swapped in by one transaction (a side
-   table left by an interruption is dropped first). Rows commit in batches of
-   256 (`LEGACY_IMPORT_BATCH`). Each row keeps its `balance` column (null for
-   rows from a v1 source catalog); duplicates are compared on the stored JSON.
-6. Passes each snapshot to the host's merge callback. The runner merges the
-   copied `delegations.db` into the central ledger with `INSERT OR IGNORE` on
-   attempt IDs and `(attempt_id, seq)` calls, 256 attempts with their calls per
-   transaction, after migrating the copy's schema.
-7. Rebuilds the catalog once, then writes every successful or unsupported
-   source's receipt in one transaction and removes the staging directory.
-
-Request usage and quota wait markers live in chat files, so they arrive with
-their chats; usage reports read each chat once. A failure in steps 4–6 reports
-the source as skipped without a receipt. The next start removes leftover
-staging, recognizes installed chats by provenance, and adds no quota or ledger
-row twice.
-
-After a successful import (the source has its receipt), the central store is
-self-contained and **a legacy directory can be deleted**, except where it still
-holds child worktrees that are in use:
-
-- Databases, spill output and artifacts are in the central store.
-- Child worktrees are not moved. Their attachment records the worktree's
-  absolute path under the legacy `worktrees/`, which keeps working while it
-  exists; the central host neither restores nor cleans it, because its mirror
-  under `worktrees/.bindings/` stays in the legacy directory. Keep that
-  directory, or at least its `worktrees/`, while those worktrees are needed.
-- Jobs: process handles and their `jobs/` spools do not survive a restart, so
-  nothing is lost.
-
-Measured on Linux (`tests/legacy_import.rs`, two fixture stores with four root
-chats, one archived per store, seven merged quota rows): 6 import transactions
-(4 staged chat copies, 1 quota batch, 1 receipt), central `catalog.db-wal`
-98,912 bytes after import including the catalog rebuild, 0 bytes of chat WAL
-in the installed files, no staging left. 600 quota changes from one store
-commit in 3 batches plus the receipt, 4 transactions (catalog WAL 296,672 bytes).
-
-### Windows: legacy import and packaged parents (2026-10-21)
-
-**os error 5 on every import.** Before the fix, each legacy source on Windows
-reported `was not imported (Access denied (os error 5))`. The import flushed
-each staged chat with `File::open(..).sync_all()`. On Windows that is
-`FlushFileBuffers`, which needs a handle with write access, so the read-only
-handle failed. This was reproduced outside any app package, with
-`LOCALAPPDATA` pointing at a scratch directory. The staged chat is now opened
-for writing before the flush (`store_legacy.rs`, `install_legacy_chats`). Linux
-cannot reproduce this; the Windows exe built by `windows.yml` was checked by
-hand.
+### Windows: packaged parents (2026-10-21)
 
 **MSIX file redirection.** A process started from a packaged desktop app runs
 in that package's context. The Claude desktop app is one, and so are its Git
@@ -396,14 +276,12 @@ Claude `2.42304.2.0`:
 So there is one store per machine when the real
 `%LOCALAPPDATA%\BubblePaw-Core` folder exists before any packaged process
 creates it, and no private copy exists. This was checked with the fixed exe.
-A packaged process imported three legacy stores into a central store whose
-parent folder an unpackaged process had created first. An unpackaged process
-(WMI) then listed the same three sessions and found nothing left to import.
-Without the real folder, the packaged import landed in `LocalCache`, and the
-unpackaged process got an empty store. A redirected store is visible from
-inside: the canonical data directory resolves under
-`AppData\Local\Packages\<family>\LocalCache\`, and the import notices print
-that path. BubblePaw does not ensure this yet; how it should is an open decision.
+A packaged process wrote a central store whose parent folder an unpackaged
+process had created first. An unpackaged process (WMI) then listed the same
+sessions. Without the real folder, the packaged process wrote into `LocalCache`,
+and the unpackaged process got an empty store. A redirected store is visible
+from inside: the canonical data directory resolves under
+`AppData\Local\Packages\<family>\LocalCache\`. BubblePaw does not ensure this yet; how it should is an open decision.
 
 ## Durable account quota and wait markers (2026-10-20)
 
@@ -558,7 +436,7 @@ assistant message, so its reasoning is not kept: stream fragments are transient
   absent route tag inherits the current route when adapter/model match; only a
   recorded route/endpoint mismatch is incompatible.
 - **Paths:** store, dictionary-row (cold) compression, archive, unarchive,
-  reopen, export, canonical re-import and legacy/phase-B migration all return
+  reopen, export, canonical re-import and phase-B migration all return
   identical signature and ciphertext bytes, and the next Responses or Messages
   request body equals the one built before storage
   (`crates/bubblepaw-runner/tests/reasoning_storage.rs`).
@@ -585,8 +463,8 @@ bubblepaw/
 ```
 
 - **One central store (2026-10-21).** By default every workspace uses
-  `<local data home>/BubblePaw-Core/store`; old per-workspace stores are
-  [imported once](#central-store-and-legacy-import-2026-10-21).
+  `<local data home>/BubblePaw-Core/store`
+  ([central store](#central-store-2026-10-21)).
 - **One host process.** A frontend is a host that runs many sessions in one process. Sub-agents are sessions in the same process, not separate instances.
   Later `run` and `delegate` processes [attach to that host](host-attach.md)
   through a user-only local endpoint. Election still uses the unchanged core
@@ -666,7 +544,7 @@ them; callers continue to resolve chats and decode messages through the same pat
 The library opens a directory with `Store::open_data_dir` or
 `Store::open_with_options`. `create_session_with_parent` accepts an optional
 parent session id; it changes placement only. The runner owns child execution.
-Legacy `Store::open(file)` and `--db` select a sibling `<stem>.data` directory.
+`Store::open(file)` and `--db` select a sibling `<stem>.data` directory; neither imports anything.
 
 Chat files use schema 11 (schema 7 content formats plus `request_usage`, a nullable
 checkpoint preimage and a tool-call index that separates calls from results), with a `chat-v1` layout marker and
@@ -714,15 +592,6 @@ is `open_session_record`; physical record opens go through `open_record`.
 access skips the catalog query until a rebuild, archive or deletion drops the entry.
 `decode_message_body` is the shared body-codec boundary, including metadata
 filters and blob reachability; `message_from_data` then hydrates content.
-
-Legacy migration snapshots the source read-only, upgrades only that snapshot,
-and stages the new layout. Each legacy session gets its own chat file, retaining
-old parent links as provenance; newly created children share their root's file.
-Installation writes chats first, serving next and the catalog receipt last. The
-original database stays in place, including when it is inside the destination
-directory. Existing layouts are not merged with a different legacy source, and
-reopening the untouched source cannot resurrect chats already deleted from the
-new layout.
 
 Startup and idle cleanup retain finished-run journal entries for 24 hours after
 completion and diagnostic usage/timing telemetry for 30 days by default. Durable

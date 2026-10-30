@@ -52,38 +52,18 @@ pub fn episode_model_config(settings: &Settings) -> EpisodeModelConfig {
     }
 }
 
-pub fn validate_trace_path(
-    path: &std::path::Path,
-    data_dir: &std::path::Path,
-    legacy: &std::path::Path,
-) -> Result<()> {
+pub fn validate_trace_path(path: &std::path::Path, data_dir: &std::path::Path) -> Result<()> {
     let parent = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or(std::path::Path::new("."));
     std::fs::create_dir_all(parent)?;
     let data_dir = data_dir.canonicalize()?;
-    let mut archives = vec![
+    let archives = [
         data_dir.join("catalog.db"),
         data_dir.join("serving.db"),
         data_dir.join("store.lock"),
     ];
-    if legacy.exists() {
-        archives.push(legacy.canonicalize()?);
-    } else if let Some(parent) = legacy
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty() && p.exists())
-    {
-        archives.push(
-            parent.canonicalize()?.join(
-                legacy
-                    .file_name()
-                    .context("Legacy database requires a file name")?,
-            ),
-        );
-    } else {
-        archives.push(std::env::current_dir()?.join(legacy));
-    }
     let protected: Vec<_> = archives
         .iter()
         .flat_map(|archive| {

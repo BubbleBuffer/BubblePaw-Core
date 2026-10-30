@@ -29,7 +29,6 @@ pub(super) async fn execute(
         task_prompt,
         workspace,
         data_dir,
-        legacy_db,
         ..
     } = request;
     let settings = effective.settings()?;
@@ -128,7 +127,7 @@ pub(super) async fn execute(
             cli.trace_max_mib > 0 && cli.trace_max_mib <= 1024,
             "trace-max-mib must be between 1 and 1024"
         );
-        validate_trace_path(&path, &data_dir, &legacy_db)?;
+        validate_trace_path(&path, &data_dir)?;
         let trace = JsonlTrace::open_with_output(
             TraceConfig {
                 path: path.clone(),

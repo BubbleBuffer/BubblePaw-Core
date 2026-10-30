@@ -6,7 +6,6 @@ fallbacks = []
 execution_mode = "native"
 [storage]
 data_dir = ""
-legacy_db = ""
 finished_event_retention_hours = 24
 telemetry_retention_days = 30
 archive_after_days = 30
@@ -69,10 +68,7 @@ chapter_rollover_tokens = 0
 decision_context_tokens = 4000
 tool_evidence_tokens = 0
 raw_tail_tokens = 32000
-closed_summary_tokens = 16000
-open_summary_tokens = 16000
 index_tokens = 2000
-task_anchor_tokens = 8000
 output_reserve_tokens = 16000
 child_compact_threshold_tokens = 100000
 [context.classical]

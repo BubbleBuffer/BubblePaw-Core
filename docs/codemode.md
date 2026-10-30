@@ -369,15 +369,14 @@ const result = await wait({sessionId: next.sessionId});
 text(result.text);
 ```
 
-`tools.agent({task, context?, profile?, access?})` returns
+`tools.agent({task, context?, profile?})` returns
 `{handle:"agent:<id>", sessionId, status:"running"}` after durable admission.
 Context is any JSON value; task and serialized context together fit within 64 KiB.
 The child uses a registered agent profile, a fresh conversation and separate
 JS state. It receives only the explicit task/context and its tool reference.
 `profile` defaults to `"read-only"`, which excludes commands and writes.
 Request `profile:"workspace"` for those capabilities; a read-only host omits
-that profile. The deprecated `access:"read-only"|"workspace"` alias still selects
-the corresponding profile. With web enabled, `profile:"research"` provides only
+that profile. With web enabled, `profile:"research"` provides only
 search, page reading and JS. Profiles can override the inherited provider/model
 and round limit. Children receive agent tools at every depth by default. An
 explicit `agents.max_depth` cap restricts them to depths below that limit.

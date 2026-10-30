@@ -873,8 +873,6 @@ async fn child_assignment_and_latest_steering_survive_a_bounded_compacted_view()
         ..Default::default()
     };
     config.lcm.raw_tail_tokens = 16000;
-    config.lcm.open_summary_tokens = 1000;
-    config.lcm.task_anchor_tokens = 1000;
     let policy = SummarizingContext::new(f.store.clone(), Script::normal(), config, None)?;
     let prepared = f.prepare(&policy).await?;
     let assignment = prepared

@@ -112,8 +112,7 @@ pub use script::SCRIPT_MODEL;
 pub use store::{
     CHECKPOINT_PREFIX, ChapterSection, ChatOpenFailure, ChatOpenHook, CheckpointRecord,
     ContextChapter, ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter,
-    ContextView, DecisionKind, EpisodeBatch, InputKind, LEGACY_IMPORT_BATCH, LegacyCheckpointNote,
-    LegacyImportReport, LegacyImportStatus, LegacyImportSummary, LegacySnapshot, QueuedInput,
+    ContextView, DecisionKind, EpisodeBatch, InputKind, LegacyCheckpointNote, QueuedInput,
     RelatedEvidence, RootStoragePolicy, SearchHit, SearchIndexProgress, SessionCleanup,
     SessionRecord, SessionSnapshot, StorageStats, Store, StoreOptions, SubjectChapterStatus,
 };

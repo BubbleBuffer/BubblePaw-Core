@@ -28,14 +28,11 @@ A tool call can wait for a person's decision. This works for direct model calls 
 ## Configured deny rules
 
 ```toml
-[approval]
+[approvals]
 deny = ["exec", "mcp__notes__delete_note"]
 ```
 
-`[approval]` is an alias for the existing canonical `[approvals]` table. Either
-spelling accepts all approval settings; using both in one file is rejected.
-Config output and provenance use `approvals`. CLI and environment paths accept
-the alias too, for example `--set 'approval.deny=["exec"]'`.
+CLI overrides use the same table, for example `--set 'approvals.deny=["exec"]'`.
 
 The rule grammar matches the existing session allowance grammar: **case-sensitive
 exact tool names**. There are no wildcard patterns, command prefixes or argument
@@ -64,7 +61,7 @@ implementation in `modes.rs`, session allowances and deny matching in
 
 ```toml
 [approvals]
-hardline = true   # default; `[approval]` is the same table
+hardline = true   # default
 ```
 
 The floor is a fixed list of `exec` commands that never run, whatever the

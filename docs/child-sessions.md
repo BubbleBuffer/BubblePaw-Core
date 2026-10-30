@@ -38,7 +38,7 @@ keeps its original prefix and receives a durable change note.
 
 Inside `js`:
 
-- `tools.agent({task, context?, profile?, access?, worktree?, output_schema?, max_tool_calls?, timeout?})` creates and starts a child,
+- `tools.agent({task, context?, profile?, worktree?, output_schema?, max_tool_calls?, timeout?})` creates and starts a child,
   returning `{handle:"agent:<uuid>", sessionId, status:"running"}`.
 - `tools.agent_send({handle|sessionId, text, question_id?, output_schema?, max_tool_calls?, timeout?})` steers a running child through
   `Harness::steer`, or starts a new turn in an idle child through `Harness::start`.
@@ -117,7 +117,7 @@ across handle eviction and restart. Rediscovery preserves the last turn's status
 an explicit follow-up starts a new turn with the saved history.
 
 Profiles default to `read-only`; `workspace` permits commands and writes when
-the host permits them. `access` remains a deprecated profile alias. Optional
+the host permits them. Optional
 profile model and round limits continue to apply. Nested children cannot broaden
 the parent's profile capabilities. Workspaces are shared by default;
 `worktree: true` opts into a separate git checkout. See [child worktrees](child-worktrees.md).

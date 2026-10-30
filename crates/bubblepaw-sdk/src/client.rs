@@ -79,9 +79,7 @@ impl Client {
     /// Serve the CLI host's own context for `config` from this process: the
     /// host `bubblepaw stdio` runs with the same configuration, with its
     /// providers, live provider reload and model roles. It publishes the
-    /// control endpoint and `host.json` like a CLI host. The one-time import
-    /// of legacy per-workspace stores into the central store is left to the
-    /// CLI.
+    /// control endpoint and `host.json` like a CLI host.
     pub async fn embedded_configured(config: HostConfig) -> Result<Self, ClientError> {
         let store = config.open_store().map_err(host_error)?;
         Self::serve_configured(config, store).await

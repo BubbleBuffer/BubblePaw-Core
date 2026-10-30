@@ -524,10 +524,6 @@ fn storage_paths_retention_and_cli_precedence_are_layered_without_io() -> Result
         sb.path().join("settings").join("state")
     );
     assert_eq!(
-        PathBuf::from(config["storage"]["legacy_db"].as_str().unwrap()),
-        sb.path().join("settings").join("archive.sqlite")
-    );
-    assert_eq!(
         config["storage"]["finished_event_retention_hours"].as_integer(),
         Some(48)
     );

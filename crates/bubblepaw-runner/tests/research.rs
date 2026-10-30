@@ -609,27 +609,28 @@ async fn research_profile_model_override_selection_and_ordinary_aliases() {
         schema["properties"]["profile"]["enum"],
         json!(["read-only", "research"])
     );
-    assert_eq!(schema["properties"]["access"]["deprecated"], true);
+    assert!(schema["properties"].get("access").is_none());
     assert!(
         fixture
             .manager
             .start(
                 &fixture.context(),
-                json!({"task":"conflict","profile":"research","access":"read-only"})
+                json!({"task":"removed","profile":"research","access":"read-only"})
             )
             .is_err()
     );
-    let alias = fixture
+    let default_profile = fixture
         .manager
-        .start(
-            &fixture.context(),
-            json!({"task":"old alias","access":"read-only"}),
-        )
+        .start(&fixture.context(), json!({"task":"default profile"}))
         .unwrap();
     assert_eq!(
         fixture
             .manager
-            .wait(&fixture.session, alias["handle"].as_str().unwrap(), None)
+            .wait(
+                &fixture.session,
+                default_profile["handle"].as_str().unwrap(),
+                None
+            )
             .await
             .unwrap()["status"],
         "completed"

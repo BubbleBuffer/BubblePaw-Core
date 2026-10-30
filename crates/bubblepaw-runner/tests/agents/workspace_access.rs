@@ -43,7 +43,7 @@ async fn explicit_workspace_access_allows_writes_and_cleanup_awaits_owned_comman
     let granted = manager
         .start(
             &fixture.owner,
-            json!({"task":"workspace child","access":"workspace"}),
+            json!({"task":"workspace child","profile":"workspace"}),
         )
         .unwrap();
     let result = manager

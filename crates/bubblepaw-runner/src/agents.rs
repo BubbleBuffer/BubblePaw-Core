@@ -1061,14 +1061,13 @@ impl AgentTools {
                 k.as_str(),
                 "task"
                     | "context"
-                    | "access"
                     | "profile"
                     | "output_schema"
                     | "max_tool_calls"
                     | "timeout"
                     | "worktree"
             )),
-            "agent accepts only task, context, profile, access, output_schema, max_tool_calls, timeout and worktree"
+            "agent accepts only task, context, profile, output_schema, max_tool_calls, timeout and worktree"
         );
         let isolated = match input.get("worktree") {
             Some(Value::Bool(value)) => *value,
@@ -1098,12 +1097,6 @@ impl AgentTools {
             task.len().saturating_add(supplied.len()) <= MAX_CONTEXT_BYTES,
             "task and explicit context exceed 64 KiB"
         );
-        let access = match input.get("access") {
-            None => None,
-            Some(v) if v == "read-only" => Some("read-only"),
-            Some(v) if v == "workspace" => Some("workspace"),
-            _ => bail!("access must be read-only or workspace"),
-        };
         let named = input
             .get("profile")
             .map(|v| {
@@ -1111,11 +1104,7 @@ impl AgentTools {
                     .ok_or_else(|| anyhow!("profile must be a string"))
             })
             .transpose()?;
-        ensure!(
-            named.zip(access).is_none_or(|(p, a)| p == a),
-            "profile conflicts with deprecated access alias"
-        );
-        let name = named.or(access).unwrap_or("read-only");
+        let name = named.unwrap_or("read-only");
         if worker_profile.is_none()
             && let Some((metadata, _)) = self.store.attachment(&context.session_id, BINDING_ID)?
         {
@@ -3282,7 +3271,7 @@ impl Tool for AgentTool {
                 profile_schema["enum"] = json!(profiles.iter().map(|(n, _)| n).collect::<Vec<_>>());
             }
             let (mut description,mut schema)=match self.name {
-                "agent"=>(format!("Start a reusable child session with explicit task/context and a registered profile. Returns handle and sessionId; wait or agent_status reads its answer. Default profile read-only; access is a deprecated alias. Depth limit {}; active limits {}/parent, {}/host. Profiles: {}",cap(limits.max_depth),cap(limits.max_active_per_parent),cap(limits.max_active_total),profiles.iter().map(|(n,d)| format!("{n}: {d}")).collect::<Vec<_>>().join("; ")),json!({"type":"object","properties":{"task":{"type":"string","minLength":1},"context":{},"profile":profile_schema,"access":{"type":"string","enum":["read-only","workspace"],"deprecated":true}},"required":["task"],"additionalProperties":false})),
+                "agent"=>(format!("Start a reusable child session with explicit task/context and a registered profile. Returns handle and sessionId; wait or agent_status reads its answer. Default profile read-only. Depth limit {}; active limits {}/parent, {}/host. Profiles: {}",cap(limits.max_depth),cap(limits.max_active_per_parent),cap(limits.max_active_total),profiles.iter().map(|(n,d)| format!("{n}: {d}")).collect::<Vec<_>>().join("; ")),json!({"type":"object","properties":{"task":{"type":"string","minLength":1},"context":{},"profile":profile_schema},"required":["task"],"additionalProperties":false})),
                 "agent_send"=>("Send text to an owned child by handle or sessionId. Steers running children immediately; starts a new turn in idle children.".into(),json!({"type":"object","properties":{"handle":{"type":"string"},"sessionId":{"type":"string"},"text":{"type":"string","minLength":1}},"required":["text"],"additionalProperties":false})),
                 _=>("Report an owned child and consume its unread result, or list the descendant tree with parentSessionId and unread flags when no handle/sessionId is supplied. Listing does not consume results.".into(),json!({"type":"object","properties":{"handle":{"type":"string"},"sessionId":{"type":"string"}},"additionalProperties":false})),
             };

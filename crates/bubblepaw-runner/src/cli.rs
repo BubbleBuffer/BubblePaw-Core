@@ -20,8 +20,8 @@ pub struct Cli {
     /// Workspace directory for the agent's tools; must exist.
     #[arg(long, global = true, default_value = ".")]
     pub workspace: PathBuf,
-    /// Legacy single-file archive. Startup migrates it once into a sibling `<stem>.data`
-    /// directory and keeps the file. Conflicts with --data-dir.
+    /// Select the sibling `<stem>.data` directory of a file path as the data directory.
+    /// Conflicts with --data-dir.
     #[arg(long, global = true)]
     pub db: Option<PathBuf>,
     /// Directory containing catalog.db, serving.db and chats/<root-session>.db.

@@ -191,10 +191,7 @@ fn check_files(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoragePaths {
     pub data_dir: PathBuf,
-    /// The single-file archive migrated once into `data_dir`.
-    pub legacy_db: PathBuf,
-    /// Whether `data_dir` is the central default, the only store that imports
-    /// its legacy siblings.
+    /// Whether `data_dir` is the central default.
     pub central: bool,
 }
 
@@ -202,21 +199,32 @@ pub struct StoragePaths {
 pub fn storage_paths(settings: &Settings) -> Result<StoragePaths, ConfigError> {
     let central = settings.storage.data_dir.as_os_str().is_empty();
     let data_dir = if central {
-        crate::legacy_import::default_data_dir()
-            .map_err(|error| ConfigError::Storage(format!("{error:#}")))?
+        default_data_dir().map_err(|error| ConfigError::Storage(format!("{error:#}")))?
     } else {
         settings.storage.data_dir.clone()
     };
-    let legacy_db = if settings.storage.legacy_db.as_os_str().is_empty() {
-        data_dir.join("archive.sqlite")
-    } else {
-        settings.storage.legacy_db.clone()
-    };
-    Ok(StoragePaths {
-        data_dir,
-        legacy_db,
-        central,
-    })
+    Ok(StoragePaths { data_dir, central })
+}
+
+/// The platform data directory under `HOME` when neither `LOCALAPPDATA` nor `XDG_DATA_HOME` is set.
+const HOME_DATA_DIR: &str = if cfg!(target_os = "macos") {
+    "Library/Application Support"
+} else {
+    ".local/share"
+};
+
+/// One central store per user and machine: `<local data home>/BubblePaw-Core/store`.
+pub fn default_data_dir() -> anyhow::Result<PathBuf> {
+    Ok(local_data_home()?.join("BubblePaw-Core").join("store"))
+}
+
+fn local_data_home() -> anyhow::Result<PathBuf> {
+    use anyhow::Context;
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("XDG_DATA_HOME").map(PathBuf::from))
+        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(HOME_DATA_DIR)))
+        .context("choose --data-dir when no local data directory is available")
 }
 
 /// The store retention and cold-storage options from `storage.*`.
@@ -233,10 +241,9 @@ pub fn store_options(settings: &Settings) -> StoreOptions {
     }
 }
 
-/// Migrate the legacy archive once and open the store. Another host's
-/// ownership is reported as [`crate::host_attach::is_owned`] recognizes it.
-pub fn open_store(data_dir: &Path, legacy_db: &Path, settings: &Settings) -> anyhow::Result<Store> {
-    Store::migrate_legacy(legacy_db, data_dir)?;
+/// Open the store. Another host's ownership is reported as
+/// [`crate::host_attach::is_owned`] recognizes it.
+pub fn open_store(data_dir: &Path, settings: &Settings) -> anyhow::Result<Store> {
     Store::open_with_options(data_dir, store_options(settings))
 }
 
@@ -283,7 +290,6 @@ impl HostConfig {
             std::path::absolute(path).map_err(|error| ConfigError::Storage(error.to_string()))
         };
         let data_dir = absolute(&paths.data_dir)?;
-        let legacy_db = absolute(&paths.legacy_db)?;
         LiveProviderConfig::new(effective.clone())
             .map_err(|error| classify(error, ConfigError::Providers))?;
         let mut arguments: Vec<OsString> = vec!["bubblepaw".into()];
@@ -303,7 +309,6 @@ impl HostConfig {
                 task_prompt: None,
                 workspace,
                 data_dir,
-                legacy_db,
             },
             settings,
             central: paths.central,
@@ -335,13 +340,9 @@ impl HostConfig {
         self.central
     }
 
-    /// Migrate the legacy archive once and open the store, as `bubblepaw` does.
+    /// Open the store, as `bubblepaw` does.
     pub fn open_store(&self) -> anyhow::Result<Store> {
-        open_store(
-            &self.request.data_dir,
-            &self.request.legacy_db,
-            &self.settings,
-        )
+        open_store(&self.request.data_dir, &self.settings)
     }
 
     /// The request a host context is started from.

@@ -398,7 +398,6 @@ async fn embedded_host(root: &Path) -> (HostContext, HostLifetime) {
         delegation: None,
         task_prompt: None,
         workspace,
-        legacy_db: data_dir.join("archive.sqlite"),
         data_dir,
     };
     let lifetime = HostLifetime::default();

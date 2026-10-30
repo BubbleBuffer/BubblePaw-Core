@@ -231,7 +231,7 @@ fn auto_approve_optional_model_keeps_subcommand_and_aliases() {
 }
 
 #[test]
-fn storage_commands_parse_offline_and_data_dir_conflicts_with_legacy_db() {
+fn storage_commands_parse_offline_and_data_dir_conflicts_with_db() {
     for args in [
         vec!["bubblepaw", "--auto-approve", "catalog", "rebuild"],
         vec!["bubblepaw", "--auto-approve", "serving", "wipe"],

@@ -28,9 +28,7 @@ pub struct McpServerSettings {
     pub approval: Approval,
     pub startup_timeout_secs: u64,
     pub call_timeout_secs: u64,
-    pub include: Vec<String>,
-    pub exclude: Vec<String>,
-    /// Optional allowlist overriding legacy include. Some(empty) permits none.
+    /// Optional allowlist. Omitted permits all; Some(empty) permits none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_tools: Option<Vec<String>>,
     pub exclude_tools: Vec<String>,
@@ -52,8 +50,6 @@ impl Default for McpServerSettings {
             approval: Approval::Confirm,
             startup_timeout_secs: 30,
             call_timeout_secs: 120,
-            include: Vec::new(),
-            exclude: Vec::new(),
             include_tools: None,
             exclude_tools: Vec::new(),
             tools: BTreeMap::new(),
@@ -87,8 +83,6 @@ impl fmt::Debug for McpServerSettings {
             .field("approval", &self.approval)
             .field("startup_timeout_secs", &self.startup_timeout_secs)
             .field("call_timeout_secs", &self.call_timeout_secs)
-            .field("include", &self.include)
-            .field("exclude", &self.exclude)
             .field("include_tools", &self.include_tools)
             .field("exclude_tools", &self.exclude_tools)
             .field("tools", &self.tools)
@@ -98,23 +92,15 @@ impl fmt::Debug for McpServerSettings {
 
 impl McpServerSettings {
     pub(crate) fn allows_tool(&self, name: &str) -> bool {
-        let included = match &self.include_tools {
-            Some(patterns) => patterns
+        let included = self.include_tools.as_ref().is_none_or(|patterns| {
+            patterns
                 .iter()
-                .any(|pattern| tool_pattern_matches(pattern, name)),
-            None => {
-                self.include.is_empty()
-                    || self
-                        .include
-                        .iter()
-                        .any(|pattern| tool_pattern_matches(pattern, name))
-            }
-        };
+                .any(|pattern| tool_pattern_matches(pattern, name))
+        });
         included
             && !self
-                .exclude
+                .exclude_tools
                 .iter()
-                .chain(&self.exclude_tools)
                 .any(|pattern| tool_pattern_matches(pattern, name))
     }
 
@@ -122,8 +108,6 @@ impl McpServerSettings {
     pub(crate) fn same_connection_settings(&self, other: &Self) -> bool {
         let mut current = self.clone();
         current.defer = other.defer;
-        current.include = other.include.clone();
-        current.exclude = other.exclude.clone();
         current.include_tools = other.include_tools.clone();
         current.exclude_tools = other.exclude_tools.clone();
         current == *other
@@ -300,9 +284,9 @@ mod tests {
     }
 
     #[test]
-    fn tool_filters_distinguish_omitted_empty_and_legacy_include() {
+    fn tool_filters_distinguish_omitted_and_empty_include() {
         let mut settings: McpServerSettings = serde_json::from_value(serde_json::json!({
-            "command": "fixture", "include": ["read_*"], "exclude": ["*_secret"]
+            "command": "fixture", "include_tools": ["read_*"], "exclude_tools": ["*_secret"]
         }))
         .unwrap();
         assert!(settings.allows_tool("read_note"));
@@ -320,8 +304,6 @@ mod tests {
         let decoded: McpServerSettings = serde_json::from_value(encoded).unwrap();
         assert_eq!(decoded.include_tools, Some(Vec::new()));
         settings.include_tools = None;
-        settings.include.clear();
-        settings.exclude.clear();
         settings.exclude_tools.clear();
         assert!(settings.allows_tool("anything"));
         assert!(

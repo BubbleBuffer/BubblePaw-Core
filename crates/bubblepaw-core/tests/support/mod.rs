@@ -336,7 +336,7 @@ pub fn unstamped_message(session: &str, id: &str, role: Role, content: &str) -> 
     }
 }
 
-/// A message with a fresh id, for legacy import tests.
+/// A message with a fresh id.
 pub fn uuid_message(session: &str, role: Role, text: &str) -> Message {
     Message {
         id: uuid::Uuid::new_v4().to_string(),

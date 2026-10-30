@@ -270,17 +270,14 @@ the first of `LOCALAPPDATA`, `XDG_DATA_HOME` and `HOME` that is set (on macOS,
 | Linux | `$XDG_DATA_HOME/BubblePaw-Core/store`, or `~/.local/share/BubblePaw-Core/store` |
 | macOS | `~/Library/Application Support/BubblePaw-Core/store` (unless `LOCALAPPDATA` or `XDG_DATA_HOME` is set) |
 
-A store from before the rename (`BubblePaw-base/store` in the same base directory) is imported once on first start; the old folder is only read.
-
 The directory holds `catalog.db`, a disposable `serving.db`,
 `chats/<root-session-id>.db` and `store.lock`. The first process to take the lease
 hosts the store, and later `run` and `delegate` processes attach to it.
 
 `--data-dir <directory>` (or `--set storage.data_dir=<directory>`) selects another
-store. That store is isolated and never imports legacy data, which suits tests and
-benchmarks. `--db <file>` is a legacy alias for an old single-file archive: it is
-migrated once into a sibling `<stem>.data` directory, and the original file is kept.
-`--db` and `--data-dir` cannot be combined. See
+store. That store is isolated, which suits tests and benchmarks. `--db <file>`
+selects the sibling `<stem>.data` directory of a file path and reads nothing from
+the file. `--db` and `--data-dir` cannot be combined. See
 [storage model](docs/storage-model.md) for the layout and limits.
 
 ```sh

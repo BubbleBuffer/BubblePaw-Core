@@ -9,7 +9,6 @@ provider = "codex" # Used for bare model names.
 
 [storage]
 data_dir = ""
-legacy_db = ""
 finished_event_retention_hours = 24
 telemetry_retention_days = 30
 archive_after_days = 30 # 0 disables idle whole-chat archiving.

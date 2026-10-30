@@ -394,72 +394,6 @@ impl Ledger {
         })?;
         Ok(json!({ "groups": rows.collect::<rusqlite::Result<Vec<_>>>()? }))
     }
-
-    /// Merge the attempts and calls of a copied legacy ledger, in bounded
-    /// transactions of `batch` attempts with their calls. Rows already present
-    /// are kept, so a repeated or interrupted merge adds nothing twice. The
-    /// copy is migrated to the current schema first; the original is never opened.
-    pub fn merge_copy(&mut self, copy: &Path, batch: usize) -> Result<LedgerMerge> {
-        drop(Ledger::open(copy)?);
-        let columns = |table: &str| -> Result<String> {
-            Ok(self
-                .connection
-                .prepare(&format!("PRAGMA table_info({table})"))?
-                .query_map([], |row| row.get::<_, String>(1))?
-                .map(|name| name.map(|name| format!("\"{name}\"")))
-                .collect::<rusqlite::Result<Vec<_>>>()?
-                .join(","))
-        };
-        let attempts = columns("delegation_attempts")?;
-        let calls = columns("delegation_calls")?;
-        self.connection.execute(
-            "ATTACH DATABASE ?1 AS legacy",
-            [copy.to_string_lossy().as_ref()],
-        )?;
-        let result = (|| -> Result<LedgerMerge> {
-            let mut merge = LedgerMerge::default();
-            let mut after = String::new();
-            loop {
-                let ids: Vec<String> = self
-                    .connection
-                    .prepare(
-                        "SELECT id FROM legacy.delegation_attempts WHERE id>?1 ORDER BY id LIMIT ?2",
-                    )?
-                    .query_map(params![after, batch.max(1) as i64], |row| row.get(0))?
-                    .collect::<rusqlite::Result<_>>()?;
-                let Some(last) = ids.last().cloned() else {
-                    break;
-                };
-                let tx = self.connection.transaction()?;
-                tx.execute_batch("CREATE TEMP TABLE IF NOT EXISTS merge_ids(id TEXT PRIMARY KEY); DELETE FROM merge_ids;")?;
-                for id in &ids {
-                    tx.execute("INSERT INTO merge_ids VALUES(?1)", [id])?;
-                }
-                merge.attempts += tx.execute(
-                    &format!("INSERT OR IGNORE INTO main.delegation_attempts({attempts}) SELECT {attempts} FROM legacy.delegation_attempts WHERE id IN (SELECT id FROM merge_ids)"),
-                    [],
-                )?;
-                merge.calls += tx.execute(
-                    &format!("INSERT OR IGNORE INTO main.delegation_calls({calls}) SELECT {calls} FROM legacy.delegation_calls WHERE attempt_id IN (SELECT id FROM merge_ids)"),
-                    [],
-                )?;
-                tx.commit()?;
-                merge.transactions += 1;
-                after = last;
-            }
-            Ok(merge)
-        })();
-        self.connection.execute_batch("DETACH DATABASE legacy")?;
-        result
-    }
-}
-
-/// Rows and write transactions of one legacy ledger merge.
-#[derive(Clone, Copy, Debug, Default, Serialize)]
-pub struct LedgerMerge {
-    pub attempts: usize,
-    pub calls: usize,
-    pub transactions: u64,
 }
 
 #[cfg(test)]
@@ -591,59 +525,6 @@ mod tests {
         // Reopening an migrated ledger adds nothing and keeps the stored row.
         let reopened = Ledger::open(&path)?;
         assert!(reopened.attempt_exists("a1")?);
-        Ok(())
-    }
-    #[test]
-    fn legacy_copy_merges_in_bounded_batches_once() -> Result<()> {
-        let root = tempfile::tempdir()?;
-        let legacy = root.path().join("legacy.db");
-        let central = root.path().join("central.db");
-        // The copy has the first-release schema; the central ledger is current.
-        let old = SCHEMA.replace(
-            "    metrics TEXT NOT NULL,
-    undeclared_busts INTEGER NOT NULL DEFAULT 0,
-    unexplained_miss_tokens INTEGER
-",
-            "    metrics TEXT NOT NULL
-",
-        );
-        Connection::open(&legacy)?.execute_batch(&old)?;
-        let insert = |conn: &Connection, id: &str| -> Result<()> {
-            conn.execute(
-                "INSERT INTO delegation_attempts(id,delegation_id,started_at,ended_at,assignment_hash,category,tags,workspace,assignment_tokens,check_count,model,route_reason,period,rework_index,session_id,run_status,final_status,accepted,checks,false_greens,uncached_input,cache_read,cache_write,output,price_table,wall_ms,check_ms,call_count,tool_errors,malformed_calls,repeated_calls,done_without_check,provider_errors,unknown_effects,no_final_report,metrics) VALUES(?1,?1,'t','t','h','c','[]','w',1,0,'m','r','p',0,'s','completed','accepted',1,'[]',0,1,0,0,1,'t',1,0,1,0,0,0,0,0,0,0,'{}')",
-                [id],
-            )?;
-            conn.execute(
-                "INSERT INTO delegation_calls(attempt_id,seq,model,outcome) VALUES(?1,0,'m','ok')",
-                [id],
-            )?;
-            Ok(())
-        };
-        {
-            let conn = Connection::open(&legacy)?;
-            for id in ["a1", "a2", "a3"] {
-                insert(&conn, id)?;
-            }
-        }
-        let mut ledger = Ledger::open(&central)?;
-        insert(&ledger.connection, "a2")?;
-        let first = ledger.merge_copy(&legacy, 2)?;
-        assert_eq!((first.attempts, first.calls, first.transactions), (2, 2, 2));
-        let again = ledger.merge_copy(&legacy, 2)?;
-        assert_eq!((again.attempts, again.calls), (0, 0));
-        let count: i64 =
-            ledger
-                .connection
-                .query_row("SELECT COUNT(*) FROM delegation_attempts", [], |row| {
-                    row.get(0)
-                })?;
-        assert_eq!(count, 3);
-        let busts: i64 = ledger.connection.query_row(
-            "SELECT undeclared_busts FROM delegation_attempts WHERE id='a1'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(busts, 0);
         Ok(())
     }
 }

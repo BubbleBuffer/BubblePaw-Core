@@ -224,7 +224,7 @@ and removes the whole chat tree, its blobs, checkpoints and spill files through
 the existing deletion path. This setting requires a restart. See
 [storage](storage-model.md#names-temporary-runs-and-archive-retention-2026-10-15).
 
-`[approval] hardline = false` disables the fixed exec blocklist. It defaults to
+`[approvals] hardline = false` disables the fixed exec blocklist. It defaults to
 true, applies before configured deny rules and every approval mode, and changes
 live. Children inherit the setting. The matcher is best-effort insurance over
 command text, not a sandbox; see [approvals](approvals.md).
@@ -309,7 +309,6 @@ main = "codex/gpt-6.1-sol"
 
 [storage]
 data_dir = ""                       # empty: central store <local data home>/BubblePaw-Core/store
-legacy_db = ""                      # empty: <data_dir>/archive.sqlite
 finished_event_retention_hours = 24
 telemetry_retention_days = 30
 archive_after_days = 30             # 0 disables idle whole-chat archiving
@@ -363,10 +362,7 @@ chapter_rollover_tokens = 0          # disabled; positive values explicitly opt 
 decision_context_tokens = 4000  # accumulated open-chapter decision input
 tool_evidence_tokens = 0             # full episode tool evidence; positive values opt into clipping (fork unchanged)
 raw_tail_tokens = 32000             # manual/emergency gathering compatibility; not an automatic apply cutoff
-closed_summary_tokens = 16000       # legacy allowance; complete ready bodies are never omitted
-open_summary_tokens = 16000         # legacy allowance; complete ready bodies are never omitted
 index_tokens = 2000
-task_anchor_tokens = 8000           # legacy allowance; preserved original task messages are not excerpted
 output_reserve_tokens = 16000
 child_compact_threshold_tokens = 100000
 # apply_target_tokens = 50000       # omitted: effective threshold; no raw-history refill
@@ -549,8 +545,8 @@ Use `--set agents.worker_keep_all=true`,
 
 `--data-dir <directory>` is an alias for `storage.data_dir`. The directory holds
 `catalog.db`, disposable `serving.db`, and `chats/<root-session-id>.db`. A root
-chat and every child it creates share one chat file. File-defined `data_dir` and
-`legacy_db` paths resolve relative to their config file; env and CLI paths resolve
+chat and every child it creates share one chat file. A file-defined `data_dir`
+resolves relative to its config file; env and CLI paths resolve
 relative to the invocation directory. An empty `data_dir` selects the central
 store `<local data home>/BubblePaw-Core/store`, where the local data home is
 `LOCALAPPDATA`, then `XDG_DATA_HOME`, then `HOME/.local/share` (`HOME/Library/Application Support` on macOS). Every workspace
@@ -558,21 +554,8 @@ uses that one store; each root chat keeps its own workspace binding, and later
 `run` and `delegate` processes [attach](host-attach.md) to the first process.
 `--data-dir` and `data_dir` still select an isolated store for tests and benches.
 
-The host of the central store imports the old per-workspace stores once: its
-sibling directories whose names are 64 hexadecimal characters (the former
-`<sha256(workspace)>` default), and the previous default store
-`<local data home>/BubblePaw-base/store` with the stores beside it (the folder
-before the 2026-10-24 rename). It prints one stderr notice per imported,
-locked or skipped source. Sources are only read; a source still owned by a
-running process is skipped and retried on the next start. An explicit
-`--data-dir` or `data_dir` never imports. See
-[storage model](storage-model.md#central-store-and-legacy-import-2026-10-21).
-
-Normal startup migrates an existing `<data_dir>/archive.sqlite`, or the configured
-`storage.legacy_db`, once and preserves the original file. `--db <old-file>`
-remains a compatibility alias: it selects the sibling `<stem>.data` directory,
-migrates an existing database there, and prints that mapping to stderr. New
-stores use only the directory layout. `--db` and `--data-dir` cannot be combined.
+`--db <file>` selects the sibling `<stem>.data` directory of a file path and
+reads nothing from the file. `--db` and `--data-dir` cannot be combined.
 
 Finished-run journal records are retained for 24 hours and telemetry for 30 days
 by default. The two retention keys are nonnegative integers; `0` allows cleanup
@@ -645,7 +628,7 @@ Export is a read-only operation on an existing layout, with one complete message
 per JSONL line, blob content inline, and child session IDs linking to separately
 exportable histories. Each line carries `session_id`, `parent_session_id`,
 `root_id`, `child_session_ids`, and the complete `message` object. It does not
-migrate a legacy archive or run cleanup.
+run cleanup.
 Stored original attachment blobs appear once, on the first message line, in
 `attachments`: each entry carries its ID, metadata, blob hash, and base64-encoded
 original bytes. An ordinary session with no messages exports no lines; an
@@ -867,10 +850,7 @@ each call, not the size of the reply. Decision providers do not read it yet.
 Replay plan model signatures now include role effort; plans pinned before this
 field was added need regeneration before use with this version.
 
-Legacy env aliases remain at env precedence: `BUBBLEPAW_EPISODE_SUMMARY_BASE_URL`,
-`BUBBLEPAW_EPISODE_SUMMARY_KEY_ENV`, `BUBBLEPAW_EPISODE_SUMMARY_REASONING_FIELDS`,
-`BUBBLEPAW_EPISODE_SUMMARY_MODEL`, and `BUBBLEPAW_EPISODE_RETRY_BASE_MS`.
-Generic env overrides follow those aliases. `BUBBLEPAW_CONFIG` and variables
+`BUBBLEPAW_CONFIG` and variables
 named by provider `key_env` are exempt from generic overrides; their credential
 values are never rendered.
 
@@ -925,8 +905,8 @@ defer = true                    # default; false declares this server's tools in
 approval = "confirm"             # default; "none" opts out
 startup_timeout_secs = 30
 call_timeout_secs = 120
-include = []                     # server tool names; empty includes all
-exclude = []
+include_tools = ["get_*"]        # omitted allows all; [] allows none
+exclude_tools = []
 
 [mcp.servers.github.tools]
 get_issue = { approval = "none" }

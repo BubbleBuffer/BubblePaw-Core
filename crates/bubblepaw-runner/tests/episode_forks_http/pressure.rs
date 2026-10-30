@@ -100,7 +100,6 @@ async fn delegated_native_result_tool_run_crosses_pressure_and_completes_after_a
     config.lcm.child_compact_threshold_tokens = Some(16_000);
     config.lcm.output_reserve_tokens = 0;
     config.lcm.raw_tail_tokens = 64;
-    config.lcm.task_anchor_tokens = 64;
     config.lcm.episodes.source_target_tokens = 64;
     config.lcm.episodes.source_max_tokens = 32_000;
     let context = Arc::new(SummarizingContext::new(

@@ -16,7 +16,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [skills](skills.md) — SKILL.md catalogs frozen between compactions, ordinary body reads, per-session folder access and durable live diffs.
 - [prefix-cache-design](prefix-cache-design.md) — 2026-10-21 P8: every request is logged by tier in the serving store, and an unexplained cache miss warns (`cache_miss_unexplained`) with expected/actual cached tokens and the gap. P7: hosts write per-request context through `ContextWriter` (tail reminders, cold notes); a hook edit to the frozen tier is an undeclared `frozen_change`, a resolver change is declared. P6: same-model side calls (summary, chapter) fork the chat context; fresh side calls declare why. 2026-10-19: prompt-cache accounting (declared busts, unexplained misses per provider/model). 2026-10-18: integrated Chat episode forks, durable runtime notices and native token projection; broader tool declarations and other protocols remain separate, with explicit signed-thinking apply limits.
 - [context-classical](context-classical.md) — Built 2026-10-09: classical rolling-summary strategy, selectable beside lcm for replay comparison.
-- [decisions](decisions.md) — Dated V0 decision log; live provider apply, default-on completion wake, silent internal workers and child controls (2026-10-14); legacy import copies spill and artifacts (2026-10-21).
+- [decisions](decisions.md) — Dated V0 decision log; live provider apply, default-on completion wake, silent internal workers and child controls (2026-10-14); legacy import removed (2026-10-30).
 
 ## Models and providers
 
@@ -32,7 +32,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [host-context](host-context.md) — Built 2026-10-21: the host preparation hook and `ContextWriter`, where static, derived and live host context goes, and how frozen-tier edits and resolver changes are classified.
 - [host-attach](host-attach.md) — 2026-10-21: local run/delegate attachment to the central store's host, per-chat workspaces, request config and host lifetime; verification status and Windows smoke commands.
 - [sdk](sdk.md) — Updated 2026-10-30: `HostConfig::load` and `Client::open_configured` for the CLI host; context events, view blocks, message-token reads, and host answers and pending reads for child questions; the Rust facade, `HostBuilder`, Claude Code helper, todo module and stability policy.
-- [storage-model](storage-model.md) — Updated 2026-10-27: schema 12 compaction facts and message usage links without extra ordinary transactions; central storage, legacy import, lean chats, archives and disposable serving.
+- [storage-model](storage-model.md) — Updated 2026-10-27: schema 12 compaction facts and message usage links without extra ordinary transactions; central storage, lean chats, archives and disposable serving.
 - [session-api](session-api.md) — Built; current 2026-10-29: stdio provider and main-role controls, paged session lists and child cancellation; session snapshots, durable events, Context reads and direct-parent child events.
 - [usage tracking](usage-tracking.md) - Durable per-request tokens and SDK-reported model IDs, one dated price table, grouped reports and the fixed `bubblepaw.usage.v1` JSONL export.
 - [quota](quota.md) — Native subscription/rate-limit/credit readings, change-only history, rejection-specific waits and restart recovery; piggybacked balances with explicit standalone recording times; OpenCode Go meters through a BubblePaw-owned console login (`bubblepaw login opencode`).

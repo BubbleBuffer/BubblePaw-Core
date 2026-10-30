@@ -137,10 +137,6 @@ prefixes them. Matching is case-sensitive, covers the entire name, and supports
 `exclude_tools` removes matches after inclusion. Filters apply at discovery,
 `tools/list_changed` refresh, reconnect inventory publication and live reload.
 
-Legacy `include` and `exclude` remain supported, including the old unrestricted
-meaning of `include = []`. An explicit `include_tools` overrides `include`;
-both exclusion lists apply. Prefer the new spellings for new configurations.
-
 ## Tools and results
 
 Registered names are `mcp__<server>__<tool>`, sanitized to `[A-Za-z0-9_-]` and

@@ -1,5 +1,4 @@
 use super::*;
-use crate::LegacyImportStatus;
 
 #[test]
 fn new_sessions_bind_once_and_legacy_missing_modes_remain_js() -> Result<()> {
@@ -94,40 +93,6 @@ fn invalid_persisted_mode_is_reported() -> Result<()> {
             .unwrap_err()
             .to_string()
             .contains("Invalid persisted execution mode")
-    );
-    Ok(())
-}
-
-#[test]
-fn legacy_import_preserves_bound_modes_and_missing_mode_fallback() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    let base = dir.path().join("BubblePaw-base");
-    let legacy_path = base.join("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    let native;
-    let legacy;
-    {
-        let store = Store::open_data_dir(&legacy_path)?;
-        store.bind_workspace(dir.path())?;
-        native = store.create_session("native source")?.id;
-        store.resolve_execution_mode(&native, ExecutionMode::Native)?;
-        legacy = store.create_session("legacy without mode")?.id;
-        let chat = store.scoped(&legacy)?.unwrap();
-        chat.write(|tx| {
-            tx.execute("DELETE FROM metadata WHERE key=?1", [key(&legacy)])?;
-            Ok(())
-        })?;
-    }
-    let central = Store::open_data_dir(base.join("store"))?;
-    let report = central.import_legacy_stores(|_| Ok(()))?;
-    assert_eq!(report.sources.len(), 1);
-    assert_eq!(report.sources[0].status, LegacyImportStatus::Imported);
-    assert_eq!(
-        central.resolve_execution_mode(&native, ExecutionMode::Js)?,
-        ExecutionMode::Native
-    );
-    assert_eq!(
-        central.resolve_execution_mode(&legacy, ExecutionMode::Native)?,
-        ExecutionMode::Js
     );
     Ok(())
 }

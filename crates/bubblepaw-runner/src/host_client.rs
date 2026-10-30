@@ -197,41 +197,28 @@ impl HostClient {
     }
 
     /// A session on the host that publishes in `data_dir`, waiting up to
-    /// `timeout` for it to listen. A host that is still importing legacy
-    /// stores is waited for; one that stops after its import is attached
-    /// again, since nothing was submitted.
+    /// `timeout` for it to listen.
     pub async fn attach(data_dir: &Path, timeout: Duration) -> Result<Self, ClientError> {
-        loop {
-            let connection = host_transport::connect(data_dir, timeout)
-                .await
-                .map_err(ClientError::host)?;
-            let (read, mut write) = tokio::io::split(connection);
-            let mut reader = BufReader::new(read);
-            let open = json!({"jsonrpc":"2.0","id":0,"method":"attach.session","params":{}});
-            write_frame(&mut write, &open)
-                .await
-                .map_err(|error| ClientError::Host(error.to_string()))?;
-            let opened = loop {
-                let frame = read_frame(&mut reader).await?.ok_or_else(|| {
-                    ClientError::Host("the host closed before the session opened".into())
-                })?;
-                match frame["method"].as_str() {
-                    Some("host.retry") => break None,
-                    // `host.importing`: the host serves this session after its import.
-                    Some(_) => continue,
-                    None => break Some(frame),
-                }
-            };
-            let Some(opened) = opened else { continue };
-            let result = reply_result(opened)?;
-            if result["protocol_version"] != HOST_PROTOCOL_VERSION {
-                return Err(ClientError::Protocol(format!(
-                    "the host opened protocol version {}, but this client speaks {HOST_PROTOCOL_VERSION}",
-                    result["protocol_version"]
-                )));
-            }
-            return Ok(Self::over(reader, write));
+        let connection = host_transport::connect(data_dir, timeout)
+            .await
+            .map_err(ClientError::host)?;
+        let (read, mut write) = tokio::io::split(connection);
+        let mut reader = BufReader::new(read);
+        let open = json!({"jsonrpc":"2.0","id":0,"method":"attach.session","params":{}});
+        write_frame(&mut write, &open)
+            .await
+            .map_err(|error| ClientError::Host(error.to_string()))?;
+        let opened = read_frame(&mut reader)
+            .await?
+            .ok_or_else(|| ClientError::Host("the host closed before the session opened".into()))?;
+        let result = reply_result(opened)?;
+        if result["protocol_version"] != HOST_PROTOCOL_VERSION {
+            return Err(ClientError::Protocol(format!(
+                "the host opened protocol version {}, but this client speaks {HOST_PROTOCOL_VERSION}",
+                result["protocol_version"]
+            )));
         }
+        Ok(Self::over(reader, write))
     }
 
     fn over<R, W>(mut reader: BufReader<R>, mut write: W) -> Self

@@ -414,7 +414,6 @@ async fn pressure_catch_up_uses_explicit_cold_candidate_before_first_dispatch() 
     };
     config.lcm.raw_tail_tokens = 32;
     config.lcm.output_reserve_tokens = 0;
-    config.lcm.task_anchor_tokens = 32;
     config.lcm.episodes.source_target_tokens = 64;
     config.lcm.episodes.source_max_tokens = 512;
     f.context = Arc::new(SummarizingContext::new(

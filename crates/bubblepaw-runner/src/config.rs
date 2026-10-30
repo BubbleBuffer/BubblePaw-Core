@@ -30,15 +30,6 @@ use roles::resolve_role;
 
 const DEFAULTS: &str = include_str!("config/defaults.toml");
 
-/// Existing environment aliases are applied at the environment layer.
-pub const LEGACY_ENV: &[&str] = &[
-    "BUBBLEPAW_EPISODE_SUMMARY_BASE_URL",
-    "BUBBLEPAW_EPISODE_SUMMARY_KEY_ENV",
-    "BUBBLEPAW_EPISODE_SUMMARY_REASONING_FIELDS",
-    "BUBBLEPAW_EPISODE_SUMMARY_MODEL",
-    "BUBBLEPAW_EPISODE_RETRY_BASE_MS",
-];
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Override {
     pub path: String,
@@ -397,11 +388,6 @@ impl EffectiveConfig {
         // the names before interpreting BUBBLEPAW_* as config paths.
         let mut credential_names = key_names(&result.value);
         for (name, value) in &options.env {
-            if name == "BUBBLEPAW_EPISODE_SUMMARY_KEY_ENV"
-                && let Some(name) = parse_value(value).as_str()
-            {
-                credential_names.insert(name.to_owned());
-            }
             if let Some(path) = name.strip_prefix("BUBBLEPAW_") {
                 collect_key_names(
                     &parse_value(value),
@@ -417,20 +403,11 @@ impl EffectiveConfig {
             .load_options
             .env
             .retain(|(name, _)| name.starts_with("BUBBLEPAW_") && !credential_names.contains(name));
-        for (name, value) in &options.env {
-            if name == "BUBBLEPAW_CONFIG" || credential_names.contains(name) {
-                continue;
-            }
-            if let Some(entry) = legacy_override(name, value)? {
-                result.apply(entry, "env")?;
-            }
-        }
         let mut env = options.env;
         env.sort_by(|a, b| a.0.cmp(&b.0));
         for (name, value) in env {
             if name == "BUBBLEPAW_CONFIG"
                 || name == "BUBBLEPAW_PROVIDER_DUMP_DIR"
-                || LEGACY_ENV.contains(&name.as_str())
                 || credential_names.contains(&name)
             {
                 continue;
@@ -485,21 +462,7 @@ impl EffectiveConfig {
             &source,
         )
     }
-    fn apply(&mut self, mut entry: Override, source: &str) -> Result<()> {
-        // `approval` is a spelling alias; keep one canonical table and provenance.
-        if entry.path == "approval" || entry.path.starts_with("approval.") {
-            entry.path = entry.path.replacen("approval", "approvals", 1);
-        }
-        if entry.path.is_empty()
-            && let Some(table) = entry.value.as_table_mut()
-            && let Some(approval) = table.remove("approval")
-        {
-            ensure!(
-                !table.contains_key("approvals"),
-                "Use either [approval] or [approvals] in one config layer, not both"
-            );
-            table.insert("approvals".into(), approval);
-        }
+    fn apply(&mut self, entry: Override, source: &str) -> Result<()> {
         validate_keys(&entry.value, &entry.path)?;
         if entry.path.is_empty() && entry.value.as_table().is_some_and(|table| table.is_empty()) {
             return Ok(());
@@ -693,10 +656,7 @@ impl EffectiveConfig {
                     .join(&*directory);
             }
         }
-        for (name, path) in [
-            ("data_dir", &mut raw.storage.data_dir),
-            ("legacy_db", &mut raw.storage.legacy_db),
-        ] {
+        for (name, path) in [("data_dir", &mut raw.storage.data_dir)] {
             if !path.as_os_str().is_empty()
                 && path.is_relative()
                 && let Some(base) = self.bases.get(&format!("storage.{name}"))
@@ -797,10 +757,7 @@ impl EffectiveConfig {
                 }
             }
         }
-        for (name, path) in [
-            ("data_dir", &settings.storage.data_dir),
-            ("legacy_db", &settings.storage.legacy_db),
-        ] {
+        for (name, path) in [("data_dir", &settings.storage.data_dir)] {
             merge_at(
                 &mut effective,
                 &["storage", name],
@@ -974,7 +931,6 @@ impl Agents {
 #[derive(Clone, Debug, Deserialize)]
 pub struct StorageSettings {
     pub data_dir: PathBuf,
-    pub legacy_db: PathBuf,
     pub finished_event_retention_hours: u32,
     pub telemetry_retention_days: u32,
     pub archive_after_days: u32,
@@ -1744,38 +1700,6 @@ pub fn parse_value(value: &str) -> Value {
             (table.len() == 1).then(|| table.remove("value"))?
         })
         .unwrap_or_else(|| Value::String(value.into()))
-}
-fn legacy_override(name: &str, value: &str) -> Result<Option<Override>> {
-    let entry = match name {
-        "BUBBLEPAW_EPISODE_SUMMARY_BASE_URL" => {
-            Override::value("providers.opencode.base_url", Value::String(value.into()))
-        }
-        "BUBBLEPAW_EPISODE_SUMMARY_KEY_ENV" => {
-            Override::value("providers.opencode.key_env", Value::String(value.into()))
-        }
-        "BUBBLEPAW_EPISODE_SUMMARY_REASONING_FIELDS" => {
-            let value: serde_json::Value = serde_json::from_str(value).map_err(|_| {
-                anyhow::anyhow!("Invalid BUBBLEPAW_EPISODE_SUMMARY_REASONING_FIELDS JSON")
-            })?;
-            Override::replace("providers.opencode.reasoning", Value::try_from(value)?)
-        }
-        "BUBBLEPAW_EPISODE_SUMMARY_MODEL" => {
-            let model = if value.contains('/') {
-                value.into()
-            } else {
-                format!("opencode/{value}")
-            };
-            Override::value(
-                "roles.summary.models",
-                Value::Array(vec![Value::String(model), Value::String("main".into())]),
-            )
-        }
-        "BUBBLEPAW_EPISODE_RETRY_BASE_MS" => {
-            Override::value("context.retry_base_ms", parse_value(value))
-        }
-        _ => return Ok(None),
-    };
-    Ok(Some(entry))
 }
 /// Shape checks for `[mcp]` before typed deserialization. Secrets are never read
 /// here: `env_from` entries are checked as environment names only.
@@ -2948,11 +2872,11 @@ cache_max_bytes = 1048576
     }
 
     #[test]
-    fn approval_deny_alias_layers_validation_and_reload_classification() {
+    fn approval_deny_layers_validation_and_reload_classification() {
         let root = tempfile::tempdir().unwrap();
         let mut opts = options(root.path());
         let file = opts.workspace.join(".bubblepaw/config.toml");
-        write(&file, "[approval]\ndeny=['exec','mcp__server__erase']\n");
+        write(&file, "[approvals]\ndeny=['exec','mcp__server__erase']\n");
         let base = EffectiveConfig::load(opts.clone()).unwrap();
         assert_eq!(
             base.settings().unwrap().approvals.deny,
@@ -2963,17 +2887,17 @@ cache_max_bytes = 1048576
                 .unwrap()
                 .starts_with("project:")
         );
-        opts.cli = vec![Override::set("approval.deny=['edit']").unwrap()];
+        opts.cli = vec![Override::set("approvals.deny=['edit']").unwrap()];
         let next = EffectiveConfig::load(opts.clone()).unwrap();
         assert_eq!(next.settings().unwrap().approvals.deny, ["edit"]);
         assert!(!base.same_provider_config(&next));
         assert!(!next.restart_needed(&base));
         for text in [
-            "[approval]\ndeny=['']\n",
-            "[approval]\ndeny=['   ']\n",
-            "[approval]\ndeny='exec'\n",
-            "[approval]\ndeny=[123]\n",
-            "[approval]\ndeny=['exec']\n[approvals]\nconfirm='allow'\n",
+            "[approvals]\ndeny=['']\n",
+            "[approvals]\ndeny=['   ']\n",
+            "[approvals]\ndeny='exec'\n",
+            "[approvals]\ndeny=[123]\n",
+            "[approval]\ndeny=['exec']\n",
         ] {
             write(&file, text);
             let mut invalid = opts.clone();
@@ -3005,7 +2929,7 @@ cache_max_bytes = 1048576
                 .unwrap()
                 .hardline
         );
-        write(&file, "[approval]\nhardline=false\n");
+        write(&file, "[approvals]\nhardline=false\n");
         let off = EffectiveConfig::load(opts.clone()).unwrap();
         assert!(!off.settings().unwrap().approvals.hardline);
         assert!(
@@ -3018,7 +2942,7 @@ cache_max_bytes = 1048576
                 .unwrap()
                 .starts_with("project:")
         );
-        opts.cli = vec![Override::set("approval.hardline=true").unwrap()];
+        opts.cli = vec![Override::set("approvals.hardline=true").unwrap()];
         assert!(
             EffectiveConfig::load(opts.clone())
                 .unwrap()
@@ -3027,7 +2951,7 @@ cache_max_bytes = 1048576
                 .approvals
                 .hardline
         );
-        for text in ["[approval]\nhardline='no'\n", "[approval]\nhardline=1\n"] {
+        for text in ["[approvals]\nhardline='no'\n", "[approvals]\nhardline=1\n"] {
             write(&file, text);
             let mut invalid = opts.clone();
             invalid.cli.clear();
@@ -3668,34 +3592,6 @@ cache_max_bytes = 1048576
     }
 
     #[test]
-    fn legacy_env_aliases_and_empty_endpoint_keep_old_behavior() {
-        let root = tempfile::tempdir().unwrap();
-        let config = EffectiveConfig::load(options_with_env(
-            root.path(),
-            vec![
-                ("BUBBLEPAW_EPISODE_SUMMARY_BASE_URL".into(), "".into()),
-                (
-                    "BUBBLEPAW_EPISODE_SUMMARY_REASONING_FIELDS".into(),
-                    "{}".into(),
-                ),
-                ("BUBBLEPAW_EPISODE_RETRY_BASE_MS".into(), "0".into()),
-            ],
-        ))
-        .unwrap();
-        let settings = config.settings().unwrap();
-        assert_eq!(settings.endpoints.opencode_base_url, None);
-        assert_eq!(settings.roles.summary.models, ["codex/gpt-6-luna"]);
-        assert_eq!(settings.roles.chapter.models, ["codex/gpt-6-luna"]);
-        // The decider has no built-in chain, so there is no default to follow the summary.
-        assert!(settings.roles.decider.models.is_empty());
-        assert_eq!(settings.retry_base_ms, 0);
-        assert_eq!(
-            settings.endpoints.opencode_reasoning_fields,
-            serde_json::json!({})
-        );
-    }
-
-    #[test]
     fn partial_role_overrides_preserve_models_after_shorthand() {
         let root = tempfile::tempdir().unwrap();
         let mut opts = options(root.path());
@@ -3798,36 +3694,6 @@ cache_max_bytes = 1048576
         settings.register_providers(&mut registry).unwrap();
         assert!(registry.get("fixture").is_some());
         assert!(registry.get("demo").is_none());
-    }
-
-    #[test]
-    fn legacy_reasoning_json_replaces_the_complete_object() {
-        let root = tempfile::tempdir().unwrap();
-        let config = EffectiveConfig::load(options_with_env(
-            root.path(),
-            vec![(
-                "BUBBLEPAW_EPISODE_SUMMARY_REASONING_FIELDS".into(),
-                r#"{"reasoning_effort":"high"}"#.into(),
-            )],
-        ))
-        .unwrap();
-        assert_eq!(
-            config
-                .settings()
-                .unwrap()
-                .endpoints
-                .opencode_reasoning_fields,
-            serde_json::json!({"reasoning_effort":"high"})
-        );
-        assert_eq!(
-            config.source("providers.opencode.reasoning.thinking.type"),
-            None
-        );
-        assert_eq!(
-            config.source("providers.opencode.reasoning.reasoning_effort"),
-            Some("env")
-        );
-        assert!(!config.render().unwrap().contains("\"thinking\""));
     }
 
     #[test]
