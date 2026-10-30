@@ -339,15 +339,12 @@ pub enum Command {
         #[arg(long)]
         max_cost_usd: Option<f64>,
     },
-    /// Serve the local workbench, embedding the harness in this process.
+    /// Serve the host over loopback HTTP (JSON-RPC at /rpc, SSE events, REST shims), embedding the harness in this process.
     #[cfg(feature = "web")]
     Web {
         /// Local port to listen on (127.0.0.1); 0 picks a free port.
         #[arg(long, default_value_t = 8788)]
         port: u16,
-        /// Built frontend directory containing index.html (required).
-        #[arg(long)]
-        assets: PathBuf,
     },
 }
 

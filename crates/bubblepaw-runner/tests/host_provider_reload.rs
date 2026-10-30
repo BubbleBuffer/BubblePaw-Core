@@ -378,14 +378,7 @@ async fn web_setup_save_and_disk_reload_apply_to_the_running_host_atomically() {
         config("custom/first", "custom", &first.base, "first"),
     )
     .unwrap();
-    let assets = root.path().join("assets");
-    std::fs::create_dir(&assets).unwrap();
-    std::fs::write(
-        assets.join("index.html"),
-        "<html>Provider reload fixture</html>",
-    )
-    .unwrap();
-    let (mut child, base) = web_host::start(host(root.path(), &file), &assets).await;
+    let (mut child, base) = web_host::start(host(root.path(), &file)).await;
     web_ready(&mut child, &base).await;
     let client = reqwest::Client::new();
     let opened = web_request(

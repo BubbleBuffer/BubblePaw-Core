@@ -21,9 +21,6 @@ async fn post_rpc(client: &reqwest::Client, base: &str, body: Value) -> Result<r
 #[tokio::test]
 async fn rpc_requests_run_the_shared_table_and_notifications_get_no_body() -> Result<()> {
     let directory = tempfile::tempdir()?;
-    let assets = directory.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "fixture")?;
     let store = Store::open_data_dir(directory.path().join("data"))?;
     let harness = Arc::new(Harness::new(
         store.clone(),
@@ -44,7 +41,6 @@ async fn rpc_requests_run_the_shared_table_and_notifications_get_no_body() -> Re
             provider: "demo".into(),
             read_only: false,
         },
-        assets,
         WebServices::default(),
         async {
             let _ = receive.await;

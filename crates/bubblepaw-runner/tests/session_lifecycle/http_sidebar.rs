@@ -35,9 +35,6 @@ async fn http_sidebar_keeps_archived_root_and_child_packed_with_accurate_summari
     assert!(store.archive_chat(&parent.id)?);
     let path = data.join("chats").join(format!("{}.db.zst", parent.id));
     let archived_bytes = fs::read(&path)?;
-    let assets = root.path().join("dist");
-    fs::create_dir(&assets)?;
-    fs::write(assets.join("index.html"), "fixture")?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (stop, receive) = tokio::sync::oneshot::channel();
@@ -51,7 +48,6 @@ async fn http_sidebar_keeps_archived_root_and_child_packed_with_accurate_summari
             provider: "demo".into(),
             read_only: false,
         },
-        assets,
         WebServices::default(),
         async {
             let _ = receive.await;

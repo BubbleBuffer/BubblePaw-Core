@@ -204,8 +204,7 @@ fn config_overrides(
             | "--arm"
             | "--max-cost-usd"
             | "--threshold"
-            | "--port"
-            | "--assets" => {
+            | "--port" => {
                 value()?;
                 None
             }

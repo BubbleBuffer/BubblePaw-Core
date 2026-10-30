@@ -425,14 +425,14 @@ pub(super) async fn execute(
     let outcome = Box::pin(async {
         match &cli.command {
             #[cfg(feature = "web")]
-            Command::Web { port, assets } => {
+            Command::Web { port } => {
                 let provider_setup = providers(&effective, &model_provider, &live_config)?;
                 let provider_routes =
                     bubblepaw_runner::web_providers::router(provider_setup.clone());
                 let listener =
                     tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, *port)).await?;
                 let address = listener.local_addr()?;
-                diagnostic!("BubblePaw workbench: http://{address}");
+                diagnostic!("BubblePaw host: http://{address}");
                 let generation = model_provider.snapshot();
                 let settings = generation.settings.clone();
                 let config = bubblepaw_runner::web::WebConfig {
@@ -446,7 +446,6 @@ pub(super) async fn execute(
                     harness.clone(),
                     store.clone(),
                     config,
-                    assets.clone(),
                     bubblepaw_runner::web::WebServices {
                         read_scope: None,
                         session_scope: Some(scope.clone()),

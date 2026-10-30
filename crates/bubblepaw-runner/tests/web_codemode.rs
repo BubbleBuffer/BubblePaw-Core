@@ -103,9 +103,6 @@ async fn returned_read_reaches_next_model_request_without_publishing_a_dump() ->
     }
     // The same session projection used by the frontend must not contain the
     // model's observation as a published text output.
-    let assets = directory.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "fixture")?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (stop, receive) = tokio::sync::oneshot::channel();
@@ -119,7 +116,6 @@ async fn returned_read_reaches_next_model_request_without_publishing_a_dump() ->
             provider: "demo".into(),
             read_only: false,
         },
-        assets,
         WebServices {
             repl: Some(repl.clone()),
             artifacts: Some(artifacts),

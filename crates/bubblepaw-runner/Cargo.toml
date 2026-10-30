@@ -9,7 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [features]
-web = ["dep:axum", "dep:tower-http"]
+web = ["dep:axum"]
 # Episode-replay and probe benchmark code.
 bench = []
 # Builds native fixture binaries the integration tests spawn.
@@ -76,7 +76,6 @@ tiktoken-rs = "0.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 axum = { version = "0.8", optional = true }
-tower-http = { version = "0.6", features = ["fs"], optional = true }
 
 [dev-dependencies]
 axum = "0.8"

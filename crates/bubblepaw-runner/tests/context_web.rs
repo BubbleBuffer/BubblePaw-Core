@@ -36,9 +36,6 @@ async fn check_context_routes(workspace_scope: bool) -> Result<()> {
         ToolRegistry::default(),
         HarnessConfig::default(),
     ));
-    let assets = f.root.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "fixture")?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (stop, receive) = tokio::sync::oneshot::channel();
@@ -52,7 +49,6 @@ async fn check_context_routes(workspace_scope: bool) -> Result<()> {
             provider: "demo".into(),
             read_only: false,
         },
-        assets,
         WebServices {
             read_scope: workspace_scope.then(|| ReadScope::Workspace(f.root.path().into())),
             ..Default::default()

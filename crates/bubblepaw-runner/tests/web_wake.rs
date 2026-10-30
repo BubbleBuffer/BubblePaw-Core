@@ -51,9 +51,6 @@ struct Fixture {
 impl Fixture {
     async fn new() -> Result<Self> {
         let directory = tempfile::tempdir()?;
-        let assets = directory.path().join("dist");
-        std::fs::create_dir(&assets)?;
-        std::fs::write(assets.join("index.html"), "synthetic fixture")?;
         let store = Store::open_data_dir(directory.path().join("data"))?;
         let provider = Arc::new(ParentProvider::default());
         let child = Arc::new(ChildProvider(Semaphore::new(0)));
@@ -93,7 +90,6 @@ impl Fixture {
                 provider: "scripted".into(),
                 read_only: true,
             },
-            assets,
             listener.local_addr()?.port(),
             WebServices {
                 agents: Some(agents.clone()),
@@ -471,7 +467,6 @@ async fn router_rejects_process_services_bound_to_a_different_completion_inbox()
             provider: "scripted".into(),
             read_only: true,
         },
-        directory.path().to_owned(),
         8788,
         WebServices {
             agents: Some(agents),

@@ -46,9 +46,6 @@ pub enum Transport {
 
 pub fn seed(root: &Path) {
     std::fs::write(root.join("config.toml"), CONFIG).unwrap();
-    let assets = root.join("assets");
-    std::fs::create_dir_all(&assets).unwrap();
-    std::fs::write(assets.join("index.html"), "<html>host api parity</html>").unwrap();
 }
 
 pub struct Peer {
@@ -119,8 +116,7 @@ impl Peer {
                 }
             }
             Transport::Rpc => {
-                let (child, base) =
-                    crate::web_host::start(command(root), &root.join("assets")).await;
+                let (child, base) = crate::web_host::start(command(root)).await;
                 Self {
                     transport,
                     next: 1,

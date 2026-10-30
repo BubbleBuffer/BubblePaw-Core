@@ -37,9 +37,6 @@ async fn web_snapshot_and_answer_root_question() -> Result<()> {
             ..Default::default()
         },
     ));
-    let assets = directory.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "fixture")?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (stop, receive) = tokio::sync::oneshot::channel();
@@ -53,7 +50,6 @@ async fn web_snapshot_and_answer_root_question() -> Result<()> {
             provider: "demo".into(),
             read_only: false,
         },
-        assets,
         WebServices {
             questions: Some(questions.clone()),
             repl: Some(repl.clone()),

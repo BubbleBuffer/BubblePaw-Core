@@ -97,9 +97,6 @@ async fn hidden_workers_are_omitted_from_sidebar_and_live_and_replayed_sse() -> 
     );
     let first = main.start(&parent.id, "visible replay marker", Default::default())?;
     main.wait_for_idle(&parent.id).await?;
-    let assets = directory.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "<html>synthetic fixture</html>")?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (shutdown, stop) = oneshot::channel();
@@ -113,7 +110,6 @@ async fn hidden_workers_are_omitted_from_sidebar_and_live_and_replayed_sse() -> 
             provider: "scripted".into(),
             read_only: true,
         },
-        assets,
         WebServices::default(),
         async {
             let _ = stop.await;

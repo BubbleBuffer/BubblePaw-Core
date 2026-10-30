@@ -15,7 +15,7 @@ Operational warnings from the core and runner go to stderr through `tracing`. Th
 Set `BUBBLEPAW_PROVIDER_DUMP_DIR` to a local directory to opt into paired `<timestamp>-<request kind>-<seq>.request.json` / `.response.txt` files containing provider HTTP bodies (including raw SSE and readable reasoning), without HTTP headers (cancellation and existing read limits can leave a partial response); dumping is off by default, and empty summary errors include at most 500 characters of readable reasoning.
 
 ```powershell
-.\target\release\bubblepaw.exe --workspace . --trace-file .run\behavior.jsonl --trace-label cmd-v0 web --port 8788 --assets C:\path\to\frontend\dist
+.\target\release\bubblepaw.exe --workspace . --trace-file .run\behavior.jsonl --trace-label cmd-v0 web --port 8788
 ```
 
 `--trace-mode metadata` is the default. It records identifiers, byte/count metrics,

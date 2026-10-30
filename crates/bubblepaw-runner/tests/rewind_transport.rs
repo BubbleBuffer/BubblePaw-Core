@@ -324,10 +324,7 @@ async fn web_endpoint_and_message_commands_restore_the_same_persisted_boundary()
     web_prefix["messages"] = web_messages(&prefix["messages"]);
     let web_after_messages = web_messages(&after["messages"]);
     rpc.shutdown().await;
-    let assets = root.path().join("assets");
-    std::fs::create_dir(&assets).unwrap();
-    std::fs::write(assets.join("index.html"), "rewind fixture").unwrap();
-    let (mut child, base) = web_host::start(host(root.path()), &assets).await;
+    let (mut child, base) = web_host::start(host(root.path())).await;
     let client = reqwest::Client::new();
     tokio::time::timeout(Duration::from_secs(20), async {
         loop {

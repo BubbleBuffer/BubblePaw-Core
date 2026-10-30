@@ -527,7 +527,7 @@ limited to 32 MiB with a bounded stack; up to 64 host calls can be pending.
 JS heap that shares session-owned native handles and the workspace. `inspect`,
 `reset`, `close`, `cancel`, `background`, `wake` are explicit controls. Reset/close
 of a busy environment requires cancellation. These are backend/API controls;
-the basic web frontend does not expose environment management. Inspection does
+clients need not expose environment management. Inspection does
 not invoke user getters or `toJSON` functions. A cell cannot reset, close or cancel
 its own active environment; use another environment or host control for that.
 

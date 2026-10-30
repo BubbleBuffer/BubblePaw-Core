@@ -527,9 +527,6 @@ async fn http_create_rename_slash_and_list_preserve_names_without_model_calls() 
         ToolRegistry::new(),
         HarnessConfig::default(),
     ));
-    let assets = root.path().join("dist");
-    fs::create_dir(&assets)?;
-    fs::write(assets.join("index.html"), "fixture")?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (stop, receive) = tokio::sync::oneshot::channel();
@@ -543,7 +540,6 @@ async fn http_create_rename_slash_and_list_preserve_names_without_model_calls() 
             provider: "demo".into(),
             read_only: false,
         },
-        assets,
         WebServices::default(),
         async {
             let _ = receive.await;
