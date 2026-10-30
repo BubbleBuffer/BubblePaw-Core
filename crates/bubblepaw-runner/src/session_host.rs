@@ -1,13 +1,14 @@
 use crate::cli_host::*;
-use crate::stdio_transport;
 use bubblepaw_runner::host_api::{
     HostCtx, Profile, ReadScope, approvals::deny_unattended, dispatch,
 };
 mod cli_run;
+pub mod host_context;
 mod open;
 #[path = "session_prompts.rs"]
 mod prompts;
 use cli_run::{OneShot, run_session};
+use host_context::{HostContextMode, host_context};
 use open::{open_session, providers, workspace_roots};
 
 /// Reason recorded on every approval a one-shot run denies without a client.
@@ -19,6 +20,7 @@ pub(super) async fn execute(
     host: HostLifetime,
     output: Output,
     cancellation: CancellationToken,
+    mut host_mode: Option<HostContextMode>,
 ) -> Result<()> {
     let PreparedRequest {
         cli,
@@ -475,7 +477,7 @@ pub(super) async fn execute(
                 )
                 .await
             }
-            Command::Stdio => stdio_transport::run(ctx.clone(), cancellation.clone()).await,
+            Command::Stdio => host_context(ctx.clone(), host_mode.take(), &cancellation).await,
             Command::Run { session, name, .. } => {
                 let prompt = task_prompt
                     .as_deref()

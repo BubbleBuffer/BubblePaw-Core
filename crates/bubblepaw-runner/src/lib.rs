@@ -47,6 +47,7 @@ mod history_snapshot;
 pub mod host_api;
 #[doc(hidden)]
 pub mod host_attach;
+pub mod host_client;
 #[doc(hidden)]
 pub mod host_lifetime;
 pub mod host_transport;
@@ -76,6 +77,7 @@ pub mod replay;
 pub mod research;
 pub mod rewind;
 pub mod root_prompt;
+pub mod rpc_session;
 pub mod runtime_note;
 pub mod scratchpads;
 pub mod session_control;

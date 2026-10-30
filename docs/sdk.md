@@ -100,6 +100,47 @@ The same module exports typed host reads: `context_view`, `context_structure`,
 DTOs. These share the implementation behind the stdio `context` feature and web
 GET routes documented in [Session API](session-api.md); all reads write nothing.
 
+## Client
+
+`Client` talks to a BubblePaw host through the shared method table, whether it
+runs in this process or in another. It adds no methods of its own: `call` sends
+any method name and parameters that stdio accepts, with `Profile::Full` and
+host-wide reads (`ReadScope::Host`). Every constructor and method must run inside
+a Tokio runtime.
+
+```rust,ignore
+let client = Client::embedded(builder).await?;            // build and serve the host here
+let client = Client::attach(&data_dir).await?;            // the host that owns data_dir
+let client = Client::open(&data_dir, |store| Ok(builder(store))).await?;
+let session = client.call("session.open", json!({"title": "x"})).await?;
+let mut notifications = client.subscribe();
+while let Some(record) = notifications.recv().await { /* event, events.gap */ }
+client.close().await?;
+```
+
+- `embedded(builder)` builds the host. With a data directory it binds the
+  control endpoint and publishes `host.json`, as a CLI host does, so other
+  clients and `bubblepaw run`/`delegate` attach to it. An in-memory store serves
+  only this client.
+- `attach(data_dir)` connects to the host that owns `data_dir`, CLI or embedded,
+  and opens a JSON-RPC session on it (see [host attach](host-attach.md)). It
+  waits up to five seconds for a host that is still starting.
+- `open(data_dir, build)` attaches when another process (or a host this process
+  already serves) owns `data_dir`; otherwise it opens the store, passes it to
+  `build` and embeds the host. `build` runs only when this process becomes the
+  owner.
+- `call(method, params)` returns the method's `result`. A JSON-RPC error is
+  `ClientError::Rpc {code, message, data}`. A call whose session ends before the
+  reply fails with `ClientError::Disconnected` and is never sent again, because
+  the host may already have accepted it.
+- `subscribe()` returns `Notifications` from now on, in the stdio shapes: `event`
+  with the serialized `HarnessEvent`, and `events.gap` when the subscriber fell
+  behind or the host dropped records. Recover a gap with `events.after`.
+- `close()` attached ends only this session. Embedded, it ends the attached
+  sessions, removes `host.json`, waits for admitted runs and stops the host.
+
+`host()` returns the embedded `Host`, or `None` when attached.
+
 ## HostBuilder
 
 `HostBuilder` replaces the wiring an embedder writes by hand. `build` must run

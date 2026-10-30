@@ -1,8 +1,9 @@
 //! Transport parity for the host API table. Every `host_api::METHODS` entry has
-//! a fixture, and each fixture runs through the real `stdio` process and through
-//! `POST /rpc` of the real `web` process. Both transports share one data
-//! directory: `stdio` runs every step and shuts down, then `web` runs the same
-//! steps against its own paired sessions. Normalized replies must match step
+//! a fixture, and each fixture runs through the real `stdio` process, through
+//! `POST /rpc` of the real `web` process, and through the host-API client,
+//! attached to a `stdio` host's endpoint and embedded on the host context. All
+//! share one data directory: each runs every step and shuts down, then the next
+//! runs the same steps against its own paired sessions. Normalized replies must match step
 //! for step, so an adapter that drops, renames or rewrites a field fails here.
 #![cfg(feature = "web")]
 
@@ -68,13 +69,31 @@ fn every_table_method_has_exactly_one_fixture_that_exercises_it() {
     );
 }
 
-/// Every table method, through both transports, against one store.
+/// Every table method, through every transport, against one store: stdio,
+/// `/rpc`, and the host-API client attached to a CLI host's endpoint and
+/// embedded on the host context.
 #[tokio::test]
-async fn stdio_and_rpc_agree_on_every_table_method() {
+async fn every_transport_agrees_on_every_table_method() {
     let root = tempfile::tempdir().unwrap();
     peer::seed(root.path());
     let fixtures = fixtures::all();
     let stdio = run::phase(peer::Transport::Stdio, root.path(), "stdio", &fixtures).await;
     let rpc = run::phase(peer::Transport::Rpc, root.path(), "http", &fixtures).await;
     run::compare(&stdio, &rpc);
+    let attached = run::phase(
+        peer::Transport::Attached,
+        root.path(),
+        "attached",
+        &fixtures,
+    )
+    .await;
+    run::compare(&stdio, &attached);
+    let embedded = run::phase(
+        peer::Transport::Embedded,
+        root.path(),
+        "embedded",
+        &fixtures,
+    )
+    .await;
+    run::compare(&stdio, &embedded);
 }
