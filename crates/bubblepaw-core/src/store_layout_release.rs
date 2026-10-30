@@ -9,6 +9,43 @@ const HANDLE_WAIT: Duration = Duration::from_secs(10);
 /// Last guard for a handle outside this store, such as a file scanner.
 const SHARING_RETRY: Duration = Duration::from_secs(1);
 
+/// Marks a root as being deleted for as long as it lives. While marked, the
+/// chat cannot be reopened, so nothing can take a new handle to its files
+/// between the eviction and the catalog rows being removed.
+pub(super) struct Deleting<'a> {
+    layout: &'a Layout,
+    root: String,
+}
+
+impl<'a> Deleting<'a> {
+    /// Evict the chat from the cache and mark it, under the cache lock.
+    pub(super) fn evict(layout: &'a Layout, root: &str) -> Self {
+        let mut chats = layout.chats.lock().unwrap();
+        layout.deleting.lock().unwrap().insert(root.to_owned());
+        chats.remove(root);
+        Self {
+            layout,
+            root: root.to_owned(),
+        }
+    }
+}
+
+impl Drop for Deleting<'_> {
+    fn drop(&mut self) {
+        self.layout.deleting.lock().unwrap().remove(&self.root);
+    }
+}
+
+/// Refuse to open a chat that a delete is removing. Call it under the chat
+/// cache lock.
+pub(super) fn ensure_not_deleting(layout: &Layout, root: &str) -> Result<()> {
+    anyhow::ensure!(
+        !layout.deleting.lock().unwrap().contains(root),
+        "Session {root} is being deleted"
+    );
+    Ok(())
+}
+
 /// Wait until `chat` is the only handle to its connection, close it on this
 /// thread, then remove the database and its sidecars. The chat must already be
 /// out of the layout cache, so no new handle to it can appear.
@@ -78,6 +115,26 @@ mod tests {
         );
         assert!(!path.exists(), "the chat database is removed");
         assert!(store.session(&id).is_err(), "the session is deleted");
+        Ok(())
+    }
+
+    #[test]
+    fn a_chat_being_deleted_cannot_be_reopened() -> Result<()> {
+        let directory = tempfile::tempdir()?;
+        let store = Store::open_data_dir(directory.path())?;
+        let id = store.create_session("reopen")?.id;
+        let held = store.scoped(&id)?.expect("a layout chat");
+        let layout = store.0.layout.as_ref().unwrap();
+        let deleting = Deleting::evict(layout, &id);
+        let reopened = store.scoped(&id);
+        assert!(reopened.is_err(), "a chat being deleted reopened");
+        assert!(!layout.chats.lock().unwrap().contains_key(&id));
+        drop(deleting);
+        drop(held);
+        assert!(
+            store.scoped(&id)?.is_some(),
+            "the mark ends with the delete"
+        );
         Ok(())
     }
 

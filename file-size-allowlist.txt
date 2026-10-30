@@ -7,7 +7,7 @@ crates/bubblepaw-core/src/lib.rs 818
 crates/bubblepaw-core/src/runtime.rs 1614
 crates/bubblepaw-core/src/store.rs 3440
 crates/bubblepaw-core/src/store_cold.rs 573
-crates/bubblepaw-core/src/store_layout.rs 3262
+crates/bubblepaw-core/src/store_layout.rs 3266
 crates/bubblepaw-core/src/store_legacy.rs 909
 crates/bubblepaw-core/src/store_serving.rs 572
 crates/bubblepaw-core/src/tests.rs 2019
