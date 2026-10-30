@@ -1,0 +1,15 @@
+<!doctype html>
+<!-- GitHub social preview source: README lockup and the README mermaid flow cropped to the agent loop and its targets. Needs network for mermaid (jsdelivr). The PNG used Atkinson Hyperlegible for diagram text; this repo ships no fonts, so a rebuild falls back to sans-serif. Render: 1280x640 screenshot of this page (chrome-headless-shell --window-size=1280,640 --virtual-time-budget=20000). --><meta charset=utf-8><style>@font-face{font-family:Bric;src:local(sans-serif);font-weight:200 800}
+@font-face{font-family:Atk;src:local(sans-serif);font-weight:200 800}
+*{box-sizing:border-box;margin:0}
+html,body{width:1280px;height:640px;overflow:hidden;background:#101214;color:#F0EFED;position:relative;font-family:Atk,sans-serif}
+.bric{font-family:Bric;font-variation-settings:"wght" 700,"opsz" 96;letter-spacing:-0.01em}
+.lock{position:absolute;left:70px;top:50%;transform:translateY(-50%)}
+.panel{position:absolute;background:#171a1d;border:2px solid #2a2d31;border-radius:20px 0 0 20px}
+#m .edgeLabel,#m .edgeLabel *{background:#171a1d!important;color:#c9ccd0!important;fill:#c9ccd0!important}#m .node rect,#m .node path,#m .node polygon{fill:#1f2327!important;stroke:#DE945F!important}#m .flowchart-link{stroke:#9aa0a6!important}#m .marker{fill:#9aa0a6!important;stroke:#9aa0a6!important}#m .nodeLabel,#m .label{color:#F0EFED!important;font-weight:600}</style><body><img class="lock" src="./bubblepaw-dark.svg" style="width:604px"><div id="m" class="panel" style="left:700px;top:110px;width:600px;height:420px;padding:22px 20px"><pre class="mermaid" style="background:none">flowchart LR
+  loop["Agent loop<br/>(bubblepaw-core)"]
+  loop <--> store[("SQLite chats<br/>and catalog")]
+  loop -- "model steps" --> models["Model APIs"]
+  loop -- "model steps" --> cc["Claude Code<br/>(extensions/claude-code)"]
+  loop -- "tool calls" --> tools["Workspace tools<br/>and CodeMode"]
+  loop -- "tool calls" --> mcp["MCP servers"]</pre></div><script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.0/dist/mermaid.min.js"></script><script>document.fonts.load("20px Atk").then(()=>{mermaid.initialize({startOnLoad:false,theme:"base",themeVariables:{fontFamily:"Atk",fontSize:"22px",mainBkg:"#1f2327",nodeBorder:"#DE945F",lineColor:"#9aa0a6",edgeLabelBackground:"#171a1d"},flowchart:{useMaxWidth:true,nodeSpacing:36,rankSpacing:90}});mermaid.run().then(()=>{const v=document.querySelector("#m svg");v.removeAttribute("style");const b=v.viewBox.baseVal;const W=556,H=374;const k=Math.min(W/b.width,H/b.height);v.setAttribute("width",b.width*k);v.setAttribute("height",b.height*k);v.style.display="block";v.style.margin="0 auto"})})</script></body>
