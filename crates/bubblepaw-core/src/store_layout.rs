@@ -1,6 +1,8 @@
 //! Physical storage placement. Chat commits precede rebuildable projections.
 use super::*;
 use rusqlite::OpenFlags;
+#[path = "store_layout_catalog_swap.rs"]
+mod catalog_swap;
 #[path = "store_exports.rs"]
 mod exports;
 #[path = "store_layout_release.rs"]
@@ -1064,6 +1066,7 @@ impl Store {
             .as_ref()
             .context("Catalog requires a directory store")?;
         self.recover_archives()?;
+        let rows_at_start = Self::catalog_ids(layout)?;
         let mut records = Vec::new();
         let mut search_targets: HashMap<String, i64> = {
             let catalog = layout.catalog.lock().unwrap();
@@ -1253,52 +1256,18 @@ impl Store {
                 records.push((root.clone(), session, activity));
             }
         }
-        let mut catalog = layout.catalog.lock().unwrap();
-        let tx = catalog.transaction()?;
-        tx.execute("DELETE FROM sessions", [])?;
-        tx.execute(
-            "DELETE FROM metadata WHERE substr(key,1,13)='root_storage:'",
-            [],
+        let newer = Self::swap_catalog(
+            layout,
+            &rows_at_start,
+            &records,
+            &search_targets,
+            catalog_swap::ScannedRoots {
+                storage: root_storage,
+                archive_times,
+                archived: &archived_roots,
+            },
         )?;
-        for (root, policy) in root_storage {
-            tx.execute(
-                "INSERT INTO metadata VALUES(?1,?2)",
-                params![
-                    format!("root_storage:{root}"),
-                    serde_json::to_string(&policy)?
-                ],
-            )?;
-        }
-        for (root, time) in archive_times {
-            tx.execute(
-                "INSERT OR REPLACE INTO metadata VALUES(?1,?2)",
-                params![format!("archived_at:{root}"), time],
-            )?;
-        }
-        tx.execute(
-            "DELETE FROM metadata WHERE substr(key,1,14)='search_target:'",
-            [],
-        )?;
-        for (root, session, activity) in &records {
-            Self::catalog_session(&tx, root, session, activity)?;
-            if let Some(target) = search_targets.get(&session.id) {
-                tx.execute(
-                    "INSERT INTO metadata VALUES(?1,?2)",
-                    params![format!("search_target:{}", session.id), target.to_string()],
-                )?;
-            }
-            if archived_roots.contains(root) {
-                tx.execute(
-                    "UPDATE sessions SET storage_state='archived' WHERE id=?1",
-                    [&session.id],
-                )?;
-            }
-        }
-        tx.execute("DELETE FROM metadata WHERE substr(key,1,12)='archived_at:' AND NOT EXISTS(SELECT 1 FROM sessions WHERE sessions.id=substr(metadata.key,13) AND sessions.id=sessions.root_id)", [])?;
-        tx.commit()?;
-        layout.catalog_transactions.fetch_add(1, Ordering::Relaxed);
-        drop(catalog);
-        layout.pending_catalog.lock().unwrap().clear();
+        records.extend(newer);
         // The rebuilt catalog is authoritative again; drop every resolved placement.
         layout.session_roots.lock().unwrap().clear();
         // Session metadata in serving supports compatibility without owning content.
