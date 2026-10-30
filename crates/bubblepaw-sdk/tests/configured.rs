@@ -41,7 +41,10 @@ async fn open_configured_embeds_the_cli_host_and_attaches_when_owned() -> Result
         ["demo/second", "demo/first"]
     );
     let owner = Client::open_configured(config).await?;
-    assert!(owner.host().is_none(), "a configured host is not a built one");
+    assert!(
+        owner.host().is_none(),
+        "a configured host is not a built one"
+    );
     assert!(
         root.path().join("data/host.json").exists(),
         "the embedded host publishes its endpoint"

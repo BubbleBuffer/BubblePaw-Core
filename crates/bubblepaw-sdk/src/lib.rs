@@ -67,9 +67,9 @@ pub use bubblepaw_runner as runner;
 pub use bubblepaw_runner::host_api;
 pub use host_api::{HostCtx, HostError, Method, Profile, ReadScope, dispatch};
 
-pub use client::{Client, ClientError, Notifications};
 /// The CLI host's configuration, for [`Client::open_configured`].
 pub use bubblepaw_runner::host_config::{ConfigError, ConfigOptions, HostConfig};
+pub use client::{Client, ClientError, Notifications};
 pub use host::{Host, HostBuilder};
 
 /// The items nearly every embedder needs.

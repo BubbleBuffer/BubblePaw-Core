@@ -25,13 +25,19 @@ fn options(root: &Path, config: &str) -> ConfigOptions {
 fn loads_the_cli_host_request() {
     let root = tempfile::tempdir().unwrap();
     let config = HostConfig::load(options(root.path(), CONFIG)).unwrap();
-    assert_eq!(config.data_dir(), std::path::absolute(root.path().join("data")).unwrap());
+    assert_eq!(
+        config.data_dir(),
+        std::path::absolute(root.path().join("data")).unwrap()
+    );
     assert_eq!(config.workspace(), root.path().canonicalize().unwrap());
     assert!(!config.is_central());
     assert_eq!(config.settings().main_model, "demo/first");
     let request = config.into_request();
     assert!(matches!(request.cli.command, crate::cli::Command::Stdio));
-    assert_eq!(request.cli.data_dir.as_deref(), Some(request.data_dir.as_path()));
+    assert_eq!(
+        request.cli.data_dir.as_deref(),
+        Some(request.data_dir.as_path())
+    );
 }
 
 #[test]
@@ -53,7 +59,10 @@ fn a_missing_config_file_names_its_path() {
     match HostConfig::load(options) {
         Err(ConfigError::File { path, message }) => {
             assert_eq!(path, missing);
-            assert!(message.starts_with("cannot read custom config"), "{message}");
+            assert!(
+                message.starts_with("cannot read custom config"),
+                "{message}"
+            );
         }
         other => panic!("expected a file error, got {:?}", other.err()),
     }

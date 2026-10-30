@@ -116,7 +116,12 @@ pub fn layer(options: &ConfigOptions) -> Result<EffectiveConfig, ConfigError> {
         .clone()
         .unwrap_or_else(|| std::env::vars().collect());
     let workspace = options.workspace.clone().unwrap_or_else(|| ".".into());
-    check_files(&workspace, home.as_deref(), options.config_file.as_deref(), &env)?;
+    check_files(
+        &workspace,
+        home.as_deref(),
+        options.config_file.as_deref(),
+        &env,
+    )?;
     let mut cli = options.overrides.clone();
     if let Some(data_dir) = &options.data_dir {
         let data_dir = data_dir.to_string_lossy().into_owned();
@@ -332,7 +337,11 @@ impl HostConfig {
 
     /// Migrate the legacy archive once and open the store, as `bubblepaw` does.
     pub fn open_store(&self) -> anyhow::Result<Store> {
-        open_store(&self.request.data_dir, &self.request.legacy_db, &self.settings)
+        open_store(
+            &self.request.data_dir,
+            &self.request.legacy_db,
+            &self.settings,
+        )
     }
 
     /// The request a host context is started from.

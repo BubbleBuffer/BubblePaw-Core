@@ -96,10 +96,19 @@ async fn a_configured_host_sees_the_cli_hosts_providers_and_roles() {
     })
     .unwrap();
     let models = |role: &bubblepaw_runner::model_roles::ModelRole| role.models.clone();
-    assert_eq!(models(&config.settings().roles.summary), ["demo/second", "demo/first"]);
-    assert_eq!(models(&config.settings().roles.chapter), ["demo/second", "demo/first"]);
+    assert_eq!(
+        models(&config.settings().roles.summary),
+        ["demo/second", "demo/first"]
+    );
+    assert_eq!(
+        models(&config.settings().roles.chapter),
+        ["demo/second", "demo/first"]
+    );
     // `bubblepaw config` prints the layered configuration, roles included.
-    assert_eq!(config.effective().render().unwrap(), cli_config_file(&root).await);
+    assert_eq!(
+        config.effective().render().unwrap(),
+        cli_config_file(&root).await
+    );
     let store = config.open_store().unwrap();
     prepare_store(&store, config.data_dir(), config.settings()).unwrap();
     let lifetime = HostLifetime::default();
