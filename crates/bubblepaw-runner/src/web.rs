@@ -14,6 +14,7 @@ use anyhow::{Context, Result, ensure};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, rejection::JsonRejection},
+    http::StatusCode,
     middleware,
     routing::{get, post},
 };
@@ -31,7 +32,6 @@ use tokio::{
     net::TcpListener,
     sync::{Notify, broadcast},
 };
-use tower_http::services::{ServeDir, ServeFile};
 
 #[path = "web_context.rs"]
 mod context;
@@ -127,43 +127,26 @@ impl Drop for WebState {
 
 /// Build a host router on an existing Tokio runtime. `port` must be the actual
 /// listener port (including the assigned port when binding to port zero).
-pub fn router(
-    harness: Arc<Harness>,
-    store: Store,
-    config: WebConfig,
-    assets: PathBuf,
-    port: u16,
-) -> Result<Router> {
-    build_router(harness, store, config, assets, port, WebServices::default())
-        .map(|(router, _)| router)
+pub fn router(harness: Arc<Harness>, store: Store, config: WebConfig, port: u16) -> Result<Router> {
+    build_router(harness, store, config, port, WebServices::default()).map(|(router, _)| router)
 }
 pub fn router_with_services(
     harness: Arc<Harness>,
     store: Store,
     config: WebConfig,
-    assets: PathBuf,
     port: u16,
     services: WebServices,
 ) -> Result<Router> {
-    build_router(harness, store, config, assets, port, services).map(|(router, _)| router)
+    build_router(harness, store, config, port, services).map(|(router, _)| router)
 }
 
 fn build_router(
     harness: Arc<Harness>,
     store: Store,
     config: WebConfig,
-    assets: PathBuf,
     port: u16,
     services: WebServices,
 ) -> Result<(Router, CancellationToken)> {
-    ensure!(
-        assets.join("index.html").is_file(),
-        "Built frontend is missing: {}. Build the web frontend and pass its dist directory with --assets.",
-        assets.join("index.html").display()
-    );
-    let assets = assets
-        .canonicalize()
-        .context("Cannot open frontend assets directory")?;
     let (events, _) = broadcast::channel(EVENT_CAPACITY);
     if let Some(questions) = &services.questions {
         questions.set_child_answer_harness(harness.clone())?;
@@ -287,9 +270,7 @@ fn build_router(
                     .unwrap_or_default()
                     .with_state(()),
             )
-            .fallback_service(
-                ServeDir::new(&assets).fallback(ServeFile::new(assets.join("index.html"))),
-            )
+            .fallback(root_notice)
             .layer(DefaultBodyLimit::max(json_limit))
             .layer(middleware::from_fn_with_state(
                 state.clone(),
@@ -300,6 +281,15 @@ fn build_router(
     ))
 }
 
+/// The host serves no UI; any unmatched path answers with a pointer to `/rpc`.
+async fn root_notice() -> (StatusCode, &'static str) {
+    (
+        StatusCode::NOT_FOUND,
+        "BubblePaw host: JSON-RPC over HTTP at POST /rpc, events at GET /api/events.
+",
+    )
+}
+
 /// Serve only an already-bound loopback listener, draining admitted runs when
 /// shutdown is requested. The host never opens a credential endpoint.
 pub async fn serve_with_services(
@@ -307,7 +297,6 @@ pub async fn serve_with_services(
     harness: Arc<Harness>,
     store: Store,
     config: WebConfig,
-    assets: PathBuf,
     services: WebServices,
     shutdown: impl Future<Output = ()> + Send + 'static,
 ) -> Result<()> {
@@ -317,14 +306,7 @@ pub async fn serve_with_services(
         address.ip().is_loopback(),
         "The web host must bind to loopback"
     );
-    let (app, stop) = build_router(
-        harness.clone(),
-        store,
-        config,
-        assets,
-        address.port(),
-        services,
-    )?;
+    let (app, stop) = build_router(harness.clone(), store, config, address.port(), services)?;
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(async move {
             shutdown.await;

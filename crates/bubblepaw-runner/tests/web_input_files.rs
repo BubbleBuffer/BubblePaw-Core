@@ -67,9 +67,6 @@ struct Server {
 impl Server {
     async fn new(limits: Option<InputLimits>, gated: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let assets = directory.path().join("dist");
-        std::fs::create_dir(&assets).unwrap();
-        std::fs::write(assets.join("index.html"), "fixture").unwrap();
         let store = Store::open(directory.path().join("archive.sqlite")).unwrap();
         let provider = Arc::new(Capture::new(gated));
         let harness = Arc::new(Harness::new(
@@ -99,7 +96,6 @@ impl Server {
             harness.clone(),
             store,
             config,
-            assets,
             WebServices {
                 input_files,
                 ..Default::default()

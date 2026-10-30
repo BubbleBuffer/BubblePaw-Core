@@ -149,7 +149,7 @@ shared status to its existing REST error envelope.
 
 - **stdio:** reads bounded JSON records, invokes the shared JSON-RPC handler and
   writes replies. Live events are notifications; shutdown drains the host.
-- **HTTP:** existing `/api/...` REST routes keep their web UI shapes and project
+- **HTTP:** existing `/api/...` REST routes keep their original shapes and project
   the shared method result. `POST /rpc` accepts stdio JSON-RPC objects, including
   notifications. Existing local Host/Origin and body-size boundaries also apply
   to `/rpc`. `/api/events` remains SSE.

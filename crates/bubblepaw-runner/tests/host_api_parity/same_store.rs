@@ -180,9 +180,6 @@ pub async fn spawn_web(
     root: &Path,
     read_scope: Option<ReadScope>,
 ) -> Result<Web> {
-    let assets = root.join("assets");
-    std::fs::create_dir_all(&assets)?;
-    std::fs::write(assets.join("index.html"), "<html>same store</html>")?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (stop, receive) = oneshot::channel::<()>();
@@ -195,7 +192,6 @@ pub async fn spawn_web(
         harness,
         store,
         web_config(root),
-        assets,
         services,
         async {
             let _ = receive.await;

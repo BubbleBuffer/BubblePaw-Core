@@ -83,7 +83,7 @@ The `cargo` commands are the same in `sh` and PowerShell. The binary is
 `target/release/bubblepaw` on Linux, and `target\release\bubblepaw.exe` on
 Windows. `cargo build --release` does not build the test fixtures.
 
-The optional web workbench is a feature of `bubblepaw-runner`:
+The optional HTTP host endpoint is a feature of `bubblepaw-runner`:
 
 ```sh
 cargo build --release -p bubblepaw-runner --features web --bin bubblepaw
@@ -207,7 +207,7 @@ in a build with that feature.
 | `delegations report` | Cost per accepted outcome by category, class, model and route reason. |
 | `chapter-bench` | (feature `bench`) Compare chapter selection on recorded chats without executing their tools. |
 | `replay` | (feature `bench`) Replay a recorded chat into a fresh isolated archive and report. |
-| `web` | (feature `web`) Serve the local workbench. `--assets` is required; `--port` defaults to 8788. |
+| `web` | (feature `web`) Serve the host over loopback HTTP: JSON-RPC at `POST /rpc`, SSE at `/api/events`, REST shims under `/api/`. `--port` defaults to 8788. |
 
 ## Web search
 
@@ -288,25 +288,25 @@ the file. `--db` and `--data-dir` cannot be combined. See
 .\target\release\bubblepaw.exe --data-dir C:\path\to\store run "Continue the work."
 ```
 
-## Local web workbench
+## HTTP host endpoint
 
-`web` serves a local workbench from this process, with the harness embedded
-directly. It needs the `web` feature and a built frontend: the directory given
-with `--assets` (required; it must contain `index.html`). That frontend is not
-part of this repository and is not published yet, so this repository provides the
-server only. The frontend's [product brief](docs/product.md) and
-[visual design](docs/design.md) are in `docs/`.
+`web` serves the host over loopback HTTP from this process, with the harness
+embedded directly. It needs the `web` feature. It is the same host API as stdio:
+`POST /rpc` takes JSON-RPC 2.0 requests, `GET /api/events` is a server-sent event
+stream, and the REST routes under `/api/` are shims over the same methods. It
+serves no user interface; other paths answer 404 with a one-line pointer to
+`/rpc`. See the [host contract](docs/web-contract.md).
 
 ```sh
-./target/release/bubblepaw --workspace /path/to/project web --port 8788 --assets /path/to/frontend/dist
+./target/release/bubblepaw --workspace /path/to/project web --port 8788
 ```
 
 ```powershell
-.\target\release\bubblepaw.exe --workspace C:\path\to\project web --port 8788 --assets C:\path\to\frontend\dist
+.\target\release\bubblepaw.exe --workspace C:\path\to\project web --port 8788
 ```
 
-Open `http://127.0.0.1:8788`. The server binds to loopback only. It is a local
-workbench, not a remote deployment or account/login service.
+The server binds to loopback only. It is not a remote deployment or
+account/login service.
 
 The web host enforces a prompt cap of 32,000 Unicode characters
 (`--max-prompt-chars`). Uploads are capped at 16 MiB per file
@@ -357,7 +357,7 @@ replaying a durable stream log.
 
 Use `--read-only` for review-only workspace tools or `--provider demo` for an
 explicit scripted fixture. The web dependencies are optional; ordinary CLI and
-library builds do not need the frontend or server feature.
+library builds do not need the server feature.
 
 ## Embed
 

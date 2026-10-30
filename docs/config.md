@@ -304,8 +304,8 @@ The provider payload retains `restart_needed` for nonprovider disk changes that
 require a host restart; provider-only saves leave it false. Its
 `reload_needed` says the effective disk provider configuration differs from the
 active one. `active_main` is the current qualified route; `launched_main` retains
-the startup value; `main` represents the effective disk setting. The workbench
-shows the active route and offers a reload action for unapplied disk changes.
+the startup value; `main` represents the effective disk setting. Clients can show the
+active route and offer a reload action for unapplied disk changes.
 
 ## Shape
 

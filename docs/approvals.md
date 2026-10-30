@@ -208,7 +208,7 @@ Time spent waiting for approval does not count against the `js` cell idle limit 
 
 - Core: `Harness::pending_approvals(session_id)` and `Harness::decide(approval_id, Decision)` (or `decide_from` with a `ClientInfo`), where `Decision` is `Approve`, `ApproveForSession` or `Deny { reason }`.
 - stdio: `approval.list { session_id }` and `approval.decide { approval_id, decision: "approve" | "approve_session" | "deny", reason?, client? }`. Events arrive through the `event` notification.
-- Web: `GET /api/sessions/{id}/approvals`, `POST /api/approvals/{id}` with the same body. The session view includes pending `approvals`, and the workbench shows Approve, Approve for session and Deny buttons for them.
+- Web: `GET /api/sessions/{id}/approvals`, `POST /api/approvals/{id}` with the same body. The session view includes pending `approvals`.
 - CLI: `--confirm <tool,...>` sets `tools[name] = ask`; `--approve-all` sets `confirm: allow`; `--auto-approve [model]` sets `confirm: auto`; `--confirm-auto <tool,...>` sets `tools[name] = auto`. `--approver <adapter/model>` selects the role's first model, and an optional model on `--auto-approve` overrides it. In one-shot `run` and `resume`, no client can answer, so a call that would wait is denied at once with the reason `no client to approve; use --approve-all`.
 
 ## Limits

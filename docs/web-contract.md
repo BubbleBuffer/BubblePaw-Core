@@ -2,7 +2,7 @@
 
 Status: built; current as of 2026-10-29.
 
-The web host embeds the library and owns a disposable in-memory serving SQLite
+The web host (the host's HTTP endpoint: JSON-RPC over HTTP, SSE and REST shims, with no UI) embeds the library and owns a disposable in-memory serving SQLite
 view. Core SQLite remains authoritative. The web feature is optional; default
 CLI/library builds stay independent.
 
@@ -21,13 +21,12 @@ request size and content-type limits retain their own statuses.
 
 ## Startup
 
-`bubblepaw web --port <port> --assets <dir>` serves on `127.0.0.1:<port>`; the
-default port is 8788. `--port 0` binds an ephemeral port. `--assets` names the
-built frontend directory (it must contain `index.html`). Once the listener is
+`bubblepaw web --port <port>` serves on `127.0.0.1:<port>`; the
+default port is 8788. `--port 0` binds an ephemeral port. Once the listener is
 bound, and before it serves, the host prints this line on stderr:
 
 ```
-BubblePaw workbench: http://127.0.0.1:<port>
+BubblePaw host: http://127.0.0.1:<port>
 ```
 
 Callers that start the host, including the runner's tests, pass `--port 0` and read
@@ -51,8 +50,8 @@ its route runs:
   API response that is not already JSON is rewritten as `{ error }`.
 
 The listener binds only to `127.0.0.1`. Responses carry no credentials: provider
-payloads show key variable names and presence, never key values. Only built
-frontend assets are served, from the explicit `--assets` directory.
+payloads show key variable names and presence, never key values. The host serves no
+static files; any unmatched path, including `/`, returns 404 with a one-line plain-text pointer to `/rpc`.
 
 ## JSON endpoints
 
@@ -185,7 +184,7 @@ Preserve drafts on client errors. POST requires JSON (see Local boundary).
 
 ## Provider setup
 
-Provider setup endpoints used by the [web workbench](web-workbench.md). No request
+Provider setup endpoints used by clients of the HTTP host. No request
 or response carries a key value; mutations use the same local boundary as other POSTs.
 
 - GET `/api/providers`: `{ target: {path, layer: "custom"|"user", exists}, kinds, main,
@@ -326,8 +325,7 @@ These limits bound presentation state independently of canonical history.
 - POST to the same route: `{action, environment}` for create, inspect, background,
   wake, cancel, reset or close. Reset/close of busy environments requires cancel.
 
-These environment controls and session fork remain host APIs. The basic web
-frontend exposes neither management UI; it keeps chat and ordinary run controls.
+These environment controls and session fork remain host APIs.
 
 - GET `/api/sessions/:id/artifacts/:artifact`: immutable session-owned capture;
   unknown IDs or another session return 404. Raster images render inline; other

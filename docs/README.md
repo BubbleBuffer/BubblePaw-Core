@@ -38,9 +38,6 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [quota](quota.md) — Native subscription/rate-limit/credit readings, change-only history, rejection-specific waits and restart recovery; piggybacked balances with explicit standalone recording times; OpenCode Go meters through a BubblePaw-owned console login (`bubblepaw login opencode`).
 - [rewind](rewind.md) — Built 2026-10-15; edit/write updated 2026-10-20: file checkpoints, content-addressed originals, conflict-safe session rewind, and rewind limited to the latest turn (a typed user row or ChildTask instruction; host notices never count), with checkpoints pruned to the current and previous turn.
 - [web-contract](web-contract.md) — Built; current 2026-10-27: `web` startup line (`--port 0`), local boundary checks, every JSON endpoint, SessionView shape, SSE and error statuses, including user answers to child questions.
-- [web-workbench](web-workbench.md) — Built through 2026-10-14: automatic completion turns, older-history pagination and provider setup with live apply and explicit disk reload.
-- [product](product.md) — Workbench product brief: users, purpose, constraints, brand commitments and principles.
-- [design](design.md) — Workbench visual specification: tokens, colors, typography, layout and components.
 - [child-worktrees](child-worktrees.md) — Built 2026-10-15: opt-in child git workspaces, safe archive/delete cleanup and explicit continuation.
 - [child-sessions](child-sessions.md) — Built through 2026-10-27: durable run/question projections on the direct parent's event stream; user answers with atomic resolution, attribution and parent notice; recursive controls, acknowledgement and retention; hidden workers stay silent toward their callers.
 - [tracing](tracing.md) — Experimental, optional: disposable JSONL behavior tracing, off by default, with metadata or contents modes; prompt-cache events.

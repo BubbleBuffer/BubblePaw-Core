@@ -372,10 +372,7 @@ async fn http_reload_and_slash_share_host_config_diff_and_durable_notices() {
     let root = tempfile::tempdir().unwrap();
     let file = root.path().join("config.toml");
     std::fs::write(&file, config(&provider.base, root.path(), 8192)).unwrap();
-    let assets = root.path().join("assets");
-    std::fs::create_dir(&assets).unwrap();
-    std::fs::write(assets.join("index.html"), "route fixture").unwrap();
-    let (mut child, base) = web_host::start(host(root.path(), &file), &assets).await;
+    let (mut child, base) = web_host::start(host(root.path(), &file)).await;
     let client = reqwest::Client::new();
     tokio::time::timeout(Duration::from_secs(20), async {
         loop {
@@ -587,10 +584,7 @@ async fn web_manual_compact_message_routes_preserve_history() {
         ),
     )
     .unwrap();
-    let assets = root.path().join("assets");
-    std::fs::create_dir(&assets).unwrap();
-    std::fs::write(assets.join("index.html"), "route fixture").unwrap();
-    let (mut child, base) = web_host::start(host(root.path(), &file), &assets).await;
+    let (mut child, base) = web_host::start(host(root.path(), &file)).await;
     let client = reqwest::Client::new();
     tokio::time::timeout(Duration::from_secs(20), async {
         loop {

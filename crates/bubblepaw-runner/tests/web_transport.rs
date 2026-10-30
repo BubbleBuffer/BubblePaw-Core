@@ -95,9 +95,6 @@ impl Server {
         execution_mode: bubblepaw_core::ExecutionMode,
     ) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let assets = directory.path().join("dist");
-        std::fs::create_dir(&assets).unwrap();
-        std::fs::write(assets.join("index.html"), "<html>test frontend</html>").unwrap();
         let store = bubblepaw_core::Store::open(directory.path().join("archive.sqlite")).unwrap();
         let summary = Arc::new(
             SummarizingContext::new(
@@ -163,7 +160,6 @@ impl Server {
             host,
             store,
             config,
-            assets,
             services,
             async {
                 let _ = receiver.await;
@@ -1030,7 +1026,6 @@ async fn serving_view_can_be_rebuilt_from_canonical_history() {
             provider: "demo".into(),
             read_only: true,
         },
-        server.directory.path().join("dist"),
         WebServices::default(),
         async {
             let _ = receiver.await;
@@ -1068,8 +1063,7 @@ async fn serving_view_can_be_rebuilt_from_canonical_history() {
 }
 
 #[tokio::test]
-async fn nonloopback_bind_and_missing_built_assets_fail_explicitly() {
-    let directory = tempfile::tempdir().unwrap();
+async fn nonloopback_bind_fails_explicitly() {
     let store = bubblepaw_core::Store::in_memory().unwrap();
     let harness = Arc::new(Harness::new(
         store.clone(),
@@ -1089,7 +1083,6 @@ async fn nonloopback_bind_and_missing_built_assets_fail_explicitly() {
             harness.clone(),
             store.clone(),
             config.clone(),
-            directory.path().into(),
             WebServices::default(),
             async {},
         )
@@ -1097,9 +1090,6 @@ async fn nonloopback_bind_and_missing_built_assets_fail_explicitly() {
     let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
     let error = serve(listener).await.unwrap_err();
     assert!(error.to_string().contains("loopback"));
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let error = serve(listener).await.unwrap_err();
-    assert!(error.to_string().contains("Build the web frontend"));
 }
 
 struct LargeWebModel;

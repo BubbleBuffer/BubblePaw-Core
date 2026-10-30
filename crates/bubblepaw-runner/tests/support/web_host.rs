@@ -1,21 +1,19 @@
 //! Starts the web host on an ephemeral port and reads the address it bound.
 //! Nothing is reserved beforehand, so no other process can take the port first.
 
-use std::{path::Path, process::Stdio, time::Duration};
+use std::{process::Stdio, time::Duration};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
 };
 
 /// Startup line prefix `bubblepaw web` prints on stderr once its listener is bound.
-const STARTUP_PREFIX: &str = "BubblePaw workbench: ";
+const STARTUP_PREFIX: &str = "BubblePaw host: ";
 
-/// Run `command` as `web --port 0 --assets <assets>`; return the child and its base URL.
-pub async fn start(mut command: Command, assets: &Path) -> (Child, String) {
+/// Run `command` as `web --port 0`; return the child and its base URL.
+pub async fn start(mut command: Command) -> (Child, String) {
     let mut child = command
         .args(["web", "--port", "0"])
-        .arg("--assets")
-        .arg(assets)
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();

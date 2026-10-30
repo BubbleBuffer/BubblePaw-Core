@@ -109,9 +109,6 @@ async fn user_child_question_endpoint_delivers_and_maps_typed_errors() -> Result
         tools,
         HarnessConfig::default(),
     ));
-    let assets = directory.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "<html>synthetic fixture</html>")?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (shutdown, stop) = oneshot::channel();
@@ -125,7 +122,6 @@ async fn user_child_question_endpoint_delivers_and_maps_typed_errors() -> Result
             provider: "scripted".into(),
             read_only: true,
         },
-        assets,
         WebServices {
             questions: Some(questions.clone()),
             ..Default::default()
@@ -341,9 +337,6 @@ async fn answering_a_question_on_a_child_session_is_a_409_and_changes_nothing() 
     );
     let messages_before = store.messages(&child)?.len();
 
-    let assets = directory.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "<html>synthetic fixture</html>")?;
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let base = format!("http://{}", listener.local_addr()?);
     let (shutdown, stop) = oneshot::channel();
@@ -357,7 +350,6 @@ async fn answering_a_question_on_a_child_session_is_a_409_and_changes_nothing() 
             provider: "scripted".into(),
             read_only: true,
         },
-        assets,
         WebServices::default(),
         async {
             let _ = stop.await;

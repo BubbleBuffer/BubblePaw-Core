@@ -10,7 +10,7 @@ quality. Sanitized evidence is `deepseek-search-live-20261018-retry.json` in the
 usage-analysis workspace; the original failed probe remains preserved.
 
 Web capabilities belong to the runner library's `net` module, independently of
-the optional web workbench feature. `--web` or `web.enabled=true` enables
+the optional `web` HTTP host feature. `--web` or `web.enabled=true` enables
 `web_search`, `web_fetch` and the ordinary `research` child profile. The main agent
 uses the same tools directly for quick lookups. The child decides how many
 searches and fetches its task needs.

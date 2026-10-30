@@ -215,7 +215,7 @@ there is no separate prompt injection.
 A root question appears in `session.state.question` and the web session view.
 Stdio clients answer using `question.answer {session_id, question_id, text,
 client?}`; the web method is `POST /api/sessions/{id}/question/answer` with
-`{question_id, text, client?}`. The workbench shows a text input and optional
+`{question_id, text, client?}`. Clients show a text input and optional
 suggested answers. The original tool call returns the answered question object.
 One unanswered question is allowed per session. Question and answer text are
 bounded to 16 KiB; options to 16 strings of at most 1024 bytes each.

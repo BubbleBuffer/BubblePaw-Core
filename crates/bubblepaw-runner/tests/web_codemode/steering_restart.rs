@@ -12,9 +12,6 @@ async fn http_steer_then_explicit_interrupt_preserves_wait_and_captured_outputs_
         0, 0, 44, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 68, 1, 0, 59,
     ];
     std::fs::write(root.join("pixel.gif"), gif)?;
-    let assets = directory.path().join("dist");
-    std::fs::create_dir(&assets)?;
-    std::fs::write(assets.join("index.html"), "<html>fixture frontend</html>")?;
     let path = directory.path().join("archive.sqlite");
     let store = Store::open(&path)?;
     let session = store.create_session("CodeMode HTTP")?;
@@ -72,7 +69,6 @@ async fn http_steer_then_explicit_interrupt_preserves_wait_and_captured_outputs_
         harness.clone(),
         store.clone(),
         config,
-        assets,
         WebServices {
             repl: Some(repl.clone()),
             artifacts: Some(artifacts.clone()),

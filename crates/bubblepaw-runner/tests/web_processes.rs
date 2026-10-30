@@ -41,9 +41,6 @@ struct Fixture {
 impl Fixture {
     async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let assets = directory.path().join("dist");
-        std::fs::create_dir(&assets).unwrap();
-        std::fs::write(assets.join("index.html"), "fixture").unwrap();
         let store = Store::open(directory.path().join("archive.sqlite")).unwrap();
         let harness = Arc::new(Harness::new(
             store.clone(),
@@ -76,7 +73,6 @@ impl Fixture {
             harness,
             store,
             config,
-            assets,
             WebServices {
                 processes: Some(processes.clone()),
                 ..Default::default()

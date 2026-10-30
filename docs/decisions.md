@@ -604,7 +604,7 @@ The tool exposure, research modes and defaults in this entry are superseded by
 the 2026-10-13 decision below. Address safety still applies.
 
 Web capabilities belong to the runner library's `net` module, separate from the
-optional `web` workbench. CLI web access is opt-in with `--web`. The default web
+optional `web` HTTP host. CLI web access is opt-in with `--web`. The default web
 configuration exposes `research` and `web_fetch`; raw `web_search` is opt-in.
 Research uses an ordinary profile with only search, fetch and JS, configurable
 quick/thorough budgets and an optional provider/model override. Its synchronous
@@ -778,3 +778,6 @@ Stores are created directly at their final schema (chat 12, catalog 2, serving 2
 
 An app configures providers through the host API, which needs a running host, so a first run with no provider or credentials is not a startup failure. The main route's registry slot is explicitly unavailable and `HostConfig::load` / CLI host startup succeed. Model operations fail with the typed `NoProviderConfigured` error (host-API code `-32004`, HTTP 409, `ClientError::NoProviderConfigured`) whose message uses config keys and host methods, never CLI flags; `bubblepaw run` adds flag wording for its own users. A route named by the config but missing from `providers` stays a configuration error, and a candidate that would replace a working route with an unusable one is still rejected. `Client::is_attached` reports whether a client attached or embedded.
 
+## The built-in web UI is dropped (2026-10-30)
+
+The clients are the Flutter apps, through the SDK, plus the CLI. The static frontend, `web --assets` and the bundled workbench specs (`web-workbench`, `product`, `design`) are removed. The `web` feature and subcommand stay as the host's HTTP endpoint: JSON-RPC at `POST /rpc`, SSE at `/api/events` and the `/api/` REST shims. Unmatched paths, including `/`, return 404 with a plain-text pointer to `/rpc`. Earlier entries above that mention the workbench are history.
