@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: assertive
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!**/Cargo.lock"
+    - "!**/bun.lock"
+  path_instructions:
+    - path: "crates/bubblepaw-core/src/**"
+      instructions: >-
+        Keep product logic, child orchestration, MCP and frontend projections
+        out of the engine. SQLite stays authoritative and serving views stay
+        rebuildable. Check store changes for reopen compatibility with older
+        stores, transaction count, WAL growth and zero writes on reads. Never
+        replay an effect whose outcome is unknown.
+
+    - path: "crates/bubblepaw-core/src/approvals/**"
+      instructions: >-
+        The hardline floor is checked before configured denies, session
+        allowances and run overrides. Children and run overrides cannot remove
+        host denies or turn hardline off. Denied calls write no effect row and
+        emit no tool_started; direct and nested js calls use the same gate.
+
+    - path: "crates/bubblepaw-runner/src/{provider.rs,provider/**}"
+      instructions: >-
+        Check changed adapters against the bar in docs/provider-qualification.md.
+        Store reasoning artifacts byte-exact and replay them only to the origin
+        provider and model. Do not retry after published text. Redact
+        credentials from diagnostics.
+
+    - path: "crates/bubblepaw-runner/src/{host_api/**,host_transport.rs,host_attach.rs,host_attach/**,cli*.rs,web.rs,web/**,web_*.rs}"
+      instructions: >-
+        Route host operations through the shared method table in host_api, with
+        the Profile check before any effect. A new method needs a transport
+        parity fixture. Subscribe first, then replay the durable log. The web
+        listener stays on 127.0.0.1 with the local_boundary Host, Origin and
+        content-type checks on every route, including /rpc; responses show
+        provider key names, never values.
+
+    - path: "crates/bubblepaw-runner/src/tools/{edit,files,scratch_access,workspace,workspace_paths,workspace_tool}.rs"
+      instructions: >-
+        Resolve canonical paths and reject traversal, symlinks and Windows
+        junctions that leave the workspace or the selected scratchpad. Keep
+        edit literal, writes atomic and mutations locked. Scratch files stay
+        out of rewind checkpoints.
+
+    - path: "crates/bubblepaw-mcp/src/**"
+      instructions: >-
+        Follow the discovery and session-era fallback rules in docs/mcp.md.
+        Pin each call to its connection generation across reload. Never resend
+        a tool POST after a lost response; the outcome is unknown. Header
+        values come from env names only and stay out of config output and logs.
+
+    - path: "crates/bubblepaw-remote/src/**"
+      instructions: >-
+        Keep the .bpkey format and test vectors in docs/remote.md and
+        tests/fixtures. Check the peer identity against the Noise static key
+        before authorizing. Bound frames before allocating. Never log pairing
+        codes, key material or payloads. The relay identity is a routing hint,
+        not host authorization.
+
+    - path: "extensions/claude-code/src/**"
+      instructions: >-
+        Stdout carries only newline-delimited JSON-RPC. Keep tool-call and
+        result pairing through parked calls, and retain opaque blocks. Keep
+        ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN out of the child
+        environment unless the instance sets them. Keep built-in tools and
+        auto-compaction off.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+      - "docs/**/*.md"
