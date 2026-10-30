@@ -1,24 +1,13 @@
 use super::*;
 use crate::{EventKind, QuotaReading, QuotaWait};
 
-/// Catalog v2 adds `balance`: the account balance known when a change row was
-/// written. Its observation time is that row's `observed_at`; old rows are null.
+/// `balance` is the account balance known when a change row was written. Its
+/// observation time is that row's `observed_at`.
 pub(super) const QUOTA_SCHEMA: &str = "CREATE TABLE IF NOT EXISTS quota_history(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     provider TEXT NOT NULL, account TEXT NOT NULL, window TEXT NOT NULL,
     data TEXT NOT NULL, balance TEXT);
     CREATE INDEX IF NOT EXISTS quota_history_key ON quota_history(account,window,id);";
-
-/// Catalog step 2: adds the balance column to a v1 catalog. Existing rows keep a
-/// null balance, and a catalog the previous per-open code already upgraded (from a
-/// quota write, without a bump) only gains the version, so the column is checked
-/// once.
-pub(super) fn migrate_catalog(conn: &Connection) -> Result<()> {
-    if has_table(conn, "quota_history")? && !has_column(conn, "quota_history", "balance")? {
-        conn.execute_batch("ALTER TABLE quota_history ADD COLUMN balance TEXT;")?;
-    }
-    Ok(())
-}
 
 fn has_table(conn: &Connection, table: &str) -> Result<bool> {
     Ok(conn.query_row(

@@ -462,7 +462,7 @@ impl EffectiveConfig {
             &source,
         )
     }
-    fn apply(&mut self, entry: Override, source: &str) -> Result<()> {
+    fn apply(&mut self, mut entry: Override, source: &str) -> Result<()> {
         validate_keys(&entry.value, &entry.path)?;
         if entry.path.is_empty() && entry.value.as_table().is_some_and(|table| table.is_empty()) {
             return Ok(());
@@ -656,10 +656,11 @@ impl EffectiveConfig {
                     .join(&*directory);
             }
         }
-        for (name, path) in [("data_dir", &mut raw.storage.data_dir)] {
+        {
+            let path = &mut raw.storage.data_dir;
             if !path.as_os_str().is_empty()
                 && path.is_relative()
-                && let Some(base) = self.bases.get(&format!("storage.{name}"))
+                && let Some(base) = self.bases.get("storage.data_dir")
             {
                 *path = base.join(&*path);
             }
@@ -757,13 +758,11 @@ impl EffectiveConfig {
                 }
             }
         }
-        for (name, path) in [("data_dir", &settings.storage.data_dir)] {
-            merge_at(
-                &mut effective,
-                &["storage", name],
-                Value::String(path.to_string_lossy().into_owned()),
-            )?;
-        }
+        merge_at(
+            &mut effective,
+            &["storage", "data_dir"],
+            Value::String(settings.storage.data_dir.to_string_lossy().into_owned()),
+        )?;
         for extension in settings.extensions {
             if let Some(cwd) = extension.cwd {
                 merge_at(

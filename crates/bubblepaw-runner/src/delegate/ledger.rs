@@ -2,13 +2,14 @@
 use super::metrics::{AttemptMetrics, CallRow};
 use super::pricing::TokenClasses;
 use anyhow::{Context, Result};
+use bubblepaw_core::StoreSchemaError;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::path::Path;
 
 const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS delegation_attempts (
+CREATE TABLE delegation_attempts (
     id TEXT PRIMARY KEY,
     delegation_id TEXT NOT NULL,
     parent_id TEXT,
@@ -71,9 +72,9 @@ CREATE TABLE IF NOT EXISTS delegation_attempts (
     undeclared_busts INTEGER NOT NULL DEFAULT 0,
     unexplained_miss_tokens INTEGER
 );
-CREATE INDEX IF NOT EXISTS delegation_attempts_delegation
+CREATE INDEX delegation_attempts_delegation
     ON delegation_attempts(delegation_id);
-CREATE TABLE IF NOT EXISTS delegation_calls (
+CREATE TABLE delegation_calls (
     attempt_id TEXT NOT NULL REFERENCES delegation_attempts(id),
     seq INTEGER NOT NULL,
     model TEXT NOT NULL,
@@ -97,45 +98,23 @@ CREATE TABLE IF NOT EXISTS delegation_calls (
 ) WITHOUT ROWID;
 "#;
 
-/// Columns added after the first release, as (table, column, definition). Ledgers
-/// created earlier gain each missing one in place; no existing row is rewritten.
-const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
-    (
-        "delegation_attempts",
-        "undeclared_busts",
-        "INTEGER NOT NULL DEFAULT 0",
-    ),
-    ("delegation_attempts", "unexplained_miss_tokens", "INTEGER"),
-    ("delegation_calls", "expected_cacheable", "INTEGER"),
-    ("delegation_calls", "unexplained_miss", "INTEGER"),
-    ("delegation_calls", "prefix_break", "TEXT"),
-    ("delegation_calls", "wire_bytes", "INTEGER"),
-];
-
-/// The ledger's only numbered step. A first-release ledger carries no version and
-/// lacks the columns above; step 1 adds them and no later open inspects a table.
+/// The ledger's schema version. A new file is created at it in one transaction;
+/// a file at any other version fails with `StoreSchemaError`.
 const VERSION: i64 = 1;
 
-/// Run once per ledger: step 1 adds each missing column of `ADDED_COLUMNS`. A
-/// ledger the previous per-open code already upgraded only gains the version, so
-/// each column is checked once and later opens do no schema inspection.
-fn migrate(connection: &mut Connection) -> Result<()> {
+/// Create the ledger on an empty file, or require an existing one to be at `VERSION`.
+fn prepare(connection: &mut Connection) -> Result<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if version >= VERSION {
-        return Ok(());
+    let tables: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        [],
+        |row| row.get(0),
+    )?;
+    if tables > 0 || version != 0 {
+        return StoreSchemaError::ensure("delegation ledger", version, VERSION);
     }
     let tx = connection.transaction()?;
-    for (table, column, definition) in ADDED_COLUMNS {
-        let present: Vec<String> = tx
-            .prepare(&format!("PRAGMA table_info({table})"))?
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<String>>>()?;
-        if !present.iter().any(|name| name.as_str() == *column) {
-            tx.execute_batch(&format!(
-                "ALTER TABLE {table} ADD COLUMN {column} {definition}"
-            ))?;
-        }
-    }
+    tx.execute_batch(SCHEMA)?;
     tx.execute_batch(&format!("PRAGMA user_version={VERSION};"))?;
     tx.commit()?;
     Ok(())
@@ -194,8 +173,7 @@ impl Ledger {
         let mut connection = Connection::open(path)
             .with_context(|| format!("open delegation ledger {}", path.display()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        connection.execute_batch(SCHEMA)?;
-        migrate(&mut connection)?;
+        prepare(&mut connection)?;
         Ok(Self { connection })
     }
 
@@ -408,22 +386,9 @@ mod tests {
     }
 
     #[test]
-    fn old_ledger_gains_the_cache_columns_and_stores_them() -> Result<()> {
+    fn ledger_stores_the_cache_columns() -> Result<()> {
         let root = tempfile::tempdir()?;
         let path = root.path().join("delegations.db");
-        // The first-release DDL: the cache columns removed from the current schema.
-        let old = SCHEMA
-            .replace(
-                "    metrics TEXT NOT NULL,\n    undeclared_busts INTEGER NOT NULL DEFAULT 0,\n    unexplained_miss_tokens INTEGER\n",
-                "    metrics TEXT NOT NULL\n",
-            )
-            .replace(
-                "    outcome TEXT NOT NULL,\n    expected_cacheable INTEGER,\n    unexplained_miss INTEGER,\n    prefix_break TEXT,\n    wire_bytes INTEGER,\n",
-                "    outcome TEXT NOT NULL,\n",
-            );
-        assert!(!old.contains("wire_bytes") && !old.contains("undeclared_busts"));
-        Connection::open(&path)?.execute_batch(&old)?;
-
         let mut ledger = Ledger::open(&path)?;
         let attempts = columns(&ledger.connection, "delegation_attempts")?;
         let calls = columns(&ledger.connection, "delegation_calls")?;
@@ -522,9 +487,33 @@ mod tests {
         );
         drop(ledger);
 
-        // Reopening an migrated ledger adds nothing and keeps the stored row.
+        // Reopening the ledger keeps the stored row.
         let reopened = Ledger::open(&path)?;
         assert!(reopened.attempt_exists("a1")?);
+        Ok(())
+    }
+    fn version(path: &Path) -> Result<i64> {
+        Ok(Connection::open(path)?.query_row("PRAGMA user_version", [], |row| row.get(0))?)
+    }
+
+    #[test]
+    fn ledger_other_versions_fail_with_a_typed_error_and_stay_untouched() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let path = root.path().join("delegations.db");
+        drop(Ledger::open(&path)?);
+        assert_eq!(version(&path)?, VERSION);
+        for other in [VERSION - 1, VERSION + 1] {
+            Connection::open(&path)?.execute_batch(&format!("PRAGMA user_version={other};"))?;
+            let error = Ledger::open(&path).err().expect("version mismatch fails");
+            let typed = error
+                .downcast_ref::<StoreSchemaError>()
+                .expect("typed schema error");
+            assert_eq!(
+                (typed.store, typed.found, typed.expected),
+                ("delegation ledger", other, VERSION)
+            );
+            assert_eq!(version(&path)?, other, "a refused open changes nothing");
+        }
         Ok(())
     }
 }

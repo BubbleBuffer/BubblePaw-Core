@@ -6,7 +6,7 @@ use bubblepaw_core::{
     Store, StoreOptions,
 };
 use bubblepaw_runner::provider::{ChatCompletionsProvider, MessagesProvider, ResponsesProvider};
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -361,19 +361,13 @@ enum Pathway {
     Reopen,
     Export,
     Reimport,
-    PhaseB,
 }
 async fn audit(kind: Kind, pathway: Pathway) -> Result<()> {
     let dir = tempfile::tempdir()?;
     let fixture = fixture(kind).await?;
     let mut store = Store::open_with_options(dir.path(), options())?;
     let session = store.create_session("synthetic opaque audit")?;
-    let mut original = history(&fixture, kind, &session.id).await?;
-    if matches!(pathway, Pathway::PhaseB) {
-        // Frozen full native originless state, as persisted by old adapters.
-        original[1].provider_state =
-            Some(json!({"adapter":kind.adapter(), kind.field():native_blocks(kind)}));
-    }
+    let original = history(&fixture, kind, &session.id).await?;
     let before_state = digest(original[1].provider_state.as_ref().unwrap())?;
     // This request is generated from the in-memory source before any append.
     let baseline = send(&fixture, request(kind, original.clone())).await?;
@@ -382,23 +376,21 @@ async fn audit(kind: Kind, pathway: Pathway) -> Result<()> {
         "baseline must contain exact native opaque blocks"
     );
     store.append_batch(&original)?;
-    if !matches!(pathway, Pathway::PhaseB) {
-        let conn = Connection::open(store.chat_path(&session.id)?.unwrap())?;
-        let raw: String = conn.query_row(
-            "SELECT data FROM messages WHERE message_id=?1",
-            [&original[1].id],
-            |row| row.get(0),
-        )?;
-        let raw: Value = serde_json::from_str(&raw)?;
-        ensure!(
-            raw["_provider_state_blob"].is_string(),
-            ">4KiB provider state must exercise its blob reference"
-        );
-        ensure!(
-            raw["provider_state"].is_null(),
-            "opaque body must not be stored twice in row"
-        );
-    }
+    let conn = Connection::open(store.chat_path(&session.id)?.unwrap())?;
+    let raw: String = conn.query_row(
+        "SELECT data FROM messages WHERE message_id=?1",
+        [&original[1].id],
+        |row| row.get(0),
+    )?;
+    let raw: Value = serde_json::from_str(&raw)?;
+    ensure!(
+        raw["_provider_state_blob"].is_string(),
+        ">4KiB provider state must exercise its blob reference"
+    );
+    ensure!(
+        raw["provider_state"].is_null(),
+        "opaque body must not be stored twice in row"
+    );
     let after = match pathway {
         Pathway::Store => store.messages(&session.id)?,
         Pathway::Cold => {
@@ -456,37 +448,6 @@ async fn audit(kind: Kind, pathway: Pathway) -> Result<()> {
                 imported.append_batch(&messages)?;
                 messages = imported.messages(&session.id)?;
             }
-            messages
-        }
-        Pathway::PhaseB => {
-            let path = store.chat_path(&session.id)?.unwrap();
-            store.idle_checkpoint()?;
-            drop(store);
-            let conn = Connection::open(&path)?;
-            // Remove only C additions; restore a real B row's full originless JSON.
-            for message in &original {
-                conn.execute(
-                    "UPDATE messages SET data=?1 WHERE message_id=?2",
-                    params![serde_json::to_string(message)?, message.id],
-                )?;
-            }
-            let bodies: Vec<String> = conn
-                .prepare("SELECT data FROM messages ORDER BY seq")?
-                .query_map([], |row| row.get(0))?
-                .collect::<Result<_, _>>()?;
-            conn.execute_batch("DROP TABLE message_tool_calls; DROP TABLE message_headers; DROP TABLE message_dictionaries; PRAGMA user_version=9; PRAGMA wal_checkpoint(TRUNCATE);")?;
-            drop(conn);
-            store = Store::open_with_options(dir.path(), options())?;
-            let messages = store.messages(&session.id)?;
-            let conn = Connection::open(&path)?;
-            let restored: Vec<String> = conn
-                .prepare("SELECT data FROM messages ORDER BY seq")?
-                .query_map([], |row| row.get(0))?
-                .collect::<Result<_, _>>()?;
-            ensure!(
-                bodies == restored,
-                "B upgrade must not rewrite original rows"
-            );
             messages
         }
     };
@@ -591,16 +552,6 @@ path_test!(
     Messages,
     Reimport
 );
-path_test!(
-    responses_phase_b_upgrade_keeps_originless_state_and_native_bytes,
-    Responses,
-    PhaseB
-);
-path_test!(
-    messages_phase_b_upgrade_keeps_originless_state_and_native_bytes,
-    Messages,
-    PhaseB
-);
 
 path_test!(chat_store_keeps_opaque_and_next_native_bytes, Chat, Store);
 path_test!(
@@ -624,11 +575,6 @@ path_test!(
     chat_canonical_reimport_keeps_opaque_and_next_native_bytes,
     Chat,
     Reimport
-);
-path_test!(
-    chat_phase_b_upgrade_keeps_originless_state_and_native_bytes,
-    Chat,
-    PhaseB
 );
 
 async fn incompatible(kind: Kind, foreign_kind: bool) -> Result<()> {

@@ -194,7 +194,7 @@ Verified on Linux at `07c70a3`, 2026-10-21:
 
 - `cargo fmt --all -- --check`: passed.
 - `cargo clippy --workspace --all-targets -- -D warnings`: passed.
-- `cargo test -p bubblepaw-core`: passed, including workspace, legacy-store,
+- `cargo test -p bubblepaw-core`: passed, including workspace,
   rebuild, protected-root and per-root storage-policy coverage.
 - `cargo test -p bubblepaw-runner`: passed, including all ten real-process
   host-attach tests and delegation cancellation/check/ledger tests.
@@ -240,7 +240,7 @@ The scripted process tests are in `crates/bubblepaw-runner/tests/host_attach.rs`
 They exercise concurrent runs, per-client model/approval/workspace/environment,
 stdout/stderr parity, concurrent delegations and reworks, catalog rebuild, host
 lifetime, cancellation, disconnection, host death, endpoint permissions and PID
-diagnostics. Core tests cover mixed workspaces, unchanged legacy chat files,
+diagnostics. Core tests cover mixed workspaces,
 rebuild, child inheritance, per-session protected roots and storage policies.
 These tests do not establish live-model acceptance.
 

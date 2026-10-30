@@ -46,8 +46,6 @@ Rows survive serving wipes, operational retention, summary replacement, child
 cleanup and archives. Forking history does not copy billed calls. Deleting a root
 chat removes its file and usage. Existing schema-7 histories have no historical
 request rows to backfill; aggregate usage cannot reconstruct per-request facts.
-Schema-8 request rows acquire an account equal to their recorded provider during
-migration; current configuration cannot identify an older request's account.
 
 Provider and extension entries accept an optional `account` string. Omission uses
 the entry's name; explicitly assigning the same label to several routes shares
@@ -131,7 +129,7 @@ replay judges without a canonical result write, terminal failures, completed wor
 before another separate model operation, or a dropped capture. Empty flushes
 write nothing. An unknown interrupted external effect is never replayed.
 
-Focused acceptance covers schema-7 monolithic and split-chat migration, canonical
+Focused acceptance covers canonical
 row preservation, atomic rollback, exact physical continuation/failure usage,
 summary/decider attribution, cleanup/archive retention, unchanged transaction
 counts, exact JSONL fields, inclusive timestamp filtering and shared pricing.

@@ -15,8 +15,8 @@ commit target is met; its phase-A-or-better latency target remains unmet.
 Session titles use the existing authoritative session JSON and catalog title
 projection. Naming and renaming require no schema change; search-hit titles
 are read from current metadata rather than copied into the contentless index.
-The runner's `--no-session` creates a private temporary store before migration
-or opening the configured store. All usual session resources, including spill
+The runner's `--no-session` creates a private temporary store before
+opening the configured store. All usual session resources, including spill
 files and checkpoint blobs, follow that temporary data directory; normal exit
 or an error removes it. A forced process kill may leave temporary OS files.
 
@@ -333,7 +333,7 @@ The ordinary final-turn contract is two chat commits plus one serving commit;
 the existing single-Allow-tool turn remains four chat plus one serving, zero
 catalog. Usage adds zero normal-step transactions. Automatic-approval usage shares
 the existing approval insert. The focused fixtures assert these counts, atomic
-rollback, schema-7 migration and serving-wipe survival; current execution evidence
+rollback and serving-wipe survival; current execution evidence
 is recorded in [usage tracking](usage-tracking.md).
 
 Rows survive summary replacement, run/event pruning, serving wipes, child-session
@@ -357,11 +357,10 @@ check for `episode_written`, `chapter_closed` and `applied`. `data` is serialize
 `ContextEvent`; reads order by insertion `rowid` so timestamp ties are stable.
 Its `tokens_before` is null when inherited coverage lacks stored source counts;
 cold originals are never loaded just to obtain this metric.
-The additive migration uses one transaction and leaves old stores with an empty
-event table. Events are durable chat data, including when `context_views` lives
+A new chat starts with an empty event table. Events are durable chat data, including when `context_views` lives
 in the disposable central `serving.db`.
 
-The same migration adds nullable `request_usage.message_seq` and a partial
+The chat schema also has a nullable `request_usage.message_seq` and a partial
 index on `(session_id, message_seq)`. Successful assistant-producing requests
 link to their canonical message in the existing message transaction. A response
 joined from several successful continuation requests links each contributing
@@ -436,7 +435,7 @@ assistant message, so its reasoning is not kept: stream fragments are transient
   absent route tag inherits the current route when adapter/model match; only a
   recorded route/endpoint mismatch is incompatible.
 - **Paths:** store, dictionary-row (cold) compression, archive, unarchive,
-  reopen, export, canonical re-import and phase-B migration all return
+  reopen, export and canonical re-import all return
   identical signature and ciphertext bytes, and the next Responses or Messages
   request body equals the one built before storage
   (`crates/bubblepaw-runner/tests/reasoning_storage.rs`).
@@ -491,7 +490,7 @@ bubblepaw/
 - **`serving.db`** is cleaned continuously. The user can wipe it at any time; its tables are rebuildable from chat files or acceptable to lose. It holds tiers 3–5. Only what is needed to serve stays there.
 - **Derived summaries** live in the chat file, next to the messages they cover. LCM summaries are small and cost money to recreate.
 - **Blobs:** tool outputs and attachments over 4 KiB go to a content-hash blob table in the chat file, zstd-compressed.
-- **Existing databases** are migrated once to the new layout, preserving all data.
+- **One schema per store.** Every store file is created at its final schema and opens only at exactly that version (see below); there is no upgrade path from other layouts.
 - **JSONL** is an export format only; SQLite stays authoritative (AGENTS.md).
 
 ### Ownership release
@@ -546,8 +545,9 @@ The library opens a directory with `Store::open_data_dir` or
 parent session id; it changes placement only. The runner owns child execution.
 `Store::open(file)` and `--db` select a sibling `<stem>.data` directory; neither imports anything.
 
-Chat files use schema 11 (schema 7 content formats plus `request_usage`, a nullable
-checkpoint preimage and a tool-call index that separates calls from results), with a `chat-v1` layout marker and
+Chat files use schema 12 (message content formats, `request_usage`, a nullable
+checkpoint preimage, a tool-call index that separates calls from results, and
+compaction facts), with a `chat-v1` layout marker and
 `auto_vacuum=INCREMENTAL`. They hold messages, attachments and compressed blobs,
 summary records and frozen checkpoint versions, durable per-request usage, effect markers, pending inputs,
 approval rules, and operational state still needed for recovery. Accepted input
@@ -556,16 +556,25 @@ metadata moves to serving. Interrupted runs remain in the record. Completed
 effects retain the boundary needed to refuse replay, rather than repeated detail.
 Workspace bindings live in chat metadata and survive rebuilding both projections.
 
-Every schema change is a numbered `PRAGMA user_version` step in the database it
-touches, run once in the same transaction as its version bump: chat records
-(1 to 11), the catalog (1 to 2), the serving projection (1 to 2) and the
-delegation ledger (1). A step that adds a column or relaxes a constraint checks
-it once, so a store written by older code that already applied the change only
-gains the version, and opening a current store inspects no table. A fresh store
-starts at version 1 and runs the same steps. A store at a newer version than the
-binary knows is refused, so older binaries cannot open a store a newer one upgraded. Chat step 11 builds the derived
-`message_tool_calls` and `message_headers` tables from the message bodies in its
-own transaction, each only when it lacks its shape.
+Each store file has one schema: chat records at version 12, `catalog.db` and
+`serving.db` at 2, and the delegation ledger at 1. A missing file is created
+directly at its final version: the DDL, the application id and `PRAGMA
+user_version` are written in one transaction. An existing file opens only if its
+version is exactly the one the binary writes. Any other version, older or newer,
+fails with `StoreSchemaError { store, found, expected }` (re-exported from
+`bubblepaw_core`; the ledger's error is the same type), wrapped in `anyhow` so a
+caller reaches it with `err.downcast_ref::<StoreSchemaError>()`. The check runs
+before any pragma touches the file, so a refused open changes nothing. A file
+that is not a BubblePaw store keeps its separate foreign-database error. Tables
+that are created per open without a version bump (approvals, the event log, host
+state, reminder metadata, dictionaries; the request log in `serving.db`) are
+`CREATE ... IF NOT EXISTS` statements in the open path, not part of the
+version.
+
+To change a schema later, put the new shape in the file's creation DDL, raise its
+version constant, and add a numbered step that upgrades the previous version in a
+single transaction with its version bump. Until then, a store written by an
+earlier layout has no path forward: create a new data directory.
 
 `serving.db` owns journal references, pointer views, resolved input/approval
 metadata, completed runs, and summary usage/internal reasoning telemetry. Reads
@@ -623,8 +632,7 @@ reopen, identical canonical history and the next prepared request, crash-safe
 accepted inputs and approvals, refusal to replay an unknown effect, root/child/
 grandchild placement, catalog deletion/rebuild equality, root tree deletion,
 chat-file shrink after child deletion and shared-blob preservation, default retention, exact JSONL
-message/blob/attachment export, schema 6 and 7 migration with unchanged source
-bytes, and interrupted-migration retry. Additional unit tests cover migration
+message/blob/attachment export and exact-version store opening. Additional unit tests cover
 ownership, interrupted root deletion and terminal approval routing after archival.
 
 The ordinary-history request test compares serialized bytes before assigning the

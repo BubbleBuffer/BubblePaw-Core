@@ -2,7 +2,7 @@
 use anyhow::Result;
 use bubblepaw_core::{
     ContextCheckpoint, ContextStrategy, ContextView, Message, ModelRequest, Role, Store,
-    StoreOptions, ToolCall,
+    StoreOptions,
 };
 use rusqlite::{Connection, params};
 use serde_json::json;
@@ -611,60 +611,6 @@ fn installed_restore_crash_and_source_compaction_boundary_roundtrip() -> Result<
     assert!(!archive.exists());
     assert_eq!(reopened.messages(&root.id)?, messages);
     assert_eq!(reopened.import_derived(&root.id)?.len(), 2);
-    Ok(())
-}
-
-#[test]
-fn phase_b_split_records_upgrade_without_rewriting_message_bodies() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    let store = Store::open_with_options(dir.path(), options())?;
-    let root = store.create_session("phase B upgrade")?;
-    let mut source = message(&root.id, 1);
-    source.tool_calls.push(ToolCall {
-        id: "historical-call".into(),
-        name: "synthetic-tool".into(),
-        arguments: json!({"path":"synthetic.txt","signed_zero":-0.0}),
-    });
-    store.append_batch(&[source])?;
-    let before = request(store.messages(&root.id)?)?;
-    let path = store.chat_path(&root.id)?.unwrap();
-    store.idle_checkpoint()?;
-    drop(store);
-    let conn = Connection::open(&path)?;
-    let body: String = conn.query_row("SELECT data FROM messages", [], |row| row.get(0))?;
-    conn.execute_batch("DROP TABLE message_tool_calls; DROP TABLE message_headers; DROP TABLE message_dictionaries; PRAGMA user_version=9; PRAGMA wal_checkpoint(TRUNCATE);")?;
-    drop(conn);
-    let reopened = Store::open_with_options(dir.path(), options())?;
-    assert_eq!(before, request(reopened.messages(&root.id)?)?);
-    let conn = Connection::open(&path)?;
-    assert_eq!(
-        conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        12
-    );
-    assert_eq!(
-        body,
-        conn.query_row("SELECT data FROM messages", [], |row| row
-            .get::<_, String>(0))?
-    );
-    assert_eq!(
-        conn.query_row("SELECT call_id FROM message_tool_calls", [], |row| row
-            .get::<_, String>(
-            0
-        ))?,
-        "historical-call"
-    );
-    assert_eq!(
-        conn.query_row("SELECT COUNT(*) FROM message_dictionaries", [], |row| row
-            .get::<_, i64>(
-            0
-        ))?,
-        0
-    );
-    assert_eq!(
-        conn.query_row("SELECT role FROM message_headers", [], |row| row
-            .get::<_, String>(0))?,
-        "assistant"
-    );
     Ok(())
 }
 

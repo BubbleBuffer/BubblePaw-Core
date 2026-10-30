@@ -134,25 +134,32 @@ impl Layout {
             .retain(|_, value| value != root);
     }
 }
-// The catalog version is set by `projection`, inside the same transaction as its migration.
+// `projection` creates a fresh file at its final version in one transaction and
+// opens an existing one only at exactly that version.
 const CATALOG_SCHEMA: &str = "PRAGMA application_id=1112556081;
-CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,parent_id TEXT,root_id TEXT NOT NULL,title TEXT NOT NULL,last_activity TEXT NOT NULL,created_at TEXT NOT NULL,file TEXT NOT NULL,storage_state TEXT NOT NULL DEFAULT 'active',data TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS sessions_root ON sessions(root_id);";
+CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE sessions(id TEXT PRIMARY KEY,parent_id TEXT,root_id TEXT NOT NULL,title TEXT NOT NULL,last_activity TEXT NOT NULL,created_at TEXT NOT NULL,file TEXT NOT NULL,storage_state TEXT NOT NULL DEFAULT 'active',data TEXT NOT NULL);
+CREATE INDEX sessions_root ON sessions(root_id);";
 const SERVING_SCHEMA: &str = "PRAGMA application_id=1112556082;
-CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,data TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS context_views(session_id TEXT PRIMARY KEY,data TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,status TEXT NOT NULL,data TEXT NOT NULL,result_message_id TEXT);
-CREATE TABLE IF NOT EXISTS inputs(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,session_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,state TEXT NOT NULL,origin TEXT,message_id TEXT,content_blob TEXT,content_format TEXT,resolved_at TEXT NOT NULL,source_seq INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS approvals(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,call_id TEXT NOT NULL,tool TEXT NOT NULL,arguments TEXT NOT NULL,state TEXT NOT NULL,reason TEXT,created_at TEXT NOT NULL,decided_at TEXT,arguments_ref TEXT);
-CREATE TABLE IF NOT EXISTS telemetry(id INTEGER PRIMARY KEY,session_id TEXT,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS telemetry_created ON telemetry(created_at);
-CREATE INDEX IF NOT EXISTS telemetry_record ON telemetry(session_id,json_extract(data,'$.record_id'));
-CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS events_session ON events(session_id,seq);";
+CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE sessions(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+CREATE TABLE context_views(session_id TEXT PRIMARY KEY,data TEXT NOT NULL);
+CREATE TABLE runs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,status TEXT NOT NULL,data TEXT NOT NULL,result_message_id TEXT);
+CREATE TABLE inputs(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,session_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,state TEXT NOT NULL,origin TEXT,message_id TEXT,content_blob TEXT,content_format TEXT,resolved_at TEXT NOT NULL,source_seq INTEGER NOT NULL);
+CREATE TABLE approvals(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,call_id TEXT NOT NULL,tool TEXT NOT NULL,arguments TEXT NOT NULL,state TEXT NOT NULL,reason TEXT,created_at TEXT NOT NULL,decided_at TEXT,arguments_ref TEXT);
+CREATE TABLE telemetry(id INTEGER PRIMARY KEY,session_id TEXT,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
+CREATE INDEX telemetry_created ON telemetry(created_at);
+CREATE INDEX telemetry_record ON telemetry(session_id,json_extract(data,'$.record_id'));
+CREATE TABLE events(seq INTEGER PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
+CREATE INDEX events_session ON events(session_id,seq);";
 
-fn projection(path: &Path, application: i64, schema: &str) -> Result<Connection> {
+fn projection(
+    path: &Path,
+    application: i64,
+    schema: &str,
+    store: &'static str,
+    expected: i64,
+) -> Result<Connection> {
     let mut conn = Connection::open(path)?;
     let current: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -166,43 +173,27 @@ fn projection(path: &Path, application: i64, schema: &str) -> Result<Connection>
         "Foreign storage projection: {}",
         path.display()
     );
-    // Each projection keeps its own numbered chain: catalog v2 adds
-    // `quota_history.balance`, serving v2 adds the request log's later columns.
-    let supported = 2;
-    anyhow::ensure!(
-        version <= supported && (tables == 0 || version >= 1),
-        "Unsupported projection schema version {version}"
-    );
+    let fresh = current == 0;
+    if !fresh {
+        // Checked before any pragma touches the file, so a refused open changes nothing.
+        StoreSchemaError::ensure(store, version, expected)?;
+    }
     conn.busy_timeout(std::time::Duration::from_secs(2))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=256; PRAGMA journal_size_limit=1048576;")?;
-    if application == 0x42504231 && version < 2 {
-        // Catalog step 2 adds the balance column to a v1 catalog, whether or not the
-        // previous per-open upgrade already added it.
+    if fresh {
         let tx = conn.transaction()?;
         tx.execute_batch(schema)?;
-        tx.execute_batch(super::quota::QUOTA_SCHEMA)?;
-        super::quota::migrate_catalog(&tx)?;
-        tx.execute_batch("PRAGMA user_version=2;")?;
-        tx.commit()?;
-    } else {
-        conn.execute_batch(schema)?;
-        if tables == 0 {
-            conn.execute_batch("PRAGMA user_version=1;")?;
-        }
         if application == 0x42504231 {
-            conn.execute_batch(super::quota::QUOTA_SCHEMA)?;
+            tx.execute_batch(super::quota::QUOTA_SCHEMA)?;
         }
+        if application == 0x42504232 {
+            tx.execute_batch(super::usage::prompt_log::TABLES)?;
+        }
+        tx.execute_batch(&format!("PRAGMA user_version={expected};"))?;
+        tx.commit()?;
     }
     if application == 0x42504232 {
         super::usage::prompt_log::setup(&conn)?;
-        if version < 2 {
-            // Serving step 2 adds the request log columns introduced after the first
-            // release; setup has created the log by now.
-            let tx = conn.transaction()?;
-            super::usage::prompt_log::migrate(&tx)?;
-            tx.execute_batch("PRAGMA user_version=2;")?;
-            tx.commit()?;
-        }
         Store::search_schema(&conn)?;
         conn.execute(
             "ATTACH DATABASE ?1 AS catalog_projection",
@@ -280,10 +271,8 @@ pub(super) fn open_record(
     let conn = &*record;
     let application: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    anyhow::ensure!(
-        application == 0x42504230 && (1..=12).contains(&version),
-        "Unsupported chat record schema"
-    );
+    anyhow::ensure!(application == 0x42504230, "Unsupported chat record schema");
+    StoreSchemaError::ensure("chat", version, schema::CHAT_VERSION)?;
     record.dictionary_pins = cold::pin_dictionaries(&record)?;
     Ok(record)
 }
@@ -454,8 +443,20 @@ impl Store {
             "Store is already owned by another host process",
         )?);
         let released = lock.released.clone();
-        let catalog = projection(&data_dir.join("catalog.db"), 0x42504231, CATALOG_SCHEMA)?;
-        let serving = projection(&data_dir.join("serving.db"), 0x42504232, SERVING_SCHEMA)?;
+        let catalog = projection(
+            &data_dir.join("catalog.db"),
+            0x42504231,
+            CATALOG_SCHEMA,
+            "catalog",
+            schema::CATALOG_VERSION,
+        )?;
+        let serving = projection(
+            &data_dir.join("serving.db"),
+            0x42504232,
+            SERVING_SCHEMA,
+            "serving",
+            schema::SERVING_VERSION,
+        )?;
         let (last, pruned) = crate::event_log::bounds(&serving)?;
         let store = Self(Arc::new(Inner {
             connection: Arc::new(Mutex::new(serving)),
@@ -611,7 +612,7 @@ impl Store {
             "Chat record file is missing: {}",
             path.display()
         );
-        let mut connection = open_record(&path, false, false)?.into_connection();
+        let connection = open_record(&path, false, false)?.into_connection();
         let split: bool = connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='metadata')",
             [],
@@ -622,19 +623,13 @@ impl Store {
             let application: i64 =
                 connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
             let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-            anyhow::ensure!(
-                application == 0x42504230 && (7..=12).contains(&version),
-                "Unsupported chat record schema"
-            );
+            anyhow::ensure!(application == 0x42504230, "Unsupported chat record schema");
+            StoreSchemaError::ensure("chat", version, schema::CHAT_VERSION)?;
             connection.busy_timeout(std::time::Duration::from_secs(2))?;
             connection.execute_batch("PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA wal_autocheckpoint=256; PRAGMA journal_size_limit=1048576;")?;
-            Self::migrate_request_usage(&mut connection, version)?;
             Self::initialize_reminders(&connection)?; // existing chat-v1 records skip initialize
-            crate::store::migrate_checkpoint_schema(&mut connection, version)?;
             cold::initialize(&connection)?;
             let dictionary_pins = cold::pin_dictionaries(&connection)?;
-            Self::initialize_tool_call_index(&mut connection)?;
-            Self::migrate_context_facts(&mut connection, version)?;
             Self(Arc::new(Inner {
                 connection: Arc::new(Mutex::new(connection)),
                 dictionary_pins,
@@ -1024,33 +1019,9 @@ impl Store {
     }
     fn record_activity_connection(conn: &Connection, session: &Session) -> Result<String> {
         let mut activity = session.updated_at.clone();
-        let has_headers: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='message_headers')",
-            [],
-            |row| row.get(0),
-        )?;
-        let created: Option<String> = if has_headers {
-            // Activity is metadata: a large tool body must not be decompressed
-            // again after every record step just to obtain its timestamp.
-            conn.query_row("SELECT created_at FROM message_headers WHERE session_id=?1 ORDER BY message_seq DESC LIMIT 1", [&session.id], |row| row.get(0)).optional()?
-        } else {
-            // Read-only phase-B records are scanned before their header migration.
-            let message: Option<String> = conn
-                .query_row(
-                    "SELECT data FROM messages WHERE session_id=?1 ORDER BY seq DESC LIMIT 1",
-                    [&session.id],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            message
-                .map(|message| -> Result<_> {
-                    Ok(Self::decode_message_body(conn, &message)?["created_at"]
-                        .as_str()
-                        .map(str::to_owned))
-                })
-                .transpose()?
-                .flatten()
-        };
+        // Activity is metadata: a large tool body must not be decompressed again
+        // after every record step just to obtain its timestamp.
+        let created: Option<String> = conn.query_row("SELECT created_at FROM message_headers WHERE session_id=?1 ORDER BY message_seq DESC LIMIT 1", [&session.id], |row| row.get(0)).optional()?;
         if let Some(created) = created {
             activity = activity.max(created);
         }
@@ -1706,7 +1677,13 @@ impl Store {
                     std::fs::remove_file(file)?;
                 }
             }
-            *connection = projection(path, 0x42504232, SERVING_SCHEMA)?;
+            *connection = projection(
+                path,
+                0x42504232,
+                SERVING_SCHEMA,
+                "serving",
+                schema::SERVING_VERSION,
+            )?;
             let tx = connection.transaction()?;
             tx.execute(
                 "INSERT INTO metadata VALUES('events_last_seq',?1)",

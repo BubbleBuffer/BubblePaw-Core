@@ -5,9 +5,9 @@ mod legacy_metadata;
 mod support;
 use anyhow::Result;
 use bubblepaw_core::{
-    ContextChapter, ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter,
-    ContextView, DecisionKind, EpisodeBatch, InputKind, Message, MessageOrigin, RelatedEvidence,
-    Role, RunOptions, Store, SubjectChapterStatus, Usage, is_typed_user,
+    ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter, ContextView,
+    DecisionKind, EpisodeBatch, InputKind, Message, MessageOrigin, RelatedEvidence, Role,
+    RunOptions, Store, SubjectChapterStatus, Usage, is_typed_user,
 };
 use support::harness;
 #[path = "context_episodes/fixtures.rs"]
@@ -158,107 +158,6 @@ async fn context_views_replace_atomically_freeze_restart_and_start_empty_on_fork
             .get::<_, i64>(0))?,
         1
     );
-    Ok(())
-}
-
-#[tokio::test]
-async fn context_views_migrate_v3_v4_v5_and_reopen_v6_without_changing_history() -> Result<()> {
-    for version in [3, 4, 5, 6] {
-        let dir = tempfile::tempdir()?;
-        let path = dir.path().join("migration.sqlite");
-        let store = Store::open(&path)?;
-        let session = store.create_session("migration")?;
-        let history = canonical_history(&store, &session.id, 3).await?;
-        let checkpoint = ContextCheckpoint {
-            files_touched: Vec::new(),
-            id: "legacy-checkpoint".into(),
-            session_id: session.id.clone(),
-            through_message_id: history[1].id.clone(),
-            model: "legacy".into(),
-            summary: "legacy checkpoint text".into(),
-            created_at: history[1].created_at.clone(),
-            usage: None,
-        };
-        store.save_context_checkpoint(&checkpoint)?;
-        if version >= 4 {
-            store.save_context_chapter(&ContextChapter {
-                id: "legacy-chapter".into(),
-                session_id: session.id.clone(),
-                ordinal: 1,
-                first_message_id: history[2].id.clone(),
-                last_message_id: history[3].id.clone(),
-                title: "Legacy".into(),
-                summary: "legacy chapter text".into(),
-                model: "legacy".into(),
-                usage: None,
-                created_at: history[3].created_at.clone(),
-            })?;
-        }
-        if version >= 5 {
-            store.save_episode_batch(&batch(
-                &session.id,
-                1,
-                &history[4..],
-                1,
-                1,
-                Some(&history[3].id),
-            ))?;
-        }
-        let canonical = serde_json::to_value(&history)?;
-        let legacy = serde_json::to_value(store.context_checkpoint(&session.id)?)?;
-        let chapters = serde_json::to_value(store.context_chapters(&session.id)?)?;
-        let episodes = serde_json::to_value(store.context_episodes(&session.id)?)?;
-        let boundary = if version == 3 {
-            &history[1]
-        } else if version == 4 {
-            &history[3]
-        } else {
-            &history[5]
-        };
-        let saved = view(
-            &session.id,
-            Some(store.message_seq(&session.id, &boundary.id)?),
-            history[0].clone(),
-        );
-        if version == 6 {
-            store.save_context_view(&saved)?;
-        }
-        drop(store);
-        support::replace_with_legacy_fixture(&path, version)?;
-        let store = Store::open(&path)?;
-        assert_eq!(store.storage_stats()?.chat_transaction_count, 0);
-        assert_eq!(
-            serde_json::to_value(store.messages(&session.id)?)?,
-            canonical
-        );
-        assert_eq!(
-            serde_json::to_value(store.context_checkpoint(&session.id)?)?,
-            legacy
-        );
-        assert_eq!(
-            serde_json::to_value(store.context_chapters(&session.id)?)?,
-            chapters
-        );
-        assert_eq!(
-            serde_json::to_value(store.context_episodes(&session.id)?)?,
-            episodes
-        );
-        if version == 6 {
-            assert_eq!(
-                serde_json::to_value(store.context_view(&session.id)?.unwrap())?,
-                serde_json::to_value(&saved)?
-            );
-        } else {
-            assert!(store.context_view(&session.id)?.is_none());
-            store.save_context_view(&saved)?;
-            assert_eq!(store.storage_stats()?.chat_transaction_count, 1);
-        }
-        let conn = rusqlite::Connection::open(store.chat_path(&session.id)?.unwrap())?;
-        assert_eq!(
-            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-            12
-        );
-    }
     Ok(())
 }
 
@@ -784,108 +683,6 @@ async fn related_links_are_backward_same_session_and_closed_membership_stays_fro
         serde_json::to_value(store.context_subject_chapters(&session.id)?[0].clone())?,
         closed_baseline
     );
-    Ok(())
-}
-
-#[tokio::test]
-async fn v4_migration_preserves_legacy_json_and_starts_after_legacy_coverage() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("migration.sqlite");
-    let store = Store::open(&path)?;
-    let session = store.create_session("legacy")?;
-    let history = canonical_history(&store, &session.id, 3).await?;
-    let checkpoint = ContextCheckpoint {
-        files_touched: Vec::new(),
-        id: "legacy-checkpoint".into(),
-        session_id: session.id.clone(),
-        through_message_id: history[1].id.clone(),
-        model: "v3-model".into(),
-        summary: "frozen checkpoint".into(),
-        created_at: history[1].created_at.clone(),
-        usage: None,
-    };
-    store.save_context_checkpoint(&checkpoint)?;
-    let legacy = ContextChapter {
-        id: "legacy-chapter".into(),
-        session_id: session.id.clone(),
-        ordinal: 1,
-        first_message_id: history[2].id.clone(),
-        last_message_id: history[3].id.clone(),
-        title: "Legacy chapter".into(),
-        summary: "frozen chapter".into(),
-        model: "v4-model".into(),
-        usage: None,
-        created_at: history[3].created_at.clone(),
-    };
-    store.save_context_chapter(&legacy)?;
-    store.queue(&session.id, InputKind::Followup, "legacy pending input")?;
-    drop(store);
-    support::replace_with_legacy_fixture(&path, 4)?;
-    let conn = rusqlite::Connection::open(&path)?;
-    let read_legacy = |conn: &rusqlite::Connection| -> Result<Vec<serde_json::Value>> {
-        let raw = [
-            conn.query_row(
-                "SELECT data FROM context_checkpoints WHERE session_id=?1",
-                [&session.id],
-                |r| r.get::<_, String>(0),
-            )?,
-            conn.query_row(
-                "SELECT data FROM context_chapters WHERE session_id=?1",
-                [&session.id],
-                |r| r.get::<_, String>(0),
-            )?,
-        ];
-        raw.into_iter()
-            .map(|raw| {
-                let mut value: serde_json::Value = serde_json::from_str(&raw)?;
-                value.as_object_mut().unwrap().remove("usage");
-                Ok(value)
-            })
-            .collect()
-    };
-    let bytes = read_legacy(&conn)?;
-    drop(conn);
-    let store = Store::open(&path)?;
-    assert_eq!(store.storage_stats()?.chat_transaction_count, 0);
-    assert_eq!(
-        store.episode_coverage_token(&session.id)?,
-        Some(history[3].id.clone())
-    );
-    assert_eq!(store.queued_inputs(&session.id)?[0].origin, None);
-    assert_eq!(
-        serde_json::to_value(store.context_checkpoint(&session.id)?)?,
-        serde_json::to_value(Some(&checkpoint))?
-    );
-    assert_eq!(
-        serde_json::to_value(store.context_chapters(&session.id)?)?,
-        serde_json::to_value([&legacy])?
-    );
-    let wrong = batch(&session.id, 1, &history[2..6], 1, 1, Some(&history[3].id));
-    assert!(store.save_episode_batch(&wrong).is_err());
-    let next = batch(&session.id, 1, &history[4..6], 1, 1, Some(&history[3].id));
-    store.save_episode_batch(&next)?;
-    assert_eq!(store.storage_stats()?.chat_transaction_count, 1);
-    let conn = rusqlite::Connection::open(store.chat_path(&session.id)?.unwrap())?;
-    assert_eq!(
-        conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        12
-    );
-    assert_eq!(read_legacy(&conn)?, bytes);
-    // The legacy API remains available; automatic phase-3 compaction uses views.
-    store.save_context_chapter(&ContextChapter {
-        ordinal: 2,
-        id: "overlap".into(),
-        first_message_id: history[4].id.clone(),
-        last_message_id: history[5].id.clone(),
-        ..legacy
-    })?;
-    harness(&store)
-        .resume(&session.id, RunOptions::default())
-        .await?;
-    let messages = store.messages(&session.id)?;
-    let consumed = &messages[history.len()];
-    assert_eq!(consumed.origin, None);
-    assert!(is_typed_user(consumed));
     Ok(())
 }
 

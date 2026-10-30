@@ -189,7 +189,7 @@ Saved titles appear in session snapshots, lists and CLI message-search hits.
 
 `run --no-session` and `script --no-session` use a private temporary directory
 for the entire store and its spill/output/checkpoint resources. That directory
-is selected before legacy migration or opening any configured data directory.
+is selected before opening any configured data directory.
 The real store is neither opened nor changed, even when `--data-dir` or `--db`
 is supplied. `--session` conflicts with `--no-session`; `--name` may label a
 temporary run. Ordinary completion, handled cancellation and errors drop the
@@ -477,8 +477,7 @@ initialization; this adds one transaction per recovered visible child run. There
 is no durable outbox between those steps. A failed directory reopen or crash
 before the queued projection is flushed can require reset/resnapshot; the next
 startup's sequence reservation invalidates old cursors. This contract covers
-normal chat-v1 directory stores, without promising parent-event replay through
-legacy intermediate storage conversion. Registry-only idle and cleanup states
+normal chat-v1 directory stores, without promising parent-event replay across store layouts. Registry-only idle and cleanup states
 remain outside the event contract.
 
 ### Event kinds

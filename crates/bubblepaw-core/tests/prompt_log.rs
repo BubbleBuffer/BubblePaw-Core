@@ -205,33 +205,3 @@ fn rows_carry_writes_output_reasoning_breakpoints_and_lifetime() -> Result<()> {
     assert_eq!(stored, r#"["system.0","messages.0.0"]"#);
     Ok(())
 }
-
-#[test]
-fn an_old_serving_store_gains_the_new_columns_and_keeps_its_rows() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    drop(Store::open_data_dir(dir.path())?);
-    {
-        // The first release's table, with one row.
-        let serving = rusqlite::Connection::open(dir.path().join("serving.db"))?;
-        serving.execute_batch("PRAGMA user_version=1;
-DROP TABLE model_requests;
-CREATE TABLE model_requests(id INTEGER PRIMARY KEY,session_id TEXT NOT NULL,lineage TEXT NOT NULL,seq INTEGER NOT NULL,created_at TEXT NOT NULL,frozen_sha256 TEXT NOT NULL,frozen_bytes INTEGER NOT NULL,cold_sha256 TEXT NOT NULL,cold_bytes INTEGER NOT NULL,cold_count INTEGER NOT NULL,history_sha256 TEXT NOT NULL,history_bytes INTEGER NOT NULL,history_count INTEGER NOT NULL,classification TEXT NOT NULL,declared INTEGER NOT NULL,declaration_reason TEXT,provider TEXT NOT NULL,model TEXT NOT NULL,cached_tokens INTEGER,uncached_tokens INTEGER,expected_cached_tokens INTEGER,since_previous_ms INTEGER,warned INTEGER NOT NULL);
-INSERT INTO model_requests(session_id,lineage,seq,created_at,frozen_sha256,frozen_bytes,cold_sha256,cold_bytes,cold_count,history_sha256,history_bytes,history_count,classification,declared,provider,model,cached_tokens,warned) VALUES('s','root',1,'2099-01-01T00:00:00Z','f',1,'c',0,0,'h',1,1,'first',0,'go','route/main',5,0);")?;
-    }
-    let store = Store::open_data_dir(dir.path())?;
-    let context = ContextState::default();
-    context.attach_request_log(&store);
-    context.build(request("system", &["one"]), "s", "root", &[]);
-    let answered = Usage {
-        output_tokens: 2,
-        ..usage(10, 0)
-    };
-    context.finish_request("s", "root", "go", "route/main", Some(&answered), None);
-    let rows = store.model_requests("s")?;
-    assert_eq!(rows.len(), 2, "the old row survives the upgrade");
-    assert_eq!(rows[0].cached_tokens, Some(5));
-    assert_eq!(rows[0].output_tokens, None);
-    assert_eq!(rows[0].breakpoints, None);
-    assert_eq!(rows[1].output_tokens, Some(2));
-    Ok(())
-}

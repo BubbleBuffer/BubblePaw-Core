@@ -114,7 +114,8 @@ pub use store::{
     ContextChapter, ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter,
     ContextView, DecisionKind, EpisodeBatch, InputKind, LegacyCheckpointNote, QueuedInput,
     RelatedEvidence, RootStoragePolicy, SearchHit, SearchIndexProgress, SessionCleanup,
-    SessionRecord, SessionSnapshot, StorageStats, Store, StoreOptions, SubjectChapterStatus,
+    SessionRecord, SessionSnapshot, StorageStats, Store, StoreOptions, StoreSchemaError,
+    SubjectChapterStatus,
 };
 pub use transcript::{
     ImportDerivedRecord, ImportFormat, ImportOptions, ImportResult, ImportStats, import_file,

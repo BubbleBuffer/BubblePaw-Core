@@ -769,3 +769,7 @@ with `Store::migrate_legacy`, the `storage.legacy_db` key, the host's import wai
 and retry protocol, and the delegation ledger merge. Earlier entries on import
 are historical. `--db <file>` remains only as a path selecting the sibling
 `<stem>.data` directory; it reads nothing from the file.
+
+## One schema per store (2026-10-30)
+
+Stores are created directly at their final schema (chat 12, catalog 2, serving 2, delegation ledger 1) and open only at exactly that version. Any other version, older or newer, fails with the typed `StoreSchemaError` and the file is left untouched. The step-by-step upgrade chains and their fixtures were removed. A future migration is added as a numbered step before the version check; see [storage model](storage-model.md).

@@ -80,10 +80,8 @@ impl Store {
             let application: i64 =
                 catalog.query_row("PRAGMA application_id", [], |row| row.get(0))?;
             let version: i64 = catalog.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-            anyhow::ensure!(
-                application == 0x42504231 && (1..=2).contains(&version),
-                "Unsupported catalog schema"
-            );
+            anyhow::ensure!(application == 0x42504231, "Unsupported catalog schema");
+            StoreSchemaError::ensure("catalog", version, schema::CATALOG_VERSION)?;
             let catalog = Mutex::new(catalog);
             if let Some((conn, root)) =
                 open_session_record(&catalog, data_dir.as_ref(), session, |_, path| {
@@ -217,16 +215,6 @@ impl Store {
     /// A session's checkpoint records, each with its preimage in base64, as the
     /// attachments section carries its blobs.
     fn export_checkpoints(conn: &Connection, session: &str) -> Result<Vec<serde_json::Value>> {
-        // A chat that was never opened by this build has no checkpoint tables. Its
-        // legacy checkpoints are exported as attachments, so this section is empty.
-        let has_table: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='checkpoint_records')",
-            [],
-            |row| row.get(0),
-        )?;
-        if !has_table {
-            return Ok(Vec::new());
-        }
         let mut statement = conn.prepare(
             "SELECT id,boundary_seq,metadata,preimage_hash FROM checkpoint_records WHERE session_id=?1 ORDER BY id",
         )?;

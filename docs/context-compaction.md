@@ -12,8 +12,7 @@ operations; this page describes their recorded facts.
 The chat database stores `ContextEvent` JSON in `context_events`, with stable
 insertion-order reads from `Store::context_events(session_id)`. Events contain
 IDs, creation time, covered first/last canonical message IDs, covered episode
-IDs, an optional summary ID, a trigger and a short explanation. There is no
-backfill for stores created before schema 12.
+IDs, an optional summary ID, a trigger and a short explanation.
 
 | Event kind | Trigger | When recorded |
 |---|---|---|
