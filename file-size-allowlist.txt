@@ -8,7 +8,7 @@ crates/bubblepaw-core/src/runtime.rs 1614
 crates/bubblepaw-core/src/store.rs 3335
 crates/bubblepaw-core/src/store_cold.rs 573
 crates/bubblepaw-core/src/store_layout.rs 2800
-crates/bubblepaw-core/src/tests.rs 2019
+crates/bubblepaw-core/src/tests.rs 2007
 crates/bubblepaw-core/src/transcript.rs 1314
 crates/bubblepaw-core/tests/context_episodes.rs 895
 crates/bubblepaw-core/tests/quota.rs 807
@@ -86,7 +86,7 @@ crates/bubblepaw-runner/tests/provider_responses.rs 1318
 crates/bubblepaw-runner/tests/questions.rs 562
 crates/bubblepaw-runner/tests/quota_scheduling.rs 871
 crates/bubblepaw-runner/tests/reasoning_replay.rs 564
-crates/bubblepaw-runner/tests/reasoning_storage.rs 639
+crates/bubblepaw-runner/tests/reasoning_storage.rs 638
 crates/bubblepaw-runner/tests/reasoning_tool_loops.rs 593
 crates/bubblepaw-runner/tests/recursive_children.rs 592
 crates/bubblepaw-runner/tests/research.rs 822

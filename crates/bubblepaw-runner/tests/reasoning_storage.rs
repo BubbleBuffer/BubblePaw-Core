@@ -376,8 +376,7 @@ async fn audit(kind: Kind, pathway: Pathway) -> Result<()> {
         "baseline must contain exact native opaque blocks"
     );
     store.append_batch(&original)?;
-    let conn = Connection::open(store.chat_path(&session.id)?.unwrap())?;
-    let raw: String = conn.query_row(
+    let raw: String = Connection::open(store.chat_path(&session.id)?.unwrap())?.query_row(
         "SELECT data FROM messages WHERE message_id=?1",
         [&original[1].id],
         |row| row.get(0),

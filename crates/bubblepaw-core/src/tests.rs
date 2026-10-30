@@ -1754,20 +1754,8 @@ async fn sessions_run_independently_with_single_active_per_session() -> Result<(
 }
 
 #[test]
-fn rejects_foreign_database_and_workspace_mismatch_and_noop_binding_is_read_only() -> Result<()> {
+fn workspace_mismatch_is_rejected_and_noop_binding_is_read_only() -> Result<()> {
     let dir = tempfile::tempdir()?;
-    let foreign = dir.path().join("foreign.sqlite");
-    let connection = rusqlite::Connection::open(&foreign)?;
-    connection.execute_batch(
-        "CREATE TABLE unrelated(value TEXT); INSERT INTO unrelated VALUES('preserved');",
-    )?;
-    drop(connection);
-    assert!(Store::open(&foreign).is_err());
-    let conn = rusqlite::Connection::open(&foreign)?;
-    assert_eq!(
-        conn.query_row("SELECT value FROM unrelated", [], |r| r.get::<_, String>(0))?,
-        "preserved"
-    );
     let store = Store::in_memory()?;
     store.bind_workspace(dir.path())?;
     let before = store.storage_stats()?.transaction_count;

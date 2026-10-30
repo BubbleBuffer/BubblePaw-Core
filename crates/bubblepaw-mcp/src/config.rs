@@ -293,7 +293,7 @@ mod tests {
         assert!(!settings.allows_tool("read_secret"));
         assert!(!settings.allows_tool("echo"));
         settings.include_tools = Some(vec!["echo".into(), "read_*".into()]);
-        settings.exclude_tools = vec!["read_note".into()];
+        settings.exclude_tools = vec!["read_note".into(), "*_secret".into()];
         assert!(settings.allows_tool("echo"));
         assert!(!settings.allows_tool("read_note"));
         assert!(!settings.allows_tool("read_secret"));

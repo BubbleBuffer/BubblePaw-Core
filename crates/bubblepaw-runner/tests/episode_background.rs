@@ -485,6 +485,8 @@ async fn runner_explicit_episode_policy_gathers_responses_source_and_applies_at_
                 "--model",
                 "fake-main",
                 // The synthetic OpenAI key would otherwise select the Luna default.
+                "--episode-summary-base-url=",
+                "--episode-summary-reasoning-fields={}",
                 "--decider",
                 "llm/api/fake-main",
                 "--compact-threshold-tokens",
@@ -495,8 +497,6 @@ async fn runner_explicit_episode_policy_gathers_responses_source_and_applies_at_
                 &session,
             ])
             .env("OPENAI_API_KEY", "synthetic-key")
-            .env("BUBBLEPAW_EPISODE_SUMMARY_BASE_URL", "")
-            .env("BUBBLEPAW_EPISODE_SUMMARY_REASONING_FIELDS", "{}")
             .env_remove("OPENCODE_API_KEY")
             .env_remove("OPENROUTER_API_KEY")
             .output()
