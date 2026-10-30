@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="230 230 780 780">
+<title>BubblePaw F4 final: locked in</title>
+<desc>The folder cat with slim outlined apricot spark eyes and determined brows, two apricot sparkles around it; no cheeks, no white glint.</desc>
+<metadata id="pawth-style" type="application/json">{"version":1,"kit":"kits/bubblebuffer.kit.svg"}</metadata>
+<metadata id="pawth-icon" type="application/json">{"version":1,"template":"android-adaptive"}</metadata>
+<g id="background" data-name="Background" data-icon-layer="background">
+
+</g>
+<g id="safe-fit" data-name="Safe-circle fit" transform="translate(640 640) scale(0.8676) translate(-636 -627)">
+<g id="burst" data-name="Power-up burst" data-part="effect/sparkles">
+<path id="burst-big" transform="translate(52.6 46.3)" data-name="Big apricot sparkle" d="M305  290Q335  360  405  390Q335  420  305  490Q275  420  205  390Q275  360  305  290Z" fill="#DE945F" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="burst-small" transform="translate(-47.6 51.2)" data-name="Small apricot sparkle" d="M965  273Q983.6  316.4  1027  335Q983.6  353.6  965  397Q946.4  353.6  903  335Q946.4  316.4  965  273Z" fill="#DE945F" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g id="folder-back" data-name="Folder back" data-part="object/folder-back">
+<path id="folder-back-fill" data-name="Apricot folder back" d="M335  900V525Q335  485  375  485H495L535  530H905Q945  530  945  570V900Z" fill="#DE945F" stroke="#282A2F" stroke-width="47.81" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g id="head" data-name="Faceted head" data-part="head/faceted">
+<path id="shell" data-name="Milk face" d="M426.66  434.06L520.53  331.66H546.13L640  425.53L733.87  331.66H759.47L853.34  434.06V621.8L768  758.34H494.93L426.66  690.07Z" fill="#FFFAF1"/>
+<path id="lower-facet" data-name="Quiet lower facet" d="M426.66  638.87L503.47  707.13H802.14L768  758.34H494.93L426.66  690.07Z" fill="#E4DCCD"/>
+</g>
+<g id="ears" data-name="Calico ears" data-part="ears/calico">
+<path id="ear-left" data-name="Charcoal ear patch" d="M454.38  449.54L520.53  331.66L546.13  331.66L617.68  419.77L593.37  421.51L553.69  426.14L499.36  437.71Z" fill="#282A2F" stroke="#282A2F" stroke-width="47.81" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="ear-left-inset" data-name="Left milk ear inset" d="M471.22  424.12L529.01  359.59L577.71  411.88L549.86  409.74L514.22  412.89Z" fill="#FFFAF1"/>
+<path id="ear-right" data-name="Apricot ear patch" d="M853.34  434.06L759.47  331.66L733.87  331.66L655.84  434.89L727.39  444.14L795.08  445.71L840.4  456.79Z" fill="#DE945F"/>
+<path id="ear-right-inset" data-name="Right milk ear inset" d="M803.74  426.28L746.67  370.39L695.09  420.52L732.63  429.2L785.19  430.7Z" fill="#FFFAF1"/>
+</g>
+<g id="contour" data-name="Head contour" data-part="head/contour">
+<path id="outline" data-name="Cut-corner outline" d="M426.66  434.06L520.53  331.66H546.13L640  425.53L733.87  331.66H759.47L853.34  434.06V621.8L768  758.34H494.93L426.66  690.07Z" fill="none" stroke="#282A2F" stroke-width="47.81" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g id="face" data-name="Happy face" data-part="face/happy">
+<path id="nose" data-name="Soft triangular nose" d="M628.06  579.14H651.94Q657.92  579.14  653.65  583.82L644.27  592.79Q640  596.62  635.73  592.79L626.35  583.82Q622.08  579.14  628.06  579.14Z" fill="#DE945F"/>
+<path id="smile" data-name="Double smile" d="M584.53  604.73C584.53  668.73  640  668.73  640  609C640  668.73  695.47  668.73  695.47  604.73" fill="none" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g id="intense-eyes" data-name="Spark eyes" data-part="face/spark-eyes">
+<path id="eye-left" data-name="Left spark eye" d="M538  456Q554.56  531.44  630  548Q554.56  564.56  538  640Q521.44  564.56  446  548Q521.44  531.44  538  456Z" fill="#DE945F" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="eye-right" data-name="Right spark eye" d="M742  456Q758.56  531.44  834  548Q758.56  564.56  742  640Q725.44  564.56  650  548Q725.44  531.44  742  456Z" fill="#DE945F" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="brows" data-name="Determined brows" d="M486  412L586  438M794  412L694  438" fill="none" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g id="folder-front" data-name="Folder front" data-part="object/folder-front">
+<path id="folder-front-fill" data-name="Apricot folder front" d="M320  735H960L922  915H358Z" fill="#DE945F" stroke="#282A2F" stroke-width="47.81" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g id="paws" data-name="Paws on the edge" data-part="paw/pair">
+<path id="paw-left" data-name="Milk paw" d="M395  735C395  685  430  665  465  665C500  665  535  685  535  735C535  770  505  783  465  783C425  783  395  770  395  735Z" fill="#FFFAF1" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="paw-right" data-name="Milk paw" d="M745  735C745  685  780  665  815  665C850  665  885  685  885  735C885  770  855  783  815  783C775  783  745  770  745  735Z" fill="#FFFAF1" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="paw-left-toes" data-name="Left toe lines" d="M445  783V757M485  783V757" fill="none" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="paw-right-toes" data-name="Right toe lines" d="M795  783V757M835  783V757" fill="none" stroke="#282A2F" stroke-width="43.72" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</g>
+</svg>
