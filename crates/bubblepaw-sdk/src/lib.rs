@@ -11,7 +11,8 @@
 //! Everything reachable through the named modules ([`store`], [`harness`],
 //! [`events`], [`approvals`], [`tools`], [`providers`], [`context`],
 //! [`todo`], [`questions`], [`net`], [`web`], [`claude_code`]), plus [`Host`], [`HostBuilder`]
-//! and [`Client`] with [`ClientError`] and [`Notifications`],
+//! and [`Client`] with [`ClientError`] and [`Notifications`] (and, from
+//! 0.5.0, [`HostConfig`] with [`ConfigOptions`] and [`ConfigError`]),
 //! follows semantic versioning from 0.2.0: those paths keep working within a
 //! major release, and a breaking change is a version bump.
 //!
@@ -67,6 +68,8 @@ pub use bubblepaw_runner::host_api;
 pub use host_api::{HostCtx, HostError, Method, Profile, ReadScope, dispatch};
 
 pub use client::{Client, ClientError, Notifications};
+/// The CLI host's configuration, for [`Client::open_configured`].
+pub use bubblepaw_runner::host_config::{ConfigError, ConfigOptions, HostConfig};
 pub use host::{Host, HostBuilder};
 
 /// The items nearly every embedder needs.

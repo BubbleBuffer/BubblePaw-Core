@@ -139,7 +139,54 @@ client.close().await?;
 - `close()` attached ends only this session. Embedded, it ends the attached
   sessions, removes `host.json`, waits for admitted runs and stops the host.
 
-`host()` returns the embedded `Host`, or `None` when attached.
+`host()` returns the `Host` an embedder built, or `None` when attached or
+configured.
+
+### The CLI host
+
+`HostConfig` is the configuration `bubblepaw` itself starts from. An embedder
+that wants the CLI host, with its providers, live provider reload and model
+roles, loads it and opens a client on it instead of wiring a `HostBuilder`:
+
+```rust,ignore
+let config = HostConfig::load(ConfigOptions {
+    workspace: Some(project_dir),
+    ..ConfigOptions::default()
+})?;
+let client = Client::open_configured(config).await?;   // or Client::embedded_configured
+```
+
+- `HostConfig::load(ConfigOptions) -> Result<HostConfig, ConfigError>` layers
+  the configuration exactly as the CLI does: built-in defaults, then
+  `config_file` (or `BUBBLEPAW_CONFIG`) or else the user
+  `~/.bubblepaw/config.toml` and the project `<workspace>/.bubblepaw/config.toml`,
+  then the environment, then `overrides`. `bubblepaw` runs the same layering
+  (`host_config::layer`) and places its store with the same
+  `host_config::storage_paths`, `open_store` and `prepare_store`. `load` then
+  checks the provider setup, the main model's route and the model roles, the
+  checks a CLI host runs when it starts.
+- `ConfigOptions` fields left empty take the CLI defaults: `workspace` is the
+  current directory, `data_dir` (`--data-dir`) falls back to
+  `storage.data_dir` and then the central store, `home` is `USERPROFILE` or
+  `HOME`, `env` is the process environment, and `overrides` (`--set`) is empty.
+- `ConfigError` is typed: `File {path, message}` for a config file that cannot
+  be read or is not TOML (the message never echoes the file's contents),
+  `Workspace {path, message}`, `Settings`, `Roles` for a role that does not
+  resolve to qualified models, `Providers` for an invalid provider setup or main
+  route, and `Storage`.
+- `HostConfig` exposes `data_dir()`, `workspace()`, `effective()`,
+  `settings()` and `is_central()`.
+- `Client::open_configured(config)` attaches when another process (or a host
+  this process already serves) owns the data directory, like `open`; otherwise
+  it embeds. `Client::embedded_configured(config)` always embeds. Embedding runs
+  the CLI host's startup: it migrates a legacy archive once, opens the store,
+  attaches spilled outputs, prunes archives, cleans up inactive child
+  worktrees, publishes the control endpoint and `host.json`, and serves the
+  CLI's own host context (the `stdio` command's setup, without stdio). The
+  one-time import of legacy per-workspace stores into the central store is left
+  to the CLI.
+
+`HostBuilder` stays the way to build a host with custom tools or providers.
 
 ## HostBuilder
 
@@ -255,7 +302,8 @@ directory.
 ## Stability
 
 Everything reachable through the named modules, `Host` and `HostBuilder`
-follows semantic versioning from 0.2.0. A breaking change there is a version
+follows semantic versioning from 0.2.0, and `HostConfig`, `ConfigOptions` and
+`ConfigError` from 0.5.0. A breaking change there is a version
 bump.
 
 `bubblepaw_sdk::core` and `bubblepaw_sdk::runner` are an escape hatch with no

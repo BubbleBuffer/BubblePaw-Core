@@ -1,4 +1,5 @@
 use super::*;
+use bubblepaw_runner::config::LoadOptions;
 #[cfg(feature = "bench")]
 use bubblepaw_core::ContextStrategy;
 use bubblepaw_core::ExecutionMode;

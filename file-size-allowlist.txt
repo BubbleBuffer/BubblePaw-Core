@@ -28,13 +28,13 @@ crates/bubblepaw-mcp/tests/http.rs 1852
 crates/bubblepaw-mcp/tests/stdio.rs 1010
 crates/bubblepaw-runner/src/agents.rs 3377
 crates/bubblepaw-runner/src/codemode.rs 1886
-crates/bubblepaw-runner/src/config.rs 3909
+crates/bubblepaw-runner/src/config.rs 3860
 crates/bubblepaw-runner/src/delegate/ledger.rs 649
 crates/bubblepaw-runner/src/delegate/metrics.rs 912
 crates/bubblepaw-runner/src/episode_models.rs 991
 crates/bubblepaw-runner/src/episode_worker.rs 1053
 crates/bubblepaw-runner/src/host_transport.rs 828
-crates/bubblepaw-runner/src/main.rs 783
+crates/bubblepaw-runner/src/main.rs 751
 crates/bubblepaw-runner/src/net.rs 2777
 crates/bubblepaw-runner/src/opencode_console.rs 676
 crates/bubblepaw-runner/src/probes.rs 1436
