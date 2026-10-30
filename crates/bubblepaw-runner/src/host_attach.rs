@@ -8,7 +8,10 @@ use bubblepaw_runner::{
 use tokio::io::{AsyncWrite, BufReader};
 
 mod io;
+mod sessions;
 use io::{interrupt_listener, read_json, write_json};
+use sessions::{CliContext, session_request};
+pub use sessions::{SessionSource, serve_embedded};
 
 const CONNECT_WAIT: Duration = Duration::from_secs(5);
 
@@ -257,15 +260,11 @@ pub async fn serve(
     let lifetime = HostLifetime::default();
     let host_stop = CancellationToken::new();
     let cancel = CancellationToken::new();
+    let context = CliContext::default();
+    let sessions = context.source(&request, &store, &lifetime);
     // Heap pin the request boundary: pin! would keep the complete execution
     // state (including every command branch) inline in the host future.
-    let mut primary = Box::pin(session_host::execute(
-        request,
-        store.clone(),
-        lifetime.clone(),
-        Output::default(),
-        cancel.clone(),
-    ));
+    let mut primary = context.primary(request, &store, &lifetime, &cancel).await?;
     let mut primary_result = None;
     let mut clients = tokio::task::JoinSet::new();
     // One registered listener for the whole loop: a Ctrl-C must cancel the
@@ -275,9 +274,10 @@ pub async fn serve(
     for connection in waiting {
         let store = store.clone();
         let lifetime = lifetime.clone();
+        let sessions = sessions.clone();
         let cancellation = host_stop.clone();
         clients.spawn(async move {
-            connection_request(connection, store, lifetime, cancellation).await
+            connection_request(connection, store, lifetime, sessions, cancellation).await
         });
     }
     loop {
@@ -291,8 +291,9 @@ pub async fn serve(
                     Ok(connection) => {
                         let store = store.clone();
                         let lifetime = lifetime.clone();
+                        let sessions = sessions.clone();
                         let cancellation = host_stop.clone();
-                        clients.spawn(async move { connection_request(connection, store, lifetime, cancellation).await });
+                        clients.spawn(async move { connection_request(connection, store, lifetime, sessions, cancellation).await });
                     }
                     Err(error) => {
                         // Fatal listener loss stops every request. Ordinary
@@ -305,6 +306,7 @@ pub async fn serve(
                         let _ = lifetime.shutdown().await;
                         if primary_result.is_none() { let _ = primary.as_mut().await; }
                         while clients.join_next().await.is_some() {}
+                        let _ = context.shutdown().await;
                         return Err(error.context("host control listener failed"));
                     }
                 }
@@ -317,8 +319,12 @@ pub async fn serve(
     // Removing discovery happens before dropping the final Store lease. A new
     // owner cannot have its host.json removed by this host's destructor.
     drop(endpoint);
+    // Sessions have ended; the context's request cleanup runs before the
+    // shared runtime stops.
+    let context_stopped = context.shutdown().await;
     let stopped = lifetime.shutdown().await;
     primary_result.expect("primary completed")?;
+    context_stopped?;
     stopped
 }
 
@@ -326,6 +332,7 @@ async fn connection_request(
     connection: Connection,
     store: Store,
     lifetime: HostLifetime,
+    sessions: SessionSource,
     host_stop: CancellationToken,
 ) -> Result<()> {
     let cancel = CancellationToken::new();
@@ -339,6 +346,9 @@ async fn connection_request(
         return Ok(());
     };
     let id = incoming.get("id").cloned().unwrap_or(Value::Null);
+    if incoming["jsonrpc"] == "2.0" && incoming["method"] == "attach.session" {
+        return session_request(id, reader, write, sessions, host_stop).await;
+    }
     let parsed = (|| -> Result<PreparedRequest> {
         ensure!(
             incoming["jsonrpc"] == "2.0" && incoming["method"] == "attach.submit",
@@ -471,6 +481,7 @@ mod tests {
             Box::new(server),
             Store::in_memory()?,
             HostLifetime::default(),
+            Arc::new(|| Box::pin(async { anyhow::bail!("no host context") })),
             host_stop.clone(),
         ));
         tokio::task::yield_now().await;

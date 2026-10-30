@@ -10,7 +10,8 @@
 //!
 //! Everything reachable through the named modules ([`store`], [`harness`],
 //! [`events`], [`approvals`], [`tools`], [`providers`], [`context`],
-//! [`todo`], [`questions`], [`net`], [`web`], [`claude_code`]), plus [`Host`] and [`HostBuilder`],
+//! [`todo`], [`questions`], [`net`], [`web`], [`claude_code`]), plus [`Host`], [`HostBuilder`]
+//! and [`Client`] with [`ClientError`] and [`Notifications`],
 //! follows semantic versioning from 0.2.0: those paths keep working within a
 //! major release, and a breaking change is a version bump.
 //!
@@ -41,6 +42,7 @@
 
 pub mod approvals;
 pub mod claude_code;
+mod client;
 pub mod context;
 pub mod events;
 pub mod harness;
@@ -64,11 +66,13 @@ pub use bubblepaw_runner as runner;
 pub use bubblepaw_runner::host_api;
 pub use host_api::{HostCtx, HostError, Method, Profile, ReadScope, dispatch};
 
+pub use client::{Client, ClientError, Notifications};
 pub use host::{Host, HostBuilder};
 
 /// The items nearly every embedder needs.
 pub mod prelude {
     pub use crate::approvals::{Approval, ApprovalPolicy};
+    pub use crate::client::{Client, ClientError};
     pub use crate::context::SummarizingContext;
     pub use crate::harness::{
         CancellationToken, ExecutionMode, Harness, HarnessConfig, RunOptions,

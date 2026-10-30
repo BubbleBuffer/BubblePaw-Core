@@ -25,6 +25,8 @@ mod proc_sockets;
 mod delegations;
 #[path = "host_attach/normalize.rs"]
 mod normalize;
+#[path = "host_attach/sessions.rs"]
+mod sessions;
 use normalize::normalize;
 
 const BIN: &str = env!("CARGO_BIN_EXE_bubblepaw");
@@ -745,7 +747,7 @@ async fn endpoint_is_user_only_and_the_host_listens_on_no_network_port() {
         .map(String::as_str)
         .collect();
     assert_eq!(keys, HashSet::from(["pid", "endpoint", "protocol_version"]));
-    assert_eq!(metadata["protocol_version"], 2);
+    assert_eq!(metadata["protocol_version"], 3);
     assert_eq!(metadata["pid"].as_u64(), Some(host.pid as u64));
 
     let endpoint = PathBuf::from(metadata["endpoint"].as_str().unwrap());

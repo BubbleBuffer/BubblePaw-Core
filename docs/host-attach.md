@@ -31,7 +31,7 @@ temporary store.
 The host publishes `<data-dir>/host.json` only after opening its control endpoint:
 
 ```json
-{"pid":1234,"endpoint":"/path/to/data/host.sock","protocol_version":2}
+{"pid":1234,"endpoint":"/path/to/data/host.sock","protocol_version":3}
 ```
 
 On Unix, the socket is inside the data directory. The directory is owned by the
@@ -118,12 +118,13 @@ be auto-denied or cleaned up by another request's event listener. Providers and
 request resources drain independently; shared `Harness::shutdown` runs once at
 host exit.
 
-## Control protocol, version 2
+## Control protocol, version 3
 
 The endpoint carries newline-delimited JSON-RPC 2.0, reusing stdio's envelopes and
 `event` records. It is private local process control, not a network service.
 Records have the same 1 MiB bound as stdio requests.
 Version 2 replaces version 1's full environment snapshot with explicit references.
+Version 3 adds host-API JSON-RPC sessions (`attach.session`).
 Mixed-version processes reject attachment; restart an older host before attaching.
 
 1. The client sends one `attach.submit` request with an ID. Its parameters are the
@@ -146,6 +147,21 @@ Mixed-version processes reject attachment; restart an older host before attachin
    broken output stream cancels the same request. It never cancels an unrelated
    session. A bounded output queue and write timeout prevent a stalled reader
    from retaining the host indefinitely.
+
+### JSON-RPC sessions
+
+A connection whose first request is `attach.session` (with an ID, no
+parameters) becomes a host-API session instead of a run. The reply carries
+`{protocol_version}`; after it the connection is the stdio protocol: the same
+method table with `Profile::Full`, newline framing, envelopes, `event` and
+`events.gap` notifications and record bound. The session and stdio share one
+session loop. Reads are host-wide (`ReadScope::Host`). `shutdown` ends only that
+session, never the host, and EOF does the same. Sessions run on the host's own
+context, which the host builds once from its own configuration and keeps until
+it exits: with `bubblepaw stdio` it is the stdio context, for other commands it
+is built on the first session. An SDK host embedded with `Client::embedded`
+serves the same endpoint, sessions and `attach.submit`; see [Rust SDK](sdk.md#client).
+A call whose session ends before its reply is never replayed.
 
 The filtered configuration snapshot can include referenced client credentials.
 It travels only over the user-restricted endpoint and is not written to host.json

@@ -48,7 +48,7 @@ crates/bubblepaw-runner/src/provider/registry.rs 1109
 crates/bubblepaw-runner/src/quota.rs 647
 crates/bubblepaw-runner/src/quota_sources.rs 1087
 crates/bubblepaw-runner/src/replay.rs 4447
-crates/bubblepaw-runner/src/session_host.rs 650
+crates/bubblepaw-runner/src/session_host.rs 652
 crates/bubblepaw-runner/src/summarization.rs 1678
 crates/bubblepaw-runner/src/tools/process.rs 1689
 crates/bubblepaw-runner/src/trace.rs 833
@@ -75,7 +75,7 @@ crates/bubblepaw-runner/tests/episode_worker.rs 1124
 crates/bubblepaw-runner/tests/episodes.rs 523
 crates/bubblepaw-runner/tests/exec_jobs.rs 1127
 crates/bubblepaw-runner/tests/history_tools.rs 825
-crates/bubblepaw-runner/tests/host_attach.rs 777
+crates/bubblepaw-runner/tests/host_attach.rs 779
 crates/bubblepaw-runner/tests/host_attach_mcp.rs 600
 crates/bubblepaw-runner/tests/live_agent_settings.rs 560
 crates/bubblepaw-runner/tests/live_config/main.rs 673

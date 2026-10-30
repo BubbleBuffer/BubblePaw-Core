@@ -1,5 +1,8 @@
-//! The two transports under test. Each is the real binary started against the
-//! same config and data directory; only one process owns the store at a time.
+//! The transports under test. Stdio, `/rpc` and the attached client use the real
+//! binary started against the same config and data directory; the embedded
+//! client runs that host context in this process. Only one owns the store at a
+//! time.
+use bubblepaw_runner::host_client::{ClientError, HostClient};
 use serde_json::{Value, json};
 use std::{path::Path, process::Stdio, time::Duration};
 use tokio::{
@@ -35,6 +38,10 @@ pub enum Transport {
     Stdio,
     /// `bubblepaw web`: `POST /rpc` on the loopback listener.
     Rpc,
+    /// A host-API client attached to `bubblepaw stdio`'s control endpoint.
+    Attached,
+    /// A host-API client on the CLI host context, built in this process.
+    Embedded,
 }
 
 pub fn seed(root: &Path) {
@@ -47,7 +54,7 @@ pub fn seed(root: &Path) {
 pub struct Peer {
     transport: Transport,
     next: u64,
-    child: Child,
+    child: Option<Child>,
     io: Io,
 }
 
@@ -60,7 +67,17 @@ enum Io {
         base: String,
         client: reqwest::Client,
     },
+    Client {
+        client: HostClient,
+        /// The attached host's stdin; closing it stops `bubblepaw stdio`.
+        input: Option<ChildStdin>,
+        /// The embedded host context and the runtime it registered in.
+        host: Option<(HostContext, HostLifetime)>,
+    },
 }
+
+type HostContext = bubblepaw_runner::session_host::host_context::HostContext;
+type HostLifetime = bubblepaw_runner::host_lifetime::HostLifetime;
 
 /// The arguments both binaries share; the subcommand is appended by `start`.
 fn command(root: &Path) -> Command {
@@ -97,7 +114,7 @@ impl Peer {
                 Self {
                     transport,
                     next: 1,
-                    child,
+                    child: Some(child),
                     io: Io::Stdio { input, output },
                 }
             }
@@ -107,10 +124,47 @@ impl Peer {
                 Self {
                     transport,
                     next: 1,
-                    child,
+                    child: Some(child),
                     io: Io::Rpc {
                         base,
                         client: reqwest::Client::new(),
+                    },
+                }
+            }
+            Transport::Attached => {
+                let mut child = command(root)
+                    .arg("stdio")
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .unwrap();
+                let input = child.stdin.take();
+                let client = HostClient::attach(&root.join("data"), TIMEOUT)
+                    .await
+                    .unwrap();
+                Self {
+                    transport,
+                    next: 1,
+                    child: Some(child),
+                    io: Io::Client {
+                        client,
+                        input,
+                        host: None,
+                    },
+                }
+            }
+            Transport::Embedded => {
+                let (context, lifetime) = embedded_host(root).await;
+                let client = HostClient::in_process(context.ctx().clone());
+                Self {
+                    transport,
+                    next: 1,
+                    child: None,
+                    io: Io::Client {
+                        client,
+                        input: None,
+                        host: Some((context, lifetime)),
                     },
                 }
             }
@@ -126,6 +180,27 @@ impl Peer {
 
     /// Fixture IDs remain stable even when the transports need different polls.
     pub async fn call_with_id(&mut self, id: Value, method: &str, params: Value) -> Value {
+        if let Io::Client { client, .. } = &self.io {
+            let reply = tokio::time::timeout(TIMEOUT, client.call(method, params))
+                .await
+                .unwrap_or_else(|_| panic!("{:?} {method} timed out", self.transport));
+            // The client returns the result; the envelope is rebuilt to compare.
+            return match reply {
+                Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
+                Err(ClientError::Rpc {
+                    code,
+                    message,
+                    data,
+                }) => {
+                    let mut error = json!({"code":code,"message":message});
+                    if let Some(data) = data {
+                        error["data"] = data;
+                    }
+                    json!({"jsonrpc":"2.0","id":id,"error":error})
+                }
+                Err(error) => panic!("{:?} {method}: {error}", self.transport),
+            };
+        }
         let frame = json!({"jsonrpc":"2.0","id":id,"method":method,"params":params});
         let bytes = serde_json::to_vec(&frame).unwrap();
         let reply = tokio::time::timeout(TIMEOUT, self.exchange(&bytes))
@@ -166,6 +241,7 @@ impl Peer {
                 );
                 reply
             }
+            Io::Client { .. } => panic!("the host-API client sends no raw frames"),
         }
     }
 
@@ -184,6 +260,7 @@ impl Peer {
                 );
                 reply
             }
+            Io::Client { .. } => unreachable!("client calls do not exchange frames"),
         }
     }
 
@@ -193,11 +270,28 @@ impl Peer {
     pub async fn finish(self) {
         let Self {
             transport,
-            mut child,
+            child,
+            io,
             ..
         } = self;
+        if let Io::Client {
+            client,
+            input,
+            host,
+        } = io
+        {
+            client.close().await;
+            // End of stdin ends the attached host's own stdio command.
+            drop(input);
+            if let Some((context, lifetime)) = host {
+                context.shutdown().await.unwrap();
+                lifetime.shutdown().await.unwrap();
+            }
+        }
+        let Some(mut child) = child else { return };
         match transport {
-            Transport::Stdio => {
+            Transport::Embedded => unreachable!("the embedded host has no child"),
+            Transport::Stdio | Transport::Attached => {
                 let status = tokio::time::timeout(TIMEOUT, child.wait())
                     .await
                     .unwrap_or_else(|_| panic!("{transport:?} did not exit after shutdown"))
@@ -259,4 +353,56 @@ pub async fn post(
     }
     let value = serde_json::from_str(&text).unwrap_or(Value::String(text));
     (status, Some(value))
+}
+
+/// The CLI host context for `stdio` with the shared config, run in this
+/// process: the request a `bubblepaw stdio` host builds, without the CLI's
+/// overrides and user config, which these runs do not use.
+async fn embedded_host(root: &Path) -> (HostContext, HostLifetime) {
+    use bubblepaw_runner::{
+        cli::Cli,
+        config::{EffectiveConfig, LoadOptions},
+        host_attach::PreparedRequest,
+    };
+    use clap::Parser;
+    let workspace = root.canonicalize().unwrap();
+    let config = root.join("config.toml");
+    let data_dir = std::path::absolute(root.join("data")).unwrap();
+    let cli = Cli::parse_from([
+        std::ffi::OsStr::new("bubblepaw"),
+        "--config".as_ref(),
+        config.as_os_str(),
+        "--workspace".as_ref(),
+        workspace.as_os_str(),
+        "--data-dir".as_ref(),
+        data_dir.as_os_str(),
+        "stdio".as_ref(),
+    ]);
+    let mut effective = EffectiveConfig::layer(LoadOptions {
+        workspace: workspace.clone(),
+        home: None,
+        custom_file: Some(config),
+        env: Vec::new(),
+        cli: Vec::new(),
+    })
+    .unwrap();
+    effective.anchor_paths(&std::env::current_dir().unwrap());
+    let store = bubblepaw_core::Store::open(&data_dir).unwrap();
+    bubblepaw_runner::spill::SpillStore::new(&data_dir)
+        .unwrap()
+        .attach(&store);
+    let request = PreparedRequest {
+        cli,
+        effective,
+        delegation: None,
+        task_prompt: None,
+        workspace,
+        legacy_db: data_dir.join("archive.sqlite"),
+        data_dir,
+    };
+    let lifetime = HostLifetime::default();
+    let context = HostContext::start(request, store, lifetime.clone(), None)
+        .await
+        .unwrap();
+    (context, lifetime)
 }
