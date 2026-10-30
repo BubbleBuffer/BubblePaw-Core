@@ -7,7 +7,7 @@ crates/bubblepaw-core/src/lib.rs 818
 crates/bubblepaw-core/src/runtime.rs 1614
 crates/bubblepaw-core/src/store.rs 3335
 crates/bubblepaw-core/src/store_cold.rs 573
-crates/bubblepaw-core/src/store_layout.rs 2800
+crates/bubblepaw-core/src/store_layout.rs 2769
 crates/bubblepaw-core/src/tests.rs 2007
 crates/bubblepaw-core/src/transcript.rs 1314
 crates/bubblepaw-core/tests/context_episodes.rs 895
