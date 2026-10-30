@@ -1,6 +1,8 @@
 use super::*;
 #[cfg(feature = "bench")]
 use bubblepaw_core::ContextStrategy;
+use bubblepaw_core::ExecutionMode;
+use bubblepaw_runner::{provider::LiveProviderConfig, root_prompt::root_system_prompt};
 
 #[test]
 fn login_provider_does_not_collide_with_global_provider() {

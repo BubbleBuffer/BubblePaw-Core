@@ -10,49 +10,49 @@ use std::path::PathBuf;
     about = "Small Rust agent harness",
     subcommand_precedence_over_arg = true
 )]
-pub(crate) struct Cli {
+pub struct Cli {
     /// Replace the user and project configuration files with this file.
     #[arg(long, global = true)]
-    pub(crate) config: Option<PathBuf>,
+    pub config: Option<PathBuf>,
     /// Override any configuration key with a TOML value (or plain string).
     #[arg(long = "set", global = true)]
-    pub(crate) settings: Vec<String>,
+    pub settings: Vec<String>,
     /// Workspace directory for the agent's tools; must exist.
     #[arg(long, global = true, default_value = ".")]
-    pub(crate) workspace: PathBuf,
+    pub workspace: PathBuf,
     /// Legacy single-file archive. Startup migrates it once into a sibling `<stem>.data`
     /// directory and keeps the file. Conflicts with --data-dir.
     #[arg(long, global = true)]
-    pub(crate) db: Option<PathBuf>,
+    pub db: Option<PathBuf>,
     /// Directory containing catalog.db, serving.db and chats/<root-session>.db.
     #[arg(long, global = true, conflicts_with = "db")]
-    pub(crate) data_dir: Option<PathBuf>,
+    pub data_dir: Option<PathBuf>,
     /// Model provider for the main model: codex (default), api or demo.
     #[arg(long, global = true, value_enum, default_value = "codex")]
-    pub(crate) provider: ProviderChoice,
+    pub provider: ProviderChoice,
     /// Main model id for the selected provider.
     #[arg(long, global = true, default_value = "gpt-6-luna")]
-    pub(crate) model: String,
+    pub model: String,
     /// Credentials file for the selected provider; overrides its configured auth_file.
     #[arg(long, global = true)]
-    pub(crate) auth_file: Option<PathBuf>,
+    pub auth_file: Option<PathBuf>,
     /// Base URL for the selected provider; overrides its configured base_url.
     #[arg(long, global = true)]
-    pub(crate) base_url: Option<String>,
+    pub base_url: Option<String>,
     /// JSON file of out-of-process provider extensions, `[{"id","command","args","cwd"?}]`.
     /// Their models are addressed as `<id>/<model>`; --provider stays the default.
     #[arg(long, global = true)]
-    pub(crate) extensions: Option<PathBuf>,
+    pub extensions: Option<PathBuf>,
     #[arg(long, global = true)]
-    pub(crate) read_only: bool,
+    pub read_only: bool,
     /// Enable native web search and page fetching (off by default).
     #[arg(long, global = true)]
-    pub(crate) web: bool,
+    pub web: bool,
     /// Search backend: deepseek, ddg, searxng:<url>, or brave (named API-key environment).
     /// Sets one backend; for an ordered fallback list use
     /// --set 'web.search=["deepseek", "ddg"]' (the configuration default).
     #[arg(long, global = true)]
-    pub(crate) web_search: Option<String>,
+    pub web_search: Option<String>,
     /// Web methods exposed to this agent: fetch and search.
     #[arg(
         long,
@@ -61,106 +61,106 @@ pub(crate) struct Cli {
         value_delimiter = ',',
         default_value = "fetch,search"
     )]
-    pub(crate) web_expose: Vec<String>,
+    pub web_expose: Vec<String>,
     /// Tools whose calls wait for approval (docs/approvals.md).
     #[arg(long, global = true, value_delimiter = ',')]
-    pub(crate) confirm: Vec<String>,
+    pub confirm: Vec<String>,
     /// Allow tools that declare Confirm without asking.
     #[arg(long, global = true)]
-    pub(crate) approve_all: bool,
+    pub approve_all: bool,
     /// Check Confirm calls with the approver role before asking a person.
     #[arg(long, global = true, num_args = 0..=1, default_missing_value = "", conflicts_with = "approve_all")]
-    pub(crate) auto_approve: Option<String>,
+    pub auto_approve: Option<String>,
     /// Tools checked by the approver role before asking a person.
     #[arg(long, global = true, value_delimiter = ',')]
-    pub(crate) confirm_auto: Vec<String>,
+    pub confirm_auto: Vec<String>,
     /// Decision model for episode subject splits (adapter/model).
     #[arg(long, global = true)]
-    pub(crate) decider: Option<String>,
+    pub decider: Option<String>,
     /// Decision model for automatic approval checks (adapter/model).
     #[arg(long, global = true)]
-    pub(crate) approver: Option<String>,
+    pub approver: Option<String>,
     /// Override model capacity when it is not available in local model metadata.
     #[arg(long, global = true)]
-    pub(crate) context_window_tokens: Option<usize>,
+    pub context_window_tokens: Option<usize>,
     /// Compact at the smaller of this cap and the model window minus the configured output reserve.
     #[arg(long, global = true, default_value_t = 200_000)]
-    pub(crate) compact_threshold_tokens: usize,
+    pub compact_threshold_tokens: usize,
     #[arg(long, global = true)]
-    pub(crate) no_auto_summarize: bool,
+    pub no_auto_summarize: bool,
     /// Context strategy for a new session; an existing session keeps its saved selection.
     #[arg(long, global = true, value_enum)]
-    pub(crate) context_strategy: Option<ContextStrategyChoice>,
+    pub context_strategy: Option<ContextStrategyChoice>,
     /// Episode chat-completions base URL; an empty value uses the main provider.
     #[arg(long, global = true)]
-    pub(crate) episode_summary_base_url: Option<String>,
+    pub episode_summary_base_url: Option<String>,
     #[arg(long = "summary-model", alias = "episode-summary-model", global = true)]
-    pub(crate) episode_summary_model: Option<String>,
+    pub episode_summary_model: Option<String>,
     /// Environment variable containing the episode summary API key.
     #[arg(long, global = true)]
-    pub(crate) episode_summary_key_env: Option<String>,
+    pub episode_summary_key_env: Option<String>,
     /// JSON object containing chat-completions reasoning fields.
     #[arg(long, global = true)]
-    pub(crate) episode_summary_reasoning_fields: Option<String>,
+    pub episode_summary_reasoning_fields: Option<String>,
     /// Base delay for the episode model calls' exponential retry backoff.
     #[arg(long, global = true)]
-    pub(crate) episode_retry_base_ms: Option<u64>,
+    pub episode_retry_base_ms: Option<u64>,
     /// Maximum Unicode characters in ordinary prompt text; large web pastes become files.
     #[arg(long, global = true, default_value_t = 32_000)]
-    pub(crate) max_prompt_chars: usize,
+    pub max_prompt_chars: usize,
     /// Maximum bytes in one uploaded input file.
     #[arg(long, global = true, default_value_t = 16 * 1024 * 1024)]
-    pub(crate) max_attachment_bytes: u64,
+    pub max_attachment_bytes: u64,
     /// Maximum combined attachment bytes in one accepted message.
     #[arg(long, global = true, default_value_t = 32 * 1024 * 1024)]
-    pub(crate) max_attachment_total_bytes: u64,
+    pub max_attachment_total_bytes: u64,
     /// Estimated tokens available for the complete attachment envelope, including text.
     #[arg(long, global = true, default_value_t = 10_000)]
-    pub(crate) attachment_inline_tokens: usize,
+    pub attachment_inline_tokens: usize,
     #[arg(long, global = true)]
-    pub(crate) json: bool,
+    pub json: bool,
     /// Opt in to disposable behavior traces, separate from the session archive.
     #[arg(long, global = true)]
-    pub(crate) trace_file: Option<PathBuf>,
+    pub trace_file: Option<PathBuf>,
     /// Contents mode captures bounded prompts, code, commands and tool results.
     #[arg(long, global = true, value_enum, default_value = "metadata")]
-    pub(crate) trace_mode: TraceMode,
+    pub trace_mode: TraceMode,
     /// Name this build/configuration for later comparisons.
     #[arg(long, global = true)]
-    pub(crate) trace_label: Option<String>,
+    pub trace_label: Option<String>,
     /// Maximum size of each rotated trace file in MiB.
     #[arg(long, global = true, default_value_t = 32)]
-    pub(crate) trace_max_mib: u64,
+    pub trace_max_mib: u64,
     #[command(subcommand)]
-    pub(crate) command: Command,
+    pub command: Command,
 }
 
 #[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-pub(crate) enum ProviderChoice {
+pub enum ProviderChoice {
     Codex,
     Api,
     Demo,
 }
 
 #[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-pub(crate) enum LoginProvider {
+pub enum LoginProvider {
     Opencode,
 }
 
 #[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-pub(crate) enum TranscriptFormat {
+pub enum TranscriptFormat {
     ClaudeCode,
     Codex,
 }
 
 #[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-pub(crate) enum TraceMode {
+pub enum TraceMode {
     Metadata,
     Contents,
 }
 
 #[derive(Clone, Copy, ValueEnum, Serialize, Deserialize)]
-pub(crate) enum ContextStrategyChoice {
+pub enum ContextStrategyChoice {
     Lcm,
     Classical,
 }
@@ -175,7 +175,7 @@ impl From<ContextStrategyChoice> for ContextStrategy {
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize)]
-pub(crate) enum Command {
+pub enum Command {
     /// Print effective TOML configuration and its sources; never reads credentials.
     Config,
     /// Run a prompt, optionally continuing a saved session.
@@ -352,7 +352,7 @@ pub(crate) enum Command {
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize)]
-pub(crate) enum UsageCommand {
+pub enum UsageCommand {
     /// One JSONL object per request (schema bubblepaw.usage.v1), ordered by time.
     Export {
         /// Only requests at or after this RFC 3339 time, inclusive.
@@ -362,7 +362,7 @@ pub(crate) enum UsageCommand {
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize)]
-pub(crate) enum QuotaCommand {
+pub enum QuotaCommand {
     /// Change-only quota history as bubblepaw.quota.v1 JSONL.
     Export {
         #[arg(long)]
@@ -371,19 +371,19 @@ pub(crate) enum QuotaCommand {
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize)]
-pub(crate) enum CatalogCommand {
+pub enum CatalogCommand {
     /// Rebuild the session catalog from chat files.
     Rebuild,
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize)]
-pub(crate) enum DelegationsCommand {
+pub enum DelegationsCommand {
     /// Cost per accepted outcome by category, class, model and route reason.
     Report,
 }
 
 #[derive(Subcommand, Clone, Serialize, Deserialize)]
-pub(crate) enum ServingCommand {
+pub enum ServingCommand {
     /// Delete serving.db and its -wal and -shm files, then create an empty one.
     Wipe,
 }

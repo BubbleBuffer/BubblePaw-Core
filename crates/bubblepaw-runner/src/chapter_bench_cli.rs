@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
 
 #[derive(clap::Args, Clone, Serialize, Deserialize)]
-pub(super) struct Args {
+pub struct Args {
     /// Canonical corpus JSON or a brain/chats/<name> directory; repeat for several chats.
     #[arg(long, required = true)]
     chat: Vec<PathBuf>,
@@ -31,7 +31,7 @@ pub(super) struct Args {
     max_cost_usd: f64,
 }
 
-pub(super) async fn run(args: &Args, settings: &Settings) -> Result<serde_json::Value> {
+pub async fn run(args: &Args, settings: &Settings) -> Result<serde_json::Value> {
     ensure!(
         args.max_cost_usd.is_finite() && args.max_cost_usd >= 0.0,
         "max-cost-usd must be finite and nonnegative"
@@ -67,7 +67,7 @@ pub(super) async fn run(args: &Args, settings: &Settings) -> Result<serde_json::
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Cli, Command};
+    use crate::cli::{Cli, Command};
     use clap::Parser;
 
     #[test]

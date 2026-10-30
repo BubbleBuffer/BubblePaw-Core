@@ -1,5 +1,5 @@
 //! Lifetime of the shared runtime for one host process: one Harness and one quota host.
-use super::*;
+use crate::cli_host::*;
 use bubblepaw_runner::quota::QuotaHost;
 use std::sync::Mutex;
 
@@ -7,7 +7,7 @@ use std::sync::Mutex;
 /// The quota host is shared the same way, so its in-memory readings and change
 /// tracking outlive a single request.
 #[derive(Clone, Default)]
-pub(super) struct HostLifetime {
+pub struct HostLifetime {
     harness: Arc<Mutex<Option<Arc<Harness>>>>,
     quota: Arc<Mutex<Option<Arc<QuotaHost>>>>,
     scope: SessionScope,
@@ -44,7 +44,7 @@ impl HostLifetime {
             })
         })
     }
-    pub(super) async fn shutdown(&self) -> Result<()> {
+    pub async fn shutdown(&self) -> Result<()> {
         let harness = self.harness.lock().unwrap().take();
         if let Some(harness) = harness {
             harness.shutdown(Duration::from_secs(5)).await?;
