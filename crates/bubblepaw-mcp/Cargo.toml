@@ -22,11 +22,11 @@ bubblepaw-core = { path = "../bubblepaw-core" }
 bubblepaw-process = { path = "../bubblepaw-process" }
 anyhow.workspace = true
 async-trait.workspace = true
-base64 = "0.22"
+base64 = "0.23"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
+sha2 = "0.11"
 tokio = { workspace = true, features = ["net"] }
 
 [dev-dependencies]
