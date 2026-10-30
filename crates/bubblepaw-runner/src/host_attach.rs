@@ -23,7 +23,6 @@ pub struct PreparedRequest {
     pub task_prompt: Option<String>,
     pub workspace: PathBuf,
     pub data_dir: PathBuf,
-    pub legacy_db: PathBuf,
 }
 
 pub fn is_owned(error: &anyhow::Error) -> bool {
@@ -67,7 +66,6 @@ pub async fn attach(mut request: PreparedRequest, connection: Connection) -> Res
     let mut session = None::<String>;
     let mut cancelled = false;
     let mut final_run_record = false;
-    let mut import_wait_printed = false;
     loop {
         let next = read_json(&mut reader);
         tokio::pin!(next);
@@ -92,13 +90,6 @@ pub async fn attach(mut request: PreparedRequest, connection: Connection) -> Res
                 session.get_or_insert_with(|| event.session_id.clone());
                 output.event(&event, json_output)?;
             }
-            Some("host.importing") => {
-                if !import_wait_printed {
-                    import_wait_printed = true;
-                    eprintln!("{IMPORT_WAIT_NOTICE}");
-                }
-            }
-            Some("host.retry") if session.is_none() => return Err(anyhow::Error::new(HostRetry)),
             Some("attach.output") => {
                 let stream: Stream = serde_json::from_value(record["params"]["stream"].clone())?;
                 let text = record["params"]["text"]
@@ -138,107 +129,6 @@ pub async fn attach(mut request: PreparedRequest, connection: Connection) -> Res
     bail!("run interrupted: host connection lost; request was not replayed")
 }
 
-/// The client line printed while a host imports legacy stores.
-pub const IMPORT_WAIT_NOTICE: &str = "waiting for the host to finish importing legacy stores";
-
-/// The host imported legacy stores and stops without serving (a one-shot
-/// command). The request was never read, so the client may elect again.
-#[derive(Debug)]
-pub struct HostRetry;
-impl std::fmt::Display for HostRetry {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("host stopped after importing legacy stores; request was not submitted")
-    }
-}
-impl std::error::Error for HostRetry {}
-
-/// A host that published its endpoint before importing legacy stores, with
-/// the clients that attached during the import. Their submissions are unread.
-pub struct ImportingHost {
-    endpoint: HostEndpoint,
-    waiting: Vec<Connection>,
-}
-
-impl ImportingHost {
-    /// Tell every waiting client to elect again, then stop listening.
-    pub async fn release(self) {
-        let Self { endpoint, waiting } = self;
-        drop(endpoint);
-        for mut connection in waiting {
-            let _ = write_json(
-                &mut connection,
-                &json!({"jsonrpc":"2.0","method":"host.retry","params":{}}),
-            )
-            .await;
-        }
-    }
-}
-
-/// Publish the host endpoint, then import legacy stores on a blocking thread.
-/// Clients that attach meanwhile are told once that the host is importing
-/// and wait; they are served (or released) after the import.
-pub async fn import_legacy_stores(
-    store: &Store,
-    data_dir: &std::path::Path,
-) -> Result<ImportingHost> {
-    let worker_store = store.clone();
-    import_while_accepting(data_dir, move || {
-        wait_for_test_gate();
-        bubblepaw_runner::legacy_import::import_legacy_stores(&worker_store)
-    })
-    .await
-}
-
-/// Test hook, debug builds only: hold the import until the file named by
-/// `BPBASE_TEST_IMPORT_GATE` exists, so tests can attach during it.
-#[cfg(debug_assertions)]
-fn wait_for_test_gate() {
-    let Some(gate) = std::env::var_os("BPBASE_TEST_IMPORT_GATE") else {
-        return;
-    };
-    let gate = PathBuf::from(gate);
-    let deadline = std::time::Instant::now() + Duration::from_secs(120);
-    while !gate.exists() && std::time::Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-#[cfg(not(debug_assertions))]
-fn wait_for_test_gate() {}
-
-async fn import_while_accepting(
-    data_dir: &std::path::Path,
-    import: impl FnOnce() -> Result<bubblepaw_runner::legacy_import::CentralImport> + Send + 'static,
-) -> Result<ImportingHost> {
-    let mut endpoint = HostEndpoint::bind(data_dir).await?;
-    let worker = tokio::task::spawn_blocking(import);
-    tokio::pin!(worker);
-    let mut waiting = Vec::new();
-    let mut listener_error = None;
-    let imported = loop {
-        tokio::select! {
-            result = &mut worker => break result,
-            accepted = endpoint.accept(), if listener_error.is_none() => match accepted {
-                Ok(mut connection) => {
-                    let notice = json!({"jsonrpc":"2.0","method":"host.importing","params":{}});
-                    if write_json(&mut connection, &notice).await.is_ok() {
-                        waiting.push(connection);
-                    }
-                }
-                Err(error) => listener_error = Some(error),
-            },
-        }
-    };
-    let import = imported.context("legacy import stopped")??;
-    for notice in bubblepaw_runner::legacy_import::notices(&import) {
-        eprintln!("{notice}");
-    }
-    if let Some(error) = listener_error {
-        return Err(error.context("host control listener failed during legacy import"));
-    }
-    Ok(ImportingHost { endpoint, waiting })
-}
-
 #[derive(Debug)]
 pub struct RemoteFailure;
 impl std::fmt::Display for RemoteFailure {
@@ -248,15 +138,8 @@ impl std::fmt::Display for RemoteFailure {
 }
 impl std::error::Error for RemoteFailure {}
 
-pub async fn serve(
-    request: PreparedRequest,
-    store: Store,
-    importing: Option<ImportingHost>,
-) -> Result<()> {
-    let (mut endpoint, waiting) = match importing {
-        Some(ImportingHost { endpoint, waiting }) => (endpoint, waiting),
-        None => (HostEndpoint::bind(&request.data_dir).await?, Vec::new()),
-    };
+pub async fn serve(request: PreparedRequest, store: Store) -> Result<()> {
+    let mut endpoint = HostEndpoint::bind(&request.data_dir).await?;
     let lifetime = HostLifetime::default();
     let host_stop = CancellationToken::new();
     let cancel = CancellationToken::new();
@@ -270,16 +153,6 @@ pub async fn serve(
     // One registered listener for the whole loop: a Ctrl-C must cancel the
     // primary work even when it arrives between two polls of the select.
     let mut interrupt = interrupt_listener().context("could not listen for Ctrl-C")?;
-    // Clients that attached during the legacy import submit now.
-    for connection in waiting {
-        let store = store.clone();
-        let lifetime = lifetime.clone();
-        let sessions = sessions.clone();
-        let cancellation = host_stop.clone();
-        clients.spawn(async move {
-            connection_request(connection, store, lifetime, sessions, cancellation).await
-        });
-    }
     loop {
         if primary_result.is_some() && clients.is_empty() {
             break;

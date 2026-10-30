@@ -103,38 +103,6 @@ impl Store {
         result
     }
 
-    pub(super) fn migrate_context_facts(conn: &mut Connection, version: i64) -> Result<()> {
-        if version >= 12 {
-            return Ok(());
-        }
-        let tx = conn.transaction()?;
-        tx.execute_batch(
-            "CREATE TABLE IF NOT EXISTS context_events(
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('episode_written','chapter_closed','applied')),
-                data TEXT NOT NULL
-             );
-             CREATE INDEX IF NOT EXISTS context_events_session ON context_events(session_id);",
-        )?;
-        let has_link = tx
-            .prepare("PRAGMA table_info(request_usage)")?
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-            .iter()
-            .any(|column| column == "message_seq");
-        if !has_link {
-            tx.execute_batch("ALTER TABLE request_usage ADD COLUMN message_seq INTEGER;")?;
-        }
-        tx.execute_batch(
-            "CREATE INDEX IF NOT EXISTS request_usage_message ON request_usage(session_id,message_seq)
-                WHERE message_seq IS NOT NULL;
-             PRAGMA user_version=12;",
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
-
     /// Return committed context facts in insertion order, independent of clock ties.
     pub fn context_events(&self, session_id: &str) -> Result<Vec<ContextEvent>> {
         if let Some(store) = self.scoped(session_id)? {

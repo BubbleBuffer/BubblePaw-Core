@@ -249,8 +249,8 @@ polling. Per-request tokens remain separately documented in [usage tracking](usa
 
 ### Stored balance decision (2026-10-21)
 
-The catalog migrates from version 1 to version 2 with a nullable `balance` column
-on `quota_history`. Existing rows remain null. A row still writes only when an
+The catalog is created at version 2 with a nullable `balance` column
+on `quota_history`. A row still writes only when an
 account/window percentage or reset changes. Whenever such a row writes, for any
 window, it carries the account's latest known balance. This includes a `credits`
 row when credit availability changes. Ten changed balances with unchanged quota
@@ -348,8 +348,6 @@ Formatting was applied on Linux and the formatted sources copied back into the
 isolated worktree. No Rust command ran on the PC; no live provider calls or full
 workspace test suite were run. The unchanged TypeScript extension was not retested.
 
-The migration fixture upgrades the previous catalog version, preserves legacy
-nulls, checks read-only access before migration, and reopens the migrated catalog.
 Ten changing balances produce one history row and one catalog transaction.
 A later secondary percentage change and a credits-availability change both
 carry the latest balance. Additional fixtures cover stored-balance fallback,

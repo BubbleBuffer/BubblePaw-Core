@@ -25,7 +25,7 @@ and the [LCM contract](lcm-contract.md).
 
 ## One central store, first process hosts (2026-10-21)
 
-Renamed 2026-10-24: the folder is now `BubblePaw-Core`, and the old `BubblePaw-base` store is imported once as a legacy source. See [storage model](storage-model.md).
+Renamed 2026-10-24: the folder is now `BubblePaw-Core`. Importing old stores into it was removed 2026-10-30 (see "Legacy import removed" below). See [storage model](storage-model.md).
 
 Each machine gets one central BubblePaw store per user, by default
 `%LOCALAPPDATA%\BubblePaw-base\` (XDG data home on Linux), instead of one
@@ -40,8 +40,8 @@ published in `host.json`, and their work runs in the host as ordinary sessions
 with their own configuration and workspace. There is no daemon: the host exits
 once its own work and attached clients finish. A client refuses a host whose
 binary or protocol version differs. Shared state (quota, usage, web cache,
-delegation ledger) is written by the host. Existing per-workspace stores are
-imported once into the central store; their directories are only read. A
+delegation ledger) is written by the host. (Superseded 2026-10-30: existing
+per-workspace stores are no longer imported.) A
 process that runs its own session and registers it with the host is deferred
 until host crashes prove a problem. Status and progress: [host attach](host-attach.md).
 
@@ -176,9 +176,7 @@ Approvals are split into `approvals/{mod,modes,rules}.rs`; auto approval stays
 as built, with further work deferred. Configured denies use the actual existing
 session-rule grammar: exact tool names, without argument predicates or globs.
 Denies are checked before session allowances and every mode, including pinned
-run overrides; child policies union their parent's denies. `[approval]` is
-accepted as an alias of existing `[approvals]`, with conflicting same-file
-tables rejected.
+run overrides; child policies union their parent's denies.
 
 MCP filters use raw server tool names and `*` globs. `include_tools` is optional:
 unset means unrestricted, explicit `[]` hides every tool. Excludes win. Legacy
@@ -585,8 +583,8 @@ directly. Shared waits and cancellation route owned agent or process handles.
 
 Explicit task/context transfer preserves separate conversations and JS state.
 Children select a registered agent profile, defaulting to `read-only` workspace
-reads. The `workspace` profile enables commands/writes when host policy permits;
-the deprecated `access` alias still maps to these names. A profile owns its
+reads. The `workspace` profile enables commands/writes when host policy permits.
+A profile owns its
 harness, optional model override and round limit. The library builds child
 harnesses so embedders use the same mechanism as the CLI. Built-in children
 cannot spawn another child.
@@ -750,7 +748,9 @@ marks unapplied disk provider changes; `restart_needed` flags other disk setting
 that require restart, remaining false for provider-only changes. The topbar
 shows active truth; successful setup says "Saved and applied".
 
-## Import copies spill and artifacts, 2026-10-21
+## Import copies spill and artifacts, 2026-10-21 (superseded 2026-10-30)
+
+This import was removed; see "Legacy import removed".
 
 The central store should be self-contained, so the one-time legacy import
 copies each legacy store's `spill/` and `artifacts/` files into the central
@@ -760,3 +760,16 @@ child worktrees still in use, which stay where they are. The copy happens
 before the source's receipt, so an interrupted import redoes it. A chat
 imported under new ids drops the usage rows it shares with the original, so
 reports count that history once. See [storage model](storage-model.md).
+
+## Legacy import removed (2026-10-30)
+
+The owner has no old data, so the one-time import of per-workspace stores, the
+previous default store (`BubblePaw-base`) and single-file archives was removed,
+with `Store::migrate_legacy`, the `storage.legacy_db` key, the host's import wait
+and retry protocol, and the delegation ledger merge. Earlier entries on import
+are historical. `--db <file>` remains only as a path selecting the sibling
+`<stem>.data` directory; it reads nothing from the file.
+
+## One schema per store (2026-10-30)
+
+Stores are created directly at their final schema (chat 12, catalog 2, serving 2, delegation ledger 1) and open only at exactly that version. Any other version, older or newer, fails with the typed `StoreSchemaError` and the file is left untouched. The step-by-step upgrade chains and their fixtures were removed. A future migration is added as a numbered step before the version check; see [storage model](storage-model.md).

@@ -2,13 +2,14 @@
 use super::metrics::{AttemptMetrics, CallRow};
 use super::pricing::TokenClasses;
 use anyhow::{Context, Result};
+use bubblepaw_core::StoreSchemaError;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::path::Path;
 
 const SCHEMA: &str = r#"
-CREATE TABLE IF NOT EXISTS delegation_attempts (
+CREATE TABLE delegation_attempts (
     id TEXT PRIMARY KEY,
     delegation_id TEXT NOT NULL,
     parent_id TEXT,
@@ -71,9 +72,9 @@ CREATE TABLE IF NOT EXISTS delegation_attempts (
     undeclared_busts INTEGER NOT NULL DEFAULT 0,
     unexplained_miss_tokens INTEGER
 );
-CREATE INDEX IF NOT EXISTS delegation_attempts_delegation
+CREATE INDEX delegation_attempts_delegation
     ON delegation_attempts(delegation_id);
-CREATE TABLE IF NOT EXISTS delegation_calls (
+CREATE TABLE delegation_calls (
     attempt_id TEXT NOT NULL REFERENCES delegation_attempts(id),
     seq INTEGER NOT NULL,
     model TEXT NOT NULL,
@@ -97,45 +98,23 @@ CREATE TABLE IF NOT EXISTS delegation_calls (
 ) WITHOUT ROWID;
 "#;
 
-/// Columns added after the first release, as (table, column, definition). Ledgers
-/// created earlier gain each missing one in place; no existing row is rewritten.
-const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
-    (
-        "delegation_attempts",
-        "undeclared_busts",
-        "INTEGER NOT NULL DEFAULT 0",
-    ),
-    ("delegation_attempts", "unexplained_miss_tokens", "INTEGER"),
-    ("delegation_calls", "expected_cacheable", "INTEGER"),
-    ("delegation_calls", "unexplained_miss", "INTEGER"),
-    ("delegation_calls", "prefix_break", "TEXT"),
-    ("delegation_calls", "wire_bytes", "INTEGER"),
-];
-
-/// The ledger's only numbered step. A first-release ledger carries no version and
-/// lacks the columns above; step 1 adds them and no later open inspects a table.
+/// The ledger's schema version. A new file is created at it in one transaction;
+/// a file at any other version fails with `StoreSchemaError`.
 const VERSION: i64 = 1;
 
-/// Run once per ledger: step 1 adds each missing column of `ADDED_COLUMNS`. A
-/// ledger the previous per-open code already upgraded only gains the version, so
-/// each column is checked once and later opens do no schema inspection.
-fn migrate(connection: &mut Connection) -> Result<()> {
+/// Create the ledger on an empty file, or require an existing one to be at `VERSION`.
+fn prepare(connection: &mut Connection) -> Result<()> {
     let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if version >= VERSION {
-        return Ok(());
+    let tables: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+        [],
+        |row| row.get(0),
+    )?;
+    if tables > 0 || version != 0 {
+        return StoreSchemaError::ensure("delegation ledger", version, VERSION);
     }
     let tx = connection.transaction()?;
-    for (table, column, definition) in ADDED_COLUMNS {
-        let present: Vec<String> = tx
-            .prepare(&format!("PRAGMA table_info({table})"))?
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<String>>>()?;
-        if !present.iter().any(|name| name.as_str() == *column) {
-            tx.execute_batch(&format!(
-                "ALTER TABLE {table} ADD COLUMN {column} {definition}"
-            ))?;
-        }
-    }
+    tx.execute_batch(SCHEMA)?;
     tx.execute_batch(&format!("PRAGMA user_version={VERSION};"))?;
     tx.commit()?;
     Ok(())
@@ -194,8 +173,7 @@ impl Ledger {
         let mut connection = Connection::open(path)
             .with_context(|| format!("open delegation ledger {}", path.display()))?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        connection.execute_batch(SCHEMA)?;
-        migrate(&mut connection)?;
+        prepare(&mut connection)?;
         Ok(Self { connection })
     }
 
@@ -394,72 +372,6 @@ impl Ledger {
         })?;
         Ok(json!({ "groups": rows.collect::<rusqlite::Result<Vec<_>>>()? }))
     }
-
-    /// Merge the attempts and calls of a copied legacy ledger, in bounded
-    /// transactions of `batch` attempts with their calls. Rows already present
-    /// are kept, so a repeated or interrupted merge adds nothing twice. The
-    /// copy is migrated to the current schema first; the original is never opened.
-    pub fn merge_copy(&mut self, copy: &Path, batch: usize) -> Result<LedgerMerge> {
-        drop(Ledger::open(copy)?);
-        let columns = |table: &str| -> Result<String> {
-            Ok(self
-                .connection
-                .prepare(&format!("PRAGMA table_info({table})"))?
-                .query_map([], |row| row.get::<_, String>(1))?
-                .map(|name| name.map(|name| format!("\"{name}\"")))
-                .collect::<rusqlite::Result<Vec<_>>>()?
-                .join(","))
-        };
-        let attempts = columns("delegation_attempts")?;
-        let calls = columns("delegation_calls")?;
-        self.connection.execute(
-            "ATTACH DATABASE ?1 AS legacy",
-            [copy.to_string_lossy().as_ref()],
-        )?;
-        let result = (|| -> Result<LedgerMerge> {
-            let mut merge = LedgerMerge::default();
-            let mut after = String::new();
-            loop {
-                let ids: Vec<String> = self
-                    .connection
-                    .prepare(
-                        "SELECT id FROM legacy.delegation_attempts WHERE id>?1 ORDER BY id LIMIT ?2",
-                    )?
-                    .query_map(params![after, batch.max(1) as i64], |row| row.get(0))?
-                    .collect::<rusqlite::Result<_>>()?;
-                let Some(last) = ids.last().cloned() else {
-                    break;
-                };
-                let tx = self.connection.transaction()?;
-                tx.execute_batch("CREATE TEMP TABLE IF NOT EXISTS merge_ids(id TEXT PRIMARY KEY); DELETE FROM merge_ids;")?;
-                for id in &ids {
-                    tx.execute("INSERT INTO merge_ids VALUES(?1)", [id])?;
-                }
-                merge.attempts += tx.execute(
-                    &format!("INSERT OR IGNORE INTO main.delegation_attempts({attempts}) SELECT {attempts} FROM legacy.delegation_attempts WHERE id IN (SELECT id FROM merge_ids)"),
-                    [],
-                )?;
-                merge.calls += tx.execute(
-                    &format!("INSERT OR IGNORE INTO main.delegation_calls({calls}) SELECT {calls} FROM legacy.delegation_calls WHERE attempt_id IN (SELECT id FROM merge_ids)"),
-                    [],
-                )?;
-                tx.commit()?;
-                merge.transactions += 1;
-                after = last;
-            }
-            Ok(merge)
-        })();
-        self.connection.execute_batch("DETACH DATABASE legacy")?;
-        result
-    }
-}
-
-/// Rows and write transactions of one legacy ledger merge.
-#[derive(Clone, Copy, Debug, Default, Serialize)]
-pub struct LedgerMerge {
-    pub attempts: usize,
-    pub calls: usize,
-    pub transactions: u64,
 }
 
 #[cfg(test)]
@@ -474,22 +386,9 @@ mod tests {
     }
 
     #[test]
-    fn old_ledger_gains_the_cache_columns_and_stores_them() -> Result<()> {
+    fn ledger_stores_the_cache_columns() -> Result<()> {
         let root = tempfile::tempdir()?;
         let path = root.path().join("delegations.db");
-        // The first-release DDL: the cache columns removed from the current schema.
-        let old = SCHEMA
-            .replace(
-                "    metrics TEXT NOT NULL,\n    undeclared_busts INTEGER NOT NULL DEFAULT 0,\n    unexplained_miss_tokens INTEGER\n",
-                "    metrics TEXT NOT NULL\n",
-            )
-            .replace(
-                "    outcome TEXT NOT NULL,\n    expected_cacheable INTEGER,\n    unexplained_miss INTEGER,\n    prefix_break TEXT,\n    wire_bytes INTEGER,\n",
-                "    outcome TEXT NOT NULL,\n",
-            );
-        assert!(!old.contains("wire_bytes") && !old.contains("undeclared_busts"));
-        Connection::open(&path)?.execute_batch(&old)?;
-
         let mut ledger = Ledger::open(&path)?;
         let attempts = columns(&ledger.connection, "delegation_attempts")?;
         let calls = columns(&ledger.connection, "delegation_calls")?;
@@ -588,62 +487,33 @@ mod tests {
         );
         drop(ledger);
 
-        // Reopening an migrated ledger adds nothing and keeps the stored row.
+        // Reopening the ledger keeps the stored row.
         let reopened = Ledger::open(&path)?;
         assert!(reopened.attempt_exists("a1")?);
         Ok(())
     }
+    fn version(path: &Path) -> Result<i64> {
+        Ok(Connection::open(path)?.query_row("PRAGMA user_version", [], |row| row.get(0))?)
+    }
+
     #[test]
-    fn legacy_copy_merges_in_bounded_batches_once() -> Result<()> {
+    fn ledger_other_versions_fail_with_a_typed_error_and_stay_untouched() -> Result<()> {
         let root = tempfile::tempdir()?;
-        let legacy = root.path().join("legacy.db");
-        let central = root.path().join("central.db");
-        // The copy has the first-release schema; the central ledger is current.
-        let old = SCHEMA.replace(
-            "    metrics TEXT NOT NULL,
-    undeclared_busts INTEGER NOT NULL DEFAULT 0,
-    unexplained_miss_tokens INTEGER
-",
-            "    metrics TEXT NOT NULL
-",
-        );
-        Connection::open(&legacy)?.execute_batch(&old)?;
-        let insert = |conn: &Connection, id: &str| -> Result<()> {
-            conn.execute(
-                "INSERT INTO delegation_attempts(id,delegation_id,started_at,ended_at,assignment_hash,category,tags,workspace,assignment_tokens,check_count,model,route_reason,period,rework_index,session_id,run_status,final_status,accepted,checks,false_greens,uncached_input,cache_read,cache_write,output,price_table,wall_ms,check_ms,call_count,tool_errors,malformed_calls,repeated_calls,done_without_check,provider_errors,unknown_effects,no_final_report,metrics) VALUES(?1,?1,'t','t','h','c','[]','w',1,0,'m','r','p',0,'s','completed','accepted',1,'[]',0,1,0,0,1,'t',1,0,1,0,0,0,0,0,0,0,'{}')",
-                [id],
-            )?;
-            conn.execute(
-                "INSERT INTO delegation_calls(attempt_id,seq,model,outcome) VALUES(?1,0,'m','ok')",
-                [id],
-            )?;
-            Ok(())
-        };
-        {
-            let conn = Connection::open(&legacy)?;
-            for id in ["a1", "a2", "a3"] {
-                insert(&conn, id)?;
-            }
+        let path = root.path().join("delegations.db");
+        drop(Ledger::open(&path)?);
+        assert_eq!(version(&path)?, VERSION);
+        for other in [VERSION - 1, VERSION + 1] {
+            Connection::open(&path)?.execute_batch(&format!("PRAGMA user_version={other};"))?;
+            let error = Ledger::open(&path).err().expect("version mismatch fails");
+            let typed = error
+                .downcast_ref::<StoreSchemaError>()
+                .expect("typed schema error");
+            assert_eq!(
+                (typed.store, typed.found, typed.expected),
+                ("delegation ledger", other, VERSION)
+            );
+            assert_eq!(version(&path)?, other, "a refused open changes nothing");
         }
-        let mut ledger = Ledger::open(&central)?;
-        insert(&ledger.connection, "a2")?;
-        let first = ledger.merge_copy(&legacy, 2)?;
-        assert_eq!((first.attempts, first.calls, first.transactions), (2, 2, 2));
-        let again = ledger.merge_copy(&legacy, 2)?;
-        assert_eq!((again.attempts, again.calls), (0, 0));
-        let count: i64 =
-            ledger
-                .connection
-                .query_row("SELECT COUNT(*) FROM delegation_attempts", [], |row| {
-                    row.get(0)
-                })?;
-        assert_eq!(count, 3);
-        let busts: i64 = ledger.connection.query_row(
-            "SELECT undeclared_busts FROM delegation_attempts WHERE id='a1'",
-            [],
-            |row| row.get(0),
-        )?;
-        assert_eq!(busts, 0);
         Ok(())
     }
 }

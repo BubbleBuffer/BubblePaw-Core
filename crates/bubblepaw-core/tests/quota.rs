@@ -150,77 +150,6 @@ fn changed_window_without_balance_carries_last_stored_account_balance() -> Resul
 }
 
 #[test]
-fn v1_catalog_migrates_in_place_and_keeps_legacy_rows_null() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    drop(Store::open_data_dir(dir.path())?);
-    // Recreate the v1 catalog exactly: no balance column, user_version 1.
-    let catalog = dir.path().join("catalog.db");
-    let legacy = Connection::open(&catalog)?;
-    legacy.execute_batch(
-        "DROP TABLE quota_history;
-         CREATE TABLE quota_history(id INTEGER PRIMARY KEY AUTOINCREMENT,
-             provider TEXT NOT NULL, account TEXT NOT NULL, window TEXT NOT NULL,
-             data TEXT NOT NULL);
-         CREATE INDEX quota_history_key ON quota_history(account,window,id);
-         PRAGMA user_version=1;",
-    )?;
-    legacy.execute(
-        "INSERT INTO quota_history(provider,account,window,data) VALUES('p','work','weekly',?1)",
-        [serde_json::to_string(&reading())?],
-    )?;
-    drop(legacy);
-
-    // The read-only CLI path still reads a v1 catalog without the column.
-    assert_eq!(
-        Store::read_quota_data_dir(dir.path(), false)?,
-        vec![reading()]
-    );
-
-    let store = Store::open_data_dir(dir.path())?;
-    let version: i64 =
-        Connection::open(&catalog)?.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    assert_eq!(version, 2);
-    assert_eq!(store.quota_history()?, vec![reading()]);
-    assert!(store.latest_quota_balances()?.is_empty());
-
-    let mut changed = reading();
-    changed.used_percent = 90.0;
-    changed.observed_at = "2026-10-20T19:05:00Z".into();
-    changed.balance = Some("42.00".into());
-    let before = store.storage_stats()?;
-    assert!(store.record_quota(&changed)?);
-    assert_eq!(
-        store.storage_stats()?.catalog_transaction_count - before.catalog_transaction_count,
-        1
-    );
-    let history = store.quota_history()?;
-    assert_eq!(history[1].balance.as_deref(), Some("42.00"));
-    assert_eq!(history[1].observed_at, changed.observed_at);
-
-    // A balance-only change is held by the host; the store never writes it.
-    let mut balance_only = changed.clone();
-    balance_only.observed_at = "2026-10-20T19:06:00Z".into();
-    balance_only.balance = Some("41.00".into());
-    let before = store.storage_stats()?;
-    assert!(!store.record_quota(&balance_only)?);
-    assert_eq!(
-        store.storage_stats()?.catalog_transaction_count,
-        before.catalog_transaction_count
-    );
-    drop(store);
-
-    // Reopening resumes from the stored balance, not from the rejected one.
-    let reopened = Store::open_data_dir(dir.path())?;
-    let stored = reopened.latest_quota_balances()?;
-    assert_eq!(stored.len(), 1);
-    assert_eq!(stored[0].account, "work");
-    assert_eq!(stored[0].balance.as_deref(), Some("42.00"));
-    assert_eq!(stored[0].observed_at, changed.observed_at);
-    assert_eq!(reopened.quota_history()?, history);
-    Ok(())
-}
-
-#[test]
 fn invalid_quota_observations_are_rejected_without_writes() -> Result<()> {
     let store = Store::in_memory()?;
     for percent in [f64::NAN, f64::INFINITY, -0.01, 100.01] {
@@ -559,22 +488,13 @@ fn interrupted_wait_at(store: &Store, session_id: &str, resume_at: &str) -> Resu
 }
 
 #[test]
-fn unique_active_run_index_includes_parked_runs_after_creation_and_schema_eight_migration()
--> Result<()> {
-    for migrate in [false, true] {
+fn unique_active_run_index_includes_parked_runs() -> Result<()> {
+    {
         let dir = tempfile::tempdir()?;
         let store = Store::open_data_dir(dir.path())?;
         let session = store.create_session("one active run")?;
         let chat = store.chat_path(&session.id)?.unwrap();
         drop(store);
-        if migrate {
-            Connection::open(&chat)?.execute_batch(
-                "ALTER TABLE request_usage DROP COLUMN account;
-                 DROP INDEX one_running;
-                 CREATE UNIQUE INDEX one_running ON runs(session_id) WHERE status='running';
-                 PRAGMA user_version=8; PRAGMA wal_checkpoint(TRUNCATE);",
-            )?;
-        }
         let store = Store::open_data_dir(dir.path())?;
         let wait = interrupted_wait(&store, &session.id)?;
         let connection = Connection::open(&chat)?;

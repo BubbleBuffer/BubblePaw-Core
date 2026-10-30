@@ -9,16 +9,8 @@ build and smoke testing remain the user's checks; verification is recorded below
 Without `--data-dir`, every workspace now uses the one central store
 `<local data home>/BubblePaw-Core/store`, so the first BubblePaw process on the
 machine hosts all later `run` and `delegate` work regardless of workspace. On its
-first start that host imports the old per-workspace stores (see
-[storage model](storage-model.md#central-store-and-legacy-import-2026-10-21)).
-The host publishes `host.json` before that import; a client that attaches
-meanwhile prints `waiting for the host to finish importing legacy stores` once
-and waits for the import instead of failing after the five-second attach wait.
-If the importing process is a one-shot command, it tells waiting clients to
-elect again; their requests were never read.
-The import copies each old store's chats, spill output and artifacts, so after
-it an old store directory can be deleted, except one whose child worktrees are
-still in use.
+first start that host creates it (see
+[storage model](storage-model.md#central-store-2026-10-21)).
 
 The existing core process lock elects one host per data directory. Its semantics
 are unchanged. A later `run` or `delegate` connects to that host and executes an
@@ -202,7 +194,7 @@ Verified on Linux at `07c70a3`, 2026-10-21:
 
 - `cargo fmt --all -- --check`: passed.
 - `cargo clippy --workspace --all-targets -- -D warnings`: passed.
-- `cargo test -p bubblepaw-core`: passed, including workspace, legacy-store,
+- `cargo test -p bubblepaw-core`: passed, including workspace,
   rebuild, protected-root and per-root storage-policy coverage.
 - `cargo test -p bubblepaw-runner`: passed, including all ten real-process
   host-attach tests and delegation cancellation/check/ledger tests.
@@ -248,7 +240,7 @@ The scripted process tests are in `crates/bubblepaw-runner/tests/host_attach.rs`
 They exercise concurrent runs, per-client model/approval/workspace/environment,
 stdout/stderr parity, concurrent delegations and reworks, catalog rebuild, host
 lifetime, cancellation, disconnection, host death, endpoint permissions and PID
-diagnostics. Core tests cover mixed workspaces, unchanged legacy chat files,
+diagnostics. Core tests cover mixed workspaces,
 rebuild, child inheritance, per-session protected roots and storage policies.
 These tests do not establish live-model acceptance.
 

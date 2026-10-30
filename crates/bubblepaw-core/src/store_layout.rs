@@ -136,25 +136,32 @@ impl Layout {
             .retain(|_, value| value != root);
     }
 }
-// The catalog version is set by `projection`, inside the same transaction as its migration.
+// `projection` creates a fresh file at its final version in one transaction and
+// opens an existing one only at exactly that version.
 const CATALOG_SCHEMA: &str = "PRAGMA application_id=1112556081;
-CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,parent_id TEXT,root_id TEXT NOT NULL,title TEXT NOT NULL,last_activity TEXT NOT NULL,created_at TEXT NOT NULL,file TEXT NOT NULL,storage_state TEXT NOT NULL DEFAULT 'active',data TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS sessions_root ON sessions(root_id);";
+CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE sessions(id TEXT PRIMARY KEY,parent_id TEXT,root_id TEXT NOT NULL,title TEXT NOT NULL,last_activity TEXT NOT NULL,created_at TEXT NOT NULL,file TEXT NOT NULL,storage_state TEXT NOT NULL DEFAULT 'active',data TEXT NOT NULL);
+CREATE INDEX sessions_root ON sessions(root_id);";
 const SERVING_SCHEMA: &str = "PRAGMA application_id=1112556082;
-CREATE TABLE IF NOT EXISTS metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,data TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS context_views(session_id TEXT PRIMARY KEY,data TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,status TEXT NOT NULL,data TEXT NOT NULL,result_message_id TEXT);
-CREATE TABLE IF NOT EXISTS inputs(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,session_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,state TEXT NOT NULL,origin TEXT,message_id TEXT,content_blob TEXT,content_format TEXT,resolved_at TEXT NOT NULL,source_seq INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS approvals(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,call_id TEXT NOT NULL,tool TEXT NOT NULL,arguments TEXT NOT NULL,state TEXT NOT NULL,reason TEXT,created_at TEXT NOT NULL,decided_at TEXT,arguments_ref TEXT);
-CREATE TABLE IF NOT EXISTS telemetry(id INTEGER PRIMARY KEY,session_id TEXT,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS telemetry_created ON telemetry(created_at);
-CREATE INDEX IF NOT EXISTS telemetry_record ON telemetry(session_id,json_extract(data,'$.record_id'));
-CREATE TABLE IF NOT EXISTS events(seq INTEGER PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
-CREATE INDEX IF NOT EXISTS events_session ON events(session_id,seq);";
+CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+CREATE TABLE sessions(id TEXT PRIMARY KEY,data TEXT NOT NULL);
+CREATE TABLE context_views(session_id TEXT PRIMARY KEY,data TEXT NOT NULL);
+CREATE TABLE runs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,status TEXT NOT NULL,data TEXT NOT NULL,result_message_id TEXT);
+CREATE TABLE inputs(seq INTEGER PRIMARY KEY AUTOINCREMENT,id TEXT UNIQUE NOT NULL,session_id TEXT NOT NULL,kind TEXT NOT NULL,text TEXT NOT NULL,state TEXT NOT NULL,origin TEXT,message_id TEXT,content_blob TEXT,content_format TEXT,resolved_at TEXT NOT NULL,source_seq INTEGER NOT NULL);
+CREATE TABLE approvals(id TEXT PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,call_id TEXT NOT NULL,tool TEXT NOT NULL,arguments TEXT NOT NULL,state TEXT NOT NULL,reason TEXT,created_at TEXT NOT NULL,decided_at TEXT,arguments_ref TEXT);
+CREATE TABLE telemetry(id INTEGER PRIMARY KEY,session_id TEXT,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
+CREATE INDEX telemetry_created ON telemetry(created_at);
+CREATE INDEX telemetry_record ON telemetry(session_id,json_extract(data,'$.record_id'));
+CREATE TABLE events(seq INTEGER PRIMARY KEY,session_id TEXT NOT NULL,run_id TEXT NOT NULL,created_at TEXT NOT NULL,kind TEXT NOT NULL,data TEXT NOT NULL);
+CREATE INDEX events_session ON events(session_id,seq);";
 
-fn projection(path: &Path, application: i64, schema: &str) -> Result<Connection> {
+fn projection(
+    path: &Path,
+    application: i64,
+    schema: &str,
+    store: &'static str,
+    expected: i64,
+) -> Result<Connection> {
     let mut conn = Connection::open(path)?;
     let current: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -168,43 +175,27 @@ fn projection(path: &Path, application: i64, schema: &str) -> Result<Connection>
         "Foreign storage projection: {}",
         path.display()
     );
-    // Each projection keeps its own numbered chain: catalog v2 adds
-    // `quota_history.balance`, serving v2 adds the request log's later columns.
-    let supported = 2;
-    anyhow::ensure!(
-        version <= supported && (tables == 0 || version >= 1),
-        "Unsupported projection schema version {version}"
-    );
+    let fresh = current == 0;
+    if !fresh {
+        // Checked before any pragma touches the file, so a refused open changes nothing.
+        StoreSchemaError::ensure(store, version, expected)?;
+    }
     conn.busy_timeout(std::time::Duration::from_secs(2))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=256; PRAGMA journal_size_limit=1048576;")?;
-    if application == 0x42504231 && version < 2 {
-        // Catalog step 2 adds the balance column to a v1 catalog, whether or not the
-        // previous per-open upgrade already added it.
+    if fresh {
         let tx = conn.transaction()?;
         tx.execute_batch(schema)?;
-        tx.execute_batch(super::quota::QUOTA_SCHEMA)?;
-        super::quota::migrate_catalog(&tx)?;
-        tx.execute_batch("PRAGMA user_version=2;")?;
-        tx.commit()?;
-    } else {
-        conn.execute_batch(schema)?;
-        if tables == 0 {
-            conn.execute_batch("PRAGMA user_version=1;")?;
-        }
         if application == 0x42504231 {
-            conn.execute_batch(super::quota::QUOTA_SCHEMA)?;
+            tx.execute_batch(super::quota::QUOTA_SCHEMA)?;
         }
+        if application == 0x42504232 {
+            tx.execute_batch(super::usage::prompt_log::TABLES)?;
+        }
+        tx.execute_batch(&format!("PRAGMA user_version={expected};"))?;
+        tx.commit()?;
     }
     if application == 0x42504232 {
         super::usage::prompt_log::setup(&conn)?;
-        if version < 2 {
-            // Serving step 2 adds the request log columns introduced after the first
-            // release; setup has created the log by now.
-            let tx = conn.transaction()?;
-            super::usage::prompt_log::migrate(&tx)?;
-            tx.execute_batch("PRAGMA user_version=2;")?;
-            tx.commit()?;
-        }
         Store::search_schema(&conn)?;
         conn.execute(
             "ATTACH DATABASE ?1 AS catalog_projection",
@@ -282,10 +273,8 @@ pub(super) fn open_record(
     let conn = &*record;
     let application: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    anyhow::ensure!(
-        application == 0x42504230 && (1..=12).contains(&version),
-        "Unsupported chat record schema"
-    );
+    anyhow::ensure!(application == 0x42504230, "Unsupported chat record schema");
+    StoreSchemaError::ensure("chat", version, schema::CHAT_VERSION)?;
     record.dictionary_pins = cold::pin_dictionaries(&record)?;
     Ok(record)
 }
@@ -392,326 +381,16 @@ fn open_session_record<T>(
     Ok(Some((open(&root, &path)?, root)))
 }
 
-struct InstallLock {
-    file: Option<FileLock>,
-    path: PathBuf,
-    created: bool,
-    installed: bool,
-}
-impl InstallLock {
-    fn acquire(target: &Path) -> Result<Self> {
-        std::fs::create_dir_all(target)?;
-        let path = target.join("store.lock");
-        let opened = std::fs::OpenOptions::new()
-            .create_new(true)
-            .read(true)
-            .write(true)
-            .open(&path);
-        let (file, created) = match opened {
-            Ok(file) => (file, true),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => (
-                std::fs::OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(&path)?,
-                false,
-            ),
-            Err(error) => return Err(error.into()),
-        };
-        let file = FileLock::acquire(
-            file,
-            "Migration destination is already owned by another host process",
-        )?;
-        Ok(Self {
-            file: Some(file),
-            path,
-            created,
-            installed: false,
-        })
-    }
-}
-impl Drop for InstallLock {
-    fn drop(&mut self) {
-        drop(self.file.take());
-        if self.created && !self.installed {
-            // Failed installation has no completed-layout marker. Remove only
-            // the lock we created; never unlink a lock another host now owns.
-            if let Ok(file) = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&self.path)
-                && fs2::FileExt::try_lock_exclusive(&file).is_ok()
-                && !self.path.with_file_name("catalog.db").exists()
-            {
-                drop(file);
-                let _ = std::fs::remove_file(&self.path);
-            }
-        }
-    }
-}
-
 impl Store {
-    /// Snapshot and split a legacy database without modifying its bytes or WAL.
-    /// The completed directory is installed only after every chat commit succeeds.
-    pub fn migrate_legacy(source: impl AsRef<Path>, data_dir: impl AsRef<Path>) -> Result<()> {
-        let source = source.as_ref();
-        let target = data_dir.as_ref();
-        if !source.exists() {
-            return Ok(());
-        }
-        let canonical_path = source.canonicalize()?;
-        let canonical = canonical_path.to_string_lossy().into_owned();
-        if target.join("store.lock").exists() && !target.join("catalog.db").exists() {
-            let lock = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(target.join("store.lock"))?;
-            let _lock = FileLock::acquire(
-                lock,
-                "Migration destination is already owned by another host process",
-            )?;
-            return Ok(());
-        }
-        if target.join("catalog.db").exists() {
-            let catalog = Connection::open_with_flags(
-                target.join("catalog.db"),
-                OpenFlags::SQLITE_OPEN_READ_ONLY,
-            )?;
-            let migrated: Option<String> = catalog
-                .query_row(
-                    "SELECT value FROM metadata WHERE key='legacy_source'",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if let Some(migrated) = migrated {
-                anyhow::ensure!(
-                    migrated == canonical,
-                    "Data directory was migrated from another source"
-                );
-            }
-            return Ok(());
-        }
-        // Use the exact legacy engine ownership path, including canonicalizing
-        // aliases, and retain the lease until the destination receipt commits.
-        let source_lock = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(canonical_path.with_extension("sqlite.lock"))?;
-        let _source_lock = FileLock::acquire(
-            source_lock,
-            "Legacy database is already owned by another host process",
-        )?;
-        let parent = target
-            .parent()
-            .filter(|parent| !parent.as_os_str().is_empty())
-            .unwrap_or(Path::new("."));
-        std::fs::create_dir_all(parent)?;
-        let staging = parent.join(format!(".bubblepaw-migrate-{}", id()));
-        std::fs::create_dir(&staging)?;
-        let result = (|| -> Result<()> {
-            let original = Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-            let application: i64 =
-                original.query_row("PRAGMA application_id", [], |row| row.get(0))?;
-            let tables: i64 = original.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'", [], |row| row.get(0))?;
-            if application == 0 && tables == 0 {
-                return Ok(());
-            }
-            anyhow::ensure!(
-                application == 0x42504230,
-                "Foreign SQLite database; refusing migration"
-            );
-            let snapshot = staging.join("legacy.snapshot.db");
-            // VACUUM INTO includes committed WAL pages and only writes its destination.
-            original.execute("VACUUM INTO ?1", [snapshot.to_string_lossy().as_ref()])?;
-            drop(original);
-            let legacy = Self::initialize(Connection::open(&snapshot)?, Some(snapshot.clone()))?;
-            let directory = staging.join("data");
-            let host = Self::open_data_dir(&directory)?;
-            let sessions = legacy.list_sessions()?;
-            // Legacy parent links represent forks, not physical placement.
-            // Import each historical session into its own record file.
-            let roots = sessions
-                .iter()
-                .map(|session| (session.id.clone(), vec![session.id.clone()]));
-            legacy.read(|conn| {
-                host.write(|tx| {
-                    for table in ["events", "context_views"] {
-                        Self::copy_rows(conn, tx, table, "", &[])?;
-                    }
-                    for key in ["events_last_seq", "events_pruned_through", "workspace"] {
-                        let value: Option<String> = conn
-                            .query_row("SELECT value FROM metadata WHERE key=?1", [key], |row| {
-                                row.get(0)
-                            })
-                            .optional()?;
-                        if let Some(value) = value {
-                            tx.execute(
-                                "INSERT OR REPLACE INTO metadata VALUES(?1,?2)",
-                                params![key, value],
-                            )?;
-                        }
-                    }
-                    Ok(())
-                })
-            })?;
-            for (root, ids) in roots {
-                let chat = host.bootstrap_chat(&root)?;
-                let source_conn = legacy.0.connection.lock().unwrap();
-                chat.write_context(|tx| {
-                    // Foreign keys remain enabled; copy dependency order and original
-                    // seq values so summary and legacy view references stay exact.
-                    for table in [
-                        "metadata",
-                        "sessions",
-                        "blobs",
-                        "message_dictionaries",
-                        "messages",
-                        "message_tool_calls",
-                        "message_headers",
-                        "runs",
-                        "request_usage",
-                        "inputs",
-                        "reminder_metadata",
-                        "effects",
-                        "outputs",
-                        "context_checkpoints",
-                        "context_chapters",
-                        "context_subject_chapters",
-                        "context_episodes",
-                        "context_decisions",
-                        "context_events",
-                        "context_checkpoint_versions",
-                        "attachments",
-                        "approvals",
-                        "approval_rules",
-                        "host_state",
-                    ] {
-                        let filter =
-                            if ["metadata", "blobs", "message_dictionaries"].contains(&table) {
-                                String::new()
-                            } else {
-                                let key = if table == "sessions" {
-                                    "id"
-                                } else {
-                                    "session_id"
-                                };
-                                format!(
-                                    " WHERE {key} IN ({})",
-                                    ids.iter().map(|_| "?").collect::<Vec<_>>().join(",")
-                                )
-                            };
-                        Self::copy_rows(
-                            &source_conn,
-                            tx,
-                            table,
-                            &filter,
-                            if filter.is_empty() { &[] } else { &ids },
-                        )?;
-                    }
-                    cold::pin_all_into(tx, &chat.0.dictionary_pins)?;
-                    chat.collect_orphan_blobs(tx)?;
-                    tx.execute(
-                        "INSERT OR REPLACE INTO metadata VALUES('legacy_source',?1)",
-                        [&canonical],
-                    )?;
-                    Ok(())
-                })?;
-                chat.archive_operations()?;
-            }
-            host.catalog_rebuild()?;
-            let layout = host.0.layout.as_ref().unwrap();
-            layout.catalog.lock().unwrap().execute(
-                "INSERT OR REPLACE INTO metadata VALUES('legacy_source',?1)",
-                [&canonical],
-            )?;
-            host.layout_checkpoint()?;
-            drop(host);
-            drop(legacy);
-            Self::install_migration(&directory, target, &canonical)?;
-            Ok(())
-        })();
-        // Staging belongs to this migration and contains no original user files.
-        let _ = std::fs::remove_dir_all(&staging);
-        result
-    }
-    fn install_migration(directory: &Path, target: &Path, canonical: &str) -> Result<()> {
-        let mut owner = InstallLock::acquire(target)?;
-        // Recheck after taking the actual destination lease: another startup or
-        // migrator could have completed while this source snapshot was built.
-        let catalog_path = target.join("catalog.db");
-        if catalog_path.exists() {
-            let catalog = open_read_only(&catalog_path, false)?;
-            let migrated: Option<String> = catalog
-                .query_row(
-                    "SELECT value FROM metadata WHERE key='legacy_source'",
-                    [],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            anyhow::ensure!(
-                migrated.as_deref() == Some(canonical),
-                "Migration destination was initialized from another source or by another host"
-            );
-            owner.installed = true;
-            return Ok(());
-        }
-        // The old archive/attachments can already live inside data_dir.
-        // Install complete per-chat files first; the catalog receipt is last.
-        std::fs::create_dir_all(target.join("chats"))?;
-        for entry in std::fs::read_dir(directory.join("chats"))? {
-            let path = entry?.path();
-            let destination = target.join("chats").join(path.file_name().unwrap());
-            if destination.exists() {
-                let existing =
-                    Connection::open_with_flags(&destination, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-                let provenance: Option<String> = existing
-                    .query_row(
-                        "SELECT value FROM metadata WHERE key='legacy_source'",
-                        [],
-                        |row| row.get(0),
-                    )
-                    .optional()?;
-                anyhow::ensure!(
-                    provenance.as_deref() == Some(canonical),
-                    "Migration would overwrite an unrelated chat"
-                );
-                // A prior interrupted installation already committed this
-                // whole chat. Preserve any accepted input appended since.
-                continue;
-            }
-            std::fs::rename(path, destination)?;
-        }
-        for name in ["serving.db", "catalog.db"] {
-            let destination = target.join(name);
-            if destination.exists() && name == "serving.db" {
-                let existing =
-                    Connection::open_with_flags(&destination, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-                let application: i64 =
-                    existing.query_row("PRAGMA application_id", [], |row| row.get(0))?;
-                anyhow::ensure!(
-                    application == 0x42504232,
-                    "Foreign serving database blocks migration"
-                );
-                drop(existing);
-                for suffix in ["", "-wal", "-shm"] {
-                    let path = PathBuf::from(format!("{}{suffix}", destination.display()));
-                    if path.exists() {
-                        std::fs::remove_file(path)?;
-                    }
-                }
-            }
-            anyhow::ensure!(
-                !destination.exists(),
-                "Migration destination already exists: {}",
-                destination.display()
-            );
-            std::fs::rename(directory.join(name), destination)?;
-        }
-        owner.installed = true;
-        Ok(())
+    /// The `<stem>.data` directory beside a single-file path, which `Store::open` uses.
+    pub fn legacy_data_dir(path: impl AsRef<Path>) -> PathBuf {
+        let path = path.as_ref();
+        path.with_file_name(format!(
+            "{}.data",
+            path.file_stem()
+                .unwrap_or(path.as_os_str())
+                .to_string_lossy()
+        ))
     }
     fn copy_rows(
         source: &Connection,
@@ -740,15 +419,6 @@ impl Store {
         }
         Ok(())
     }
-    pub fn legacy_data_dir(path: impl AsRef<Path>) -> PathBuf {
-        let path = path.as_ref();
-        path.with_file_name(format!(
-            "{}.data",
-            path.file_stem()
-                .unwrap_or(path.as_os_str())
-                .to_string_lossy()
-        ))
-    }
     pub fn open_data_dir(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_with_options(path, StoreOptions::default())
     }
@@ -775,8 +445,20 @@ impl Store {
             "Store is already owned by another host process",
         )?);
         let released = lock.released.clone();
-        let catalog = projection(&data_dir.join("catalog.db"), 0x42504231, CATALOG_SCHEMA)?;
-        let serving = projection(&data_dir.join("serving.db"), 0x42504232, SERVING_SCHEMA)?;
+        let catalog = projection(
+            &data_dir.join("catalog.db"),
+            0x42504231,
+            CATALOG_SCHEMA,
+            "catalog",
+            schema::CATALOG_VERSION,
+        )?;
+        let serving = projection(
+            &data_dir.join("serving.db"),
+            0x42504232,
+            SERVING_SCHEMA,
+            "serving",
+            schema::SERVING_VERSION,
+        )?;
         let (last, pruned) = crate::event_log::bounds(&serving)?;
         let store = Self(Arc::new(Inner {
             connection: Arc::new(Mutex::new(serving)),
@@ -932,7 +614,7 @@ impl Store {
             "Chat record file is missing: {}",
             path.display()
         );
-        let mut connection = open_record(&path, false, false)?.into_connection();
+        let connection = open_record(&path, false, false)?.into_connection();
         let split: bool = connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='metadata')",
             [],
@@ -943,19 +625,13 @@ impl Store {
             let application: i64 =
                 connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
             let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-            anyhow::ensure!(
-                application == 0x42504230 && (7..=12).contains(&version),
-                "Unsupported chat record schema"
-            );
+            anyhow::ensure!(application == 0x42504230, "Unsupported chat record schema");
+            StoreSchemaError::ensure("chat", version, schema::CHAT_VERSION)?;
             connection.busy_timeout(std::time::Duration::from_secs(2))?;
             connection.execute_batch("PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA wal_autocheckpoint=256; PRAGMA journal_size_limit=1048576;")?;
-            Self::migrate_request_usage(&mut connection, version)?;
             Self::initialize_reminders(&connection)?; // existing chat-v1 records skip initialize
-            crate::store::migrate_checkpoint_schema(&mut connection, version)?;
             cold::initialize(&connection)?;
             let dictionary_pins = cold::pin_dictionaries(&connection)?;
-            Self::initialize_tool_call_index(&mut connection)?;
-            Self::migrate_context_facts(&mut connection, version)?;
             Self(Arc::new(Inner {
                 connection: Arc::new(Mutex::new(connection)),
                 dictionary_pins,
@@ -1312,33 +988,9 @@ impl Store {
     }
     fn record_activity_connection(conn: &Connection, session: &Session) -> Result<String> {
         let mut activity = session.updated_at.clone();
-        let has_headers: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='message_headers')",
-            [],
-            |row| row.get(0),
-        )?;
-        let created: Option<String> = if has_headers {
-            // Activity is metadata: a large tool body must not be decompressed
-            // again after every record step just to obtain its timestamp.
-            conn.query_row("SELECT created_at FROM message_headers WHERE session_id=?1 ORDER BY message_seq DESC LIMIT 1", [&session.id], |row| row.get(0)).optional()?
-        } else {
-            // Read-only phase-B records are scanned before their header migration.
-            let message: Option<String> = conn
-                .query_row(
-                    "SELECT data FROM messages WHERE session_id=?1 ORDER BY seq DESC LIMIT 1",
-                    [&session.id],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            message
-                .map(|message| -> Result<_> {
-                    Ok(Self::decode_message_body(conn, &message)?["created_at"]
-                        .as_str()
-                        .map(str::to_owned))
-                })
-                .transpose()?
-                .flatten()
-        };
+        // Activity is metadata: a large tool body must not be decompressed again
+        // after every record step just to obtain its timestamp.
+        let created: Option<String> = conn.query_row("SELECT created_at FROM message_headers WHERE session_id=?1 ORDER BY message_seq DESC LIMIT 1", [&session.id], |row| row.get(0)).optional()?;
         if let Some(created) = created {
             activity = activity.max(created);
         }
@@ -1994,7 +1646,13 @@ impl Store {
                     std::fs::remove_file(file)?;
                 }
             }
-            *connection = projection(path, 0x42504232, SERVING_SCHEMA)?;
+            *connection = projection(
+                path,
+                0x42504232,
+                SERVING_SCHEMA,
+                "serving",
+                schema::SERVING_VERSION,
+            )?;
             let tx = connection.transaction()?;
             tx.execute(
                 "INSERT INTO metadata VALUES('events_last_seq',?1)",
@@ -3040,130 +2698,6 @@ mod ownership_tests {
         Ok(())
     }
 
-    fn legacy(path: &Path) -> Result<()> {
-        let conn = Connection::open(path)?;
-        conn.execute_batch(include_str!("../tests/fixtures/main-v6-schema.sql"))?;
-        let session = Session {
-            id: id(),
-            title: "ownership fixture".into(),
-            parent_session_id: None,
-            parent_cutoff: None,
-            created_at: now(),
-            updated_at: now(),
-            read_only: false,
-            hidden: false,
-            context_strategy: ContextStrategy::default(),
-        };
-        conn.execute(
-            "INSERT INTO sessions VALUES(?1,?2)",
-            params![session.id, serde_json::to_string(&session)?],
-        )?;
-        let message = Store::message(&session.id, Role::User, "synthetic accepted input".into());
-        conn.execute(
-            "INSERT INTO messages(session_id,data) VALUES(?1,?2)",
-            params![session.id, serde_json::to_string(&message)?],
-        )?;
-        Ok(())
-    }
-    fn owner(path: &Path) -> Result<FileLock> {
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(path)?;
-        FileLock::acquire(file, "test owner lock")
-    }
-    #[test]
-    fn migration_refuses_a_busy_legacy_source_and_retries_after_close() -> Result<()> {
-        let directory = tempfile::tempdir()?;
-        let source = directory.path().join("archive.sqlite");
-        let target = directory.path().join("data");
-        legacy(&source)?;
-        let original = std::fs::read(&source)?;
-        let lock = owner(&source.with_extension("sqlite.lock"))?;
-        assert!(
-            Store::migrate_legacy(&source, &target)
-                .unwrap_err()
-                .to_string()
-                .contains("Legacy database is already owned")
-        );
-        assert!(!target.exists());
-        assert_eq!(std::fs::read(&source)?, original);
-        drop(lock);
-        Store::migrate_legacy(&source, &target)?;
-        assert_eq!(Store::open_data_dir(&target)?.list_sessions()?.len(), 1);
-        assert_eq!(std::fs::read(&source)?, original);
-        Ok(())
-    }
-    #[test]
-    fn migration_refuses_a_destination_owned_before_catalog_creation() -> Result<()> {
-        let directory = tempfile::tempdir()?;
-        let source = directory.path().join("archive.sqlite");
-        let target = directory.path().join("data");
-        legacy(&source)?;
-        std::fs::create_dir(&target)?;
-        let lock_path = target.join("store.lock");
-        let lock = owner(&lock_path)?;
-        assert!(
-            Store::migrate_legacy(&source, &target)
-                .unwrap_err()
-                .to_string()
-                .contains("destination is already owned")
-        );
-        let another = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(&lock_path)?;
-        assert!(
-            fs2::FileExt::try_lock_exclusive(&another).is_err(),
-            "installer must not replace the held lock inode"
-        );
-        assert!(!target.join("catalog.db").exists());
-        drop(lock);
-        Ok(())
-    }
-    #[test]
-    fn installer_rechecks_a_concurrently_created_catalog_before_moving_files() -> Result<()> {
-        let directory = tempfile::tempdir()?;
-        let source = directory.path().join("first.sqlite");
-        let target = directory.path().join("data");
-        legacy(&source)?;
-        Store::migrate_legacy(&source, &target)?;
-        let original = std::fs::read(target.join("serving.db"))?;
-        let staged = directory.path().join("second-stage");
-        std::fs::create_dir_all(staged.join("chats"))?;
-        std::fs::write(staged.join("serving.db"), b"must not be installed")?;
-        let error = Store::install_migration(&staged, &target, "another-source").unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("another source or by another host")
-        );
-        assert_eq!(std::fs::read(target.join("serving.db"))?, original);
-        assert_eq!(
-            std::fs::read(staged.join("serving.db"))?,
-            b"must not be installed"
-        );
-        Ok(())
-    }
-    #[test]
-    fn failed_installation_removes_its_new_lock_and_allows_a_retry() -> Result<()> {
-        let directory = tempfile::tempdir()?;
-        let source = directory.path().join("archive.sqlite");
-        let target = directory.path().join("data");
-        legacy(&source)?;
-        let staged = directory.path().join("incomplete-stage");
-        std::fs::create_dir_all(staged.join("chats"))?;
-        assert!(Store::install_migration(&staged, &target, "source").is_err());
-        assert!(
-            !target.join("store.lock").exists(),
-            "failed bootstrap must not look like a completed layout"
-        );
-        Store::migrate_legacy(&source, &target)?;
-        assert_eq!(Store::open_data_dir(&target)?.list_sessions()?.len(), 1);
-        Ok(())
-    }
     struct NoModelCalls;
     #[async_trait::async_trait]
     impl crate::Provider for NoModelCalls {

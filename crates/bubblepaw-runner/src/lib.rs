@@ -54,7 +54,6 @@ pub mod host_lifetime;
 pub mod host_transport;
 pub mod images;
 pub mod input_files;
-pub mod legacy_import;
 pub mod live_config;
 pub mod logging;
 pub mod memory_files;

@@ -3,9 +3,9 @@ use anyhow::{Result, bail};
 mod chapter_ids;
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, ContextChapter, ContextCheckpoint, ContextEpisode, ContextPreparation,
-    ContextSubjectChapter, EpisodeBatch, Message, ModelRequest, ModelResponse, PreparedContext,
-    Provider, Role, Store, SubjectChapterStatus, TextCallback, ToolCall, Usage,
+    CancellationToken, ContextChapter, ContextEpisode, ContextPreparation, ContextSubjectChapter,
+    EpisodeBatch, Message, ModelRequest, ModelResponse, PreparedContext, Provider, Role, Store,
+    SubjectChapterStatus, TextCallback, ToolCall, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -25,8 +25,6 @@ use std::sync::{
 use tokio::sync::Notify;
 #[path = "common/hook.rs"]
 mod hook;
-#[path = "../../bubblepaw-core/tests/support/mod.rs"]
-mod legacy_support;
 use hook::{prepare_call, prepare_fresh};
 fn id() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -873,8 +871,6 @@ async fn child_assignment_and_latest_steering_survive_a_bounded_compacted_view()
         ..Default::default()
     };
     config.lcm.raw_tail_tokens = 16000;
-    config.lcm.open_summary_tokens = 1000;
-    config.lcm.task_anchor_tokens = 1000;
     let policy = SummarizingContext::new(f.store.clone(), Script::normal(), config, None)?;
     let prepared = f.prepare(&policy).await?;
     let assignment = prepared
@@ -1159,68 +1155,6 @@ async fn legacy_v4_rendering_keeps_exact_old_format_and_budget_without_new_write
     assert!(prepared.notice.is_none());
     assert_eq!(f.store.context_chapters(&f.session)?.len(), 5);
     assert!(f.store.context_view(&f.session)?.is_none());
-    Ok(())
-}
-#[tokio::test]
-async fn migrated_v3_and_v4_legacy_rows_remain_frozen_during_episode_compaction() -> Result<()> {
-    for version in [3, 4] {
-        let mut f = Fixture::new()?;
-        let legacy = f.message(Role::Assistant, "legacy raw");
-        let mut history = vec![legacy.clone()];
-        history.extend(f.turns(4, 35000));
-        f.seed(&history)?;
-        let checkpoint = ContextCheckpoint {
-            files_touched: vec![],
-            id: id(),
-            session_id: f.session.clone(),
-            through_message_id: legacy.id.clone(),
-            model: "legacy".into(),
-            summary: "Frozen rolling summary".into(),
-            created_at: now(),
-            usage: None,
-        };
-        f.store.save_context_checkpoint(&checkpoint)?;
-        if version == 4 {
-            f.store.save_context_chapter(&ContextChapter {
-                id: id(),
-                session_id: f.session.clone(),
-                ordinal: 1,
-                first_message_id: history[1].id.clone(),
-                last_message_id: history[2].id.clone(),
-                title: "Frozen v4".into(),
-                summary: "Old chapter body".into(),
-                model: "legacy".into(),
-                usage: None,
-                created_at: now(),
-            })?;
-        }
-        let checkpoint_bytes = serde_json::to_vec(&f.store.context_checkpoint(&f.session)?)?;
-        let chapter_bytes = serde_json::to_vec(&f.store.context_chapters(&f.session)?)?;
-        drop(std::mem::replace(&mut f.store, Store::in_memory()?));
-        legacy_support::replace_with_legacy_fixture(&f.path, version)?;
-        f.store = Store::open(&f.path)?;
-        let (policy, _worker, _models) = f.worker(100000)?;
-        let prepared = f.prepare(&policy).await?;
-        assert!(prepared.notice.is_some());
-        assert_eq!(
-            serde_json::to_vec(&f.store.context_checkpoint(&f.session)?)?,
-            checkpoint_bytes
-        );
-        assert_eq!(
-            serde_json::to_vec(&f.store.context_chapters(&f.session)?)?,
-            chapter_bytes
-        );
-        assert!(
-            prepared.request.messages[0]
-                .content
-                .ends_with("Frozen rolling summary")
-        );
-        let episodes = f.store.context_episodes(&f.session)?;
-        assert_eq!(
-            episodes[0].first_message_id,
-            history[if version == 3 { 1 } else { 3 }].id
-        );
-    }
     Ok(())
 }
 #[tokio::test]

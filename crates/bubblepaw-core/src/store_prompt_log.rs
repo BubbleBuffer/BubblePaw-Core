@@ -4,46 +4,14 @@
 use super::*;
 use crate::{RequestLogRow, TierFingerprint};
 
-/// Serving-only setup: set the pragmas and create the request log (`model_requests`,
-/// `prompt_tiers`).
-const SERVING_SETUP: &str = "PRAGMA synchronous=NORMAL; PRAGMA cache_spill=OFF;
-CREATE TABLE IF NOT EXISTS model_requests(id INTEGER PRIMARY KEY,session_id TEXT NOT NULL,lineage TEXT NOT NULL,seq INTEGER NOT NULL,created_at TEXT NOT NULL,frozen_sha256 TEXT NOT NULL,frozen_bytes INTEGER NOT NULL,cold_sha256 TEXT NOT NULL,cold_bytes INTEGER NOT NULL,cold_count INTEGER NOT NULL,history_sha256 TEXT NOT NULL,history_bytes INTEGER NOT NULL,history_count INTEGER NOT NULL,classification TEXT NOT NULL,declared INTEGER NOT NULL,declaration_reason TEXT,provider TEXT NOT NULL,model TEXT NOT NULL,cached_tokens INTEGER,uncached_tokens INTEGER,expected_cached_tokens INTEGER,since_previous_ms INTEGER,warned INTEGER NOT NULL);
+/// The request log (`model_requests`, `prompt_tiers`), created with the serving file.
+pub(in crate::store) const TABLES: &str = "CREATE TABLE IF NOT EXISTS model_requests(id INTEGER PRIMARY KEY,session_id TEXT NOT NULL,lineage TEXT NOT NULL,seq INTEGER NOT NULL,created_at TEXT NOT NULL,frozen_sha256 TEXT NOT NULL,frozen_bytes INTEGER NOT NULL,cold_sha256 TEXT NOT NULL,cold_bytes INTEGER NOT NULL,cold_count INTEGER NOT NULL,history_sha256 TEXT NOT NULL,history_bytes INTEGER NOT NULL,history_count INTEGER NOT NULL,classification TEXT NOT NULL,declared INTEGER NOT NULL,declaration_reason TEXT,provider TEXT NOT NULL,model TEXT NOT NULL,cached_tokens INTEGER,uncached_tokens INTEGER,expected_cached_tokens INTEGER,since_previous_ms INTEGER,warned INTEGER NOT NULL,cache_write_tokens INTEGER,output_tokens INTEGER,reasoning_tokens INTEGER,reasoning_effort TEXT,breakpoints TEXT,cache_lifetime_ms INTEGER,likely_expired INTEGER);
 CREATE TABLE IF NOT EXISTS prompt_tiers(sha256 TEXT PRIMARY KEY,content TEXT NOT NULL) WITHOUT ROWID;";
 
-/// Nullable columns added after the first request-log release, by serving step 2.
-const ADDED_COLUMNS: [(&str, &str); 7] = [
-    ("cache_write_tokens", "INTEGER"),
-    ("output_tokens", "INTEGER"),
-    ("reasoning_tokens", "INTEGER"),
-    ("reasoning_effort", "TEXT"),
-    ("breakpoints", "TEXT"),
-    ("cache_lifetime_ms", "INTEGER"),
-    ("likely_expired", "INTEGER"),
-];
-
-/// Run at every serving open. The added columns arrive with step 2.
+/// Run at every serving open: the pragmas, and the log tables if they are missing.
 pub(in crate::store) fn setup(conn: &Connection) -> Result<()> {
-    conn.execute_batch(SERVING_SETUP)?;
-    Ok(())
-}
-
-/// Serving step 2. Drops the legacy `usage` table, which no release table writes,
-/// and gives an older `model_requests` the added columns in place (null in its
-/// existing rows). A log the previous per-open code already upgraded only gains
-/// the version, so each column is checked once.
-pub(in crate::store) fn migrate(conn: &Connection) -> Result<()> {
-    conn.execute_batch("DROP TABLE IF EXISTS usage;")?;
-    let existing = conn
-        .prepare("SELECT name FROM pragma_table_info('model_requests')")?
-        .query_map([], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (name, kind) in ADDED_COLUMNS {
-        if !existing.iter().any(|column| column == name) {
-            conn.execute_batch(&format!(
-                "ALTER TABLE model_requests ADD COLUMN {name} {kind}"
-            ))?;
-        }
-    }
+    conn.execute_batch("PRAGMA synchronous=NORMAL; PRAGMA cache_spill=OFF;")?;
+    conn.execute_batch(TABLES)?;
     Ok(())
 }
 

@@ -276,20 +276,13 @@ fn run_prompt(prompt: Option<&str>, prompt_file: Option<&std::path::Path>) -> Re
     }
 }
 
-/// Data directory, legacy database, and whether the data directory is the
-/// central default (only that store imports its legacy siblings).
-fn storage_paths(cli: &Cli, settings: &Settings) -> Result<(PathBuf, PathBuf, bool)> {
+/// The data directory: `--db <file>` selects the sibling `<stem>.data`
+/// directory; otherwise `storage.data_dir` or the central default.
+fn storage_paths(cli: &Cli, settings: &Settings) -> Result<PathBuf> {
     if let Some(db) = &cli.db {
-        let data_dir = Store::legacy_data_dir(db);
-        eprintln!(
-            "--db is a legacy alias: storage now uses {}; normal startup migrates existing {} once and preserves it",
-            data_dir.display(),
-            db.display()
-        );
-        return Ok((data_dir, db.clone(), false));
+        return Ok(Store::legacy_data_dir(db));
     }
-    let paths = host_config::storage_paths(settings)?;
-    Ok((paths.data_dir, paths.legacy_db, paths.central))
+    Ok(host_config::storage_paths(settings)?.data_dir)
 }
 
 fn main() -> std::process::ExitCode {
@@ -506,17 +499,12 @@ async fn run_cli() -> Result<()> {
     )
     .then(ephemeral_dir::EphemeralDir::new)
     .transpose()?;
-    let (data_dir, legacy_db, central_store) = if let Some(directory) = &ephemeral {
-        (
-            directory.path().join("data"),
-            directory.path().join("no-legacy.sqlite"),
-            false,
-        )
+    let data_dir = if let Some(directory) = &ephemeral {
+        directory.path().join("data")
     } else {
         storage_paths(&cli, &settings)?
     };
     let data_dir = std::path::absolute(data_dir)?;
-    let legacy_db = std::path::absolute(legacy_db)?;
     if let Command::Login { provider, account } | Command::Logout { provider, account } =
         &cli.command
     {
@@ -669,9 +657,9 @@ async fn run_cli() -> Result<()> {
             input_limits.validate_prompt(prompt)?;
         }
     }
-    let mut election_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let election_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let store = loop {
-        match host_config::open_store(&data_dir, &legacy_db, &settings) {
+        match host_config::open_store(&data_dir, &settings) {
             Ok(store) => break store,
             Err(error) if host_attach::is_owned(&error) => {
                 if matches!(cli.command, Command::Run { .. } | Command::Delegate { .. }) {
@@ -689,18 +677,8 @@ async fn run_cli() -> Result<()> {
                                 task_prompt: task_prompt.clone(),
                                 workspace: workspace.clone(),
                                 data_dir: data_dir.clone(),
-                                legacy_db: legacy_db.clone(),
                             };
-                            match host_attach::attach(request, connection).await {
-                                // A one-shot host imported legacy stores and
-                                // stopped without reading the request.
-                                Err(error) if error.is::<host_attach::HostRetry>() => {
-                                    election_deadline =
-                                        tokio::time::Instant::now() + Duration::from_secs(5);
-                                    continue;
-                                }
-                                result => return result,
-                            }
+                            return host_attach::attach(request, connection).await;
                         }
                         Err(error) if tokio::time::Instant::now() >= election_deadline => {
                             return Err(error.context(
@@ -719,16 +697,6 @@ async fn run_cli() -> Result<()> {
         .data_dir()
         .context("host has no data directory")?
         .to_owned();
-    // The host imports legacy per-workspace stores once, before serving work.
-    // It publishes its endpoint first, so attaching clients wait instead of
-    // timing out; a one-shot command releases them to elect again.
-    let mut importing = None;
-    if central_store && bubblepaw_runner::legacy_import::import_pending(&store)? {
-        importing = Some(host_attach::import_legacy_stores(&store, &data_dir).await?);
-    }
-    if one_shot && let Some(importing) = importing.take() {
-        importing.release().await;
-    }
     for report in host_config::prepare_store(&store, &data_dir, &settings)? {
         eprintln!("Child worktree {}: {}", report.session_id, report.note);
     }
@@ -742,9 +710,8 @@ async fn run_cli() -> Result<()> {
         task_prompt,
         workspace,
         data_dir,
-        legacy_db,
     };
-    Box::pin(host_attach::serve(request, store, importing)).await
+    Box::pin(host_attach::serve(request, store)).await
 }
 
 #[cfg(test)]

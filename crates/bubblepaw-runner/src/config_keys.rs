@@ -19,7 +19,6 @@ pub(super) fn known_path(path: &str) -> bool {
         [
             "storage",
             "data_dir"
-            | "legacy_db"
             | "finished_event_retention_hours"
             | "telemetry_retention_days"
             | "archive_after_days"
@@ -78,10 +77,7 @@ pub(super) fn known_path(path: &str) -> bool {
             | "decision_context_tokens"
             | "tool_evidence_tokens"
             | "raw_tail_tokens"
-            | "closed_summary_tokens"
-            | "open_summary_tokens"
             | "index_tokens"
-            | "task_anchor_tokens"
             | "output_reserve_tokens"
             | "apply_target_tokens"
             | "child_compact_threshold_tokens",
@@ -137,8 +133,6 @@ pub(super) fn known_path(path: &str) -> bool {
             | "approval"
             | "startup_timeout_secs"
             | "call_timeout_secs"
-            | "include"
-            | "exclude"
             | "include_tools"
             | "exclude_tools"
             | "tools",

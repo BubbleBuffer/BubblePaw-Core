@@ -112,8 +112,8 @@ plain copy for later display.
 
 On a valid v2 response, the chapter's existing SQLite JSON `data` includes
 `decisions` (an array of strings, empty for `none`) and `sections` (objects with
-`name`, `first_episode` and `last_episode`). No migration is needed; v1 chapters
-have neither key. If either block is malformed or sections fail to cover the
+`name`, `first_episode` and `last_episode`). v1 chapters have
+neither key. If either block is malformed or sections fail to cover the
 chapter, the close still stores the description and summary and emits a parse
 warning, without either new key.
 

@@ -427,7 +427,7 @@ pub(crate) fn recover(store: &Store) -> Result<()> {
     Ok(())
 }
 
-pub(crate) const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS approvals(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id),run_id TEXT NOT NULL,call_id TEXT NOT NULL,tool TEXT NOT NULL,arguments TEXT NOT NULL,state TEXT NOT NULL,reason TEXT,created_at TEXT NOT NULL,decided_at TEXT); CREATE INDEX IF NOT EXISTS approvals_session ON approvals(session_id,state); CREATE TABLE IF NOT EXISTS approval_rules(session_id TEXT NOT NULL REFERENCES sessions(id),tool TEXT NOT NULL,PRIMARY KEY(session_id,tool));";
+pub(crate) const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS approvals(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES sessions(id),run_id TEXT NOT NULL,call_id TEXT NOT NULL,tool TEXT NOT NULL,arguments TEXT NOT NULL,state TEXT NOT NULL,reason TEXT,created_at TEXT NOT NULL,decided_at TEXT, arguments_ref TEXT); CREATE INDEX IF NOT EXISTS approvals_session ON approvals(session_id,state); CREATE TABLE IF NOT EXISTS approval_rules(session_id TEXT NOT NULL REFERENCES sessions(id),tool TEXT NOT NULL,PRIMARY KEY(session_id,tool));";
 
 #[cfg(test)]
 fn insert(store: &Store, record: &ApprovalRecord) -> Result<()> {

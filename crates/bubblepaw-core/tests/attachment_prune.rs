@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bubblepaw_core::{CHECKPOINT_PREFIX, CheckpointRecord, Message, Role, Store};
+use bubblepaw_core::{CHECKPOINT_PREFIX, CheckpointRecord, Store};
 use rusqlite::{Connection, params};
 
 fn checkpoint_id(name: &str) -> String {
@@ -468,41 +468,5 @@ fn chat_is_not_visible_to_other_callers_until_its_open_hook_has_run() -> Result<
         "a second caller received the chat while its open hook was running"
     );
     assert!(seen_rx.recv_timeout(Duration::from_secs(10))?);
-    Ok(())
-}
-
-/// Export of a chat that this build never opened: its checkpoint tables are absent,
-/// and the export still succeeds with the attachments section.
-#[test]
-fn export_of_a_chat_without_checkpoint_tables_succeeds() -> Result<()> {
-    let directory = tempfile::tempdir()?;
-    let store = Store::open_data_dir(directory.path())?;
-    let session = store.create_session("untouched")?.id;
-    // Attachments and checkpoints export on the first message record, so the
-    // session needs one for the attachments section to appear.
-    store.append_batch(&[Message {
-        id: "first".into(),
-        session_id: session.clone(),
-        role: Role::User,
-        origin: None,
-        content: "hello".into(),
-        tool_calls: Vec::new(),
-        tool_call_id: None,
-        provider_state: None,
-        is_error: false,
-        created_at: "2026-10-21T00:00:00Z".into(),
-    }])?;
-    store.store_attachment(&session, "plain", "{}", b"kept")?;
-    let path = store.chat_path(&session)?.unwrap();
-    drop(store);
-    // An untouched main-format chat never got the checkpoint schema.
-    Connection::open(&path)?
-        .execute_batch("DROP TABLE checkpoint_records; DROP TABLE checkpoint_blobs;")?;
-
-    let mut exported = Vec::new();
-    Store::export_data_dir_jsonl(directory.path(), &session, &mut exported)?;
-    let text = String::from_utf8(exported)?;
-    assert!(text.contains("\"attachments\""), "{text}");
-    assert!(!text.contains("\"checkpoints\""), "{text}");
     Ok(())
 }

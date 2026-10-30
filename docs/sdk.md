@@ -179,12 +179,10 @@ let client = Client::open_configured(config).await?;   // or Client::embedded_co
 - `Client::open_configured(config)` attaches when another process (or a host
   this process already serves) owns the data directory, like `open`; otherwise
   it embeds. `Client::embedded_configured(config)` always embeds. Embedding runs
-  the CLI host's startup: it migrates a legacy archive once, opens the store,
-  attaches spilled outputs, prunes archives, cleans up inactive child
-  worktrees, publishes the control endpoint and `host.json`, and serves the
-  CLI's own host context (the `stdio` command's setup, without stdio). The
-  one-time import of legacy per-workspace stores into the central store is left
-  to the CLI.
+  the CLI host's startup: it opens the store, attaches spilled outputs, prunes
+  archives, cleans up inactive child worktrees, publishes the control endpoint
+  and `host.json`, and serves the CLI's own host context (the `stdio` command's
+  setup, without stdio).
 
 `HostBuilder` stays the way to build a host with custom tools or providers.
 

@@ -1,7 +1,7 @@
 mod support;
 
 use anyhow::Result;
-use bubblepaw_core::{ContextChapter, ContextCheckpoint, Message, RunOptions, Store, Usage};
+use bubblepaw_core::{ContextChapter, Message, RunOptions, Store, Usage};
 use support::harness;
 
 fn chapter(session: &str, ordinal: usize, range: &[Message]) -> ContextChapter {
@@ -247,101 +247,5 @@ async fn invalid_ranges_metadata_and_duplicate_ids_are_atomic() -> Result<()> {
     // A single-message chapter is still a contiguous, nonempty range.
     store.save_context_chapter(&chapter(&session.id, 3, &history[4..5]))?;
     store.save_context_chapter(&chapter(&session.id, 4, &history[5..6]))?;
-    Ok(())
-}
-
-#[tokio::test]
-async fn v3_checkpoint_migrates_and_new_chapters_start_after_legacy_cutoff() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    let path = dir.path().join("archive.sqlite");
-    let store = Store::open(&path)?;
-    let session = store.create_session("legacy")?;
-    let foreign =
-        store.create_session_with_parent("foreign", Default::default(), Some(&session.id))?;
-    let agent = harness(&store);
-    for _ in 0..3 {
-        agent
-            .prompt(&session.id, "retained", RunOptions::default())
-            .await?;
-        agent
-            .prompt(&foreign.id, "other", RunOptions::default())
-            .await?;
-    }
-    let history = store.messages(&session.id)?;
-    let original = serde_json::to_value(&history)?;
-    let legacy = ContextCheckpoint {
-        files_touched: Vec::new(),
-        id: "legacy".into(),
-        session_id: session.id.clone(),
-        through_message_id: history[1].id.clone(),
-        model: "old-model".into(),
-        summary: "Frozen rolling summary.".into(),
-        created_at: history[1].created_at.clone(),
-        usage: None,
-    };
-    store.save_context_checkpoint(&legacy)?;
-    drop(agent);
-    drop(store);
-    support::replace_with_legacy_fixture(&path, 3)?;
-    let conn = rusqlite::Connection::open(&path)?;
-    let legacy_bytes: String = conn.query_row(
-        "SELECT data FROM context_checkpoints WHERE session_id=?1",
-        [&session.id],
-        |row| row.get(0),
-    )?;
-    drop(conn);
-    let store = Store::open(&path)?;
-    assert_eq!(store.storage_stats()?.chat_transaction_count, 0);
-    assert!(store.context_chapters(&session.id)?.is_empty());
-    assert_eq!(
-        serde_json::to_value(store.context_checkpoint(&session.id)?)?,
-        serde_json::to_value(Some(&legacy))?
-    );
-    assert!(
-        store
-            .save_context_chapter(&chapter(&session.id, 1, &history[..4]))
-            .is_err()
-    );
-    assert!(
-        store
-            .save_context_chapter(&chapter(&session.id, 1, &history[3..4]))
-            .is_err()
-    );
-    assert_eq!(store.storage_stats()?.chat_transaction_count, 0);
-    store.save_context_chapter(&chapter(&session.id, 1, &history[2..4]))?;
-    store.save_context_chapter(&chapter(&session.id, 2, &history[4..6]))?;
-    assert_eq!(store.storage_stats()?.chat_transaction_count, 2);
-    // Once chapters exist, the legacy checkpoint can no longer be advanced over them.
-    let rewrite = ContextCheckpoint {
-        files_touched: Vec::new(),
-        id: "rewrite".into(),
-        through_message_id: history[5].id.clone(),
-        ..legacy.clone()
-    };
-    assert!(store.save_context_checkpoint(&rewrite).is_err());
-    assert_eq!(store.context_checkpoint(&session.id)?.unwrap().id, "legacy");
-    assert_eq!(store.storage_stats()?.chat_transaction_count, 2);
-    assert_eq!(
-        serde_json::to_value(store.messages(&session.id)?)?,
-        original
-    );
-    let conn = rusqlite::Connection::open(store.chat_path(&session.id)?.unwrap())?;
-    assert_eq!(
-        conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        12
-    );
-    assert_eq!(
-        durable_json(&conn.query_row(
-            "SELECT data FROM context_checkpoints WHERE session_id=?1",
-            [&session.id],
-            |row| row.get::<_, String>(0)
-        )?)?,
-        durable_json(&legacy_bytes)?
-    );
-    assert_eq!(
-        conn.query_row("SELECT COUNT(*) FROM context_checkpoints", [], |row| row
-            .get::<_, i64>(0))?,
-        1
-    );
     Ok(())
 }

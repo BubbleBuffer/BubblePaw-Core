@@ -514,7 +514,7 @@ fn config_is_read_only_and_needs_no_credentials() -> Result<()> {
 #[test]
 fn storage_paths_retention_and_cli_precedence_are_layered_without_io() -> Result<()> {
     let sb = Sandbox::new()?;
-    let path = sb.write("settings/storage.toml", "[storage]\ndata_dir = 'state'\nlegacy_db = 'archive.sqlite'\nfinished_event_retention_hours = 48\ntelemetry_retention_days = 14\n")?;
+    let path = sb.write("settings/storage.toml", "[storage]\ndata_dir = 'state'\nfinished_event_retention_hours = 48\ntelemetry_retention_days = 14\n")?;
     let output = sb.run(&["--config", path.to_str().unwrap(), "config"], &[])?;
     ensure!(output.status.success(), "{}", failure_text(&output));
     let config: Value = String::from_utf8(output.stdout)?.parse()?;
@@ -522,10 +522,6 @@ fn storage_paths_retention_and_cli_precedence_are_layered_without_io() -> Result
     assert_eq!(
         PathBuf::from(config["storage"]["data_dir"].as_str().unwrap()),
         sb.path().join("settings").join("state")
-    );
-    assert_eq!(
-        PathBuf::from(config["storage"]["legacy_db"].as_str().unwrap()),
-        sb.path().join("settings").join("archive.sqlite")
     );
     assert_eq!(
         config["storage"]["finished_event_retention_hours"].as_integer(),

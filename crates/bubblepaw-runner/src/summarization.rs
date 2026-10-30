@@ -57,14 +57,7 @@ pub struct LcmConfig {
     /// Recent-tail target for explicit manual and Classical compaction. Automatic
     /// LCM apply starts raw history immediately after all ready episode coverage.
     pub raw_tail_tokens: usize,
-    /// Legacy serving allocation, retained for config compatibility. Complete
-    /// closed chapter summaries are served even when they exceed this value.
-    pub closed_summary_tokens: usize,
-    /// Legacy serving allocation; complete open episodes are never reduced to titles.
-    pub open_summary_tokens: usize,
     pub index_tokens: usize,
-    /// Legacy excerpt budget; original opening/current tasks now remain exact.
-    pub task_anchor_tokens: usize,
     pub output_reserve_tokens: usize,
     pub apply_target_tokens: Option<usize>,
     #[serde(default)]
@@ -75,10 +68,7 @@ impl Default for LcmConfig {
         Self {
             episodes: Default::default(),
             raw_tail_tokens: 32_000,
-            closed_summary_tokens: 16_000,
-            open_summary_tokens: 16_000,
             index_tokens: 2_000,
-            task_anchor_tokens: 8_000,
             output_reserve_tokens: 16_000,
             apply_target_tokens: None,
             child_compact_threshold_tokens: Some(100_000),
@@ -91,10 +81,6 @@ impl LcmConfig {
         ensure!(
             self.raw_tail_tokens > 0,
             "context.lcm.raw_tail_tokens must be positive"
-        );
-        ensure!(
-            self.task_anchor_tokens > 0,
-            "context.lcm.task_anchor_tokens must be positive"
         );
         ensure!(
             self.apply_target_tokens != Some(0),

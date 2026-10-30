@@ -84,8 +84,8 @@ async fn filters_tools_skips_invalid_schemas_and_name_collisions() {
     );
     host.shutdown(Duration::ZERO).await;
     let mut settings = config(Vec::new());
-    settings.include = vec!["echo".into(), "fail".into(), "image".into()];
-    settings.exclude = vec!["image".into()];
+    settings.include_tools = Some(vec!["echo".into(), "fail".into(), "image".into()]);
+    settings.exclude_tools = vec!["image".into()];
     settings.approval = Approval::None;
     settings.tools.insert(
         "fail".into(),
@@ -477,7 +477,7 @@ async fn reload_add_remove_change_and_force_preserve_unchanged_servers() {
         retained.invoke(context(), json!({})).await.unwrap().content,
         first
     );
-    config.servers.get_mut("other").unwrap().exclude = vec!["echo".into()];
+    config.servers.get_mut("other").unwrap().exclude_tools = vec!["echo".into()];
     let changed = host.reload(&config, None).await.unwrap();
     assert!(changed.restarted.is_empty());
     assert_eq!(changed.filtered, ["other"]);

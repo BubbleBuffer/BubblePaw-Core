@@ -2,7 +2,7 @@ mod support;
 
 use anyhow::Result;
 use bubblepaw_core::{ContextCheckpoint, ContextStrategy, ContextView, Role, Store};
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use serde_json::json;
 use support::stored_message;
 const DATE: &str = "2026-10-12T00:00:00Z";
@@ -194,65 +194,6 @@ fn view_uses_ranges_and_immutable_summary_refs_with_exact_roundtrip() -> Result<
     assert_eq!(
         serde_json::to_value(Store::open(&path)?.context_view(&session.id)?.unwrap())?,
         serde_json::to_value(view)?
-    );
-    Ok(())
-}
-
-#[test]
-fn old_inline_rows_are_not_rewritten_when_message_ids_are_backfilled() -> Result<()> {
-    let directory = tempfile::tempdir()?;
-    let path = directory.path().join("old.db");
-    let conn = Connection::open(&path)?;
-    conn.execute_batch(include_str!("fixtures/main-v6-schema.sql"))?;
-    let session = json!({"id":"old", "title":"old", "parent_session_id":null,"parent_cutoff":null,
-        "created_at":DATE,"updated_at":DATE,"read_only":false});
-    conn.execute(
-        "INSERT INTO sessions VALUES('old',?1)",
-        [session.to_string()],
-    )?;
-    let original = serde_json::to_string_pretty(&stored_message(
-        "old",
-        "old-tool",
-        Role::Tool,
-        &"legacy inline\n".repeat(1000),
-    ))?;
-    conn.execute(
-        "INSERT INTO messages(session_id,data) VALUES('old',?1)",
-        [&original],
-    )?;
-    drop(conn);
-    let store = Store::open(&path)?;
-    assert_eq!(store.message_seq("old", "old-tool")?, 1);
-    assert_eq!(
-        store.messages("old")?[0].content,
-        "legacy inline\n".repeat(1000)
-    );
-    let conn = Connection::open(store.chat_path("old")?.unwrap())?;
-    assert_eq!(
-        conn.query_row("SELECT data FROM messages", [], |row| row
-            .get::<_, String>(0))?,
-        original
-    );
-    assert_eq!(
-        conn.query_row("SELECT message_id FROM messages", [], |row| row
-            .get::<_, String>(0))?,
-        "old-tool"
-    );
-    assert_eq!(
-        conn.query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get::<_, i64>(0))?,
-        0
-    );
-    assert_eq!(
-        conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        12
-    );
-    assert_eq!(
-        conn.query_row(
-            "SELECT COUNT(*) FROM messages WHERE session_id=?1 AND message_id=?2",
-            params!["old", "old-tool"],
-            |row| row.get::<_, i64>(0)
-        )?,
-        1
     );
     Ok(())
 }

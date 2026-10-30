@@ -72,46 +72,6 @@ impl Store {
         })
     }
 
-    pub(super) fn migrate_request_usage(connection: &mut Connection, version: i64) -> Result<()> {
-        if version < 8 {
-            let migration = connection.transaction()?;
-            migration.execute_batch(
-                "CREATE TABLE request_usage(
-                request_id TEXT PRIMARY KEY,
-                created_at TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                run_id TEXT,
-                provider TEXT NOT NULL,
-                model TEXT NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('main','summary_fork','decider')),
-                input_tokens INTEGER NOT NULL CHECK(input_tokens>=0),
-                cache_read_tokens INTEGER NOT NULL CHECK(cache_read_tokens>=0),
-                cache_creation_tokens INTEGER NOT NULL CHECK(cache_creation_tokens>=0),
-                output_tokens INTEGER NOT NULL CHECK(output_tokens>=0),
-                reasoning_tokens INTEGER CHECK(reasoning_tokens>=0),
-                failed INTEGER NOT NULL CHECK(failed IN (0,1))
-            );
-            CREATE INDEX request_usage_session_time ON request_usage(session_id,created_at);
-            CREATE INDEX request_usage_time ON request_usage(created_at);
-            PRAGMA user_version=8;",
-            )?;
-            migration.commit()?;
-        }
-        if version < 9 {
-            let migration = connection.transaction()?;
-            migration.execute_batch(
-                "ALTER TABLE request_usage ADD COLUMN account TEXT NOT NULL DEFAULT '';
-                 UPDATE request_usage SET account=provider;
-                 DROP INDEX IF EXISTS one_running;
-                 CREATE UNIQUE INDEX one_running ON runs(session_id)
-                    WHERE status IN ('running','waiting_for_quota');
-                 PRAGMA user_version=9;",
-            )?;
-            migration.commit()?;
-        }
-        Ok(())
-    }
-
     pub(crate) fn insert_request_usage_tx(tx: &Connection, records: &[RequestUsage]) -> Result<()> {
         let token_count = |value: u64| {
             i64::try_from(value).context("Request token count exceeds SQLite INTEGER range")
@@ -180,22 +140,7 @@ impl Store {
     }
 
     pub(super) fn request_usage_from_connection(conn: &Connection) -> Result<Vec<RequestUsage>> {
-        let exists: bool = conn.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='request_usage')", [], |row| row.get(0))?;
-        if !exists {
-            // Read-only queries of pre-migration archives have no per-request
-            // facts. Do not fabricate historical rows from run aggregates.
-            return Ok(Vec::new());
-        }
-        // Archives are read-only and may still have schema 8. Account identity
-        // was then the provider route; projecting it avoids restoring the chat.
-        let has_account = conn
-            .prepare("PRAGMA table_info(request_usage)")?
-            .query_map([], |row| row.get::<_, String>(1))?
-            .collect::<rusqlite::Result<Vec<_>>>()?
-            .iter()
-            .any(|name| name == "account");
-        let account = if has_account { "account" } else { "provider" };
-        let mut statement = conn.prepare(&format!("SELECT request_id,created_at,session_id,run_id,provider,model,kind,input_tokens,cache_read_tokens,cache_creation_tokens,output_tokens,reasoning_tokens,failed,{account} FROM request_usage ORDER BY created_at,request_id"))?;
+        let mut statement = conn.prepare("SELECT request_id,created_at,session_id,run_id,provider,model,kind,input_tokens,cache_read_tokens,cache_creation_tokens,output_tokens,reasoning_tokens,failed,account FROM request_usage ORDER BY created_at,request_id")?;
         let mut rows = statement.query([])?;
         let mut records = Vec::new();
         while let Some(row) = rows.next()? {
