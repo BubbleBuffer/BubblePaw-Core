@@ -1,34 +1,63 @@
-# BubblePaw-Core
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="design/readme/bubblepaw-dark.svg">
+    <img src="design/readme/bubblepaw-light.svg" alt="BubblePaw" width="388">
+  </picture>
+</p>
 
-A small, library-first Rust agent harness. The core supplies a model/tool loop,
-SQLite sessions, paragraph/action events, steering, follow-ups, cancellation and
-explicit resume. The runner supplies model adapters and ordinary workspace tools.
+<p align="center">
+  A small, library-first Rust agent harness. The core supplies a model/tool loop,
+  SQLite sessions, paragraph/action events, steering, follow-ups, cancellation and
+  explicit resume. The runner supplies model adapters and ordinary workspace tools.
+</p>
 
-The optional local web workbench embeds this same harness. Stores from earlier
-BubblePaw builds (one store per workspace) are imported once into the central
-data directory described under [Data directory](#data-directory).
+## What it is
 
-## Workspace layout
+- **Agent loop.** A model and tool loop with steering, follow-ups, cancellation and explicit resume. One run is active per session, and separate sessions can run at the same time.
+- **SQLite chats.** Complete messages, queued inputs and external-effect checkpoints persist in SQLite files under a central data directory. Streamed fragments stay transient. An interrupted effect is reported as unknown and is never replayed automatically.
+- **Approvals.** Tool calls pass an approval gate in `ask`, `allow`, `deny` or `auto` mode.
+- **Summarization.** When the estimated context nears its limit, older history is summarized, and the original archive stays intact.
+- **MCP client.** Connects to external MCP servers over stdio and Streamable HTTP. Every MCP tool call is a durable, approval-gated effect. The runner exposes no MCP server.
+- **Providers and extensions.** The runner ships Codex (the default), an OpenAI API provider and an offline `demo` provider. A Bun extension in `extensions/claude-code` drives Claude Code one model step at a time.
+- **Host API and SDK.** One method table sits behind the stdio, HTTP, CLI and Rust SDK front ends. Rust embedders use `bubblepaw-sdk`.
+- **Local web workbench.** The optional `web` feature serves a workbench on loopback from the same process. Its frontend is not in this repository yet.
 
-- `crates/bubblepaw-core`: the library. A native agent loop with durable SQLite
-  history and effects, transient presentation, approvals and context preparation.
-  It has no provider, file-tool or product code.
-- `crates/bubblepaw-runner`: the `bubblepaw` binary and its library, a thin
-  consumer of the core. It holds the provider adapters, workspace tools, CodeMode
-  and the optional web host. Cargo features: `web` (the local web host, needs
-  `--assets`), `bench` (episode-replay and probe benchmark code) and
-  `test-fixtures` (builds the fake extension and MCP fixture binaries for tests).
-- `crates/bubblepaw-mcp`: the host-owned MCP client over stdio and Streamable HTTP.
-  Every MCP tool call is a durable, approval-gated effect.
-- `crates/bubblepaw-process`: the process-tree helper. Each child starts in an
-  owned tree: a process group on Unix, a kill-on-close job object on Windows.
-- `extensions/claude-code`: a Bun provider extension that drives Claude Code one
-  model step at a time. It is MIT licensed (see [License](#license)).
-- `tools/lcm-viewer`: a read-only viewer for chat stores and their LCM context
-  (`serve.py` with `index.html`).
-- `docs/`: the project documentation. Its index is [docs/README.md](docs/README.md).
+## How it fits together
 
-## Requirements
+```mermaid
+flowchart LR
+  cli["bubblepaw CLI<br/>and stdio"] --> runner[bubblepaw-runner]
+  web["Web workbench<br/>(feature web)"] --> runner
+  embed["Rust embedders"] --> sdk[bubblepaw-sdk]
+  sdk --> runner
+  sdk --> core[bubblepaw-core]
+  runner --> core
+  runner --> mcp[bubblepaw-mcp]
+  runner --> process[bubblepaw-process]
+  mcp --> core
+  mcp --> process
+  core --> store[("SQLite chats<br/>and catalog")]
+  mcp -- "stdio or HTTP" --> servers["MCP servers"]
+  runner -- "JSON-RPC" --> ext["extensions/claude-code"]
+  remote["bubblepaw-remote<br/>(library, not wired in)"]
+```
+
+| Crate | Path | What it does |
+| --- | --- | --- |
+| `bubblepaw-core` | [crates/bubblepaw-core](crates/bubblepaw-core) | The library: a native agent loop with durable SQLite history and effects, transient presentation, approvals and context preparation. It has no provider, file-tool or product code. |
+| `bubblepaw-runner` | [crates/bubblepaw-runner](crates/bubblepaw-runner) | The `bubblepaw` binary and its library: provider adapters, workspace tools, CodeMode and the optional web host. Features: `web`, `bench`, `test-fixtures`. |
+| `bubblepaw-mcp` | [crates/bubblepaw-mcp](crates/bubblepaw-mcp) | The host-owned MCP client over stdio and Streamable HTTP. |
+| `bubblepaw-process` | [crates/bubblepaw-process](crates/bubblepaw-process) | The process-tree helper. Each child starts in an owned tree: a process group on Unix, a kill-on-close job object on Windows. |
+| `bubblepaw-sdk` | [crates/bubblepaw-sdk](crates/bubblepaw-sdk) | Re-exports the core surface for Rust embedders and adds `HostBuilder`. |
+| `bubblepaw-remote` | [crates/bubblepaw-remote](crates/bubblepaw-remote) | Paired device identities, encrypted transport and a metadata-only relay. Library only; runner wiring is deferred. |
+| `bubblepaw-claude-code` | [extensions/claude-code](extensions/claude-code) | Bun provider extension that drives Claude Code one model step at a time. |
+| `lcm-viewer` | [tools/lcm-viewer](tools/lcm-viewer) | Read-only viewer for chat stores and their context (`serve.py` with `index.html`). |
+
+The project documentation is in [`docs/`](docs/). Its index is [docs/README.md](docs/README.md).
+
+## Build
+
+### Requirements
 
 - Rust 1.88 or newer (`rust-version` in the workspace `Cargo.toml`; edition 2024).
   Install with [rustup](https://rustup.rs).
@@ -36,7 +65,7 @@ data directory described under [Data directory](#data-directory).
 - A provider: a Codex login (the default), an OpenAI API key, or the offline
   `demo` provider.
 
-## Build
+### Compile
 
 ```sh
 git clone https://github.com/BubbleBuffer/BubblePaw-Core
@@ -65,6 +94,46 @@ cargo build --release -p bubblepaw-runner --features web --bin bubblepaw
 ```
 
 The `chapter-bench` and `replay` commands need `--features bench`.
+
+### Checks
+
+CI (`.github/workflows/ci.yml`) runs on GitHub-hosted runners for every pull request
+and every push to `main`. It installs the stable toolchain with
+`rustup toolchain install stable --profile minimal -c rustfmt,clippy`, then runs:
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings -A deprecated
+cargo clippy -p bubblepaw-runner --features web,bench --all-targets --locked -- -D warnings -A deprecated
+cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
+cargo test -p bubblepaw-runner --locked --no-fail-fast
+cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
+```
+
+The Linux job runs all of these. The Windows job runs the core, MCP, process and SDK
+test command and the `web,bench` runner test command. The extension job runs, in
+`extensions/claude-code` with Bun 1.3.14:
+
+```sh
+bun install --frozen-lockfile
+bun run typecheck
+bun test
+```
+
+The same Rust commands work in PowerShell. Pushing a `v*` tag builds `bubblepaw` for
+Linux and Windows, with and without the `web` feature, and attaches the archives to a
+GitHub release (`.github/workflows/release.yml`). macOS is not tested. See
+[verification](docs/verification.md) for how the project is checked and
+[decisions](docs/decisions.md) for the agreed boundaries.
+
+`cargo test` builds the test fixture binaries (the fake extension and fake MCP
+servers) automatically: the runner and MCP crates enable their `test-fixtures`
+feature for their own dev-dependencies. `cargo build --release` does not include
+them.
+
+Focused tests exercise real archive reopen, durable queues, interrupted effects,
+custom tools, stream write counts, local mock provider transport and actual native
+processes.
 
 ## Run
 
@@ -447,39 +516,6 @@ coherent bounded snapshots, without depending on the serving schema or UI.
 - REPL state is volatile; failed/cancelled
   cells reset their environment and report a new generation. No heap replay.
 
-## Verify
-
-These are the commands CI runs (`.github/workflows/ci.yml`):
-
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --locked -- -D warnings -A deprecated
-cargo clippy -p bubblepaw-runner --features web,bench --all-targets --locked -- -D warnings -A deprecated
-cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked
-cargo test -p bubblepaw-runner --locked
-cargo test -p bubblepaw-runner --features web,bench --locked
-```
-
-The same commands work in PowerShell.
-
-CI runs on GitHub-hosted runners for every pull request and every push to
-`main`: the Linux job runs all of the above, the Windows job runs the tests, and a
-third job runs `bun run typecheck` and `bun test` in `extensions/claude-code`.
-Pushing a `v*` tag builds `bubblepaw` for Linux and Windows (default features and
-`web`) and attaches the archives to a GitHub release
-(`.github/workflows/release.yml`). `host_attach_windows.ps1` stays a manual
-check. macOS is not tested. See [verification](docs/verification.md).
-
-`cargo test` builds the test fixture binaries (the fake extension and fake MCP
-servers) automatically: the runner and MCP crates enable their `test-fixtures`
-feature for their own dev-dependencies. `cargo build --release` does not include
-them.
-
-Focused tests exercise real archive reopen, durable queues, interrupted effects,
-custom tools, stream write counts, local mock provider transport and actual native
-processes. See [verification](docs/verification.md) for how the project is checked and
-[decisions](docs/decisions.md) for the agreed boundaries.
-
 ## License
 
 BubblePaw-Core is licensed under the GNU Affero General Public License, version 3
@@ -489,3 +525,5 @@ The exception is `extensions/claude-code`, which is MIT licensed (its
 `package.json` says so). Its [NOTICE](extensions/claude-code/NOTICE) credits the
 adapted pi-claude-bridge code, which is also MIT. The extension has no LICENSE file
 of its own.
+
+BubblePaw is made by [BubbleBuffer](https://0xbubbuff.de).
