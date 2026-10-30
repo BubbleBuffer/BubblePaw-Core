@@ -54,7 +54,6 @@ Apps reach the host in one of four ways: BubblePaw Desktop starts it as a child 
 | `bubblepaw-sdk` | [crates/bubblepaw-sdk](crates/bubblepaw-sdk) | Re-exports the core surface for Rust embedders and adds `HostBuilder`. |
 | `bubblepaw-remote` | [crates/bubblepaw-remote](crates/bubblepaw-remote) | Paired device identities, encrypted transport and a metadata-only relay. Library only; runner wiring is deferred. |
 | `bubblepaw-claude-code` | [extensions/claude-code](extensions/claude-code) | Bun provider extension that drives Claude Code one model step at a time. |
-| `lcm-viewer` | [tools/lcm-viewer](tools/lcm-viewer) | Read-only viewer for chat stores and their context (`serve.py` with `index.html`). |
 
 The project documentation is in [`docs/`](docs/). Its index is [docs/README.md](docs/README.md).
 
