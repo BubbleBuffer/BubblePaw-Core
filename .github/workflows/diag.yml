@@ -22,9 +22,9 @@ jobs:
           RUST_BACKTRACE: "1"
         run: |
           cargo test -p bubblepaw-runner --features web --locked --test host_api_parity --no-run
-          for i in $(seq 1 25); do
+          for i in $(seq 1 30); do
             echo "=== iteration $i"
-            if ! cargo test -p bubblepaw-runner --features web --locked --test host_api_parity every_transport > out.txt 2>&1; then
+            if ! cargo test -p bubblepaw-runner --features web --locked --test host_api_parity > out.txt 2>&1; then
               echo "FAILED iteration $i"
               grep -n -B3 -A12 "panicked" out.txt | cut -c1-5000 || true; tail -n 3 <(grep "^STEP" out.txt) || true
               grep -o "DIAGHISTORY[^\"]*" out.txt | sed 's/ || / ## /g' | head -80 || true
