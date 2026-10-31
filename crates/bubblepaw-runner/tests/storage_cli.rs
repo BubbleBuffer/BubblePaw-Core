@@ -111,7 +111,6 @@ fn success(output: Output) -> Vec<u8> {
 }
 
 fn snapshot(root: &Path) -> BTreeMap<PathBuf, (usize, String)> {
-    use sha2::{Digest, Sha256};
     fn visit(root: &Path, path: &Path, result: &mut BTreeMap<PathBuf, (usize, String)>) {
         for entry in fs::read_dir(path).unwrap() {
             let path = entry.unwrap().path();
@@ -121,7 +120,7 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, (usize, String)> {
                 let bytes = fs::read(&path).unwrap();
                 result.insert(
                     path.strip_prefix(root).unwrap().to_owned(),
-                    (bytes.len(), format!("{:x}", Sha256::digest(&bytes))),
+                    (bytes.len(), bubblepaw_core::fingerprint(&bytes)),
                 );
             }
         }

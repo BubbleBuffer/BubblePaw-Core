@@ -56,7 +56,7 @@ fn chapter_prompt_defaults_to_v1_and_follows_all_config_layers() -> Result<()> {
         ChapterPrompt::V1
     );
     assert_eq!(config.source("context.lcm.chapter_prompt"), Some("CLI"));
-    let shown: toml::Value = config.render()?.parse()?;
+    let shown: toml::Value = toml::from_str(&config.render()?)?;
     assert_eq!(
         shown["context"]["lcm"]["chapter_prompt"].as_str(),
         Some("v1")

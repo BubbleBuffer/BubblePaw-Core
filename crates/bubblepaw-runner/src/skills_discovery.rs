@@ -177,6 +177,6 @@ fn load_skill(path: &Path) -> Result<Skill> {
         name,
         description,
         path,
-        digest: format!("{:x}", hash.finalize()),
+        digest: bubblepaw_core::hex_lower(hash.finalize()),
     })
 }

@@ -30,7 +30,7 @@ fn episode_prompt_defaults_to_v2_and_layers_as_a_closed_choice() -> Result<()> {
         selected.settings()?.lcm.episodes.episode_prompt,
         EpisodePrompt::V3
     );
-    let shown: toml::Value = selected.render()?.parse()?;
+    let shown: toml::Value = toml::from_str(&selected.render()?)?;
     assert_eq!(
         shown["context"]["lcm"]["episode_prompt"].as_str(),
         Some("v3")

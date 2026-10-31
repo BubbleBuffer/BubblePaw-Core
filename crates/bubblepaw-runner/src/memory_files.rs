@@ -327,7 +327,7 @@ fn load(stamps: &[FileStamp]) -> Result<Snapshot> {
             let keep = count.min((MAX_MEMORY_BYTES + 1).saturating_sub(bytes.len()));
             bytes.extend_from_slice(&buffer[..keep]);
         }
-        let digest = format!("{:x}", hash.finalize());
+        let digest = bubblepaw_core::hex_lower(hash.finalize());
         let duplicate_of = seen.get(&digest).cloned();
         seen.entry(digest.clone()).or_insert_with(|| path.clone());
         let mut content = String::from_utf8_lossy(&bytes).into_owned();

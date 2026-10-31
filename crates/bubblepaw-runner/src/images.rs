@@ -7,7 +7,6 @@ use bubblepaw_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{collections::HashSet, fs::File, io::Read, path::Path, sync::Arc};
 
 pub const MAX_IMAGE_BYTES: usize = 5_000_000;
@@ -108,7 +107,7 @@ pub fn store_image(store: &Store, session: &str, mime: &str, bytes: &[u8]) -> Re
     );
     ensure!(bytes.len() <= MAX_IMAGE_BYTES, "image exceeds 5 MB limit");
     let image = ImageRef {
-        id: format!("image-{:x}", Sha256::digest(bytes)),
+        id: format!("image-{}", bubblepaw_core::fingerprint(bytes)),
         session_id: session.into(),
         mime_type: mime.into(),
         bytes: bytes.len(),
@@ -227,7 +226,7 @@ pub(crate) fn hydrate_request(
                     "image attachment mismatch"
                 );
                 ensure!(
-                    format!("image-{:x}", Sha256::digest(&bytes)) == image.id,
+                    format!("image-{}", bubblepaw_core::fingerprint(&bytes)) == image.id,
                     "image attachment integrity mismatch"
                 );
                 sent.insert(image.id.clone());

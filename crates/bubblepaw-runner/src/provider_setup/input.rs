@@ -182,7 +182,7 @@ pub(super) fn provider_table(
     if let Some(previous) = previous.and_then(Item::as_table) {
         *table.decor_mut() = previous.decor().clone();
         if let Some(position) = previous.position() {
-            table.set_position(position);
+            table.set_position(Some(position));
         }
         for (key, item) in table.iter_mut() {
             if let Some(old) = previous.get(key.get()) {

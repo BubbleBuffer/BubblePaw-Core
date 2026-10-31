@@ -5,7 +5,6 @@ use bubblepaw_core::{Message, MessageOrigin, Role, ToolCall, is_typed_user};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -211,7 +210,7 @@ fn metadata(messages: &[Message]) -> Value {
 }
 
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    bubblepaw_core::fingerprint(bytes)
 }
 
 /// Return the corpus's validated label row in the shape consumed by boundary_score.

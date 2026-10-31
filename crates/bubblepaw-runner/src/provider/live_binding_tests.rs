@@ -5,7 +5,8 @@ use serde_json::json;
 use std::path::Path;
 
 fn scripted_config(workspace: &Path, provider: &str, model: &str) -> EffectiveConfig {
-    let providers: toml::Value = format!("[{provider}]\nkind='scripted'\n").parse().unwrap();
+    let providers: toml::Value =
+        toml::from_str(&format!("[{provider}]\nkind='scripted'\n")).unwrap();
     EffectiveConfig::load(LoadOptions {
         workspace: workspace.to_owned(),
         home: None,

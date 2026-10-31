@@ -7,7 +7,6 @@ use anyhow::{Context, Result, ensure};
 use bubblepaw_core::ContextSubjectChapter;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Instant};
 
 use crate::{
@@ -159,7 +158,7 @@ pub async fn run(
     let mut records = Vec::new();
     for fixture in fixtures {
         let shared = serde_json::to_value(&fixture)?;
-        let fingerprint = format!("{:x}", Sha256::digest(serde_json::to_vec(&shared)?));
+        let fingerprint = bubblepaw_core::fingerprint(&serde_json::to_vec(&shared)?);
         let input = ChapterInput {
             session_id: fixture.session_id.clone(),
             episodes: fixture.episodes.clone(),

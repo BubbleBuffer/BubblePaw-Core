@@ -115,7 +115,7 @@ fn config_shows_env_names_and_env_override_without_spawning_servers() -> Result<
     ensure!(output.status.success(), "{}", output_text(&output));
     let text = output_text(&output);
     assert!(!text.contains(SECRET), "{text}");
-    let config: toml::Value = String::from_utf8(output.stdout)?.parse()?;
+    let config: toml::Value = toml::from_str(&String::from_utf8(output.stdout)?)?;
     assert_eq!(
         config["mcp"]["servers"]["fixture"]["env_from"]["MCP_SECRET"].as_str(),
         Some("BUBBLEPAW_LATE_MCP_SECRET")
@@ -218,7 +218,7 @@ fn one_shot_run_denies_mcp_without_sending_a_call_or_recording_its_effect() -> R
 #[tokio::test]
 async fn scripted_provider_calls_mcp_through_js_and_keeps_the_effect_boundary() -> Result<()> {
     let fixture = Fixture::new()?;
-    let config: toml::Value = fs::read_to_string(&fixture.config)?.parse()?;
+    let config: toml::Value = toml::from_str(&fs::read_to_string(&fixture.config)?)?;
     let mut mcp = config["mcp"].clone();
     mcp["servers"]["fixture"]
         .as_table_mut()

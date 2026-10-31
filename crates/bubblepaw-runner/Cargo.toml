@@ -51,15 +51,15 @@ bubblepaw-core = { path = "../bubblepaw-core" }
 bubblepaw-mcp = { path = "../bubblepaw-mcp" }
 bubblepaw-process = { path = "../bubblepaw-process" }
 anyhow.workspace = true
-base64 = "0.22"
+base64 = "0.23"
 async-trait.workspace = true
 chrono.workspace = true
 fs2 = "0.4"
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"
-toml = "0.8"
-toml_edit = { version = "0.22", features = ["serde"] }
+toml = "1.1"
+toml_edit = { version = "0.25", features = ["serde"] }
 tokio = { workspace = true, features = ["net"] }
 uuid.workspace = true
 rusqlite.workspace = true
@@ -67,9 +67,9 @@ tempfile.workspace = true
 futures-util = "0.3"
 httpdate = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
-sha2 = "0.10"
+sha2 = "0.11"
 regex = "1"
-html2text = "=0.16.4"
+html2text = "=0.17.4"
 rquickjs = "0.14"
 clap = { version = "4", features = ["derive"] }
 tiktoken-rs = "0.12"

@@ -31,7 +31,7 @@ fn dictionary(conn: &Connection, hash: &str) -> Result<Arc<Dictionary>> {
         |row| row.get(0),
     )?;
     anyhow::ensure!(
-        format!("{:x}", Sha256::digest(&bytes)) == hash,
+        crate::fingerprint(&bytes) == hash,
         "Corrupt message dictionary"
     );
     let mut cache = cache.lock().unwrap();
@@ -145,7 +145,7 @@ fn compression_policy_signature(
         options.cold_min_bytes,
         options.cold_row_min_bytes
     ]);
-    Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(&input)?)))
+    Ok(crate::fingerprint(&serde_json::to_vec(&input)?))
 }
 
 pub(super) fn decode_body(conn: &Connection, data: &str) -> Result<serde_json::Value> {
@@ -178,7 +178,7 @@ pub(super) fn decode_body(conn: &Connection, data: &str) -> Result<serde_json::V
         .as_str()
         .context("Missing cold message checksum")?;
     anyhow::ensure!(
-        format!("{:x}", Sha256::digest(&bytes)) == expected_hash,
+        crate::fingerprint(&bytes) == expected_hash,
         "Cold message checksum mismatch"
     );
     Ok(serde_json::from_slice(&bytes)?)
@@ -459,7 +459,7 @@ impl Store {
                 }
                 if samples.len()<8 || sample_bytes<1024 { return Ok(0); }
                 let Ok(dictionary) = zstd::dict::from_samples(&samples,DICTIONARY_BYTES.min(sample_bytes/2)) else { return Ok(0); };
-                let hash = format!("{:x}",Sha256::digest(&dictionary));
+                let hash = crate::fingerprint(&dictionary);
                 conn.execute("INSERT INTO message_dictionaries VALUES(?1,?2)",params![hash,dictionary])?;
                 let dictionary=pin_dictionary(conn,&self.0.dictionary_pins,&hash)?;
                 (hash,dictionary)
@@ -473,7 +473,7 @@ impl Store {
                 let seq = row.get(0)?; let data: String=row.get(1)?;
                 if !eligible(seq) || data.len()<options.cold_row_min_bytes as usize || data.len()>64*1024*1024 || serde_json::from_str::<serde_json::Value>(&data)?["_row_codec"].is_string() { continue; }
                 let compressed = compressor.compress(data.as_bytes())?;
-                let encoded=serde_json::json!({"_row_codec":CODEC,"dictionary":hash,"raw_bytes":data.len(),"sha256":format!("{:x}",Sha256::digest(data.as_bytes())),"data":base64::engine::general_purpose::STANDARD.encode(compressed)}).to_string();
+                let encoded=serde_json::json!({"_row_codec":CODEC,"dictionary":hash,"raw_bytes":data.len(),"sha256":crate::fingerprint(data.as_bytes()),"data":base64::engine::general_purpose::STANDARD.encode(compressed)}).to_string();
                 if encoded.len()<data.len() { conn.execute("UPDATE messages SET data=?1 WHERE seq=?2",params![encoded,seq])?; count += 1; }
             }
             Ok(count)

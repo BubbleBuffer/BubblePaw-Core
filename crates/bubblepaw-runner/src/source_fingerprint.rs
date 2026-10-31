@@ -89,5 +89,5 @@ pub(crate) fn source_fingerprint() -> String {
         digest.update(source.len().to_le_bytes());
         digest.update(source.as_bytes());
     }
-    format!("{:x}", digest.finalize())
+    bubblepaw_core::hex_lower(digest.finalize())
 }

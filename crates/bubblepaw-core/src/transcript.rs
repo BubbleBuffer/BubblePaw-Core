@@ -172,7 +172,7 @@ impl Lines {
     }
 
     fn sha256(&self) -> String {
-        format!("{:x}", self.hash.clone().finalize())
+        crate::hex_lower(self.hash.clone().finalize())
     }
 }
 
@@ -1085,9 +1085,9 @@ fn normalize(
         source_version: inventory.source_version.clone(),
         source_parent_session_id: inventory.parent_source_id.clone(),
         stats: normalizer.stats,
-        normalized_sha256: format!("{:x}", normalizer.digest.finalize()),
-        normalized_derived_sha256: format!("{:x}", normalizer.derived_digest.finalize()),
-        reasoning_artifact_sha256: format!("{:x}", normalizer.reasoning_digest.finalize()),
+        normalized_sha256: crate::hex_lower(normalizer.digest.finalize()),
+        normalized_derived_sha256: crate::hex_lower(normalizer.derived_digest.finalize()),
+        reasoning_artifact_sha256: crate::hex_lower(normalizer.reasoning_digest.finalize()),
     })
 }
 
@@ -1176,7 +1176,7 @@ fn content_string(value: &Value) -> Result<String> {
 
 fn identity(text: &str) -> String {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    format!("{:x}", Sha256::digest(normalized.as_bytes()))
+    crate::fingerprint(normalized.as_bytes())
 }
 
 fn content_empty(value: &Value) -> bool {

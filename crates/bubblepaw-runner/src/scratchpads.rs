@@ -229,7 +229,7 @@ fn workspace_identity(path: &Path) -> String {
         use std::os::unix::ffi::OsStrExt;
         hash.update(path.as_os_str().as_bytes());
     }
-    format!("{:x}", hash.finalize())
+    bubblepaw_core::hex_lower(hash.finalize())
 }
 
 fn valid_id(id: &str) -> Result<()> {

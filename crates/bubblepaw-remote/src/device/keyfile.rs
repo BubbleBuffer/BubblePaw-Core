@@ -351,7 +351,7 @@ impl KeyFile {
                 let plain = Zeroizing::new(
                     cipher
                         .decrypt(
-                            Nonce::from_slice(nonce),
+                            &Nonce::from(*nonce),
                             Payload {
                                 msg: sealed,
                                 aad: &aad,

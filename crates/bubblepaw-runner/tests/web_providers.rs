@@ -180,10 +180,8 @@ async fn saving_omitted_replay_policy_preserves_provider_defaults() {
             .settings()
             .unwrap();
         assert!(loaded.providers["local"].reasoning_replay().is_empty());
-        let doc: toml::Value = std::fs::read_to_string(&files.custom)
-            .unwrap()
-            .parse()
-            .unwrap();
+        let doc: toml::Value =
+            toml::from_str(&std::fs::read_to_string(&files.custom).unwrap()).unwrap();
         assert!(
             doc["providers"]["local"]["models"][0]
                 .get("reasoning_replay")
@@ -636,7 +634,7 @@ async fn omitted_and_empty_scalars_remove_target_only_fields() {
         let text = std::fs::read_to_string(&files.custom).unwrap();
         assert!(text.contains("# keep this header"));
         assert!(text.contains("# keep storage comment"));
-        let doc: toml::Value = text.parse().unwrap();
+        let doc: toml::Value = toml::from_str(&text).unwrap();
         for field in ["base_url", "key_env", "auth_file"] {
             assert!(doc["providers"]["local"].get(field).is_none());
         }
@@ -724,7 +722,7 @@ async fn saving_complete_http_provider_preserves_its_inline_comments() {
         assert!(text.contains(comment), "lost comment: {comment}");
     }
     assert!(!text.contains(secret));
-    let document: toml::Value = text.parse().unwrap();
+    let document: toml::Value = toml::from_str(&text).unwrap();
     assert_eq!(
         document["storage"]["archive_after_days"].as_integer(),
         Some(23)
@@ -888,7 +886,7 @@ async fn deletion_rereads_target_and_guards_target_main() {
             .all(|entry| entry["name"] != "local")
     );
     let text = std::fs::read_to_string(&files.custom).unwrap();
-    let document: toml::Value = text.parse().unwrap();
+    let document: toml::Value = toml::from_str(&text).unwrap();
     assert!(
         document
             .get("providers")
@@ -962,7 +960,7 @@ async fn main_model_validates_provider_and_blocks_deleting_its_target_provider()
     )
     .await;
     let text = std::fs::read_to_string(&files.custom).unwrap();
-    let config: toml::Value = text.parse().unwrap();
+    let config: toml::Value = toml::from_str(&text).unwrap();
     assert_eq!(config["model"]["main"].as_str(), Some("local/model-one"));
     assert!(
         config
