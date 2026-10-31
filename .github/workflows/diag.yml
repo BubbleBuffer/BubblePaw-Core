@@ -20,7 +20,13 @@ jobs:
         shell: bash
         run: |
           cargo test -p bubblepaw-runner --features web --locked --test host_api_parity --no-run
-          for i in $(seq 1 12); do
+          for i in $(seq 1 25); do
             echo "=== iteration $i"
-            cargo test -p bubblepaw-runner --features web --locked --test host_api_parity every_transport 2>&1 | grep -E "disagree|DIAGHISTORY|test result|rpc:|stdio:" | cut -c1-6000 || true
+            if ! cargo test -p bubblepaw-runner --features web --locked --test host_api_parity every_transport > out.txt 2>&1; then
+              echo "FAILED iteration $i"
+              grep -n -B2 -A12 "panicked" out.txt | cut -c1-5000
+              grep -o "DIAGHISTORY[^\"]*" out.txt | sed 's/ || /
+  || /g' | head -80
+              grep -n "stderr\|WARN\|ERROR" out.txt | cut -c1-400 | head -30
+            fi
           done
