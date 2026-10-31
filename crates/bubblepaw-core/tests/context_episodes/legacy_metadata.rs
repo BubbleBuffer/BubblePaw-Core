@@ -3,7 +3,6 @@ use super::*;
 #[tokio::test]
 async fn retired_boundary_metadata_survives_reopen_without_controlling_chapters() -> Result<()> {
     use rusqlite::params;
-    use sha2::{Digest, Sha256};
 
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("retired-metadata.sqlite");
@@ -47,7 +46,7 @@ async fn retired_boundary_metadata_survives_reopen_without_controlling_chapters(
         "UPDATE context_subject_chapters SET data=?1 WHERE session_id=?2 AND id=?3",
         params![old_chapter_bytes, session.id, second.open_chapter.id],
     )?;
-    let empty_hash = bubblepaw_core::hex_lower(Sha256::digest(b""));
+    let empty_hash = bubblepaw_core::fingerprint(b"");
     conn.execute(
         "INSERT OR IGNORE INTO blobs(hash,raw_bytes,data) VALUES(?1,0,?2)",
         params![empty_hash, zstd::stream::encode_all(&b""[..], 3)?],

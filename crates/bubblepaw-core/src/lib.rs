@@ -1,8 +1,7 @@
 //! A small native agent loop with durable history and effects, and transient presentation.
 //!
 //! Hosts register native capabilities with [`ToolRegistry::register_host`].
-//! Native mode exposes those capabilities directly and is the default.
-//! JavaScript mode exposes only the registered `js` composition adapter.
+//! Native mode (the default) exposes those capabilities directly; JavaScript mode exposes only the registered `js` composition adapter.
 //! Tool policies and effect boundaries apply equally to both modes.
 //!
 //! ```no_run
@@ -20,16 +19,6 @@
 //! ).await?;
 //! # Ok(()) }
 //! ```
-/// Lowercase hex of a digest or byte slice (sha2 0.11 digests no longer implement `LowerHex`).
-pub fn hex_lower(bytes: impl AsRef<[u8]>) -> String {
-    use std::fmt::Write;
-    let bytes = bytes.as_ref();
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
-}
 mod approvals;
 mod cache_accounting;
 #[doc(hidden)]
@@ -85,7 +74,8 @@ pub use dispatch::ToolDispatcher;
 pub use event_log::{ClientInfo, EVENTS_AFTER_LIMIT, LogPosition, client_param};
 pub use events::{EventKind, HarnessEvent};
 pub use observation::{
-    Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink, fingerprint,
+    Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink,
+    fingerprint, hex_lower,
 };
 pub use output_schema::JsonSchema;
 pub use provider_ext::{

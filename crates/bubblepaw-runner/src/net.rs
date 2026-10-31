@@ -6,7 +6,6 @@ use regex::Regex;
 use reqwest::{Url, header};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     fmt,
@@ -150,14 +149,11 @@ fn search_label(backend: &SearchBackend) -> String {
 fn search_identity(backend: &SearchBackend) -> String {
     match backend {
         SearchBackend::Brave { api_key } => {
-            format!(
-                "brave:{}",
-                bubblepaw_core::hex_lower(Sha256::digest(api_key.as_bytes()))
-            )
+            format!("brave:{}", bubblepaw_core::fingerprint(api_key.as_bytes()))
         }
         SearchBackend::DeepSeek { base_url, api_key } => format!(
             "deepseek:{base_url}:{}",
-            bubblepaw_core::hex_lower(Sha256::digest(api_key.as_bytes()))
+            bubblepaw_core::fingerprint(api_key.as_bytes())
         ),
         other => search_label(other),
     }

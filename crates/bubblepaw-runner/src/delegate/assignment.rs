@@ -2,7 +2,6 @@
 use super::read_first::ReadFirst;
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 /// Where an attempt runs. The dispatcher always states one of the two.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,7 +91,7 @@ pub const CATEGORIES: &[&str] = &[
 impl Assignment {
     /// Parse and validate, including the category against [`CATEGORIES`].
     pub fn parse(text: &str) -> Result<Self> {
-        let hash = bubblepaw_core::hex_lower(Sha256::digest(text.as_bytes()));
+        let hash = bubblepaw_core::fingerprint(text.as_bytes());
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         let mut lines = text.split_inclusive('\n');
         let first = lines.next().unwrap_or_default();

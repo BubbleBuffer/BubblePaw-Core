@@ -1176,7 +1176,7 @@ fn content_string(value: &Value) -> Result<String> {
 
 fn identity(text: &str) -> String {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    crate::hex_lower(Sha256::digest(normalized.as_bytes()))
+    crate::fingerprint(normalized.as_bytes())
 }
 
 fn content_empty(value: &Value) -> bool {

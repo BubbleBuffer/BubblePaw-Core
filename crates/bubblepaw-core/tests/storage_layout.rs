@@ -12,7 +12,6 @@ use bubblepaw_core::{
 };
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -433,9 +432,9 @@ fn unique_payload(seed: usize, len: usize) -> String {
     let mut content = String::with_capacity(len);
     let mut n = 0usize;
     while content.len() < len {
-        content.push_str(&bubblepaw_core::hex_lower(Sha256::digest(
+        content.push_str(&bubblepaw_core::fingerprint(
             format!("{seed}:{n}").as_bytes(),
-        )));
+        ));
         n += 1;
     }
     content.truncate(len);

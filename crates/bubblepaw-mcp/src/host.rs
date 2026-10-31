@@ -6,7 +6,6 @@ use bubblepaw_core::{
 };
 use serde::Serialize;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -863,7 +862,7 @@ pub fn tool_name(server: &str, tool: &str) -> String {
         })
         .collect();
     if name.len() > 64 {
-        let hash = bubblepaw_core::hex_lower(Sha256::digest(original.as_bytes()));
+        let hash = bubblepaw_core::fingerprint(original.as_bytes());
         name.truncate(55);
         name.push('_');
         name.push_str(&hash[..8]);

@@ -6,7 +6,6 @@ use bubblepaw_core::{
     ToolContext, is_typed_user,
 };
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::{
     cell::RefCell,
     collections::BTreeMap,
@@ -83,7 +82,7 @@ pub fn rewind_command(input: &str) -> Option<&str> {
 }
 
 pub(crate) fn content_hash(bytes: Option<&[u8]>) -> Option<String> {
-    bytes.map(|bytes| bubblepaw_core::hex_lower(Sha256::digest(bytes)))
+    bytes.map(bubblepaw_core::fingerprint)
 }
 
 fn checkpoints(store: &Store, session: &str) -> Result<Vec<(String, Checkpoint)>> {

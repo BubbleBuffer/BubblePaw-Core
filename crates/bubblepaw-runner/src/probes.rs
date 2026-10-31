@@ -8,7 +8,6 @@ use bubblepaw_core::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
     path::Path,
@@ -869,7 +868,7 @@ pub fn metadata() -> Value {
     metadata_for(MODEL, ReasoningEffort::Low)
 }
 pub(crate) fn metadata_for(model: &str, effort: ReasoningEffort) -> Value {
-    json!({"answer_model":model,"judge_model":model,"reasoning_effort":effort.as_str(),"max_tool_rounds":3,"judge_prompt":"probe_judge_prompt_v1.txt","judge_prompt_sha256":bubblepaw_core::hex_lower(Sha256::digest(JUDGE_PROMPT)),"answer_length_policy":"Guidance only; never reject, retry or truncate for length","tools":["history_search","history_read"],"view":"Cloned prepared request; frozen source view; invisible worker persists complete probe rounds until result acknowledgement"})
+    json!({"answer_model":model,"judge_model":model,"reasoning_effort":effort.as_str(),"max_tool_rounds":3,"judge_prompt":"probe_judge_prompt_v1.txt","judge_prompt_sha256":bubblepaw_core::fingerprint(JUDGE_PROMPT.as_bytes()),"answer_length_policy":"Guidance only; never reject, retry or truncate for length","tools":["history_search","history_read"],"view":"Cloned prepared request; frozen source view; invisible worker persists complete probe rounds until result acknowledgement"})
 }
 pub fn aggregate(rows: &[Value], strategy: &str) -> Vec<Value> {
     let mut groups = BTreeMap::<(u64, String), Value>::new();
