@@ -3,16 +3,19 @@ use anyhow::{Context, Result};
 use bubblepaw_core::{MessageOrigin, Store};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Mutex,
 };
 
-use crate::live_config::{FileStamp, file_stamps};
+use crate::{
+    config::SkillsConfig,
+    live_config::{FileStamp, file_stamps},
+};
 
 #[path = "skills_discovery.rs"]
 mod discovery;
-use discovery::{discover, load};
+use discovery::{all, discover, load};
 
 pub const MAX_SKILL_BYTES: usize = 8 * 1024;
 const ATTACHMENT: &str = "bubblepaw-skills-v1";
@@ -86,6 +89,21 @@ struct SessionSkills {
     stamps: Vec<FileStamp>,
     pending: Vec<String>,
     binding: Option<String>,
+    disabled: BTreeSet<String>,
+}
+
+/// One skill as `skills.list` reports it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillInfo {
+    pub name: String,
+    pub description: String,
+    /// `workspace` for a project folder (`.agents/skills`, `.claude/skills`), `user` for
+    /// the user directory and configured `skills.dirs`.
+    pub source: String,
+    /// The absolute path of its `SKILL.md`.
+    pub path: PathBuf,
+    /// False when `[skills.<name>] enabled = false` leaves it out of the catalog.
+    pub enabled: bool,
 }
 
 pub struct Skills {
@@ -107,6 +125,18 @@ impl Skills {
     /// Uses the same mtime/size helper and turn boundary as repository memory files.
     /// Directory stamps and candidate paths also catch additions and removals.
     pub fn check(&self, session: &str, enabled: bool, directories: &[PathBuf]) -> Result<()> {
+        self.check_toggled(session, enabled, directories, &BTreeSet::new())
+    }
+
+    /// `check` with the names `[skills.<name>] enabled = false` turned off: they leave the
+    /// catalog, and a change of the set is announced like a removal or an addition.
+    pub fn check_toggled(
+        &self,
+        session: &str,
+        enabled: bool,
+        directories: &[PathBuf],
+        disabled: &BTreeSet<String>,
+    ) -> Result<()> {
         let (paths, files) = if enabled {
             let workspace = crate::worktrees::workspace(&self.store, session, &self.workspace)?;
             discover(&workspace, self.user_directory.as_deref(), directories)?
@@ -123,16 +153,17 @@ impl Skills {
             sessions.remove(session);
         }
         if let Some(state) = sessions.get_mut(session) {
-            if state.stamps != stamps {
-                let current = load(&files)?;
+            if state.stamps != stamps || state.disabled != *disabled {
+                let current = load(&files, disabled)?;
                 state.pending.extend(changes(&state.observed, &current)?);
                 state.read_roots.extend(roots(&current));
                 state.observed = current;
                 state.stamps = stamps;
+                state.disabled = disabled.clone();
             }
             return Ok(());
         }
-        let current = load(&files)?;
+        let current = load(&files, disabled)?;
         let mut read_roots = HashSet::new();
         let latest = binding
             .as_deref()
@@ -216,9 +247,33 @@ impl Skills {
                 stamps,
                 pending,
                 binding,
+                disabled: disabled.clone(),
             },
         );
         Ok(())
+    }
+
+    /// Every valid skill of the host workspace's search path with its switch, including
+    /// the ones turned off. The first skill of a name wins, as in the catalog.
+    pub fn list(&self, settings: &SkillsConfig) -> Result<Vec<SkillInfo>> {
+        let (_, files) = discover(
+            &self.workspace,
+            self.user_directory.as_deref(),
+            &settings.dirs,
+        )?;
+        Ok(all(&files)
+            .into_iter()
+            .map(|(skill, workspace)| SkillInfo {
+                enabled: settings
+                    .toggles
+                    .get(&skill.name)
+                    .is_none_or(|toggle| toggle.enabled),
+                source: if workspace { "workspace" } else { "user" }.into(),
+                name: skill.name,
+                description: skill.description,
+                path: skill.path,
+            })
+            .collect())
     }
 
     pub fn system_prompt(&self, session: &str, base: &str) -> String {

@@ -5,6 +5,7 @@ mod approval_tests;
 pub mod approvals;
 pub mod artifacts;
 pub mod attachments;
+pub mod catalog;
 pub mod config;
 pub mod context;
 #[cfg(test)]
@@ -274,6 +275,8 @@ methods! {
     ArtifactsList => ("artifacts.list", Read, Services, Some("outputs")),
     ArtifactsRead => ("artifacts.read", Read, Services, None),
     StorageStats => ("storage.stats", Read, Services, None),
+    ToolsList => ("tools.list", Read, Services, None),
+    SkillsList => ("skills.list", Read, Services, None),
     Shutdown => ("shutdown", Full, Services, None),
 }
 

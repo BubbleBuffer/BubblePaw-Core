@@ -33,6 +33,9 @@ pub(super) async fn command(
                 MethodId::ArtifactsList | MethodId::ArtifactsRead => {
                     super::artifacts::command(&ctx, method, params)
                 }
+                MethodId::ToolsList | MethodId::SkillsList => {
+                    super::catalog::command(&ctx, method, params)
+                }
                 MethodId::StorageStats => encode(ctx.store.storage_stats()?),
                 MethodId::Shutdown => Ok(json!({"stopped":true})),
                 _ => unreachable!("service method table"),

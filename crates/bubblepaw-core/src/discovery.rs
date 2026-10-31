@@ -100,7 +100,8 @@ pub fn tool_definition_summary(description: &str) -> String {
 
 pub(crate) fn register_discovery_tools(registry: &mut ToolRegistry) -> Result<()> {
     for tool in [Arc::new(ToolSearch) as Arc<dyn Tool>, Arc::new(CallTool)] {
-        if registry.get(&tool.definition().name).is_none() {
+        let name = tool.definition().name;
+        if registry.get(&name).is_none() && !registry.is_unavailable(&name) {
             registry.register(tool)?;
         }
     }

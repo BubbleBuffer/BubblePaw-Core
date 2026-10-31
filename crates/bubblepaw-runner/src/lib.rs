@@ -97,6 +97,7 @@ mod stdio_transport;
 pub mod summarization;
 pub mod todo;
 pub mod tools;
+pub mod toolsets;
 pub mod trace;
 pub mod usage;
 pub mod usage_report;

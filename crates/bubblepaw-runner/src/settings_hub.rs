@@ -2,7 +2,10 @@
 //! whole on a `tokio::sync::watch` channel; components subscribe to their own
 //! section and read it when they act, so a key is live when its consumer
 //! subscribes. Validation happens before publication (`prepare`, `McpSettings::validate`).
-use crate::config::{Agents, ApprovalSettings, ExecConfig, Settings, SkillsConfig, WebSettings};
+use crate::{
+    config::{Agents, ApprovalSettings, ExecConfig, Settings, SkillsConfig, WebSettings},
+    toolsets::ToolsetSettings,
+};
 use bubblepaw_mcp::McpSettings;
 use std::sync::Arc;
 use tokio::sync::watch;
@@ -62,6 +65,7 @@ pub struct SettingsHub {
     agents: Section<Agents>,
     web: Section<WebSettings>,
     skills: Section<SkillsConfig>,
+    toolsets: Section<ToolsetSettings>,
 }
 impl SettingsHub {
     pub fn new(settings: &Settings) -> Self {
@@ -73,6 +77,7 @@ impl SettingsHub {
             agents: Section::new(settings.agents.clone()),
             web: Section::new(settings.web.clone()),
             skills: Section::new(settings.skills.clone()),
+            toolsets: Section::new(settings.into()),
         }
     }
     pub fn context(&self) -> watch::Receiver<Arc<ContextLive>> {
@@ -95,6 +100,9 @@ impl SettingsHub {
     }
     pub fn skills(&self) -> Arc<SkillsConfig> {
         self.skills.current()
+    }
+    pub fn toolsets(&self) -> Arc<ToolsetSettings> {
+        self.toolsets.current()
     }
     /// Publish validated settings; returns the sections that changed.
     pub fn publish(&self, settings: &Settings) -> Vec<&'static str> {
@@ -119,6 +127,9 @@ impl SettingsHub {
         }
         if self.skills.publish(settings.skills.clone()) {
             changed.push("skills");
+        }
+        if self.toolsets.publish(settings.into()) {
+            changed.push("toolsets");
         }
         changed
     }

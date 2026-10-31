@@ -41,6 +41,20 @@ Both settings apply live at the next turn. CLI/environment relative paths use
 the workspace as their base. No skill tool, command expansion, imports, plugin
 loader or executable hooks are added.
 
+One skill can be turned off by name; the setting applies live at the next turn:
+
+```toml
+[skills.reviewer-notes]
+enabled = false # default true
+```
+
+A switched-off skill keeps its precedence slot: a lower-precedence skill of the same
+name does not replace it. The change enters running sessions as the usual "Skills
+changed" reminder; the frozen attachment of an existing session is not rewritten.
+`skills.list` (see [host API](host-api.md)) reports each skill's name, description,
+source (`workspace` or `user`), `SKILL.md` path and `enabled` flag. `[skills.<name>]`
+beside `enabled` and `dirs` means a skill cannot be named `enabled` or `dirs`.
+
 ## Frozen catalog and live changes
 
 Each session freezes its initial list of names, descriptions and absolute

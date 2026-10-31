@@ -4,6 +4,7 @@ provider = "codex"
 fallbacks = []
 [agent]
 execution_mode = "native"
+toolset = "all"
 [storage]
 data_dir = ""
 finished_event_retention_hours = 24

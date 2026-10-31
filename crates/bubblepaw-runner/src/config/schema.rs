@@ -73,7 +73,7 @@ fn walk(node: Node, path: &str, a: Option<&Value>, b: Option<&Value>, out: &mut 
     };
     match node {
         Node::Leaf(live) | Node::Free(live) => whole(out, live),
-        Node::Table(_) | Node::Flatten(_) | Node::Map(_) => {
+        Node::Table(_) | Node::Flatten(_) | Node::Map(_) | Node::Open(..) => {
             let (Some(a), Some(b)) = (table(a), table(b)) else {
                 return whole(out, liveness(node).unwrap_or(false));
             };

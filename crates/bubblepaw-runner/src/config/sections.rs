@@ -2,16 +2,6 @@
 use super::*;
 
 config_section! {
-    /// Skill directories add collections after project and user skills.
-    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
-    #[serde(default)]
-    pub struct SkillsConfig {
-        pub enabled: bool => LIVE,
-        pub dirs: Vec<PathBuf> => LIVE,
-    }
-}
-
-config_section! {
     /// Maximum automatic wait for a provider account's quota reset.
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(default)]
@@ -24,14 +14,6 @@ impl Default for QuotaSettings {
     fn default() -> Self {
         Self {
             max_wait_seconds: 21600,
-        }
-    }
-}
-impl Default for SkillsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            dirs: Vec::new(),
         }
     }
 }
@@ -466,6 +448,9 @@ impl ProviderSettings {
         Ok(())
     }
 }
+fn all_toolset() -> String {
+    "all".into()
+}
 config_section! {
     /// Root harness settings, resolved at host startup. None retains the runner's instructions.
     #[derive(Clone, Debug, Deserialize)]
@@ -474,6 +459,9 @@ config_section! {
         pub max_rounds: Option<usize> => RESTART,
         #[serde(default)]
         pub execution_mode: ExecutionMode => RESTART,
+        /// The toolset of the main chat: `all`, `read-only` or a name under `[toolsets]`.
+        #[serde(default = "all_toolset")]
+        pub toolset: String => LIVE,
     }
 }
 config_section! {
@@ -490,5 +478,17 @@ impl Default for WebExpose {
             fetch: true,
             search: true,
         }
+    }
+}
+config_section! {
+    #[derive(Deserialize)]
+    pub struct ExtensionSettings {
+        pub command: String => RESTART,
+        pub account: Option<String> => RESTART,
+        #[serde(default)]
+        pub args: Vec<String> => RESTART,
+        pub cwd: Option<PathBuf> => RESTART,
+        #[serde(default)]
+        pub env: BTreeMap<String, String> => Node::Map(&RESTART),
     }
 }

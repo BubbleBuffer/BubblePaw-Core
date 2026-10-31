@@ -7,6 +7,7 @@ use crate::{
         OpenCodeDecisions, OpenRouterDecisions, ProviderEndpoints, ProviderRegistry,
         ResponsesProvider, load_extensions,
     },
+    toolsets::Toolset,
 };
 use anyhow::{Context, Result, bail, ensure};
 use bubblepaw_core::{ContextStrategy, ExecutionMode, ReasoningEffort, ReasoningReplay};
@@ -33,15 +34,18 @@ mod roles;
 mod schema;
 #[path = "config/sections.rs"]
 mod sections;
+#[path = "config/skills_section.rs"]
+mod skills_section;
 pub use redact::SettingEntry;
 use roles::resolve_role;
 pub use schema::Change;
 use schema::{REASONING, known_path};
+use sections::ExtensionSettings;
 pub use sections::{
     Agents, ApprovalSettings, DelegateSettings, ExecConfig, ModelClass, ProviderModelSettings,
-    ProviderSettings, QuotaSettings, RootAgentSettings, SkillsConfig, StorageSettings, WebExpose,
-    WebSettings,
+    ProviderSettings, QuotaSettings, RootAgentSettings, StorageSettings, WebExpose, WebSettings,
 };
+pub use skills_section::{SkillToggle, SkillsConfig};
 
 const DEFAULTS: &str = include_str!("config/defaults.toml");
 
@@ -661,6 +665,7 @@ impl EffectiveConfig {
         raw.web.validate()?;
         raw.delegate.validate()?;
         raw.exec.validate()?;
+        crate::toolsets::validate(&raw.toolsets, &raw.agent.toolset)?;
         for directory in &mut raw.skills.dirs {
             if directory.is_relative() {
                 *directory = self
@@ -734,6 +739,7 @@ impl EffectiveConfig {
             context_strategy: strategy,
             memory_files: raw.context.memory_files,
             skills: raw.skills,
+            toolsets: raw.toolsets,
             compact_threshold_tokens: raw.context.compact_threshold_tokens,
             context_window_tokens: raw.context.window_tokens,
             auto_summarize: raw.context.auto_summarize,
@@ -803,6 +809,7 @@ pub struct Settings {
     pub context_strategy: ContextStrategy,
     pub memory_files: bool,
     pub skills: SkillsConfig,
+    pub toolsets: BTreeMap<String, Toolset>,
     pub compact_threshold_tokens: usize,
     pub context_window_tokens: Option<usize>,
     pub auto_summarize: bool,
@@ -1102,7 +1109,9 @@ config_section! {
         providers: BTreeMap<String, ProviderSettings> => Node::Map(&Node::Table(ProviderSettings::FIELDS)),
         roles: BTreeMap<String, RoleEntry> => Node::Table(roles::ROLE_FIELDS),
         context: ContextSettings => Node::Table(ContextSettings::FIELDS),
-        skills: SkillsConfig => Node::Table(SkillsConfig::FIELDS),
+        skills: SkillsConfig => skills_section::SKILLS,
+        #[serde(default)]
+        toolsets: BTreeMap<String, Toolset> => Node::Map(&Node::Table(Toolset::FIELDS)),
         approvals: ApprovalSettings => Node::Table(ApprovalSettings::FIELDS),
         agents: Agents => Node::Table(Agents::FIELDS),
         web: WebSettings => Node::Table(WebSettings::FIELDS),
@@ -1138,18 +1147,6 @@ config_section! {
     #[derive(Deserialize)]
     struct ClassicalSettings {
         verbatim_user_tokens: usize => RESTART,
-    }
-}
-config_section! {
-    #[derive(Deserialize)]
-    struct ExtensionSettings {
-        command: String => RESTART,
-        account: Option<String> => RESTART,
-        #[serde(default)]
-        args: Vec<String> => RESTART,
-        cwd: Option<PathBuf> => RESTART,
-        #[serde(default)]
-        env: BTreeMap<String, String> => Node::Map(&RESTART),
     }
 }
 #[derive(Clone, Deserialize)]

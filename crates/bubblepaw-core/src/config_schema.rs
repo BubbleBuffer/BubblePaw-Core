@@ -23,6 +23,8 @@ pub enum Node {
     Flatten(&'static [Field]),
     /// Any non-empty name, each holding the inner node.
     Map(&'static Node),
+    /// Fixed sub-keys, plus any other non-empty name holding the inner node.
+    Open(&'static [Field], &'static Node),
     /// Any sub-keys at any depth, all with this liveness.
     Free(bool),
 }
@@ -58,6 +60,9 @@ pub fn descend(node: Node, name: &str) -> Option<Node> {
     match node {
         Node::Table(fields) | Node::Flatten(fields) => child(fields, name),
         Node::Map(inner) => (!name.is_empty()).then_some(*inner),
+        Node::Open(fields, inner) => {
+            child(fields, name).or_else(|| (!name.is_empty()).then_some(*inner))
+        }
         Node::Free(_) => (!name.is_empty()).then_some(node),
         Node::Leaf(_) => None,
     }
@@ -88,6 +93,10 @@ pub fn leaves(node: Node, path: &str, out: &mut Vec<(String, bool)>) {
             }
         }
         Node::Map(inner) => leaves(*inner, &join("<name>"), out),
+        Node::Open(fields, inner) => {
+            leaves(Node::Table(fields), path, out);
+            leaves(*inner, &join("<name>"), out);
+        }
         Node::Free(live) => out.push((join("<key>"), live)),
     }
 }

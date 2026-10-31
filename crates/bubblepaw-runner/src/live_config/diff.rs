@@ -12,6 +12,7 @@ pub(super) fn config_diff(old: &EffectiveConfig, new: &EffectiveConfig) -> Vec<S
         "exec",
         "mcp",
         "skills",
+        "toolsets",
     ] {
         if old.value(section) != new.value(section) {
             diff.push(format!("{section} updated"));
@@ -61,6 +62,15 @@ pub(super) fn config_diff(old: &EffectiveConfig, new: &EffectiveConfig) -> Vec<S
                 label(after.hardline)
             ));
         }
+    }
+    let toolset = |config: &EffectiveConfig| {
+        config
+            .value("agent.toolset")
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    };
+    if toolset(old) != toolset(new) {
+        diff.push(format!("main toolset: {} → {}", toolset(old), toolset(new)));
     }
     context_diff(
         "context",

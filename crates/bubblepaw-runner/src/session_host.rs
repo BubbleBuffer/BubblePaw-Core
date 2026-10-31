@@ -309,7 +309,7 @@ pub(super) async fn execute(
         model_provider.clone(),
         &tools,
         &repl,
-        &config,
+        &live_config.child_harness_config(&config),
         &workspace,
         true,
         web.as_ref(),
