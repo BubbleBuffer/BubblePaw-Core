@@ -15,7 +15,7 @@ use bubblepaw_core::{
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     sync::{
-        Arc, Mutex, MutexGuard, RwLock,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -64,7 +64,9 @@ impl PreparedProviderConfig {
 }
 
 pub struct LiveProviderConfig {
-    active: RwLock<Arc<ProviderGeneration>>,
+    /// Owner of the model/provider section: one whole generation per publication.
+    active: tokio::sync::watch::Sender<Arc<ProviderGeneration>>,
+    hub: crate::settings_hub::SettingsHub,
     startup: EffectiveConfig,
     extensions: BTreeMap<String, Arc<dyn Provider>>,
     updates: Mutex<()>,
@@ -94,7 +96,8 @@ impl LiveProviderConfig {
             &|name| effective.environment(name),
         )?);
         Ok(Self {
-            active: RwLock::new(Arc::new(ProviderGeneration {
+            hub: crate::settings_hub::SettingsHub::new(&settings),
+            active: tokio::sync::watch::channel(Arc::new(ProviderGeneration {
                 registry: Arc::new(registry),
                 effective: effective.clone(),
                 settings: settings.clone(),
@@ -103,7 +106,8 @@ impl LiveProviderConfig {
                 removed_models: BTreeSet::new(),
                 known_routes: known_routes(&settings),
                 unavailable,
-            })),
+            }))
+            .0,
             startup: effective,
             extensions,
             updates: Mutex::new(()),
@@ -115,10 +119,7 @@ impl LiveProviderConfig {
         })
     }
     pub fn snapshot(&self) -> Arc<ProviderGeneration> {
-        self.active
-            .read()
-            .expect("provider generation lock poisoned")
-            .clone()
+        self.active.borrow().clone()
     }
     /// Bind the concrete model and provider before asynchronous context
     /// preparation. Every operation on the returned provider retains this
@@ -224,12 +225,9 @@ impl LiveProviderConfig {
     /// Infallible publication after any file write. The host must hold
     /// `lock_update()` across prepare, durable write, and this operation.
     pub fn apply_prepared(&self, candidate: PreparedProviderConfig) -> Arc<ProviderGeneration> {
-        let mut active = self
-            .active
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let generation = Arc::new(candidate.generation);
-        *active = generation.clone();
+        self.hub.publish(&generation.settings);
+        self.active.send_replace(generation.clone());
         generation
     }
     pub fn reload(&self) -> Result<Arc<ProviderGeneration>> {

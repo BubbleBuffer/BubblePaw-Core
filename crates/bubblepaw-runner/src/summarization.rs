@@ -146,6 +146,7 @@ pub struct SummarizingContext {
     surface_refresh: Option<SurfaceRefresh>,
     surface_rebinds: Arc<Mutex<HashSet<String>>>,
     live: Option<Arc<crate::provider::LiveProviderConfig>>,
+    context: Option<tokio::sync::watch::Receiver<Arc<crate::settings_hub::ContextLive>>>,
 }
 impl SummarizingContext {
     pub fn new(
@@ -181,6 +182,7 @@ impl SummarizingContext {
             surface_refresh: None,
             surface_rebinds: Arc::default(),
             live: None,
+            context: None,
         })
     }
     /// Attach after constructing the worker, which itself holds the estimator.
@@ -195,9 +197,7 @@ impl SummarizingContext {
     fn config_for(&self, session: &str, model: &str) -> SummaryConfig {
         let mut config = self.config.clone();
         if let Some(live) = &self.live {
-            let generation = live.snapshot();
-            config.threshold_cap = generation.settings.compact_threshold_tokens;
-            config.context_window = generation.context_window(model);
+            self.apply_live_context(&mut config, live, model);
         }
         if self
             .store

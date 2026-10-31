@@ -35,6 +35,8 @@ pub struct ReloadReport {
     pub changed: Vec<String>,
     pub errors: Vec<String>,
     pub restart_needed: bool,
+    /// The changed keys behind `restart_needed`, from the section schema.
+    pub restart_keys: Vec<String>,
     pub active_main: String,
 }
 impl ReloadReport {
@@ -102,6 +104,8 @@ impl LiveConfig {
         store: Store,
     ) -> Result<Arc<Self>> {
         let stamps = stamps(&effective)?;
+        // The MCP host reconciles to the section the hub publishes.
+        mcp.follow(providers.hub().mcp());
         let options = providers.load_options();
         let memory = MemoryFiles::new(
             store.clone(),
@@ -211,6 +215,7 @@ impl LiveConfig {
             changed: Vec::new(),
             errors: Vec::new(),
             restart_needed: old.restart_needed(self.providers.startup_config()),
+            restart_keys: old.restart_only_keys(self.providers.startup_config()),
             active_main: self.providers.main_model(),
         };
         let current_stamps = match stamps(&old) {
@@ -224,6 +229,13 @@ impl LiveConfig {
                 let prepared = self.providers.prepare(candidate.clone())?;
                 let settings = candidate.settings()?;
                 approval_policy(&settings)?;
+                settings.mcp.validate()?;
+                if let Some(name) = server {
+                    anyhow::ensure!(
+                        settings.mcp.servers.get(name).is_some_and(|c| c.enabled),
+                        "MCP server {name} is not configured and enabled"
+                    );
+                }
                 Ok::<_, anyhow::Error>((candidate, prepared, settings))
             })();
             let (candidate, prepared, settings) = match candidate {
@@ -235,7 +247,18 @@ impl LiveConfig {
                     return self.failed(report, error);
                 }
             };
-            let mcp = match self.mcp.reload(&settings.mcp, server).await {
+            // Publish the sections first (the owners validated them above); the
+            // MCP host then reconciles to its section.
+            if !self
+                .providers
+                .snapshot()
+                .effective
+                .same_provider_config(&candidate)
+            {
+                let _update = self.providers.lock_update().expect("provider update lock");
+                self.providers.apply_prepared(prepared);
+            }
+            let mcp = match self.mcp.apply(server).await {
                 Ok(diff) => diff,
                 Err(error) => {
                     self.state.lock().unwrap().stamps = current_stamps;
@@ -246,16 +269,8 @@ impl LiveConfig {
             // notice recording and acknowledgement of the observed file stamp.
             report.changed = config_diff(&old, &candidate);
             add_mcp_diff(&mut report, &mcp);
-            report.restart_needed = candidate.restart_needed(self.providers.startup_config());
-            if !self
-                .providers
-                .snapshot()
-                .effective
-                .same_provider_config(&candidate)
-            {
-                let _update = self.providers.lock_update().expect("provider update lock");
-                self.providers.apply_prepared(prepared);
-            }
+            report.restart_keys = candidate.restart_only_keys(self.providers.startup_config());
+            report.restart_needed = !report.restart_keys.is_empty();
             self.processes.apply_config(settings.exec.clone());
             if let Some(agents) = self.agents.lock().unwrap().upgrade() {
                 agents.apply_limits(&settings.agents);
@@ -279,6 +294,7 @@ impl LiveConfig {
                 changed: Vec::new(),
                 errors: Vec::new(),
                 restart_needed: report.restart_needed,
+                restart_keys: report.restart_keys.clone(),
                 active_main: self.providers.main_model(),
             };
             add_mcp_diff(&mut refresh, &mcp);

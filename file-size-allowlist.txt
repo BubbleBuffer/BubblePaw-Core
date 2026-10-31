@@ -16,7 +16,7 @@ crates/bubblepaw-core/tests/storage_batching.rs 688
 crates/bubblepaw-core/tests/storage_cold.rs 898
 crates/bubblepaw-core/tests/storage_layout.rs 944
 crates/bubblepaw-core/tests/transcript_import.rs 798
-crates/bubblepaw-mcp/src/host.rs 990
+crates/bubblepaw-mcp/src/host.rs 984
 crates/bubblepaw-mcp/src/http.rs 1443
 crates/bubblepaw-mcp/tests/http.rs 1852
 crates/bubblepaw-mcp/tests/stdio.rs 1010
@@ -36,7 +36,7 @@ crates/bubblepaw-runner/src/provider.rs 880
 crates/bubblepaw-runner/src/provider/chat.rs 1122
 crates/bubblepaw-runner/src/provider/decisions.rs 725
 crates/bubblepaw-runner/src/provider/extension.rs 622
-crates/bubblepaw-runner/src/provider/live_provider.rs 608
+crates/bubblepaw-runner/src/provider/live_provider.rs 606
 crates/bubblepaw-runner/src/provider/messages.rs 1156
 crates/bubblepaw-runner/src/provider/registry.rs 1109
 crates/bubblepaw-runner/src/quota.rs 647
@@ -72,7 +72,7 @@ crates/bubblepaw-runner/tests/history_tools.rs 825
 crates/bubblepaw-runner/tests/host_attach.rs 779
 crates/bubblepaw-runner/tests/host_attach_mcp.rs 600
 crates/bubblepaw-runner/tests/live_agent_settings.rs 560
-crates/bubblepaw-runner/tests/live_config/main.rs 673
+crates/bubblepaw-runner/tests/live_config/main.rs 674
 crates/bubblepaw-runner/tests/live_config_routes.rs 689
 crates/bubblepaw-runner/tests/opencode_console.rs 704
 crates/bubblepaw-runner/tests/provider_chat.rs 1034

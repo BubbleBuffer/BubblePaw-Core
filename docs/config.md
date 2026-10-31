@@ -1,6 +1,6 @@
 # Configuration
 
-**Status:** built 2026-10-09; storage layout, import and cold-storage configuration added 2026-10-12; chat function calling, child session limits, `[exec]` and shared web cache configuration added 2026-10-13; stale-child reminders, background worker retention, completion wake and live config refresh added 2026-10-14; root worker instructions, rounds and task files added 2026-10-17; native default, persisted chat modes, JS opt-in and MCP core/deferred declaration policy added 2026-10-22; per-section settings types as the key list and live classification 2026-10-30.
+**Status:** built 2026-10-09; storage layout, import and cold-storage configuration added 2026-10-12; chat function calling, child session limits, `[exec]` and shared web cache configuration added 2026-10-13; stale-child reminders, background worker retention, completion wake and live config refresh added 2026-10-14; root worker instructions, rounds and task files added 2026-10-17; native default, persisted chat modes, JS opt-in and MCP core/deferred declaration policy added 2026-10-22; per-section settings types as the key list and live classification 2026-10-30; section owners on watch channels for model/provider, context and MCP 2026-10-31.
 
 One TOML file replaces the growing set of CLI flags and built-in defaults for
 models, providers, context strategy and approvals.
@@ -324,6 +324,28 @@ key's type and its liveness, `LIVE` or `RESTART`, so the struct is the single so
   what the provider generation is built from.
 - **The documented keys.** A test parses the `toml` blocks in this page and fails when
   a documented key is missing from the schema or a schema key is undocumented.
+
+### Section owners (2026-10-31)
+
+A live section has one owner that publishes it whole on a `tokio::sync::watch`
+channel (`settings_hub.rs`); components subscribe to their own section and read
+it when they act, so a key is live when its consumer subscribes:
+
+- **Model/provider** (`model`, `providers`, `roles`): `LiveProviderConfig` owns the
+  generation; `subscribe()` yields each whole generation, `snapshot()` the current one.
+- **Context** (`context.window_tokens`, `compact_threshold_tokens`, `auto_summarize`):
+  `SettingsHub::context()`; the summarizing context reads capacity, threshold and
+  automatic preparation from it at each request.
+- **MCP** (`mcp`): `SettingsHub::mcp()`. `McpSettings::validate` runs before
+  publication, so an invalid server leaves the previous section and servers serving;
+  `McpHost::follow` binds the host to the section and `McpHost::apply(force)`
+  reconciles to its latest value.
+
+Sections are published together with each accepted generation. A startup-only key
+that changes (storage, `context.strategy`, `context.lcm.*`, `agent.*`) is not
+published; `ReloadReport.restart_keys` names it, and `restart_needed` is its
+non-empty case. Approvals/tools, web, exec, agents and skills still reach their
+components by direct calls from `LiveConfig`.
 
 Adding a setting means adding one field line and, if it is new, a line in the Shape
 block below.

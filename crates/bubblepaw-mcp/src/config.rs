@@ -16,6 +16,12 @@ config_section! {
             Node::Map(&Node::Table(McpServerSettings::FIELDS)),
     }
 }
+impl McpSettings {
+    pub fn validate(&self) -> Result<()> {
+        let mut enabled = self.servers.values().filter(|c| c.enabled);
+        enabled.try_for_each(|c| c.validate(&self.header_key_envs))
+    }
+}
 
 config_section! {
     /// Secret values are resolved only at connection time, never during config rendering.

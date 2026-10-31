@@ -8,6 +8,14 @@ impl EffectiveConfig {
     }
     /// Detect edits to settings whose runtime resources remain fixed at startup.
     pub fn restart_needed(&self, startup: &Self) -> bool {
-        self.changes_from(startup).iter().any(|change| !change.live)
+        !self.restart_only_keys(startup).is_empty()
+    }
+    /// The changed keys a running host cannot apply: the answer `config.set` will give.
+    pub fn restart_only_keys(&self, startup: &Self) -> Vec<String> {
+        self.changes_from(startup)
+            .into_iter()
+            .filter(|change| !change.live)
+            .map(|change| change.path)
+            .collect()
     }
 }
