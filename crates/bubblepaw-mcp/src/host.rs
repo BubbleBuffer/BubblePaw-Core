@@ -1,9 +1,6 @@
 use crate::{McpClientEnv, McpServerSettings, McpSettings, transport::Connection};
 use anyhow::{Result, anyhow, bail, ensure};
-use async_trait::async_trait;
-use bubblepaw_core::{
-    CancellationToken, Tool, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
-};
+use bubblepaw_core::{CancellationToken, Tool, ToolDefinition, ToolRegistry};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
@@ -17,10 +14,26 @@ use std::{
 };
 use tokio::task::JoinSet;
 
+mod auth;
 mod follow;
 mod registry;
 mod state;
+mod status;
+mod tool;
 use state::{Entry, Registered};
+pub use status::{McpAuthState, McpAuthStatus, McpServerState, McpServerStatus, McpToolStatus};
+use tool::McpTool;
+pub use tool::tool_name;
+
+/// Host-scoped startup options beyond the settings.
+#[derive(Default)]
+pub struct McpHostOptions {
+    /// Request-scoped client environment; see `start_with_client_env`.
+    pub client_env: Option<McpClientEnv>,
+    /// Folder for OAuth tokens (`<data dir>/auth`). OAuth servers fail to start
+    /// without it.
+    pub auth_dir: Option<PathBuf>,
+}
 
 /// Ordered inventory changes. Tool fields use registered names; lifecycle
 /// fields use configured server names. Diagnostics never contain config values.
@@ -46,11 +59,24 @@ impl McpDiff {
             && self.filtered.is_empty()
             && self.warnings.is_empty()
     }
+    fn absorb(&mut self, other: McpDiff) {
+        self.added.extend(other.added);
+        self.removed.extend(other.removed);
+        self.changed.extend(other.changed);
+        self.started.extend(other.started);
+        self.stopped.extend(other.stopped);
+        self.restarted.extend(other.restarted);
+        self.filtered.extend(other.filtered);
+        self.warnings.extend(other.warnings);
+    }
 }
 
 /// Shared host inventory. Calls pin generations; retained tool handles do not.
 pub struct McpHost {
     inner: Arc<HostInner>,
+    /// Only the owning handle stops servers on drop; internal handles that
+    /// restart a server after sign-in do not.
+    owner: bool,
 }
 struct HostInner {
     workspace: PathBuf,
@@ -63,6 +89,14 @@ struct HostInner {
     closed: AtomicBool,
     /// The MCP section this host follows, once subscribed.
     section: Mutex<Option<tokio::sync::watch::Receiver<Arc<McpSettings>>>>,
+    auth_dir: Option<PathBuf>,
+    /// Sign-in state per OAuth server, kept across that server's restarts.
+    auth: Mutex<BTreeMap<String, Arc<crate::oauth::ServerAuth>>>,
+    status: tokio::sync::broadcast::Sender<McpServerStatus>,
+    /// The last status sent per server, so only changes are sent.
+    sent: Mutex<BTreeMap<String, McpServerStatus>>,
+    /// Waiting sign-ins; aborted with the host.
+    background: Mutex<JoinSet<()>>,
 }
 #[derive(Default)]
 struct HostState {
@@ -70,11 +104,17 @@ struct HostState {
     tools: BTreeMap<String, Registered>,
     removed: BTreeMap<String, String>,
     warnings: Vec<String>,
+    /// The last applied settings, including disabled servers.
+    settings: McpSettings,
+    /// Why an enabled server is not serving.
+    failures: BTreeMap<String, String>,
+    /// Changes from sign-in restarts, reported by the next `refresh_tools`.
+    pending: McpDiff,
 }
 impl McpHost {
     /// Standalone startup: credentials and child env come from this process.
     pub async fn start(settings: &McpSettings, workspace: &Path) -> Self {
-        Self::start_inner(settings, workspace, None).await
+        Self::start_with_options(settings, workspace, McpHostOptions::default()).await
     }
 
     /// Startup with a request-scoped client snapshot. `env_from` and
@@ -86,25 +126,36 @@ impl McpHost {
         workspace: &Path,
         client_env: McpClientEnv,
     ) -> Self {
-        Self::start_inner(settings, workspace, Some(Arc::new(client_env))).await
+        let options = McpHostOptions {
+            client_env: Some(client_env),
+            auth_dir: None,
+        };
+        Self::start_with_options(settings, workspace, options).await
     }
 
-    async fn start_inner(
+    /// Startup with a client snapshot and an OAuth token folder.
+    pub async fn start_with_options(
         settings: &McpSettings,
         workspace: &Path,
-        client_env: Option<Arc<McpClientEnv>>,
+        options: McpHostOptions,
     ) -> Self {
         let host = Self {
             inner: Arc::new(HostInner {
                 workspace: workspace.to_owned(),
-                client_env,
+                client_env: options.client_env.map(Arc::new),
                 state: Mutex::default(),
                 gate: tokio::sync::Mutex::new(()),
                 reapers: Mutex::new(JoinSet::new()),
                 retired: Mutex::default(),
                 closed: AtomicBool::new(false),
                 section: Mutex::new(None),
+                auth_dir: options.auth_dir,
+                auth: Mutex::default(),
+                status: tokio::sync::broadcast::channel(64).0,
+                sent: Mutex::default(),
+                background: Mutex::new(JoinSet::new()),
             }),
+            owner: true,
         };
         if let Err(error) = host.reload(settings, None).await {
             host.inner
@@ -153,13 +204,18 @@ impl McpHost {
                     continue;
                 }
                 let name = name.clone();
+                let auth = self.inner.auth_for(&name, config);
                 let server = Arc::new(Server::new(
                     config.clone(),
                     settings.header_key_envs.clone(),
                     self.inner.workspace.clone(),
                     self.inner.client_env.clone(),
+                    auth.as_ref().ok().cloned().flatten(),
                 ));
                 jobs.spawn(async move {
+                    if let Err(error) = auth {
+                        return (name, server, Err(error.to_string()));
+                    }
                     let result = tokio::time::timeout(
                         Duration::from_secs(server.config.startup_timeout_secs),
                         server.initial_tools(),
@@ -195,6 +251,9 @@ impl McpHost {
                 .filter(|name| !settings.servers.get(*name).is_some_and(|c| c.enabled))
                 .cloned()
                 .collect();
+            state
+                .failures
+                .retain(|name, _| settings.servers.get(name).is_some_and(|c| c.enabled));
             for name in removed {
                 retired.push(state.servers.remove(&name).unwrap().server);
                 mark_removed(&mut state, &name, "configuration was removed or disabled");
@@ -209,6 +268,7 @@ impl McpHost {
                 }
                 match result {
                     Ok(listed) => {
+                        state.failures.remove(&name);
                         let config = server.config.clone();
                         state.servers.insert(
                             name,
@@ -233,6 +293,9 @@ impl McpHost {
                             format!("; stderr: {}", detail.trim())
                         };
                         mark_removed(&mut state, &name, "replacement failed to start");
+                        state
+                            .failures
+                            .insert(name.clone(), format!("{error}{suffix}"));
                         diff.warnings
                             .push(format!("MCP server {name}: {error}{suffix}"));
                         retired.push(server);
@@ -246,11 +309,23 @@ impl McpHost {
             rebuild(&mut state, &mut diff.warnings);
             inventory_diff(&before, &mut state, &mut diff);
             state.warnings = diff.warnings.clone();
+            state.settings = settings.clone();
         }
+        self.inner.auth.lock().unwrap().retain(|name, auth| {
+            let keep = settings
+                .servers
+                .get(name)
+                .is_some_and(|c| c.oauth && c.url.is_some());
+            if !keep {
+                auth.close();
+            }
+            keep
+        });
         for server in retired {
             self.retire(server);
         }
         self.reap_finished();
+        self.inner.publish();
         Ok(diff)
     }
 
@@ -328,6 +403,9 @@ impl McpHost {
         for guard in &mut guards {
             guard.published = true;
         }
+        let pending = std::mem::take(&mut self.inner.state.lock().unwrap().pending);
+        diff.absorb(pending);
+        self.inner.publish();
         self.reap_finished();
         diff
     }
@@ -360,6 +438,7 @@ impl McpHost {
     }
     /// Explicit shutdown may cancel calls. Generation replacement never does.
     pub async fn shutdown(&self, grace: Duration) {
+        self.inner.background.lock().unwrap().abort_all();
         let _gate = self.inner.gate.lock().await;
         self.inner.closed.store(true, Ordering::SeqCst);
         let mut servers: Vec<_> = self
@@ -398,6 +477,13 @@ impl McpHost {
 }
 impl Drop for McpHost {
     fn drop(&mut self) {
+        if !self.owner {
+            return;
+        }
+        self.inner.background.lock().unwrap().abort_all();
+        for auth in self.inner.auth.lock().unwrap().values() {
+            auth.close();
+        }
         self.inner.closed.store(true, Ordering::SeqCst);
         for entry in self.inner.state.lock().unwrap().servers.values() {
             entry.server.stop();
@@ -551,6 +637,7 @@ struct Server {
     allowed_header_envs: Vec<String>,
     workspace: PathBuf,
     client_env: Option<Arc<McpClientEnv>>,
+    auth: Option<Arc<crate::oauth::ServerAuth>>,
     connection: Mutex<Option<Arc<Connection>>>,
     gate: tokio::sync::Mutex<()>,
     closed: AtomicBool,
@@ -567,12 +654,14 @@ impl Server {
         allowed_header_envs: Vec<String>,
         workspace: PathBuf,
         client_env: Option<Arc<McpClientEnv>>,
+        auth: Option<Arc<crate::oauth::ServerAuth>>,
     ) -> Self {
         Self {
             config,
             allowed_header_envs,
             workspace,
             client_env,
+            auth,
             connection: Mutex::default(),
             gate: tokio::sync::Mutex::new(()),
             closed: AtomicBool::new(false),
@@ -592,14 +681,15 @@ impl Server {
         }
         // Opening validates config and spawns the stdio server synchronously,
         // so it runs on the blocking pool.
-        let (config, workspace, envs, client_env) = (
+        let (config, workspace, envs, client_env, auth) = (
             self.config.clone(),
             self.workspace.clone(),
             self.allowed_header_envs.clone(),
             self.client_env.clone(),
+            self.auth.clone(),
         );
         let connection = tokio::task::spawn_blocking(move || {
-            Connection::open(&config, &workspace, &envs, client_env.as_deref())
+            Connection::open(&config, &workspace, &envs, client_env.as_deref(), auth)
         })
         .await??;
         {
@@ -623,6 +713,20 @@ impl Server {
         Ok(connection)
     }
     async fn initial_tools(&self) -> Result<Vec<Value>> {
+        match self.discover().await {
+            // A rejected access token is refreshed and discovery, which is
+            // read-only, runs once more.
+            Err(_) if self.auth.as_ref().is_some_and(|auth| auth.take_retry()) => {
+                let failed = self.connection.lock().unwrap().take();
+                if let Some(connection) = failed {
+                    connection.shutdown(Duration::ZERO).await;
+                }
+                self.discover().await
+            }
+            result => result,
+        }
+    }
+    async fn discover(&self) -> Result<Vec<Value>> {
         let connection = self.establish().await?;
         let tools = Self::list_tools(&connection).await?;
         self.ready.store(true, Ordering::SeqCst);
@@ -739,245 +843,5 @@ impl Drop for EstablishGuard {
         if !self.ready {
             self.connection.stop(Duration::ZERO);
         }
-    }
-}
-struct McpTool {
-    host: Weak<HostInner>,
-    definition: ToolDefinition,
-}
-#[async_trait]
-impl Tool for McpTool {
-    fn definition(&self) -> ToolDefinition {
-        self.definition.clone()
-    }
-    async fn invoke(&self, context: ToolContext, input: Value) -> Result<ToolResult> {
-        let Some(host) = self.host.upgrade() else {
-            return Ok(ToolResult::error("MCP host shut down; call was not sent"));
-        };
-        let (registered, _lease) = {
-            let state = host.state.lock().unwrap();
-            if host.closed.load(Ordering::SeqCst) {
-                return Ok(ToolResult::error("MCP host shut down; call was not sent"));
-            }
-            let Some(registered) = state.tools.get(&self.definition.name) else {
-                let reason = state
-                    .removed
-                    .get(&self.definition.name)
-                    .map(String::as_str)
-                    .unwrap_or("tool unavailable in the current inventory");
-                return Ok(ToolResult::error(format!(
-                    "MCP tool {} removed: {reason}; call was not sent",
-                    self.definition.name
-                )));
-            };
-            if serde_json::to_value(&registered.definition)?
-                != serde_json::to_value(&self.definition)?
-            {
-                return Ok(ToolResult::error(format!(
-                    "MCP tool {} definition changed; refresh the tool registry before calling; call was not sent",
-                    self.definition.name
-                )));
-            }
-            registered.server.active.fetch_add(1, Ordering::SeqCst);
-            (registered.clone(), Lease(registered.server.clone()))
-        };
-        let connected = tokio::select! {
-            biased;
-            _ = context.cancellation.cancelled() => bail!("Cancelled before MCP call; outcome unknown"),
-            result = registered.server.connected() => result,
-        };
-        let connection = match connected {
-            Ok(connection) => connection,
-            Err(error) => {
-                return Ok(ToolResult::error(format!(
-                    "MCP server unavailable: {error}; call was not sent"
-                )));
-            }
-        };
-        // Reconnect discovery is published at the next host boundary. Reject
-        // removed or changed contracts before then rather than dispatching with
-        // stale validation, header annotations, or approval metadata.
-        if let Some(listed) = registered.server.refreshed.lock().unwrap().as_ref() {
-            let Some(current) = listed
-                .iter()
-                .find(|tool| tool["name"] == registered.original_name)
-            else {
-                return Ok(ToolResult::error(format!(
-                    "MCP tool {} removed by server reconnect; call was not sent",
-                    self.definition.name
-                )));
-            };
-            if current.get("inputSchema") != Some(&registered.definition.input_schema)
-                || current["description"].as_str().unwrap_or("")
-                    != registered.definition.description
-            {
-                return Ok(ToolResult::error(format!(
-                    "MCP tool {} definition changed after server reconnect; refresh the tool registry; call was not sent",
-                    self.definition.name
-                )));
-            }
-        }
-        if connection
-            .register_tool(
-                &registered.original_name,
-                &registered.definition.input_schema,
-            )
-            .is_err()
-        {
-            return Ok(ToolResult::error(
-                "Invalid MCP HTTP header annotation; call was not sent",
-            ));
-        }
-        let call = connection.call_tool(
-            &registered.original_name,
-            input,
-            &registered.definition.input_schema,
-        );
-        let result = tokio::select! {
-            biased;
-            _ = context.cancellation.cancelled() => bail!("Cancelled during MCP call; outcome unknown"),
-            result = tokio::time::timeout(Duration::from_secs(registered.server.config.call_timeout_secs), call) => result,
-        };
-        match result {
-            Err(_) => Ok(ToolResult::error(
-                "MCP call timed out; outcome unknown. Do not replay this call.",
-            )),
-            Ok(Err(error)) => Ok(ToolResult::error(connection.redact(&error.to_string()))),
-            Ok(Ok(result)) => Ok(convert_result(result)),
-        }
-    }
-}
-
-/// Stable ASCII tool names, with a deterministic suffix for truncated names.
-pub fn tool_name(server: &str, tool: &str) -> String {
-    let original = format!("mcp__{server}__{tool}");
-    let mut name: String = original
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if name.len() > 64 {
-        let hash = bubblepaw_core::fingerprint(original.as_bytes());
-        name.truncate(55);
-        name.push('_');
-        name.push_str(&hash[..8]);
-    }
-    name
-}
-
-fn convert_result(result: Value) -> ToolResult {
-    if let Some(kind) = result.get("resultType")
-        && kind != "complete"
-    {
-        return ToolResult::error(
-            "Unsupported MCP result type or input request; outcome unknown. Do not replay this call.",
-        );
-    }
-    let Some(content) = result.get("content").and_then(Value::as_array) else {
-        return ToolResult::error("Invalid MCP tool result: missing content array");
-    };
-    let mut blocks = Vec::new();
-    let mut has_text = false;
-    for block in content {
-        if block["type"] == "text" {
-            if let Some(text) = block["text"].as_str() {
-                has_text = true;
-                blocks.push(text.to_owned());
-            } else {
-                return ToolResult::error("Invalid MCP text content");
-            }
-        } else {
-            let kind = match block["type"].as_str() {
-                Some("image") => "image",
-                Some("audio") => "audio",
-                Some("resource") => "resource",
-                Some("resource_link") => "resource link",
-                _ => "unknown content",
-            };
-            let bytes = block["data"]
-                .as_str()
-                .map(decoded_size)
-                .unwrap_or_else(|| block["resource"].to_string().len());
-            blocks.push(format!("[MCP {kind}: {bytes} bytes omitted]"));
-        }
-    }
-    if !has_text && let Some(structured) = result.get("structuredContent") {
-        blocks.insert(0, structured.to_string());
-    }
-    ToolResult {
-        content: blocks.join("\n"),
-        is_error: result["isError"].as_bool().unwrap_or(false),
-        pending: false,
-    }
-}
-fn decoded_size(data: &str) -> usize {
-    let padding = data
-        .bytes()
-        .rev()
-        .take_while(|byte| *byte == b'=')
-        .count()
-        .min(2);
-    (data.len() * 3 / 4).saturating_sub(padding)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bubblepaw_core::Approval;
-
-    #[test]
-    fn names_are_bounded_ascii_and_stable() {
-        assert_eq!(tool_name("a.b", "read/issue"), "mcp__a_b__read_issue");
-        let long = "x".repeat(120);
-        let name = tool_name("github", &long);
-        assert_eq!(name.len(), 64);
-        assert_eq!(name, tool_name("github", &long));
-        assert_ne!(name, tool_name("github", &(long + "y")));
-        assert_eq!(tool_name("é", "🐾"), "mcp______");
-    }
-    #[test]
-    fn defaults_require_approval_and_debug_omits_values() {
-        let mut config: McpServerSettings =
-            serde_json::from_value(json!({"command":"test"})).unwrap();
-        assert_eq!(config.approval, Approval::Confirm);
-        assert_eq!(config.startup_timeout_secs, 30);
-        assert_eq!(config.call_timeout_secs, 120);
-        config
-            .env
-            .insert("NON_SECRET".into(), "should-not-print".into());
-        config.env_from.insert("CHILD".into(), "HOST_NAME".into());
-        let debug = format!("{config:?}");
-        assert!(!debug.contains("should-not-print"));
-        assert!(debug.contains("HOST_NAME"));
-    }
-    #[test]
-    fn results_preserve_text_and_bound_binary_content() {
-        let result = convert_result(
-            json!({"content":[{"type":"text","text":"a"},{"type":"image","data":"YWJjZA=="},{"type":"text","text":"b"}],"structuredContent":{"ignored":true},"isError":true}),
-        );
-        assert_eq!(result.content, "a\n[MCP image: 4 bytes omitted]\nb");
-        assert!(result.is_error);
-        let result = convert_result(json!({"content":[],"structuredContent":{"x":2}}));
-        assert_eq!(result.content, "{\"x\":2}");
-        assert!(!result.is_error);
-    }
-    #[test]
-    fn input_requests_and_unknown_result_types_are_not_completed_or_replayed() {
-        for kind in ["input_required", "unrecognized"] {
-            let result = convert_result(json!({"resultType":kind,"content":[],"inputRequests":[]}));
-            assert!(result.is_error);
-            assert!(result.content.contains("outcome unknown"));
-            assert!(result.content.contains("Do not replay"));
-        }
-        let result = convert_result(
-            json!({"resultType":"complete","content":[{"type":"text","text":"done"}]}),
-        );
-        assert_eq!(result.content, "done");
-        assert!(!result.is_error);
     }
 }

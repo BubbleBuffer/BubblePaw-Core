@@ -26,6 +26,8 @@ struct Host {
     input: tokio::process::ChildStdin,
     output: BufReader<tokio::process::ChildStdout>,
     next: u64,
+    /// Notifications read while waiting for replies.
+    notifications: Vec<Value>,
 }
 
 impl Host {
@@ -59,6 +61,7 @@ impl Host {
             output: BufReader::new(child.stdout.take().unwrap()),
             child,
             next: 1,
+            notifications: Vec::new(),
         }
     }
 
@@ -78,6 +81,9 @@ impl Host {
                 let response: Value = serde_json::from_str(&line).unwrap();
                 if response["id"] == id {
                     return response;
+                }
+                if response.get("method").is_some() {
+                    self.notifications.push(response);
                 }
             }
         })
@@ -140,6 +146,8 @@ async fn initialize_advertises_host_parity_without_changing_protocol() {
 
 #[path = "stdio_host_parity/children.rs"]
 mod children;
+#[path = "stdio_host_parity/mcp.rs"]
+mod mcp;
 #[path = "stdio_host_parity/providers.rs"]
 mod providers;
 #[path = "stdio_host_parity/sessions.rs"]

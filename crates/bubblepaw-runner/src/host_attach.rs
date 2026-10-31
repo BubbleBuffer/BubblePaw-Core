@@ -90,6 +90,8 @@ pub async fn attach(mut request: PreparedRequest, connection: Connection) -> Res
                 session.get_or_insert_with(|| event.session_id.clone());
                 output.event(&event, json_output)?;
             }
+            // Server state for settings pages; a submitted command ignores it.
+            Some("mcp.server") => {}
             Some("attach.output") => {
                 let stream: Stream = serde_json::from_value(record["params"]["stream"].clone())?;
                 let text = record["params"]["text"]

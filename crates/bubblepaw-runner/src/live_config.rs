@@ -17,7 +17,7 @@ use bubblepaw_mcp::McpHost;
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLock, Weak},
     time::SystemTime,
 };
@@ -157,6 +157,10 @@ impl LiveConfig {
     }
     /// The last accepted config: what the running host holds for live keys and
     /// what the file asks for restart-only ones.
+    /// The request's MCP servers: live state, sign-in controls and notifications.
+    pub fn mcp(&self) -> &McpHost {
+        &self.mcp
+    }
     pub fn accepted(&self) -> EffectiveConfig {
         self.state.lock().unwrap().accepted.clone()
     }
@@ -434,6 +438,16 @@ pub(crate) fn file_stamps(paths: Vec<PathBuf>) -> Result<Vec<FileStamp>> {
         .collect()
 }
 
+/// MCP host options for one request: the client environment, and OAuth
+/// tokens in `<data dir>/auth` beside the other BubblePaw-owned sign-ins.
+pub fn mcp_options(effective: &EffectiveConfig, data_dir: &Path) -> bubblepaw_mcp::McpHostOptions {
+    bubblepaw_mcp::McpHostOptions {
+        client_env: Some(bubblepaw_mcp::McpClientEnv::new(
+            effective.mcp_environment(),
+        )),
+        auth_dir: Some(data_dir.join("auth")),
+    }
+}
 pub fn approval_policy(settings: &Settings) -> Result<ApprovalPolicy> {
     approval_policy_for(&settings.approvals)
 }

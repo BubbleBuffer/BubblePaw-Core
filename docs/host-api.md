@@ -70,6 +70,10 @@ device's profile without introducing another host implementation.
 | `providers.test` | Full |
 | `providers.reload` | Full |
 | `roles.set_main` | Full |
+| `mcp.servers.list` | Read |
+| `mcp.auth.start` | Full |
+| `mcp.auth.complete` | Full |
+| `mcp.auth.sign_out` | Full |
 | `session.open` | Edit |
 | `session.list` | Read |
 | `session.view` | Read |
@@ -134,6 +138,37 @@ removing the key. Refusals are `-32010` unknown key, `-32011` wrong type, `-3201
 invalid value (file untouched) and `-32013` write failed. Details and the validation
 steps: [config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31).
 
+### MCP server methods
+
+MCP server settings change through `config.set` on `mcp.servers.<name>.*`
+(`enabled` turns a server on or off; `oauth`, `url`, `include_tools`,
+`exclude_tools` and the rest are ordinary leaves). These methods cover only what
+config cannot (details: [mcp](mcp.md#oauth-sign-in)):
+
+- `mcp.servers.list {}` (Read) returns `{servers: [status]}`, one per configured
+  server, disabled ones included.
+- `mcp.auth.start {server}` (Full) returns `{url}`, the authorization URL for
+  the client to open. Core opens no browser; it waits on a loopback redirect.
+- `mcp.auth.complete {server, redirect_url}` (Full) completes the waiting
+  sign-in with the callback URL the browser reached, and returns the status.
+- `mcp.auth.sign_out {server}` (Full) forgets the tokens, cancels a waiting
+  sign-in, and returns the status.
+
+A status is `{name, transport: "stdio" | "http", enabled, state: "running" |
+"stopped" | "error" | "removed", error?, auth: {state, error?}, tool_count,
+tools: [{name, enabled}]}`. `auth.state` is `none`, `needs_sign_in`, `waiting`,
+`signed_in`, `expired` or `failed`. `tools` lists the server's raw tool names,
+with `enabled` false for ones `include_tools`/`exclude_tools` filter out;
+`tool_count` counts registered tools. An unknown server, a server without
+OAuth, or a failed step is an ordinary application error. Status, errors and
+notifications never contain tokens or config values.
+
+Each status change is pushed as an `mcp.server` notification whose params are
+the whole status of one server (`state: "removed"` once it leaves the config).
+After a lagging subscriber falls behind, every server's status is sent again.
+stdio and attached clients get JSON-RPC notifications; the web adapter sends
+SSE events named `mcp.server` on `/api/events`.
+
 ## Capability modules
 
 The modules under `host_api/` separate sessions, runs, approvals, questions,
@@ -160,7 +195,8 @@ shared status to its existing REST error envelope.
 ## Adapters
 
 - **stdio:** reads bounded JSON records, invokes the shared JSON-RPC handler and
-  writes replies. Live events are notifications; shutdown drains the host.
+  writes replies. Live events are notifications (`event`, `events.gap` and
+  `mcp.server`); shutdown drains the host.
 - **HTTP:** existing `/api/...` REST routes keep their original shapes and project
   the shared method result. `POST /rpc` accepts stdio JSON-RPC objects, including
   notifications. Existing local Host/Origin and body-size boundaries also apply
