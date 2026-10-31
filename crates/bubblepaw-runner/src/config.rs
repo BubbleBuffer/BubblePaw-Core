@@ -25,12 +25,15 @@ use toml::Value;
 
 #[path = "config/live_settings.rs"]
 mod live_settings;
+#[path = "config/redact.rs"]
+pub(crate) mod redact;
 #[path = "config/roles.rs"]
 mod roles;
 #[path = "config/schema.rs"]
 mod schema;
 #[path = "config/sections.rs"]
 mod sections;
+pub use redact::SettingEntry;
 use roles::resolve_role;
 pub use schema::Change;
 use schema::{REASONING, known_path};
@@ -520,7 +523,7 @@ impl EffectiveConfig {
             .value
             .clone()
             .try_into()
-            .map_err(|_| anyhow::anyhow!("Config value has an invalid type"))?;
+            .map_err(|_| anyhow::Error::new(redact::ConfigTypeError))?;
         ensure!(
             !raw.model.main.trim().is_empty(),
             "model.main must not be empty"
@@ -751,47 +754,7 @@ impl EffectiveConfig {
     }
     /// Valid TOML with dotted assignments and provenance. No environment value is read here.
     pub fn render(&self) -> Result<String> {
-        let settings = self.settings()?;
-        let mut effective = self.value.clone();
-        // Extension env values are literal; keep credential-looking ones out of output.
-        if let Some(Value::Table(extensions)) = effective.get_mut("extensions") {
-            for extension in extensions.iter_mut().map(|(_, extension)| extension) {
-                if let Some(Value::Table(env)) = extension.get_mut("env") {
-                    for (name, value) in env.iter_mut() {
-                        let upper = name.to_ascii_uppercase();
-                        if ["KEY", "TOKEN", "SECRET", "PASSWORD"]
-                            .iter()
-                            .any(|marker| upper.contains(marker))
-                        {
-                            *value = Value::String("<redacted>".into());
-                        }
-                    }
-                }
-            }
-        }
-        merge_at(
-            &mut effective,
-            &["storage", "data_dir"],
-            Value::String(settings.storage.data_dir.to_string_lossy().into_owned()),
-        )?;
-        for extension in settings.extensions {
-            if let Some(cwd) = extension.cwd {
-                merge_at(
-                    &mut effective,
-                    &["extensions", &extension.id, "cwd"],
-                    Value::String(cwd.to_string_lossy().into_owned()),
-                )?;
-            }
-        }
-        for (name, provider) in settings.providers {
-            if let Some(path) = provider.auth_file {
-                merge_at(
-                    &mut effective,
-                    &["providers", &name, "auth_file"],
-                    Value::String(path.to_string_lossy().into_owned()),
-                )?;
-            }
-        }
+        let effective = self.redacted_value()?;
         let mut output = String::new();
         render_leaves(&effective, &mut Vec::new(), &self.sources, &mut output);
         Ok(output)

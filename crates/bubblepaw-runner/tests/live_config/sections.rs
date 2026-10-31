@@ -2,6 +2,9 @@
 //! an invalid section is not published, and a startup-only key is reported as such.
 use super::*;
 
+#[path = "config_set.rs"]
+mod config_set;
+
 #[tokio::test]
 async fn model_section_subscribers_see_a_runtime_edit() {
     let fixture = Fixture::new(&config("")).await;

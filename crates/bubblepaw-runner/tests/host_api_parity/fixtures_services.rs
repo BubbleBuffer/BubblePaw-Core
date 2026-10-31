@@ -16,7 +16,19 @@ fn scratch_provider(name: &str) -> serde_json::Value {
 pub fn all() -> Vec<Fixture> {
     vec![
         fixture("initialize", vec![ok("initialize", json!({}))]),
-        fixture("config.get", vec![ok("config.get", json!({}))]),
+        fixture(
+            "config.get",
+            vec![
+                // The whole list carries per-host values (the data directory), so only its structure is compared.
+                ok("config.get", json!({})).shape(),
+                ok("config.get", json!({"key": "agents.wake_debounce_ms"})),
+                err(
+                    "config.get",
+                    json!({"key": "no.such.key"}),
+                    "Unknown config key",
+                ),
+            ],
+        ),
         fixture("config.reload", vec![ok("config.reload", json!({}))]),
         fixture("providers.list", vec![ok("providers.list", json!({}))]),
         fixture(
@@ -40,6 +52,32 @@ pub fn all() -> Vec<Fixture> {
             vec![ok("providers.test", json!({"name": "demo"}))],
         ),
         fixture("providers.reload", vec![ok("providers.reload", json!({}))]),
+        // After the provider fixtures: a settings write rewrites the file they compare against.
+        // Each change is reverted in the same fixture, so the next transport starts clean.
+        fixture(
+            "config.set",
+            vec![
+                ok(
+                    "config.set",
+                    json!({"key": "agents.wake_debounce_ms", "value": 77}),
+                ),
+                ok("config.get", json!({"key": "agents.wake_debounce_ms"})),
+                ok(
+                    "config.set",
+                    json!({"key": "agents.wake_debounce_ms", "value": null}),
+                ),
+                err(
+                    "config.set",
+                    json!({"key": "agents.wake_debounce_ms", "value": "soon"}),
+                    "invalid type",
+                ),
+                err(
+                    "config.set",
+                    json!({"key": "no.such.key", "value": 1}),
+                    "Unknown config key",
+                ),
+            ],
+        ),
         fixture(
             "roles.set_main",
             vec![

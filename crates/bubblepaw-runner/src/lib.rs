@@ -31,6 +31,7 @@ pub mod cli_output;
 pub mod codemode;
 pub mod command_template;
 pub mod config;
+pub mod config_set;
 pub mod context_reads;
 mod context_routes;
 pub mod context_strategies;

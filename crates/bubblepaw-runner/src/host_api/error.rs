@@ -73,6 +73,14 @@ impl From<anyhow::Error> for HostError {
         if let Some(missing) = error.downcast_ref::<crate::no_provider::NoProviderConfigured>() {
             return Self::no_provider(missing.clone());
         }
+        if let Some(set) = error.downcast_ref::<crate::config_set::ConfigSetError>() {
+            return Self {
+                message: set.to_string(),
+                status: set.status(),
+                code: set.code(),
+                source: None,
+            };
+        }
         let text = error.to_string();
         let status = if let Some(error) =
             error.downcast_ref::<crate::question::ChildQuestionAnswerError>()

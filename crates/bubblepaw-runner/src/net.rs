@@ -565,13 +565,15 @@ impl NetClient {
         let mut client = self.clone();
         if let Some(live) = &self.live {
             let snapshot = live.snapshot();
+            // One section snapshot, so a publish cannot split the four keys.
+            let web = live.hub().web();
             client.config.search = snapshot.net.search.clone();
             client.config.fetch = snapshot.net.fetch.clone();
             client.config.cooldown_secs = snapshot.net.cooldown_secs;
-            client.config.allow_private = live.hub().web().allow_private;
-            client.config.user_agent = live.hub().web().user_agent.clone();
-            client.config.max_searches = live.hub().web().max_searches;
-            client.config.max_fetches = live.hub().web().max_fetches;
+            client.config.allow_private = web.allow_private;
+            client.config.user_agent = web.user_agent.clone();
+            client.config.max_searches = web.max_searches;
+            client.config.max_fetches = web.max_fetches;
             client.backend_snapshot = Some(snapshot.net.clone());
         }
         client.live = None;

@@ -201,7 +201,7 @@ let client = Client::open_configured(config).await?;   // or Client::embedded_co
 A CLI host starts when the main model's route has no usable provider: the
 `providers` table has no key for it, the key variable named by `key_env` is not
 set, the Codex auth file cannot be read, or `base_url` is empty. Reads and
-configuration work as usual (`config.get`, `session.*`, `providers.list`,
+configuration work as usual (`config.get`, `config.set`, `session.*`, `providers.list`,
 `providers.save`, `providers.remove`, `providers.test`, `providers.reload`,
 `roles.set_main`), so an app can configure a provider on the running host.
 `providers.list` reports why in `main_unavailable` (`null` when the route works).

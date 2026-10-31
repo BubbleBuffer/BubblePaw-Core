@@ -78,6 +78,11 @@ async fn refused_writes_leave_the_store_unchanged() {
         (Profile::Edit, "providers.remove", json!({"name": "demo"})),
         (
             Profile::Edit,
+            "config.set",
+            json!({"key": "agents.auto_wake", "value": false}),
+        ),
+        (
+            Profile::Edit,
             "environment.control",
             json!({"session_id": session.id, "control": {}}),
         ),

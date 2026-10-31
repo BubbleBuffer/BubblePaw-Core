@@ -91,6 +91,19 @@ pub struct EventsParams {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EmptyParams {}
+/// `config.get`: the whole effective settings list, or the one key (or section prefix) named.
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct ConfigGetParams {
+    #[serde(default)]
+    pub key: Option<String>,
+}
+/// `config.set`: one leaf key; `null` removes it so its default applies.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConfigSetParams {
+    pub key: String,
+    pub value: Value,
+}
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RenameParams {
     pub session_id: String,
