@@ -30,18 +30,17 @@ impl ProviderSetup {
             Some(host) => Some(host.lock_update().await),
             None => None,
         };
+        let reply = self.save_locked(name, input)?;
+        self.0.apply_host().await?;
+        Ok(reply)
+    }
+    fn save_locked(&self, name: &str, input: Value) -> ApiResult<Value> {
         let provider = serde_json::from_value::<ProviderInput>(input)
             .map_err(|_| bad())?
             .settings(name, &self.0.target)
             .map_err(|_| bad())?;
         let _guard = self.0.files.lock().map_err(|_| io_error())?;
-        let _update = self
-            .0
-            .live
-            .as_ref()
-            .map(|live| live.lock_update())
-            .transpose()
-            .map_err(|_| io_error())?;
+        let _update = self.0.provider_update_guard()?;
         let settings = self.0.load()?.settings().map_err(|_| bad())?;
         validate_setup(&provider, &settings.web.provider_key_envs)?;
         let mut doc = self.0.document()?;
@@ -78,17 +77,16 @@ impl ProviderSetup {
             Some(host) => Some(host.lock_update().await),
             None => None,
         };
+        let reply = self.remove_locked(name)?;
+        self.0.apply_host().await?;
+        Ok(reply)
+    }
+    fn remove_locked(&self, name: &str) -> ApiResult<Value> {
         if !valid_name(name) {
             return Err(bad());
         }
         let _guard = self.0.files.lock().map_err(|_| io_error())?;
-        let _update = self
-            .0
-            .live
-            .as_ref()
-            .map(|live| live.lock_update())
-            .transpose()
-            .map_err(|_| io_error())?;
+        let _update = self.0.provider_update_guard()?;
         let mut doc = self.0.document()?;
         if !target_provider(&doc, name) {
             return Err(ApiError(

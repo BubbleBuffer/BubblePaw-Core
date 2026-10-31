@@ -4,6 +4,8 @@ use super::*;
 
 #[path = "config_set.rs"]
 mod config_set;
+#[path = "provider_baseline.rs"]
+mod provider_baseline;
 
 #[tokio::test]
 async fn model_section_subscribers_see_a_runtime_edit() {

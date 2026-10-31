@@ -8,7 +8,7 @@ use bubblepaw_runner::{
 };
 use toml_edit::DocumentMut;
 
-fn setup(fixture: &Fixture) -> ProviderSetup {
+pub(super) fn setup(fixture: &Fixture) -> ProviderSetup {
     let inputs = LoadOptions {
         workspace: fixture._root.path().to_owned(),
         home: None,
