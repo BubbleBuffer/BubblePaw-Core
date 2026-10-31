@@ -18,14 +18,16 @@ jobs:
       - run: rustup toolchain install stable --profile minimal && rustup default stable
       - name: parity loop
         shell: bash
+        env:
+          RUST_BACKTRACE: "1"
         run: |
           cargo test -p bubblepaw-runner --features web --locked --test host_api_parity --no-run
           for i in $(seq 1 25); do
             echo "=== iteration $i"
             if ! cargo test -p bubblepaw-runner --features web --locked --test host_api_parity every_transport > out.txt 2>&1; then
               echo "FAILED iteration $i"
-              grep -n -B2 -A12 "panicked" out.txt | cut -c1-5000
-              grep -o "DIAGHISTORY[^\"]*" out.txt | sed 's/ || / ## /g' | head -80
-              grep -n "stderr\|WARN\|ERROR" out.txt | cut -c1-400 | head -30
+              grep -n -B3 -A12 "panicked" out.txt | cut -c1-5000 || true; tail -n 3 <(grep "^STEP" out.txt) || true
+              grep -o "DIAGHISTORY[^\"]*" out.txt | sed 's/ || / ## /g' | head -80 || true
+              grep -n "stderr\|WARN\|ERROR" out.txt | cut -c1-400 | head -30 || true
             fi
           done

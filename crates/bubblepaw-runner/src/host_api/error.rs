@@ -82,6 +82,19 @@ impl From<anyhow::Error> for HostError {
             };
         }
         let text = error.to_string();
+        let text = if text.contains("database is locked") {
+            let causes: Vec<String> = error.chain().map(|c| format!("{c:?}")).collect();
+            let bt = error.backtrace().to_string();
+            let frames: Vec<&str> = bt
+                .lines()
+                .map(str::trim)
+                .filter(|l| l.contains("bubblepaw_") || l.contains("rusqlite"))
+                .take(14)
+                .collect();
+            format!("{text} DIAGSQL causes={causes:?} frames={frames:?}")
+        } else {
+            text
+        };
         let status = if let Some(error) =
             error.downcast_ref::<crate::question::ChildQuestionAnswerError>()
         {

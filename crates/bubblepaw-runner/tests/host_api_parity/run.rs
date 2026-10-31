@@ -28,12 +28,14 @@ pub async fn phase(
     role: &str,
     fixtures: &[Fixture],
 ) -> Vec<Recorded> {
+    println!("PHASE {transport:?} start");
     let mut peer = Peer::start(transport, root).await;
     let mut recorded = Vec::new();
     for fixture in fixtures {
         let mut vars: HashMap<&'static str, Value> = HashMap::new();
         for (index, step) in fixture.steps.iter().enumerate() {
             let label = format!("{}#{index}", fixture.method);
+            println!("STEP {transport:?} {label}");
             let reply = run_step(&mut peer, step, role, &mut vars, &label).await;
             recorded.push(Recorded {
                 reply: normalized(&reply, step.view, role),
