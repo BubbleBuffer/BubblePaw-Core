@@ -221,6 +221,7 @@ pub struct Method {
 methods! {
     Initialize => ("initialize", Read, Services, None),
     ConfigGet => ("config.get", Read, Services, None),
+    ConfigSet => ("config.set", Full, Services, None),
     ConfigReload => ("config.reload", Full, Services, Some("config_reload")),
     ProvidersList => ("providers.list", Read, Services, Some("providers.list")),
     ProvidersSave => ("providers.save", Full, Services, None),

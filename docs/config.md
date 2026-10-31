@@ -1,6 +1,6 @@
 # Configuration
 
-**Status:** built 2026-10-09; storage layout, import and cold-storage configuration added 2026-10-12; chat function calling, child session limits, `[exec]` and shared web cache configuration added 2026-10-13; stale-child reminders, background worker retention, completion wake and live config refresh added 2026-10-14; root worker instructions, rounds and task files added 2026-10-17; native default, persisted chat modes, JS opt-in and MCP core/deferred declaration policy added 2026-10-22; per-section settings types as the key list and live classification 2026-10-30; section owners on watch channels for model/provider, context and MCP 2026-10-31.
+**Status:** built 2026-10-09; storage layout, import and cold-storage configuration added 2026-10-12; chat function calling, child session limits, `[exec]` and shared web cache configuration added 2026-10-13; stale-child reminders, background worker retention, completion wake and live config refresh added 2026-10-14; root worker instructions, rounds and task files added 2026-10-17; native default, persisted chat modes, JS opt-in and MCP core/deferred declaration policy added 2026-10-22; per-section settings types as the key list and live classification 2026-10-30; section owners on watch channels for model/provider, context and MCP 2026-10-31; `config.get` settings list and `config.set` host methods 2026-10-31.
 
 One TOML file replaces the growing set of CLI flags and built-in defaults for
 models, providers, context strategy and approvals.
@@ -363,6 +363,50 @@ components by direct calls from `LiveConfig`.
 
 Adding a setting means adding one field line and, if it is new, a line in the Shape
 block below.
+
+### Reading and changing settings over the host API (2026-10-31)
+
+`config.get` (Read) answers with the host metadata it always returned plus `settings`:
+one entry per leaf key of the settings a running host holds, redacted exactly like
+`bubblepaw config` (`EffectiveConfig::redacted_value`). Each entry is
+`{key, value, live, pending_restart}`; `live` is the schema flag, `pending_restart`
+is true when the file holds a startup-only change the host has not restarted for
+(the entry's `value` stays the running one). `{key}` limits the list to one leaf or
+to everything under a section; a known key the config leaves unset answers `null`;
+an unknown key is a 400 error. Hosts without an effective config omit `settings`.
+
+`config.set` (Full) takes `{key, value}` for one leaf key, where `value` is JSON
+converted to the TOML type the schema expects. It returns
+`{key, applied, reload}`: `applied` is `"live"` or `"restart_required"` from the
+key's flag, and `reload` is the `ReloadReport` of the reload it ran. `value: null`
+removes the key from the file so its default applies. The steps, all under the host
+update lock that serializes reloads and provider saves (`config_set.rs`):
+
+1. The key must be a leaf (or free-form table) in the schema. Map keys are settable
+   per leaf (`providers.<name>.kind`, `mcp.servers.<name>.enabled`, `roles.summary.models`,
+   `extensions.<name>.env.<VAR>`); setting a leaf of a missing entry creates it. A key
+   that contains a dot in a name cannot be addressed.
+2. `edit_document` changes a `toml_edit` copy of the target file: the user file, or the
+   `--config` file. Comments, ordering and untouched keys stay, a replaced value keeps
+   its own trailing comment, and removing a table's last key drops the emptied table.
+3. The edited text goes through `EffectiveConfig::load_with_file` (every layer, as at
+   startup), then the checks a reload makes: settings deserialization, approval policy,
+   MCP validation and provider preparation. Any failure refuses the call and the file
+   is not touched. An entry left incomplete by the edit (an enabled MCP server with no
+   command) is refused whole.
+4. The file is replaced atomically (temp file and rename), then `LiveConfig`
+   reloads with the same path the turn-start check uses and the report comes back.
+   If that reload then fails, the call fails with `write_failed` saying the change
+   was saved but not applied. A call that leaves the file unchanged skips the
+   write and the reload (`reload: null`).
+
+The config file stays the only source of truth: there is no override layer. A value
+set by an environment variable, `--set`, or the project file above the target file
+still wins in the effective config; `config.get` shows what wins.
+
+Errors keep distinct codes on every transport (HTTP 400 except the last):
+`-32010` `unknown_key`, `-32011` `wrong_type`, `-32012` `invalid_value`,
+`-32013` `write_failed` (HTTP 500).
 
 ## Shape
 

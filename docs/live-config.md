@@ -126,6 +126,9 @@ status and the live context controls. CLI overrides retain their original layer
 precedence on reload.
 
 The explicit `config.reload` and the HTTP route run the same check immediately.
+`config.set` writes one key into the config file and then runs this same reload, so a
+live key reaches its subscriber at once and a restart-only key is reported in
+`restart_keys` ([config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31)).
 
 ### MCP without breaking calls
 

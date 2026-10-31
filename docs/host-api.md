@@ -62,6 +62,7 @@ device's profile without introducing another host implementation.
 |---|---|
 | `initialize` | Read |
 | `config.get` | Read |
+| `config.set` | Full |
 | `config.reload` | Full |
 | `providers.list` | Read |
 | `providers.save` | Full |
@@ -121,6 +122,17 @@ input limits. Advertising is generated from the descriptors, including method
 names, so an added entry is visible to callers. Existing stdio method names and
 result shapes are preserved. New methods expose capabilities previously limited
 to HTTP, the CLI or the SDK.
+
+### Settings methods
+
+`config.get` returns host metadata and, from a host with an effective config, a
+`settings` list (`{key, value, live, pending_restart}` per leaf, redacted like
+`bubblepaw config`); the optional `key` selects one leaf or a section. `config.set`
+(`Full`) changes one leaf key in the config file and applies it through the reload
+path: `{key, applied: "live" | "restart_required", reload}`, with `value: null`
+removing the key. Refusals are `-32010` unknown key, `-32011` wrong type, `-32012`
+invalid value (file untouched) and `-32013` write failed. Details and the validation
+steps: [config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31).
 
 ## Capability modules
 

@@ -57,7 +57,7 @@ pub fn initialize(ctx: &HostCtx, _input: EmptyParams) -> InitializeResult {
         input_limits: ctx.input_limits,
     }
 }
-pub fn get(ctx: &HostCtx, _input: EmptyParams) -> Result<GetResult, HostError> {
+pub fn get(ctx: &HostCtx, input: ConfigGetParams) -> Result<GetResult, HostError> {
     let mut value = ctx.config.clone();
     if !value.is_object() {
         value = json!({});
@@ -81,7 +81,80 @@ pub fn get(ctx: &HostCtx, _input: EmptyParams) -> Result<GetResult, HostError> {
         value["context"]["compact_threshold_tokens"] = json!(settings.compact_threshold_tokens);
         value["context"]["auto_summarize"] = json!(settings.auto_summarize);
     }
+    match settings_list(ctx, input.key.as_deref())? {
+        Some(list) => value["settings"] = list,
+        None if input.key.is_some() => {
+            return Err(HostError::unavailable(
+                "Settings not available in this host",
+            ));
+        }
+        None => {}
+    }
     Ok(value)
+}
+/// The effective settings a running host holds, one entry per leaf, redacted
+/// like `bubblepaw config`. Each entry names whether its key is live or
+/// restart-only, and whether the file holds a restart-only change not yet running.
+/// `key` selects one leaf or every leaf under a section. `None` without a config.
+fn settings_list(ctx: &HostCtx, key: Option<&str>) -> Result<Option<Value>, HostError> {
+    let (running, pending) = match (&ctx.live_config, ctx.active_providers()) {
+        (Some(live), Some(providers)) => {
+            let accepted = live.accepted();
+            let startup = providers.startup_config();
+            (
+                startup.with_live_from(&accepted),
+                accepted.restart_only_keys(startup),
+            )
+        }
+        (_, Some(providers)) => (providers.snapshot().effective.clone(), Vec::new()),
+        _ => return Ok(None),
+    };
+    let info = key
+        .map(|key| {
+            crate::config::redact::key_info(key)
+                .ok_or_else(|| HostError::invalid(format!("Unknown config key: {key}")))
+        })
+        .transpose()?;
+    let mut entries = running.setting_entries()?;
+    if let Some(key) = key {
+        let prefix = format!("{key}.");
+        entries.retain(|entry| entry.key == key || entry.key.starts_with(&prefix));
+        // A known leaf the file leaves unset still answers: null, with its liveness.
+        if entries.is_empty() && info.is_some_and(|info| info.settable) {
+            entries.push(crate::config::SettingEntry {
+                key: key.into(),
+                value: Value::Null,
+                live: info.is_some_and(|info| info.live),
+            });
+        }
+    }
+    Ok(Some(Value::Array(
+        entries
+            .into_iter()
+            .map(|entry| {
+                let waiting = pending.iter().any(|path| {
+                    entry.key == *path
+                        || entry.key.starts_with(&format!("{path}."))
+                        || path.starts_with(&format!("{}.", entry.key))
+                });
+                json!({
+                    "key": entry.key,
+                    "value": entry.value,
+                    "live": entry.live,
+                    "pending_restart": waiting,
+                })
+            })
+            .collect(),
+    )))
+}
+pub async fn set(ctx: &HostCtx, input: ConfigSetParams) -> Result<Value, HostError> {
+    let setup = ctx
+        .providers
+        .as_ref()
+        .filter(|setup| setup.0.host_config.is_some())
+        .ok_or_else(|| HostError::unavailable("Config updates not available in this host"))?;
+    let value = (!input.value.is_null()).then_some(&input.value);
+    encode(setup.config_set(&input.key, value).await?)
 }
 pub async fn reload(ctx: &HostCtx, input: ReloadParams) -> Result<ReloadResult, HostError> {
     Ok(required(&ctx.live_config, "Config reload")?
@@ -102,6 +175,7 @@ pub(super) async fn command(
                 .await
                 .map_err(|e| HostError::internal(e.to_string()))?
         }
+        MethodId::ConfigSet => set(ctx, decode(params)?).await,
         MethodId::ConfigReload => encode(reload(ctx, decode(params)?).await?),
         _ => unreachable!("config method table"),
     }

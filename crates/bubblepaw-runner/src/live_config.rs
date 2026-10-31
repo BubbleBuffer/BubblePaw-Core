@@ -155,6 +155,11 @@ impl LiveConfig {
         self.publish_tools()?;
         Ok(())
     }
+    /// The last accepted config: what the running host holds for live keys and
+    /// what the file asks for restart-only ones.
+    pub fn accepted(&self) -> EffectiveConfig {
+        self.state.lock().unwrap().accepted.clone()
+    }
     pub fn registry(&self) -> ToolRegistry {
         self.tools.read().unwrap().clone()
     }

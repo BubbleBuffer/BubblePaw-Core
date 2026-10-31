@@ -5,9 +5,10 @@ pub(super) async fn command(
     params: Value,
 ) -> Result<Value, HostError> {
     match method {
-        MethodId::Initialize | MethodId::ConfigGet | MethodId::ConfigReload => {
-            super::config::command(ctx, method, params).await
-        }
+        MethodId::Initialize
+        | MethodId::ConfigGet
+        | MethodId::ConfigSet
+        | MethodId::ConfigReload => super::config::command(ctx, method, params).await,
         MethodId::ProvidersList
         | MethodId::ProvidersSave
         | MethodId::ProvidersRemove
