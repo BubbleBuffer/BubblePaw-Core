@@ -103,3 +103,83 @@ async fn mcp_sign_in_is_listed_notified_and_keeps_tokens_secret() {
     );
     host.stop().await;
 }
+
+#[tokio::test]
+async fn mcp_header_secrets_are_stored_listed_by_name_and_removed_with_the_server() {
+    const VALUE: &str = "synthetic-header-secret-for-this-fixture";
+    let fake = fake::Fake::spawn().await;
+    let root = tempfile::tempdir().unwrap();
+    let file = root.path().join("config.toml");
+    let config = format!(
+        "{CONFIG}[mcp.servers.notes]\nurl='{}'\nstartup_timeout_secs=5\ncall_timeout_secs=5\n",
+        fake.url()
+    );
+    std::fs::write(&file, config).unwrap();
+    let secrets = root.path().join("data/auth/mcp-notes.json");
+    let mut host = Host::start(root.path(), &[]);
+
+    let status = host
+        .ok(
+            "mcp.headers.set",
+            json!({"server": "notes", "header": "X-Api-Key", "value": VALUE}),
+        )
+        .await;
+    assert_eq!(status["name"], "notes");
+    assert_eq!(status["headers"], json!(["X-Api-Key"]));
+    assert!(std::fs::read_to_string(&secrets).unwrap().contains(VALUE));
+
+    // The list shows the name only; no value reaches config.get, the config
+    // file, notifications or any error.
+    let mut visible = vec![
+        host.ok("config.get", json!({})).await.to_string(),
+        std::fs::read_to_string(&file).unwrap(),
+        host.ok("mcp.servers.list", json!({})).await.to_string(),
+    ];
+    for params in [
+        json!({"server": "other", "header": "X-Api-Key", "value": VALUE}),
+        json!({"server": "notes", "header": "Host", "value": VALUE}),
+        json!({"server": "notes", "header": "bad header", "value": VALUE}),
+        json!({"server": "notes", "header": "X-Api-Key", "value": 42}),
+        json!({"server": "notes", "header": "X-Api-Key", "value": format!("{VALUE}\n")}),
+        json!({"server": "notes", "header": "X-Api-Key"}),
+    ] {
+        let reply = host.call("mcp.headers.set", params).await;
+        assert!(reply["error"].is_object(), "{reply}");
+        visible.push(reply.to_string());
+    }
+    visible.push(serde_json::to_string(&host.notifications).unwrap());
+    assert!(visible[2].contains("X-Api-Key"));
+    for text in &visible {
+        assert!(!text.contains(VALUE), "header value leaked into {text}");
+    }
+
+    // null removes the value and the emptied secret file.
+    let status = host
+        .ok(
+            "mcp.headers.set",
+            json!({"server": "notes", "header": "x-api-key", "value": null}),
+        )
+        .await;
+    assert_eq!(status["headers"], json!([]));
+    assert!(!secrets.exists());
+
+    // Removing the server with one config.set deletes its secrets too.
+    host.ok(
+        "mcp.headers.set",
+        json!({"server": "notes", "header": "X-Api-Key", "value": VALUE}),
+    )
+    .await;
+    assert!(secrets.exists());
+    host.ok(
+        "config.set",
+        json!({"key": "mcp.servers.notes", "value": null}),
+    )
+    .await;
+    assert!(!secrets.exists());
+    assert_eq!(
+        host.ok("mcp.servers.list", json!({})).await["servers"],
+        json!([])
+    );
+    assert!(!std::fs::read_to_string(&file).unwrap().contains("notes"));
+    host.stop().await;
+}

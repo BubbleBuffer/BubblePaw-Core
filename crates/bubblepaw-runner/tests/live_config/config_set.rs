@@ -151,6 +151,90 @@ async fn setting_a_leaf_creates_a_map_entry_and_removing_every_leaf_drops_it() {
     fixture.shutdown().await;
 }
 
+#[tokio::test]
+async fn null_removes_a_whole_map_entry_but_a_plain_table_refuses_it() {
+    let command = toml::Value::String(env!("CARGO_BIN_EXE_bubblepaw-runner-fake-mcp").into());
+    let text = config(&format!(
+        "[toolsets.looker]\ntools=['category:files']\n\
+         # keep me\n[toolsets.other]\ntools=['read']\n\
+         [mcp.servers.late]\ncommand={command}\napproval='none'\n"
+    ));
+    let fixture = Fixture::new(&text).await;
+    assert_eq!(fixture.mcp.servers().len(), 1);
+    let setup = setup(&fixture);
+    // A table that is not a map entry keeps refusing null; the file is untouched.
+    let before = std::fs::read(&fixture.file).unwrap();
+    for key in ["agents", "mcp", "mcp.servers", "toolsets"] {
+        let error = refusal(setup.config_set(key, None).await.unwrap_err());
+        assert_eq!(error.kind(), "unknown_key", "{key}");
+        assert_eq!(std::fs::read(&fixture.file).unwrap(), before, "{key}");
+    }
+    // A value for an entry key stays refused: only null removes it.
+    let error = refusal(
+        setup
+            .config_set("toolsets.looker", Some(&json!({"tools": ["read"]})))
+            .await
+            .unwrap_err(),
+    );
+    assert_eq!(error.kind(), "unknown_key");
+
+    setup.config_set("toolsets.looker", None).await.unwrap();
+    let text = std::fs::read_to_string(&fixture.file).unwrap();
+    assert!(!text.contains("looker") && text.contains("[toolsets.other]"));
+    assert!(text.contains("# keep me"), "{text}");
+    // Removing an absent entry is a no-op, not an error.
+    let result = setup.config_set("toolsets.looker", None).await.unwrap();
+    assert!(result.reload.is_none());
+
+    // The MCP server stops and its tools go with it, in one call.
+    let result = setup.config_set("mcp.servers.late", None).await.unwrap();
+    assert!(result.reload.is_some_and(|report| report.applied));
+    let text = std::fs::read_to_string(&fixture.file).unwrap();
+    assert!(!text.contains("late") && !text.contains("mcp"), "{text}");
+    assert!(fixture.mcp.servers().is_empty());
+    assert!(
+        fixture
+            .live
+            .main_registry()
+            .get("mcp__late__echo")
+            .is_none()
+    );
+    fixture.shutdown().await;
+}
+
+#[test]
+fn edit_document_removes_entries_with_null_only() {
+    let mut doc: DocumentMut = "[providers.a]
+kind='scripted'
+[providers.b]
+kind='scripted'
+[skills]
+enabled=true
+[skills.one]
+enabled=false
+"
+    .parse()
+    .unwrap();
+    edit_document(&mut doc, "providers.a", None).unwrap();
+    edit_document(&mut doc, "skills.one", None).unwrap();
+    let text = doc.to_string();
+    assert!(text.contains("[providers.b]") && !text.contains("providers.a"));
+    assert!(!text.contains("one") && text.contains("[skills]"));
+    for key in ["providers", "skills", "agents"] {
+        assert_eq!(
+            edit_document(&mut doc, key, None).unwrap_err().kind(),
+            "unknown_key",
+            "{key}"
+        );
+    }
+    assert_eq!(
+        edit_document(&mut doc, "providers.b", Some(&json!({"kind": "x"})))
+            .unwrap_err()
+            .kind(),
+        "unknown_key"
+    );
+}
+
 #[test]
 fn edit_document_is_pure_and_in_place() {
     let mut doc: DocumentMut = "a = 1\n[agents]\n# keep\nauto_wake = true\n"

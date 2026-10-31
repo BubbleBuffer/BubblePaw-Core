@@ -236,6 +236,7 @@ methods! {
     McpAuthStart => ("mcp.auth.start", Full, Mcp, None),
     McpAuthComplete => ("mcp.auth.complete", Full, Mcp, None),
     McpAuthSignOut => ("mcp.auth.sign_out", Full, Mcp, None),
+    McpHeadersSet => ("mcp.headers.set", Full, Mcp, None),
     SessionOpen => ("session.open", Edit, Sessions, Some("sessions")),
     SessionList => ("session.list", Read, Sessions, Some("session.list.pagination")),
     SessionView => ("session.view", Read, Views, None),

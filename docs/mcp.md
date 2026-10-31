@@ -273,6 +273,25 @@ config file, `config.get`, server status, notifications, logs or errors, and
 tool results that echo a token are redacted. Errors name the step and at most a
 sanitized OAuth error code; remote bodies are never quoted.
 
+## Header secrets
+
+A header whose value is a literal secret (an API key, or `Authorization` with
+`Bearer <token>`) is set with the host method `mcp.headers.set {server, header,
+value}` instead of `headers_from`. The value is stored in the same per-server
+file as the OAuth tokens (`<data dir>/auth/mcp-<server>.json`, under a
+`headers` map), written atomically and user-only, and never enters the config
+file, `config.get`, `mcp.servers.list` (which shows the header names only),
+notifications, logs or errors; echoed values in tool results are redacted.
+`value: null` removes one header, and the file when nothing else is stored.
+
+The HTTP transport sends the stored headers beside the `headers_from` ones
+and the stored value wins for the same name. Each connection reads the file,
+and applying a change reconnects that server. Sign-out forgets only the OAuth
+tokens; header values stay. Disabling a server keeps its secrets; removing it
+from the config (`config.set` with `null` on `mcp.servers.<name>`, or editing
+the file) deletes the whole file. An `oauth` server refuses an `Authorization`
+header.
+
 ## Verification
 
 The in-process HTTP fixture covers modern JSON/SSE discovery and calls, era
@@ -302,7 +321,11 @@ refresh to `expired`, sign-out, status notifications, token-file permissions,
 and no token in settings, status, notifications, warnings, results or errors.
 `stdio_host_parity` repeats the pasted-URL sign-in through the host API and
 checks `mcp.server` notifications and that `config.get`, the config file and
-error messages hold no token. Existing stdio and scripted runner tests retain
+error messages hold no token. `crates/bubblepaw-mcp/tests/headers.rs` runs a
+local fake HTTP server that records headers: a stored header arrives and wins
+over `headers_from`, removal stops it, no value shows in status, notifications
+or errors, and removing the server deletes the file; `stdio_host_parity` repeats
+this through `mcp.headers.set` and `config.set`. Existing stdio and scripted runner tests retain
 approval, effect-recording, interruption, and shutdown coverage.
 
 Acceptance uses Linux with Rust 1.97.1: workspace formatting, strict Clippy,

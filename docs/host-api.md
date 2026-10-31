@@ -74,6 +74,7 @@ device's profile without introducing another host implementation.
 | `mcp.auth.start` | Full |
 | `mcp.auth.complete` | Full |
 | `mcp.auth.sign_out` | Full |
+| `mcp.headers.set` | Full |
 | `session.open` | Edit |
 | `session.list` | Read |
 | `session.view` | Read |
@@ -136,7 +137,8 @@ to HTTP, the CLI or the SDK.
 `bubblepaw config`); the optional `key` selects one leaf or a section. `config.set`
 (`Full`) changes one leaf key in the config file and applies it through the reload
 path: `{key, applied: "live" | "restart_required", reload}`, with `value: null`
-removing the key. Refusals are `-32010` unknown key, `-32011` wrong type, `-32012`
+removing the key; on a map entry (`mcp.servers.<name>`, `providers.<name>`,
+`toolsets.<name>`, `skills.<name>`) `null` removes the whole entry. Refusals are `-32010` unknown key, `-32011` wrong type, `-32012`
 invalid value (file untouched) and `-32013` write failed. Details and the validation
 steps: [config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31).
 
@@ -169,10 +171,22 @@ config cannot (details: [mcp](mcp.md#oauth-sign-in)):
   sign-in with the callback URL the browser reached, and returns the status.
 - `mcp.auth.sign_out {server}` (Full) forgets the tokens, cancels a waiting
   sign-in, and returns the status.
+- `mcp.headers.set {server, header, value}` (Full) stores a literal header
+  value for an HTTP server in its secret file (`<data dir>/auth/mcp-<server>.json`,
+  never the config) and reconnects the server; it returns the status. `value`
+  is required: a string stores it (replacing the same header name in any
+  letter case), `null` removes it. The stored value is sent beside
+  `headers_from` and wins for the same header. The header must be a valid,
+  non-reserved HTTP header name; the value non-empty and at most 8 KiB, at most
+  32 headers per server; `Authorization` is refused for an `oauth` server.
+  Values are never returned or logged.
+- Removing a server with `config.set {key: "mcp.servers.<name>", value: null}`
+  also deletes its secret file.
 
 A status is `{name, transport: "stdio" | "http", enabled, state: "running" |
-"stopped" | "error" | "removed", error?, auth: {state, error?}, tool_count,
-tools: [{name, enabled}]}`. `auth.state` is `none`, `needs_sign_in`, `waiting`,
+"stopped" | "error" | "removed", error?, auth: {state, error?}, headers:
+[name], tool_count, tools: [{name, enabled}]}`. `headers` lists the names (never
+the values) set with `mcp.headers.set`. `auth.state` is `none`, `needs_sign_in`, `waiting`,
 `signed_in`, `expired` or `failed`. `tools` lists the server's raw tool names,
 with `enabled` false for ones `include_tools`/`exclude_tools` filter out;
 `tool_count` counts registered tools. An unknown server, a server without

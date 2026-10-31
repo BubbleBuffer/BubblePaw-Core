@@ -9,7 +9,7 @@ use reqwest::{
 };
 use serde_json::{Value, json};
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -17,6 +17,8 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{sync::mpsc, task::JoinHandle};
+
+mod credentials;
 
 const MODERN_VERSION: &str = "2026-07-28";
 const LEGACY_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18"];
@@ -115,48 +117,12 @@ impl HttpConnection {
         allowed_envs: &[String],
         client_env: Option<&McpClientEnv>,
         auth: Option<Arc<crate::oauth::ServerAuth>>,
+        stored: &BTreeMap<String, String>,
     ) -> Result<Arc<Self>> {
         config.validate(allowed_envs)?;
         let url = Url::parse(config.url.as_deref().unwrap_or_default())
             .map_err(|_| anyhow!("invalid MCP HTTP URL"))?;
-        let mut headers = HeaderMap::new();
-        let mut secrets = Vec::new();
-        for (name, variable) in &config.headers_from {
-            let name = HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| anyhow!("invalid MCP HTTP credential header name"))?;
-            // A supplied client snapshot is the only source: no host fallback.
-            // The missing-variable text is the standalone text, on purpose.
-            let missing =
-                || anyhow!("required MCP HTTP credential environment variable is missing");
-            let secret = match client_env {
-                Some(client_env) => client_env
-                    .get(variable)
-                    .map(str::to_owned)
-                    .ok_or_else(missing)?,
-                None => std::env::var(variable).map_err(|_| missing())?,
-            };
-            ensure!(
-                !secret.is_empty(),
-                "MCP HTTP credential environment variable is empty"
-            );
-            let mut value = HeaderValue::from_str(&secret)
-                .map_err(|_| anyhow!("invalid MCP HTTP credential header value"))?;
-            value.set_sensitive(true);
-            // Bearer credentials are commonly echoed without the scheme.
-            if name == reqwest::header::AUTHORIZATION
-                && let Some((_, token)) = secret.split_once(' ')
-                && !token.is_empty()
-            {
-                secrets.push(token.to_owned());
-            }
-            secrets.push(secret);
-            headers
-                .try_insert(name, value)
-                .map_err(|_| anyhow!("MCP HTTP credential header count exceeds the limit"))?;
-        }
-        headers
-            .try_reserve(8)
-            .map_err(|_| anyhow!("MCP HTTP credential header count exceeds the limit"))?;
+        let (headers, mut secrets) = credentials::build(config, client_env, stored)?;
         secrets.sort_by_key(|secret| std::cmp::Reverse(secret.len()));
         secrets.dedup();
         let client = Client::builder()

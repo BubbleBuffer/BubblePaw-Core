@@ -267,7 +267,7 @@ fn valid_header_env(name: &str) -> bool {
         && name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
-fn reserved_header(name: &str) -> bool {
+pub(crate) fn reserved_header(name: &str) -> bool {
     matches!(
         name,
         "accept"

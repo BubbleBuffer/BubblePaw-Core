@@ -16,8 +16,8 @@ crates/bubblepaw-core/tests/storage_batching.rs 688
 crates/bubblepaw-core/tests/storage_cold.rs 898
 crates/bubblepaw-core/tests/storage_layout.rs 942
 crates/bubblepaw-core/tests/transcript_import.rs 798
-crates/bubblepaw-mcp/src/host.rs 847
-crates/bubblepaw-mcp/src/http.rs 1411
+crates/bubblepaw-mcp/src/host.rs 762
+crates/bubblepaw-mcp/src/http.rs 1377
 crates/bubblepaw-mcp/tests/http.rs 1851
 crates/bubblepaw-mcp/tests/stdio.rs 1010
 crates/bubblepaw-runner/src/agents.rs 3365

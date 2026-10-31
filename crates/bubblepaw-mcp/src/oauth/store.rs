@@ -1,12 +1,14 @@
-//! Signed-in MCP servers: one user-only JSON file per server under the data
-//! directory's `auth` folder, beside the other BubblePaw-owned logins. Never
-//! SQLite, never the config file, never logs. Writes are atomic (temporary file,
+//! Per-server MCP secrets: one user-only JSON file per server under the data
+//! directory's `auth` folder, beside the other BubblePaw-owned logins. It holds
+//! the OAuth tokens and the literal header values set with `mcp.headers.set`
+//! (`headers`, name to value). Never SQLite, never the config file, never logs. Writes are atomic (temporary file,
 //! then rename) and refreshes take a per-server lock file so two processes never
 //! spend one refresh token.
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fmt,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -80,20 +82,86 @@ pub(crate) fn path(dir: &Path, server: &str) -> PathBuf {
     dir.join(format!("mcp-{stem}.json"))
 }
 
+/// The whole file: the tokens (flattened, absent for a headers-only file) and
+/// the literal header values.
+#[derive(Default, Serialize, Deserialize)]
+struct Stored {
+    #[serde(flatten)]
+    tokens: Option<Tokens>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    headers: BTreeMap<String, String>,
+}
+
+/// A missing, oversized or malformed file is empty.
+fn load(path: &Path) -> Stored {
+    let Ok(file) = std::fs::File::open(path) else {
+        return Stored::default();
+    };
+    let mut bytes = Vec::new();
+    if file.take(FILE_LIMIT + 1).read_to_end(&mut bytes).is_err() || bytes.len() as u64 > FILE_LIMIT
+    {
+        return Stored::default();
+    }
+    serde_json::from_slice(&bytes).unwrap_or_default()
+}
+
 /// A missing, oversized or malformed file is no sign-in.
 pub(crate) fn read(path: &Path) -> Option<Tokens> {
-    let file = std::fs::File::open(path).ok()?;
-    let mut bytes = Vec::new();
-    file.take(FILE_LIMIT + 1).read_to_end(&mut bytes).ok()?;
-    if bytes.len() as u64 > FILE_LIMIT {
-        return None;
-    }
-    serde_json::from_slice::<Tokens>(&bytes)
-        .ok()
+    load(path)
+        .tokens
         .filter(|tokens| !tokens.access_token.is_empty())
 }
 
+/// The stored header values, name to value. Callers hold them like tokens.
+pub(crate) fn read_headers(path: &Path) -> BTreeMap<String, String> {
+    load(path).headers
+}
+
+/// Replaces the tokens and keeps the stored headers.
 pub(crate) fn write(path: &Path, tokens: &Tokens) -> Result<()> {
+    let mut stored = load(path);
+    stored.tokens = Some(tokens.clone());
+    save(path, &stored)
+}
+
+/// Sets (`Some`) or removes (`None`) one header, matching names ignoring case,
+/// and keeps the tokens. An emptied file is deleted.
+pub(crate) fn set_header(path: &Path, name: &str, value: Option<&str>) -> Result<()> {
+    let mut stored = load(path);
+    stored
+        .headers
+        .retain(|known, _| !known.eq_ignore_ascii_case(name));
+    if let Some(value) = value {
+        stored.headers.insert(name.to_owned(), value.to_owned());
+    }
+    save(path, &stored)
+}
+
+/// Forgets the tokens and keeps the stored headers.
+pub(crate) fn remove(path: &Path) -> Result<()> {
+    let mut stored = load(path);
+    stored.tokens = None;
+    save(path, &stored)
+}
+
+/// Deletes the server's whole secret file (tokens and headers).
+pub(crate) fn remove_all(path: &Path) -> Result<()> {
+    match std::fs::remove_file(path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            Err(error).context("cannot remove MCP server secrets")
+        }
+        _ => Ok(()),
+    }
+}
+
+fn save(path: &Path, stored: &Stored) -> Result<()> {
+    if stored.tokens.is_none() && stored.headers.is_empty() {
+        return remove_all(path);
+    }
+    write_file(path, stored)
+}
+
+fn write_file(path: &Path, stored: &Stored) -> Result<()> {
     let directory = path
         .parent()
         .context("MCP OAuth token path has no folder")?;
@@ -104,28 +172,19 @@ pub(crate) fn write(path: &Path, tokens: &Tokens) -> Result<()> {
         std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))
             .context("cannot restrict the MCP OAuth token folder")?;
     }
-    let bytes = serde_json::to_vec_pretty(tokens)?;
+    let bytes = serde_json::to_vec_pretty(stored)?;
     let mut temporary = tempfile_in(directory)?;
     temporary
         .1
         .write_all(&bytes)
         .and_then(|()| temporary.1.sync_all())
-        .context("cannot write MCP OAuth tokens")?;
+        .context("cannot write MCP secrets")?;
     drop(temporary.1);
     std::fs::rename(&temporary.0, path)
         .inspect_err(|_| {
             let _ = std::fs::remove_file(&temporary.0);
         })
-        .context("cannot replace MCP OAuth tokens")
-}
-
-pub(crate) fn remove(path: &Path) -> Result<()> {
-    match std::fs::remove_file(path) {
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-            Err(error).context("cannot remove MCP OAuth tokens")
-        }
-        _ => Ok(()),
-    }
+        .context("cannot replace MCP secrets")
 }
 
 /// Blocks until this process holds the server's refresh lock.

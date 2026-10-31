@@ -213,5 +213,13 @@ pub fn all() -> Vec<Fixture> {
                 "MCP server missing is not configured",
             )],
         ),
+        fixture(
+            "mcp.headers.set",
+            vec![err(
+                "mcp.headers.set",
+                json!({"server": "missing", "header": "X-Api-Key", "value": null}),
+                "MCP server missing is not configured",
+            )],
+        ),
     ]
 }

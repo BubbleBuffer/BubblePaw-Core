@@ -95,7 +95,7 @@ fn to_item(value: &Value) -> Result<Item, ConfigSetError> {
 /// Set (`Some`) or remove (`None`) the dotted `key` in a config document. Pure
 /// over the document: comments, ordering and untouched keys stay. Removing the
 /// last key of a table drops the emptied table, so a map entry can be deleted
-/// leaf by leaf.
+/// leaf by leaf, or whole with `None` on the entry key.
 pub fn edit_document(
     doc: &mut DocumentMut,
     key: &str,
@@ -103,7 +103,8 @@ pub fn edit_document(
 ) -> Result<(), ConfigSetError> {
     let info = key_info(key)
         .ok_or_else(|| ConfigSetError::UnknownKey(format!("Unknown config key: {key}")))?;
-    if !info.settable {
+    // `null` on a map entry removes the whole table; any other section stays refused.
+    if !info.settable && !(value.is_none() && info.entry) {
         return Err(ConfigSetError::UnknownKey(format!(
             "{key} is a section; set one of its keys"
         )));

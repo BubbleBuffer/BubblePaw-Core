@@ -13,6 +13,14 @@ pub struct AuthCompleteParams {
     pub server: String,
     pub redirect_url: String,
 }
+/// `value` is required: a string stores the header, `null` removes it. Never
+/// `Debug`-printed with its value.
+#[derive(Clone, Deserialize)]
+pub struct HeadersSetParams {
+    pub server: String,
+    pub header: String,
+    pub value: Value,
+}
 #[derive(Clone, Debug, Serialize)]
 pub struct ServersListResult {
     pub servers: Vec<McpServerStatus>,
@@ -69,6 +77,20 @@ pub(super) async fn command(
             let input: ServerParams = decode(params)?;
             let mcp = host(ctx)?;
             mcp.auth_sign_out(&input.server).await.map_err(fail)?;
+            publish(ctx).await;
+            status(mcp, &input.server)
+        }
+        MethodId::McpHeadersSet => {
+            let input: HeadersSetParams = decode(params)?;
+            let value = match &input.value {
+                Value::Null => None,
+                Value::String(value) => Some(value.as_str()),
+                _ => return Err(HostError::invalid("value must be a string or null")),
+            };
+            let mcp = host(ctx)?;
+            mcp.set_header(&input.server, &input.header, value)
+                .await
+                .map_err(fail)?;
             publish(ctx).await;
             status(mcp, &input.server)
         }

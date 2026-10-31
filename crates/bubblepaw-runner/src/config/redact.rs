@@ -2,7 +2,7 @@
 //! classification (settable, live) `config.set` checks against the schema.
 use super::{EffectiveConfig, RawSettings, merge_at};
 use anyhow::Result;
-use bubblepaw_core::config_schema::{Node, liveness, resolve};
+use bubblepaw_core::config_schema::{Node, descend, liveness, resolve};
 use toml::Value;
 
 /// A config value of the wrong TOML type for its key: the typed-error marker
@@ -23,14 +23,29 @@ pub(crate) struct KeyInfo {
     pub settable: bool,
     /// A running host applies every key under this path without a restart.
     pub live: bool,
+    /// The key names one entry of a dynamic map (`providers.<name>`,
+    /// `mcp.servers.<name>`, `toolsets.<name>`, `skills.<name>`, ...). `config.set`
+    /// with `null` removes the whole entry.
+    pub entry: bool,
 }
 
 /// The schema entry for a dotted key, or `None` for an unknown key.
 pub(crate) fn key_info(path: &str) -> Option<KeyInfo> {
-    let node = resolve(RawSettings::FIELDS, &path.split('.').collect::<Vec<_>>())?;
+    let parts: Vec<&str> = path.split('.').collect();
+    let node = resolve(RawSettings::FIELDS, &parts)?;
+    let entry = match parts.split_last() {
+        Some((name, parent)) if !parent.is_empty() => resolve(RawSettings::FIELDS, parent)
+            .is_some_and(|parent| match parent {
+                Node::Map(_) => true,
+                Node::Open(fields, _) => descend(Node::Table(fields), name).is_none(),
+                _ => false,
+            }),
+        _ => false,
+    };
     Some(KeyInfo {
         settable: matches!(node, Node::Leaf(_) | Node::Free(_)),
         live: liveness(node) == Some(true),
+        entry,
     })
 }
 

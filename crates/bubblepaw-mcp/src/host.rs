@@ -16,10 +16,12 @@ use tokio::task::JoinSet;
 
 mod auth;
 mod follow;
+mod inventory;
 mod registry;
 mod state;
 mod status;
 mod tool;
+use inventory::{definitions, inventory_diff, mark_removed, rebuild};
 use state::{Entry, Registered};
 pub use status::{McpAuthState, McpAuthStatus, McpServerState, McpServerStatus, McpToolStatus};
 use tool::McpTool;
@@ -92,6 +94,8 @@ struct HostInner {
     auth_dir: Option<PathBuf>,
     /// Sign-in state per OAuth server, kept across that server's restarts.
     auth: Mutex<BTreeMap<String, Arc<crate::oauth::ServerAuth>>>,
+    /// Names (never values) of the stored header secrets per HTTP server.
+    header_names: Mutex<BTreeMap<String, Vec<String>>>,
     status: tokio::sync::broadcast::Sender<McpServerStatus>,
     /// The last status sent per server, so only changes are sent.
     sent: Mutex<BTreeMap<String, McpServerStatus>>,
@@ -151,6 +155,7 @@ impl McpHost {
                 section: Mutex::new(None),
                 auth_dir: options.auth_dir,
                 auth: Mutex::default(),
+                header_names: Mutex::default(),
                 status: tokio::sync::broadcast::channel(64).0,
                 sent: Mutex::default(),
                 background: Mutex::new(JoinSet::new()),
@@ -211,6 +216,7 @@ impl McpHost {
                     self.inner.workspace.clone(),
                     self.inner.client_env.clone(),
                     auth.as_ref().ok().cloned().flatten(),
+                    self.inner.secrets_path(&name),
                 ));
                 jobs.spawn(async move {
                     if let Err(error) = auth {
@@ -242,6 +248,7 @@ impl McpHost {
         }
         let mut diff = McpDiff::default();
         let mut retired = Vec::new();
+        let previous;
         {
             let mut state = self.inner.state.lock().unwrap();
             let before = definitions(&state);
@@ -309,8 +316,18 @@ impl McpHost {
             rebuild(&mut state, &mut diff.warnings);
             inventory_diff(&before, &mut state, &mut diff);
             state.warnings = diff.warnings.clone();
-            state.settings = settings.clone();
+            previous = std::mem::replace(&mut state.settings, settings.clone());
         }
+        let gone: Vec<String> = previous
+            .servers
+            .keys()
+            .filter(|name| !settings.servers.contains_key(*name))
+            .cloned()
+            .collect();
+        for name in &gone {
+            self.inner.forget_secrets(name);
+        }
+        self.inner.load_header_names(settings);
         self.inner.auth.lock().unwrap().retain(|name, auth| {
             let keep = settings
                 .servers
@@ -501,124 +518,6 @@ impl Drop for McpHost {
         self.inner.reapers.lock().unwrap().abort_all();
     }
 }
-fn definitions(state: &HostState) -> BTreeMap<String, Value> {
-    state
-        .tools
-        .iter()
-        .map(|(n, t)| (n.clone(), serde_json::to_value(&t.definition).unwrap()))
-        .collect()
-}
-fn inventory_diff(before: &BTreeMap<String, Value>, state: &mut HostState, diff: &mut McpDiff) {
-    let after = definitions(state);
-    diff.added = after
-        .keys()
-        .filter(|n| !before.contains_key(*n))
-        .cloned()
-        .collect();
-    diff.removed = before
-        .keys()
-        .filter(|n| !after.contains_key(*n))
-        .cloned()
-        .collect();
-    diff.changed = after
-        .iter()
-        .filter(|(n, d)| before.get(*n).is_some_and(|old| old != *d))
-        .map(|(n, _)| n.clone())
-        .collect();
-    for name in &diff.removed {
-        state.removed.entry(name.clone()).or_insert_with(|| {
-            "tool removed from the current server list or configuration filter".into()
-        });
-    }
-    for name in after.keys() {
-        state.removed.remove(name);
-    }
-}
-fn mark_removed(state: &mut HostState, server_name: &str, reason: &str) {
-    for (name, tool) in &state.tools {
-        if tool.server_name == server_name {
-            state
-                .removed
-                .insert(name.clone(), format!("server {server_name}: {reason}"));
-        }
-    }
-}
-fn rebuild(state: &mut HostState, warnings: &mut Vec<String>) {
-    let mut tools = BTreeMap::new();
-    let mut registry = ToolRegistry::new();
-    for (name, entry) in &state.servers {
-        let server = &entry.server;
-        for listed in &entry.listed {
-            let Some(original_name) = listed["name"].as_str() else {
-                warnings.push(format!("MCP server {name}: skipped tool without a name"));
-                continue;
-            };
-            if !entry.config.allows_tool(original_name) {
-                continue;
-            }
-            let registered = tool_name(name, original_name);
-            if tools.contains_key(&registered) {
-                warnings.push(format!(
-                    "MCP tool {registered}: skipped duplicate registered name"
-                ));
-                continue;
-            }
-            let Some(schema) = listed.get("inputSchema") else {
-                warnings.push(format!(
-                    "MCP tool {registered}: skipped missing input schema"
-                ));
-                continue;
-            };
-            let connection = server.connection.lock().unwrap().clone();
-            if connection
-                .as_ref()
-                .is_some_and(|c| c.register_tool(original_name, schema).is_err())
-            {
-                warnings.push(format!(
-                    "MCP tool {registered}: skipped invalid HTTP header annotation"
-                ));
-                continue;
-            }
-            let approval = entry
-                .config
-                .tools
-                .get(original_name)
-                .and_then(|t| t.approval)
-                .unwrap_or(entry.config.approval);
-            let definition = ToolDefinition {
-                name: registered.clone(),
-                description: listed["description"].as_str().unwrap_or("").into(),
-                input_schema: schema.clone(),
-                read_only: false,
-                approval,
-            };
-            // Compile before publishing; compiler errors may contain remote
-            // contents, so only a fixed diagnostic escapes.
-            if registry
-                .register(Arc::new(McpTool {
-                    host: Weak::new(),
-                    definition: definition.clone(),
-                }))
-                .is_err()
-            {
-                warnings.push(format!(
-                    "MCP tool {registered}: skipped invalid input schema"
-                ));
-                continue;
-            }
-            tools.insert(
-                registered,
-                Registered {
-                    server_name: name.clone(),
-                    server: server.clone(),
-                    original_name: original_name.into(),
-                    definition,
-                },
-            );
-        }
-    }
-    state.tools = tools;
-}
 /// A cancelled refresh must leave the notification pending. Success is
 /// acknowledged only after every collected list is published without awaits.
 struct RefreshGuard {
@@ -638,6 +537,8 @@ struct Server {
     workspace: PathBuf,
     client_env: Option<Arc<McpClientEnv>>,
     auth: Option<Arc<crate::oauth::ServerAuth>>,
+    /// The server's secret file, read on each connection for stored headers.
+    secrets_path: Option<PathBuf>,
     connection: Mutex<Option<Arc<Connection>>>,
     gate: tokio::sync::Mutex<()>,
     closed: AtomicBool,
@@ -655,6 +556,7 @@ impl Server {
         workspace: PathBuf,
         client_env: Option<Arc<McpClientEnv>>,
         auth: Option<Arc<crate::oauth::ServerAuth>>,
+        secrets_path: Option<PathBuf>,
     ) -> Self {
         Self {
             config,
@@ -662,6 +564,7 @@ impl Server {
             workspace,
             client_env,
             auth,
+            secrets_path,
             connection: Mutex::default(),
             gate: tokio::sync::Mutex::new(()),
             closed: AtomicBool::new(false),
@@ -681,15 +584,27 @@ impl Server {
         }
         // Opening validates config and spawns the stdio server synchronously,
         // so it runs on the blocking pool.
-        let (config, workspace, envs, client_env, auth) = (
+        let (config, workspace, envs, client_env, auth, secrets) = (
             self.config.clone(),
             self.workspace.clone(),
             self.allowed_header_envs.clone(),
             self.client_env.clone(),
             self.auth.clone(),
+            self.secrets_path.clone(),
         );
         let connection = tokio::task::spawn_blocking(move || {
-            Connection::open(&config, &workspace, &envs, client_env.as_deref(), auth)
+            let stored = secrets
+                .filter(|_| config.url.is_some())
+                .map(|path| crate::oauth::store::read_headers(&path))
+                .unwrap_or_default();
+            Connection::open(
+                &config,
+                &workspace,
+                &envs,
+                client_env.as_deref(),
+                auth,
+                &stored,
+            )
         })
         .await??;
         {
