@@ -1044,3 +1044,7 @@ The blob primary-key index occupies 24,576 bytes for 245 distinct blobs. Every
 table/index allocation and row count is retained in the JSON artifacts. Empty
 tables still own a 4,096-byte root page, so this replay does not measure event
 content savings; the scripted-turn and reference-row tests establish those.
+
+## Catalog writes stay out of the serving buffer (2026-10-31)
+
+The serving buffer is a deferred transaction that stays open across calls and keeps a read snapshot of the attached `catalog.db`. Once another connection commits there, that snapshot cannot upgrade to a write (`SQLITE_BUSY_SNAPSHOT`, error 517, or 5 on Windows): the intermittent "database is locked" in session creation. Session creation now commits the buffer and writes its `root_storage` catalog row through the catalog connection in one short `BEGIN IMMEDIATE` transaction (one extra catalog transaction per root session). `flush_serving` does the same for pending catalog session rows only when the buffered write hits BUSY: it commits the serving writes, then writes the rows in a short immediate transaction. The ordinary flush is unchanged.
