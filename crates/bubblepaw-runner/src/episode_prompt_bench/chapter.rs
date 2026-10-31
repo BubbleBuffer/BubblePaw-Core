@@ -159,7 +159,7 @@ pub async fn run(
     let mut records = Vec::new();
     for fixture in fixtures {
         let shared = serde_json::to_value(&fixture)?;
-        let fingerprint = format!("{:x}", Sha256::digest(serde_json::to_vec(&shared)?));
+        let fingerprint = bubblepaw_core::hex_lower(Sha256::digest(serde_json::to_vec(&shared)?));
         let input = ChapterInput {
             session_id: fixture.session_id.clone(),
             episodes: fixture.episodes.clone(),

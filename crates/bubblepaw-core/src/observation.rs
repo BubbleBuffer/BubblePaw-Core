@@ -66,7 +66,7 @@ fn merge(target: &mut Value, extra: Value) {
 }
 
 pub fn fingerprint(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    crate::hex_lower(Sha256::digest(bytes))
 }
 
 /// Provider continuation state and structured credentials are excluded in every mode.

@@ -57,7 +57,7 @@ impl Write for ExportProof {
     }
 }
 fn hex(hash: &Sha256) -> String {
-    format!("{:x}", hash.clone().finalize())
+    bubblepaw_core::hex_lower(hash.clone().finalize())
 }
 fn export(store: &Store, session: &str) -> Result<ExportProof> {
     let mut proof = ExportProof::default();

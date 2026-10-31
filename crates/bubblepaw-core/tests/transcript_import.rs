@@ -663,12 +663,12 @@ fn verify_export(store: &Store, source: &bubblepaw_core::transcript::ImportedSou
         .unwrap();
     assert_eq!(exported.count, source.stats.messages);
     assert_eq!(
-        format!("{:x}", exported.hash.finalize()),
+        bubblepaw_core::hex_lower(exported.hash.finalize()),
         source.normalized_sha256
     );
     assert_eq!(exported.derived_count, source.stats.derived_records);
     assert_eq!(
-        format!("{:x}", exported.derived_hash.finalize()),
+        bubblepaw_core::hex_lower(exported.derived_hash.finalize()),
         source.normalized_derived_sha256
     );
 }

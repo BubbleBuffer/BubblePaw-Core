@@ -121,7 +121,10 @@ fn snapshot(root: &Path) -> BTreeMap<PathBuf, (usize, String)> {
                 let bytes = fs::read(&path).unwrap();
                 result.insert(
                     path.strip_prefix(root).unwrap().to_owned(),
-                    (bytes.len(), format!("{:x}", Sha256::digest(&bytes))),
+                    (
+                        bytes.len(),
+                        bubblepaw_core::hex_lower(Sha256::digest(&bytes)),
+                    ),
                 );
             }
         }

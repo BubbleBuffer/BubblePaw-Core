@@ -43,8 +43,7 @@ async fn exports_carry_checkpoint_records_and_preimages() {
         assert_eq!(entry["metadata"], expected_metadata);
         assert_eq!(
             entry["preimage_hash"],
-            json!(format!(
-                "{:x}",
+            json!(bubblepaw_core::hex_lower(
                 <sha2::Sha256 as sha2::Digest>::digest(b"one\n")
             ))
         );

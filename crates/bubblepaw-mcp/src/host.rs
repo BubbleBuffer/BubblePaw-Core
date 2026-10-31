@@ -869,7 +869,7 @@ pub fn tool_name(server: &str, tool: &str) -> String {
         })
         .collect();
     if name.len() > 64 {
-        let hash = format!("{:x}", Sha256::digest(original.as_bytes()));
+        let hash = bubblepaw_core::hex_lower(Sha256::digest(original.as_bytes()));
         name.truncate(55);
         name.push('_');
         name.push_str(&hash[..8]);

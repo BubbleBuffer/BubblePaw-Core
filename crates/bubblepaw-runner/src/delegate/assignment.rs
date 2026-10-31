@@ -92,7 +92,7 @@ pub const CATEGORIES: &[&str] = &[
 impl Assignment {
     /// Parse and validate, including the category against [`CATEGORIES`].
     pub fn parse(text: &str) -> Result<Self> {
-        let hash = format!("{:x}", Sha256::digest(text.as_bytes()));
+        let hash = bubblepaw_core::hex_lower(Sha256::digest(text.as_bytes()));
         let text = text.strip_prefix('\u{feff}').unwrap_or(text);
         let mut lines = text.split_inclusive('\n');
         let first = lines.next().unwrap_or_default();

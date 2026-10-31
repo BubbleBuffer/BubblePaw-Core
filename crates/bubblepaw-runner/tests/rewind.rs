@@ -239,7 +239,7 @@ async fn durable_unexecuted_intent_conflicts_instead_of_restoring_uncertain_cont
     let mut metadata: Value = serde_json::from_str(&records[0].1).unwrap();
     metadata["patch_index"] = json!(2);
     metadata["pre_hash"] = metadata["post_hash"].clone();
-    metadata["post_hash"] = json!(format!("{:x}", Sha256::digest(b"three\n")));
+    metadata["post_hash"] = json!(bubblepaw_core::hex_lower(Sha256::digest(b"three\n")));
     f.store
         .write_checkpoint(
             &f.session,
@@ -477,7 +477,7 @@ async fn chain_break_inside_the_latest_turn_conflicts_without_restoring() {
     // Break the recorded chain between the two checkpoints of the latest turn.
     let (id, metadata) = f.records(&f.session).remove(1);
     let mut metadata: Value = serde_json::from_str(&metadata).unwrap();
-    metadata["pre_hash"] = json!(format!("{:x}", Sha256::digest(b"other\n")));
+    metadata["pre_hash"] = json!(bubblepaw_core::hex_lower(Sha256::digest(b"other\n")));
     let db = rusqlite::Connection::open(f.store.chat_path(&f.session).unwrap().unwrap()).unwrap();
     assert_eq!(
         db.execute(

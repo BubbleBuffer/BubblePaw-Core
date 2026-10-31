@@ -30,7 +30,7 @@ pub(super) fn seal_seed(
 ) -> Result<Vec<u8>, DeviceKeyError> {
     aes_cipher(kdf_key)?
         .encrypt(
-            Nonce::from_slice(nonce),
+            &Nonce::from(*nonce),
             Payload {
                 msg: &seed[..],
                 aad,

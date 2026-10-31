@@ -211,7 +211,7 @@ fn metadata(messages: &[Message]) -> Value {
 }
 
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    bubblepaw_core::hex_lower(Sha256::digest(bytes))
 }
 
 /// Return the corpus's validated label row in the shape consumed by boundary_score.

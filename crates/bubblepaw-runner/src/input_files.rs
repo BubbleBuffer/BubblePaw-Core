@@ -330,7 +330,7 @@ fn envelope_tokens(files: &[InputFileRef]) -> Result<usize> {
         .len())
 }
 fn hash(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    bubblepaw_core::hex_lower(Sha256::digest(bytes))
 }
 fn is_text(bytes: &[u8]) -> bool {
     std::str::from_utf8(bytes).is_ok_and(|text| {

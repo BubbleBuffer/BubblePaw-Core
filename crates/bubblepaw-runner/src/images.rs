@@ -108,7 +108,7 @@ pub fn store_image(store: &Store, session: &str, mime: &str, bytes: &[u8]) -> Re
     );
     ensure!(bytes.len() <= MAX_IMAGE_BYTES, "image exceeds 5 MB limit");
     let image = ImageRef {
-        id: format!("image-{:x}", Sha256::digest(bytes)),
+        id: format!("image-{}", bubblepaw_core::hex_lower(Sha256::digest(bytes))),
         session_id: session.into(),
         mime_type: mime.into(),
         bytes: bytes.len(),
@@ -227,7 +227,10 @@ pub(crate) fn hydrate_request(
                     "image attachment mismatch"
                 );
                 ensure!(
-                    format!("image-{:x}", Sha256::digest(&bytes)) == image.id,
+                    format!(
+                        "image-{}",
+                        bubblepaw_core::hex_lower(Sha256::digest(&bytes))
+                    ) == image.id,
                     "image attachment integrity mismatch"
                 );
                 sent.insert(image.id.clone());

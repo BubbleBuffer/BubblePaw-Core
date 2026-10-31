@@ -433,10 +433,9 @@ fn unique_payload(seed: usize, len: usize) -> String {
     let mut content = String::with_capacity(len);
     let mut n = 0usize;
     while content.len() < len {
-        content.push_str(&format!(
-            "{:x}",
-            Sha256::digest(format!("{seed}:{n}").as_bytes())
-        ));
+        content.push_str(&bubblepaw_core::hex_lower(Sha256::digest(
+            format!("{seed}:{n}").as_bytes(),
+        )));
         n += 1;
     }
     content.truncate(len);

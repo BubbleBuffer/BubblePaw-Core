@@ -150,11 +150,14 @@ fn search_label(backend: &SearchBackend) -> String {
 fn search_identity(backend: &SearchBackend) -> String {
     match backend {
         SearchBackend::Brave { api_key } => {
-            format!("brave:{:x}", Sha256::digest(api_key.as_bytes()))
+            format!(
+                "brave:{}",
+                bubblepaw_core::hex_lower(Sha256::digest(api_key.as_bytes()))
+            )
         }
         SearchBackend::DeepSeek { base_url, api_key } => format!(
-            "deepseek:{base_url}:{:x}",
-            Sha256::digest(api_key.as_bytes())
+            "deepseek:{base_url}:{}",
+            bubblepaw_core::hex_lower(Sha256::digest(api_key.as_bytes()))
         ),
         other => search_label(other),
     }

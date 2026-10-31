@@ -528,7 +528,8 @@ pub async fn run_with_context_config(
         "Replay output already contains a run; choose a fresh directory"
     );
     let corpus = serde_json::from_value(canonical)?;
-    let source_corpus_raw_sha256 = format!("{:x}", Sha256::digest(std::fs::read(corpus_path)?));
+    let source_corpus_raw_sha256 =
+        bubblepaw_core::hex_lower(Sha256::digest(std::fs::read(corpus_path)?));
     let out = options.out.clone();
     if options.plan_probes {
         let mut report =

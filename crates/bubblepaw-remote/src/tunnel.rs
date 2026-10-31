@@ -46,10 +46,10 @@ pub async fn exchange<T: FrameIo>(
     };
     let private = key.noise_private_key();
     let mut builder = snow::Builder::new(pattern.parse()?)
-        .local_private_key(&private[..])
-        .prologue(PROLOGUE);
+        .local_private_key(&private[..])?
+        .prologue(PROLOGUE)?;
     if let Some(psk) = psk {
-        builder = builder.psk(3, psk);
+        builder = builder.psk(3, psk)?;
     }
     let mut handshake = match side {
         Side::Initiator => builder.build_initiator()?,

@@ -83,7 +83,7 @@ pub fn rewind_command(input: &str) -> Option<&str> {
 }
 
 pub(crate) fn content_hash(bytes: Option<&[u8]>) -> Option<String> {
-    bytes.map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+    bytes.map(|bytes| bubblepaw_core::hex_lower(Sha256::digest(bytes)))
 }
 
 fn checkpoints(store: &Store, session: &str) -> Result<Vec<(String, Checkpoint)>> {

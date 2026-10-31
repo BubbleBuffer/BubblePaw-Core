@@ -1542,7 +1542,7 @@ impl Store {
     /// Store `bytes` in `table` (a fixed table name, never user input) under their
     /// plain SHA-256, and return that hash. An existing row is kept as it is.
     fn put_blob(conn: &Connection, table: &str, bytes: &[u8]) -> Result<String> {
-        let hash = format!("{:x}", Sha256::digest(bytes));
+        let hash = crate::hex_lower(Sha256::digest(bytes));
         let exists: bool = conn.query_row(
             &format!("SELECT EXISTS(SELECT 1 FROM {table} WHERE hash=?1)"),
             [&hash],
@@ -1566,7 +1566,7 @@ impl Store {
         )?;
         let bytes = zstd::stream::decode_all(compressed.as_slice())?;
         anyhow::ensure!(
-            bytes.len() as i64 == length && format!("{:x}", Sha256::digest(&bytes)) == hash,
+            bytes.len() as i64 == length && crate::hex_lower(Sha256::digest(&bytes)) == hash,
             "Content blob integrity mismatch"
         );
         Ok(bytes)
@@ -2868,7 +2868,7 @@ impl Store {
             data["content"] = serde_json::Value::String(String::new());
             data["_content_blob"] = serde_json::Value::String(hash);
         } else if message.role == Role::User {
-            let hash = format!("{:x}", Sha256::digest(message.content.as_bytes()));
+            let hash = crate::hex_lower(Sha256::digest(message.content.as_bytes()));
             let exists: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM blobs WHERE hash=?1)",
                 [&hash],
