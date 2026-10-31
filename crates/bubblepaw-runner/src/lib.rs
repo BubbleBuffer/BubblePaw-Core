@@ -86,6 +86,7 @@ pub mod session_control;
 pub mod session_host;
 pub mod session_scope;
 pub mod sessions;
+pub mod settings_hub;
 pub mod skills;
 mod source_fingerprint;
 pub mod spill;

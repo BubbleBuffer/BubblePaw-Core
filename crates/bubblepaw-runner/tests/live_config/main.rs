@@ -1,5 +1,4 @@
 //! Scripted host acceptance: no model or external service requests.
-mod deferral;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -28,7 +27,9 @@ use std::{
     time::Duration,
 };
 mod compaction;
+mod deferral;
 mod reload;
+mod sections;
 
 #[derive(Default)]
 struct Script {

@@ -43,12 +43,27 @@ impl SummarizingContext {
     /// Only capacity, compaction threshold and automatic preparation are live.
     /// LCM settings, strategy and all other context resources stay fixed.
     pub fn with_live_config(mut self, live: Arc<crate::provider::LiveProviderConfig>) -> Self {
+        self.context = Some(live.hub().context());
         self.live = Some(live);
         self
     }
+    /// Capacity, threshold and automatic preparation come from the context section.
+    pub(super) fn apply_live_context(
+        &self,
+        config: &mut SummaryConfig,
+        live: &crate::provider::LiveProviderConfig,
+        model: &str,
+    ) {
+        if let Some(context) = self.context.as_ref().map(|rx| rx.borrow().clone()) {
+            config.threshold_cap = context.compact_threshold_tokens;
+            config.context_window = context
+                .window_tokens
+                .or_else(|| live.snapshot().catalog_window(model));
+        }
+    }
     pub(super) fn automatic(&self) -> bool {
-        self.live.as_ref().map_or(self.automatic, |live| {
-            live.snapshot().settings.auto_summarize
-        })
+        self.context
+            .as_ref()
+            .map_or(self.automatic, |context| context.borrow().auto_summarize)
     }
 }
