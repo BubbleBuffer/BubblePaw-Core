@@ -137,10 +137,28 @@ fn forward_events(
     // The last durable sequence forwarded; a gap is recovered with events.after from it.
     let mut forwarded = subscription.last_seq;
     let forward_ctx = ctx.clone();
+    let live = ctx.live_config.clone();
+    let mut statuses = live.as_ref().map(|live| live.mcp().subscribe());
     Ok(tokio::spawn(async move {
         let mut skipped = 0u64;
         loop {
-            let event: HarnessEvent = match receiver.recv().await {
+            let received = tokio::select! {
+                received = receiver.recv() => received,
+                changed = mcp_status(&mut statuses) => {
+                    // `mcp.server` carries one server's whole state; after a lag
+                    // every server's current state is sent again.
+                    let changed = match changed {
+                        Some(Ok(status)) => vec![status],
+                        Some(Err(())) => live.as_ref().map(|live| live.mcp().servers()).unwrap_or_default(),
+                        None => { statuses = None; Vec::new() }
+                    };
+                    for status in changed {
+                        let _ = notifications.try_send(json!({"jsonrpc":"2.0","method":"mcp.server","params":status}));
+                    }
+                    continue;
+                }
+            };
+            let event: HarnessEvent = match received {
                 Ok(event) => event,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
                     skipped += count;
@@ -169,6 +187,21 @@ fn forward_events(
             }
         }
     }))
+}
+
+/// The next MCP server status change: `Err` after a lag, `None` once the host
+/// is gone. Without an MCP host this never resolves.
+async fn mcp_status(
+    statuses: &mut Option<tokio::sync::broadcast::Receiver<bubblepaw_mcp::McpServerStatus>>,
+) -> Option<Result<bubblepaw_mcp::McpServerStatus, ()>> {
+    let Some(receiver) = statuses else {
+        return std::future::pending().await;
+    };
+    match receiver.recv().await {
+        Ok(status) => Some(Ok(status)),
+        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => Some(Err(())),
+        Err(tokio::sync::broadcast::error::RecvError::Closed) => None,
+    }
 }
 
 /// A valid request naming `shutdown` ends the loop once its reply is written.

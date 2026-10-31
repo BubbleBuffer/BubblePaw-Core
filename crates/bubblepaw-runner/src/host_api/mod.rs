@@ -14,6 +14,7 @@ pub mod environments;
 mod error;
 pub mod events;
 pub mod fork;
+pub mod mcp;
 mod params;
 mod read_scope;
 pub use read_scope::ReadScope;
@@ -205,6 +206,7 @@ enum Group {
     Services,
     Events,
     Views,
+    Mcp,
 }
 pub type Handler = for<'a> fn(
     &'a HostCtx,
@@ -230,6 +232,10 @@ methods! {
     ProvidersTest => ("providers.test", Full, Services, None),
     ProvidersReload => ("providers.reload", Full, Services, None),
     RolesSetMain => ("roles.set_main", Full, Services, Some("roles.set_main")),
+    McpServersList => ("mcp.servers.list", Read, Mcp, None),
+    McpAuthStart => ("mcp.auth.start", Full, Mcp, None),
+    McpAuthComplete => ("mcp.auth.complete", Full, Mcp, None),
+    McpAuthSignOut => ("mcp.auth.sign_out", Full, Mcp, None),
     SessionOpen => ("session.open", Edit, Sessions, Some("sessions")),
     SessionList => ("session.list", Read, Sessions, Some("session.list.pagination")),
     SessionView => ("session.view", Read, Views, None),
@@ -309,6 +315,7 @@ async fn invoke(
     match method.group() {
         Group::Runtime => runtime::command(ctx, profile, method, params).await,
         Group::Services => services::command(ctx, method, params).await,
+        Group::Mcp => mcp::command(ctx, method, params).await,
         Group::Sessions => {
             let ctx = ctx.clone();
             tokio::task::spawn_blocking(move || sessions::command(&ctx, method, params))
