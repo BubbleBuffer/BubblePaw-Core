@@ -449,6 +449,11 @@ impl Store {
             )
         });
         if let Err(error) = updated {
+            if busy::is_busy(&error) {
+                self.flush_catalog_after_busy(&conn, &pending, layout)?;
+                pending.clear();
+                return Ok(());
+            }
             conn.execute_batch("ROLLBACK TO catalog_flush; RELEASE catalog_flush")?;
             return Err(error);
         }
@@ -489,3 +494,6 @@ impl Drop for Inner {
         }
     }
 }
+
+#[path = "store_busy.rs"]
+mod busy;

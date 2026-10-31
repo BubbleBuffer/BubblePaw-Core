@@ -206,18 +206,27 @@ impl Store {
                 "INSERT OR REPLACE INTO sessions VALUES(?1,?2)",
                 params![session.id, serde_json::to_string(&session)?],
             )?;
-            if parent.is_none() {
-                tx.execute(
-                    "INSERT OR REPLACE INTO catalog_projection.metadata VALUES(?1,?2)",
-                    params![
-                        format!("root_storage:{}", session.id),
-                        serde_json::to_string(&storage)?
-                    ],
-                )?;
-            }
             Ok(())
         })?;
+        // The buffered serving transaction may hold a stale read snapshot of
+        // catalog.db, which cannot upgrade to a write (SQLITE_BUSY_SNAPSHOT). So the
+        // buffer is committed first and the catalog row gets its own short
+        // transaction, which takes the write lock at BEGIN.
         self.flush_serving()?;
+        if parent.is_none() {
+            let layout = self.0.layout.as_ref().context("Directory store required")?;
+            let mut catalog = layout.catalog.lock().unwrap();
+            let tx = catalog.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            tx.execute(
+                "INSERT OR REPLACE INTO metadata VALUES(?1,?2)",
+                params![
+                    format!("root_storage:{}", session.id),
+                    serde_json::to_string(&storage)?
+                ],
+            )?;
+            tx.commit()?;
+            layout.catalog_transactions.fetch_add(1, Ordering::Relaxed);
+        }
         Ok(session)
     }
 }
