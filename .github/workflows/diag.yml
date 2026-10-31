@@ -25,8 +25,7 @@ jobs:
             if ! cargo test -p bubblepaw-runner --features web --locked --test host_api_parity every_transport > out.txt 2>&1; then
               echo "FAILED iteration $i"
               grep -n -B2 -A12 "panicked" out.txt | cut -c1-5000
-              grep -o "DIAGHISTORY[^\"]*" out.txt | sed 's/ || /
-  || /g' | head -80
+              grep -o "DIAGHISTORY[^\"]*" out.txt | sed 's/ || / ## /g' | head -80
               grep -n "stderr\|WARN\|ERROR" out.txt | cut -c1-400 | head -30
             fi
           done
