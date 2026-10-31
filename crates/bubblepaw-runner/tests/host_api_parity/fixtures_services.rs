@@ -29,6 +29,30 @@ pub fn all() -> Vec<Fixture> {
                 ),
             ],
         ),
+        fixture("config.reload", vec![ok("config.reload", json!({}))]),
+        fixture("providers.list", vec![ok("providers.list", json!({}))]),
+        fixture(
+            "providers.save",
+            vec![
+                ok("providers.save", scratch_provider("parity-$role")),
+                ok("providers.remove", json!({"name": "parity-$role"})),
+            ],
+        ),
+        fixture(
+            "providers.remove",
+            vec![
+                ok("providers.save", scratch_provider("parity-$role")),
+                ok("providers.remove", json!({"name": "parity-$role"})),
+            ],
+        ),
+        // The scripted `demo` provider is local and offline, so the test never
+        // reaches a real endpoint.
+        fixture(
+            "providers.test",
+            vec![ok("providers.test", json!({"name": "demo"}))],
+        ),
+        fixture("providers.reload", vec![ok("providers.reload", json!({}))]),
+        // After the provider fixtures: a settings write rewrites the file they compare against.
         // Each change is reverted in the same fixture, so the next transport starts clean.
         fixture(
             "config.set",
@@ -54,29 +78,6 @@ pub fn all() -> Vec<Fixture> {
                 ),
             ],
         ),
-        fixture("config.reload", vec![ok("config.reload", json!({}))]),
-        fixture("providers.list", vec![ok("providers.list", json!({}))]),
-        fixture(
-            "providers.save",
-            vec![
-                ok("providers.save", scratch_provider("parity-$role")),
-                ok("providers.remove", json!({"name": "parity-$role"})),
-            ],
-        ),
-        fixture(
-            "providers.remove",
-            vec![
-                ok("providers.save", scratch_provider("parity-$role")),
-                ok("providers.remove", json!({"name": "parity-$role"})),
-            ],
-        ),
-        // The scripted `demo` provider is local and offline, so the test never
-        // reaches a real endpoint.
-        fixture(
-            "providers.test",
-            vec![ok("providers.test", json!({"name": "demo"}))],
-        ),
-        fixture("providers.reload", vec![ok("providers.reload", json!({}))]),
         fixture(
             "roles.set_main",
             vec![
