@@ -145,6 +145,7 @@ env_from = { SERVICE_TOKEN = "SERVICE_API_KEY" }
 [mcp.servers.remote]
 url = "https://mcp.example.com/mcp"
 headers_from = { Authorization = "EXAMPLE_MCP_TOKEN" }
+oauth = false                     # true signs in with OAuth instead of headers_from
 approval = "confirm"
 startup_timeout_secs = 30
 call_timeout_secs = 120
