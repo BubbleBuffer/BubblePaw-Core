@@ -16,9 +16,9 @@ crates/bubblepaw-core/tests/storage_batching.rs 688
 crates/bubblepaw-core/tests/storage_cold.rs 898
 crates/bubblepaw-core/tests/storage_layout.rs 942
 crates/bubblepaw-core/tests/transcript_import.rs 798
-crates/bubblepaw-mcp/src/host.rs 983
-crates/bubblepaw-mcp/src/http.rs 1443
-crates/bubblepaw-mcp/tests/http.rs 1852
+crates/bubblepaw-mcp/src/host.rs 847
+crates/bubblepaw-mcp/src/http.rs 1411
+crates/bubblepaw-mcp/tests/http.rs 1851
 crates/bubblepaw-mcp/tests/stdio.rs 1010
 crates/bubblepaw-runner/src/agents.rs 3365
 crates/bubblepaw-runner/src/codemode.rs 1886
@@ -42,12 +42,12 @@ crates/bubblepaw-runner/src/provider/registry.rs 1109
 crates/bubblepaw-runner/src/quota.rs 647
 crates/bubblepaw-runner/src/quota_sources.rs 1087
 crates/bubblepaw-runner/src/replay.rs 4446
-crates/bubblepaw-runner/src/session_host.rs 650
+crates/bubblepaw-runner/src/session_host.rs 644
 crates/bubblepaw-runner/src/summarization.rs 1637
 crates/bubblepaw-runner/src/tools/process.rs 1689
 crates/bubblepaw-runner/src/trace.rs 833
 crates/bubblepaw-runner/src/usage_report.rs 601
-crates/bubblepaw-runner/src/web.rs 725
+crates/bubblepaw-runner/src/web.rs 722
 crates/bubblepaw-runner/src/worktrees.rs 1418
 crates/bubblepaw-runner/tests/agents.rs 528
 crates/bubblepaw-runner/tests/auto_wake.rs 939

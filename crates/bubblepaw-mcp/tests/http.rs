@@ -34,8 +34,7 @@ async fn authentication_rejections_and_redirects_do_not_initialize_or_follow_loc
         let warning = host.warnings().join("\n");
         if status == 401 {
             assert!(
-                warning.contains("authentication required")
-                    && warning.contains("OAuth is not supported")
+                warning.contains("authentication required") && warning.contains("oauth = true")
             );
         } else if status == 403 {
             assert!(warning.contains("forbidden"));

@@ -1,6 +1,6 @@
 # MCP client tools
 
-Status: built, implementation updated 2026-10-15; OAuth for HTTP servers proposed 2026-10-21.
+Status: built, implementation updated 2026-10-15; OAuth sign-in for HTTP servers built 2026-10-31.
 
 Implementation updated 2026-10-15. BubblePaw connects to external MCP servers over stdio
 or Streamable HTTP. It exposes no MCP server.
@@ -93,8 +93,8 @@ HTTP endpoints require HTTPS except for this machine (`localhost`, `*.localhost`
 `127.0.0.0/8`, and `[::1]`). Credentials, queries, and fragments in URLs are
 rejected. HTTP entries cannot also specify command, args, cwd, env, or env_from.
 HTTP redirects, automatic request retries, and inherited proxies are disabled.
-OAuth is not implemented: authentication rejection reports that OAuth is
-unsupported and that preconfigured env credentials are required.
+Without `oauth = true`, an authentication rejection says to set `oauth = true`
+or configure env bearer credentials.
 
 Stdio children inherit the host environment plus `env` and `env_from`. Credentials
 belong in `env_from`, and its values are read only at spawn time. Generic layered
@@ -224,16 +224,54 @@ in-memory ring, used only for startup diagnostics.
 Response bodies and SSE frames are bounded to 8 MiB. Stream fragments and progress
 are transient and do not create SQLite rows or WAL writes.
 
-## Goals
+## OAuth sign-in
 
-### OAuth for HTTP servers
+`oauth = true` on an HTTP server signs in with the MCP authorization flow
+(revision 2025-11-25, OAuth 2.1). It needs `url` and cannot be combined with an
+`Authorization` entry in `headers_from`.
 
-Status: proposed 2026-10-21. Not built; HTTP servers take only `headers_from` today.
+```toml
+[mcp.servers.notes]
+url = "https://notes.example.com/mcp"
+oauth = true
+```
 
-- Why: remote servers such as a hosted notes hub (`https://notes.example.com/mcp`) sign in with OAuth. Headless delegates should use them without a hand-copied bearer token.
-- Shape: the MCP authorization flow (protected-resource and authorization-server metadata discovery, dynamic client registration, authorization code with PKCE, refresh).
-- A person signs in once per server with a runner command that opens the browser and receives the code on a localhost redirect. Runs, including delegates, then use and refresh the stored token without asking.
-- Tokens stay outside chat and tool content and outside `config show`, like header credentials. Where they are stored is still open: a user-only file beside the config, or the OS credential store.
+- Discovery: the server's 401 `WWW-Authenticate` `resource_metadata`, else the
+  RFC 9728 well-known URLs (path, then root). Authorization-server metadata
+  comes from RFC 8414 and OpenID well-known URLs in the spec's order. The
+  issuer must match, PKCE `S256` must be advertised, and every endpoint follows
+  the server URL rule (HTTPS, or HTTP on this machine).
+- Registration: RFC 7591 dynamic client registration as a public client
+  (`token_endpoint_auth_method = none`) for each sign-in's redirect. A server
+  without a registration endpoint fails with a clear error; preregistered
+  client IDs are not supported.
+- Authorization: code flow with PKCE `S256`, a random `state`, the RFC 8707
+  `resource` parameter, and the scope from the challenge or the
+  protected-resource metadata. An `iss` in the callback must match.
+- The host never opens a browser. `mcp.auth.start` returns the authorization
+  URL; the client opens it. The redirect is `http://127.0.0.1:<random port>/callback`,
+  served by the host for 10 minutes. A client that cannot reach that port
+  passes the callback URL the browser reached to `mcp.auth.complete`. Requests
+  with another path or `state` are answered with an error page and ignored.
+- Refresh: an access token within 60 seconds of expiry, or one the server
+  rejects with 401, is refreshed before the request (rotated refresh tokens
+  are kept). A refused refresh moves the server to `expired` ("sign-in
+  expired"); network trouble leaves the tokens for the next try.
+- A completed sign-in or sign-out restarts that server, so its tools are
+  listed; the next turn (or the host method's own reload) publishes them.
+
+Sign-in states (`auth.state` in `mcp.servers.list` and `mcp.server`
+notifications): `none` (no OAuth), `needs_sign_in`, `waiting`, `signed_in`,
+`expired`, `failed` (with `auth.error`).
+
+Tokens are secrets. Provider API keys are environment-variable names, so there
+is no key store to share; tokens follow the BubblePaw-owned sign-in files
+instead (like the OpenCode console login): `<data dir>/auth/mcp-<server>.json`,
+written atomically, user-only (`0700` folder, `0600` file on Unix), guarded by a
+lock file so processes and delegates share one refresh. They never enter the
+config file, `config.get`, server status, notifications, logs or errors, and
+tool results that echo a token are redacted. Errors name the step and at most a
+sanitized OAuth error code; remote bodies are never quoted.
 
 ## Verification
 
@@ -255,10 +293,19 @@ Client-environment fixtures cover per-host HTTP authorization headers that diffe
 a snapshot miss that does not read the host environment, stdio precedence,
 `env_from` resolving only from the snapshot, and a server without `env_from`
 that never sees another server's forwarded value.
-Config tests cover endpoint and environment-name restrictions. Existing stdio and scripted runner tests retain
+Config tests cover endpoint and environment-name restrictions.
+`crates/bubblepaw-mcp/tests/oauth.rs` runs the sign-in against a local fake
+authorization server and MCP endpoint: discovery from the 401 challenge,
+registration, PKCE checked by the fake (a mismatch fails), loopback and pasted
+callback completion, foreign `state` rejection, refresh with rotation, refused
+refresh to `expired`, sign-out, status notifications, token-file permissions,
+and no token in settings, status, notifications, warnings, results or errors.
+`stdio_host_parity` repeats the pasted-URL sign-in through the host API and
+checks `mcp.server` notifications and that `config.get`, the config file and
+error messages hold no token. Existing stdio and scripted runner tests retain
 approval, effect-recording, interruption, and shutdown coverage.
 
 Acceptance uses Linux with Rust 1.97.1: workspace formatting, strict Clippy,
 focused MCP/config tests, and the full workspace suite. No live MCP servers,
-OAuth flow, or live model calls are used. The task report records which checks
+third-party OAuth servers, or live model calls are used. The task report records which checks
 run and their results; fixture coverage alone does not establish acceptance.

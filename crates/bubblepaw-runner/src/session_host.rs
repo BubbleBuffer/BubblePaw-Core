@@ -97,14 +97,8 @@ pub(super) async fn execute(
     register_history_tools(&mut tools, store.clone())?;
     // Session commands only: the early returns above start no MCP servers.
     // Each request owns its configured servers; their tools are native capabilities.
-    let mcp = Arc::new(
-        McpHost::start_with_client_env(
-            &settings.mcp,
-            &workspace,
-            bubblepaw_mcp::McpClientEnv::new(effective.mcp_environment()),
-        )
-        .await,
-    );
+    let options = crate::live_config::mcp_options(&effective, &data_dir);
+    let mcp = Arc::new(McpHost::start_with_options(&settings.mcp, &workspace, options).await);
     for warning in mcp.warnings() {
         diagnostic!("MCP warning: {warning}");
     }

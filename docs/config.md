@@ -172,6 +172,7 @@ env_from = { SERVICE_TOKEN = "SERVICE_API_KEY" }
 [mcp.servers.remote]
 url = "https://mcp.example.com/mcp"
 headers_from = { Authorization = "EXAMPLE_MCP_TOKEN" }
+oauth = false                     # true signs in with OAuth instead of headers_from
 approval = "confirm"
 startup_timeout_secs = 30
 call_timeout_secs = 120
@@ -186,6 +187,11 @@ characters) and end in `_API_KEY`, `_KEY` or `_TOKEN`, or appear in
 `mcp.header_key_envs`. Every allowlist entry has that same identifier shape.
 The allowlist defaults to empty and applies to MCP headers independently of web
 provider setup.
+
+`oauth = true` (default false, live) signs an HTTP server in with the MCP
+authorization flow instead of an env credential. It requires `url` and cannot
+be combined with an `Authorization` entry in `headers_from`. Tokens are stored
+in `<data dir>/auth/`, never in the config; see [mcp](mcp.md#oauth-sign-in).
 
 HTTP servers cannot set stdio `args`, `cwd`, `env` or `env_from`, or a `command`.
 Stdio servers cannot set `headers_from`. Header names follow HTTP token syntax;

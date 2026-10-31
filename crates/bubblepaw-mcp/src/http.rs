@@ -94,6 +94,8 @@ pub(crate) struct HttpConnection {
     url: Url,
     headers: HeaderMap,
     secrets: Vec<String>,
+    /// OAuth servers: the bearer token for each request, refreshed as needed.
+    auth: Option<Arc<crate::oauth::ServerAuth>>,
     state: Mutex<State>,
     initialize_gate: tokio::sync::Mutex<()>,
     next_id: AtomicU64,
@@ -112,6 +114,7 @@ impl HttpConnection {
         config: &McpServerSettings,
         allowed_envs: &[String],
         client_env: Option<&McpClientEnv>,
+        auth: Option<Arc<crate::oauth::ServerAuth>>,
     ) -> Result<Arc<Self>> {
         config.validate(allowed_envs)?;
         let url = Url::parse(config.url.as_deref().unwrap_or_default())
@@ -170,6 +173,7 @@ impl HttpConnection {
             url,
             headers,
             secrets,
+            auth,
             state: Mutex::default(),
             initialize_gate: tokio::sync::Mutex::new(()),
             next_id: AtomicU64::new(1),
@@ -199,7 +203,32 @@ impl HttpConnection {
         for secret in &self.secrets {
             text = text.replace(secret, "[redacted]");
         }
-        text
+        match &self.auth {
+            Some(auth) => auth.redact(&text),
+            None => text,
+        }
+    }
+
+    /// Adds the OAuth bearer token; true when one was sent.
+    async fn authorize(&self, headers: &mut HeaderMap) -> Result<bool> {
+        let Some(auth) = &self.auth else {
+            return Ok(false);
+        };
+        match auth.bearer().await? {
+            Some(value) => {
+                headers.insert(reqwest::header::AUTHORIZATION, value);
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// The 401 diagnostic: an OAuth server records the challenge and names the
+    /// sign-in state.
+    fn unauthorized(&self, response: &Response, sent: bool) -> Option<String> {
+        let auth = self.auth.as_ref()?;
+        (response.status() == StatusCode::UNAUTHORIZED)
+            .then(|| auth.unauthorized(response.headers(), sent))
     }
 
     fn redact_value(&self, value: &mut Value) {
@@ -535,8 +564,12 @@ impl HttpConnection {
         let body = self
             .request_body(id, method, params.clone(), snapshot)
             .map_err(WireFailure::local)?;
-        let headers = self
+        let mut headers = self
             .request_headers(method, &params, snapshot, annotations)
+            .map_err(WireFailure::local)?;
+        let sent = self
+            .authorize(&mut headers)
+            .await
             .map_err(WireFailure::local)?;
         let response = self
             .client
@@ -548,7 +581,12 @@ impl HttpConnection {
             .map_err(|_| WireFailure::unknown("MCP HTTP transport failed; outcome unknown"))?;
         let status = response.status();
         if !status.is_success() {
-            return Err(http_failure(response).await);
+            let signed = self.unauthorized(&response, sent);
+            let mut failure = http_failure(response).await;
+            if let Some(message) = signed {
+                failure.message = message;
+            }
+            return Err(failure);
         }
         let session = response.headers().get("mcp-session-id").cloned();
         let content_type = media_type(&response);
@@ -660,6 +698,10 @@ impl HttpConnection {
             })?;
             tokio::time::sleep(parser.retry).await;
             let mut headers = self.headers.clone();
+            let sent = self
+                .authorize(&mut headers)
+                .await
+                .map_err(|_| WireFailure::unknown("MCP OAuth refresh failed; outcome unknown"))?;
             headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
             // The InitializeResult may itself arrive on this resumed stream;
             // until then the selected legacy version is not known.
@@ -685,10 +727,11 @@ impl HttpConnection {
             if !response.status().is_success() {
                 // The originating POST was already accepted. A GET 404 cannot
                 // establish that its tool effect was rejected, so never replay it.
+                let _ = self.unauthorized(&response, sent);
                 let failure = http_failure(response).await;
                 return Err(WireFailure::unknown(match failure.status {
                     Some(StatusCode::UNAUTHORIZED) => {
-                        "MCP HTTP authentication required; OAuth is not supported; configure env bearer credentials; outcome unknown"
+                        "MCP HTTP authentication required; outcome unknown"
                     }
                     Some(StatusCode::FORBIDDEN) => {
                         "MCP HTTP authentication forbidden; outcome unknown"
@@ -741,6 +784,7 @@ impl HttpConnection {
     ) -> Result<()> {
         let body = bounded_json(&message)?;
         let mut headers = self.headers.clone();
+        self.authorize(&mut headers).await?;
         headers.insert(
             ACCEPT,
             HeaderValue::from_static("application/json, text/event-stream"),
@@ -847,6 +891,7 @@ impl HttpConnection {
             && !grace.is_zero()
         {
             let mut headers = self.headers.clone();
+            let _ = self.authorize(&mut headers).await;
             headers.insert(
                 "mcp-protocol-version",
                 HeaderValue::from_static(snapshot.era.version()),
@@ -998,7 +1043,7 @@ async fn http_failure(response: Response) -> WireFailure {
     };
     let message = match (status, modern_code) {
         (StatusCode::UNAUTHORIZED, _) => {
-            "MCP HTTP authentication required; OAuth is not supported; configure env bearer credentials".into()
+            "MCP HTTP authentication required; set oauth = true to sign in, or configure env bearer credentials".into()
         }
         (StatusCode::FORBIDDEN, _) => "MCP HTTP authentication forbidden".into(),
         (_, Some(-32020)) => "MCP HTTP header validation rejected the request".into(),
@@ -1362,82 +1407,5 @@ fn tool_annotations(schema: &Value) -> Result<Vec<ParameterHeader>> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn mirrored_headers_encode_controls_unicode_whitespace_and_literal_sentinel() {
-        for value in ["hello", "", "42", "true", "a\tb"] {
-            assert_eq!(encode_header(value).unwrap().to_str().unwrap(), value);
-        }
-        for value in [
-            " padded ",
-            "line\nnext",
-            "世界",
-            "=?base64?literal?=",
-            "\ttab",
-        ] {
-            assert_eq!(
-                encode_header(value).unwrap().to_str().unwrap(),
-                format!("=?base64?{}?=", STANDARD.encode(value))
-            );
-        }
-    }
-
-    #[test]
-    fn annotation_validation_requires_unique_primitive_properties_paths() {
-        let valid = json!({"type":"object","properties":{"nested":{"type":"object","properties":{
-            "value":{"type":"integer","x-mcp-header":"Value"}}}}});
-        let mut headers = Vec::new();
-        inspect_schema(
-            &valid,
-            &mut Vec::new(),
-            false,
-            &mut BTreeSet::new(),
-            &mut headers,
-        )
-        .unwrap();
-        assert_eq!(headers[0].path, ["nested", "value"]);
-        for invalid in [
-            json!({"type":"string","x-mcp-header":"Root"}),
-            json!({"properties":{"value":{"type":"number","x-mcp-header":"Value"}}}),
-            json!({"properties":{"a":{"type":"string","x-mcp-header":"value"},"b":{"type":"string","x-mcp-header":"Value"}}}),
-            json!({"items":{"properties":{"value":{"type":"string","x-mcp-header":"Value"}}}}),
-            json!({"properties":{"value":{"type":"string","x-mcp-header":"bad\r\nname"}}}),
-            json!({"$defs":{"value":{"type":"string","x-mcp-header":"Value"}}}),
-        ] {
-            assert!(
-                inspect_schema(
-                    &invalid,
-                    &mut Vec::new(),
-                    false,
-                    &mut BTreeSet::new(),
-                    &mut Vec::new()
-                )
-                .is_err()
-            );
-        }
-        assert!(primitive_value(&json!(SAFE_INTEGER + 1), Primitive::Integer).is_err());
-        assert_eq!(
-            primitive_value(&json!(42.0), Primitive::Integer).unwrap(),
-            "42"
-        );
-    }
-
-    #[test]
-    fn sse_parser_handles_split_crlf_multiline_comments_cursor_and_retry() {
-        let mut parser = SseParser::default();
-        let mut events = Vec::new();
-        for byte in b"\xef\xbb\xbf:keepalive\r\nid: cursor\r\nretry: 27\r\ndata:\r\n\r\ndata: {\r\ndata: \"ok\":true}\r\n\r\n" {
-            if let Some(event) = parser.push(*byte).unwrap() { events.push(event); }
-        }
-        assert_eq!(parser.last_id.as_deref(), Some("cursor"));
-        assert_eq!(parser.retry, Duration::from_millis(27));
-        assert_eq!(events, [Vec::new(), b"{\n\"ok\":true}".to_vec()]);
-        let mut parser = SseParser::default();
-        for _ in 0..FRAME_LIMIT {
-            parser.push(b'x').unwrap();
-        }
-        assert!(parser.push(b'x').is_err());
-    }
-}
+#[path = "http_tests.rs"]
+mod tests;
