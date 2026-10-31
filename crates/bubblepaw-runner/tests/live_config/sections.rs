@@ -84,3 +84,38 @@ async fn storage_changes_are_reported_as_restart_only() {
     );
     fixture.shutdown().await;
 }
+
+#[tokio::test]
+async fn exec_agents_approvals_web_and_skills_sections_follow_runtime_edits() {
+    let fixture = Fixture::new(&config("")).await;
+    let hub = fixture.providers.hub();
+    let (mut exec, mut agents) = (hub.exec(), hub.agents());
+    exec.borrow_and_update();
+    agents.borrow_and_update();
+    assert!(!hub.approvals().read_only && hub.skills().enabled);
+    let edited = |extra: &str| {
+        config("").replace("confirm='allow'", "confirm='deny'\nread_only=true")
+            + "[exec]\nsync_timeout_secs=7\n[agents]\nmax_depth=2\n[skills]\nenabled=false\n\
+               [web]\nuser_agent='probe'\n"
+            + extra
+    };
+    fixture.write(&edited(""));
+    let report = fixture.live.reload(None).await;
+    assert!(report.applied && !report.restart_needed, "{report:?}");
+    assert_eq!(exec.borrow_and_update().sync_timeout_secs, 7);
+    assert_eq!(agents.borrow_and_update().max_depth, Some(2));
+    assert!(hub.approvals().read_only);
+    assert_eq!(
+        fixture.live.approval().confirm,
+        bubblepaw_core::ApprovalMode::Deny
+    );
+    assert_eq!(hub.web().user_agent, "probe");
+    assert!(!hub.skills().enabled);
+    // A startup-only web key is reported and leaves the section untouched.
+    let before = hub.web().cache_ttl_secs;
+    fixture.write(&edited("cache_ttl_secs=99\n"));
+    let report = fixture.live.reload(None).await;
+    assert_eq!(report.restart_keys, ["web.cache_ttl_secs"]);
+    assert_eq!(hub.web().cache_ttl_secs, before);
+    fixture.shutdown().await;
+}

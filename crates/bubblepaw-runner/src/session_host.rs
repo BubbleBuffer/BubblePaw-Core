@@ -401,7 +401,7 @@ pub(super) async fn execute(
                 .parent_session_id
                 .is_some()
             {
-                agents.resume_quota_wait(wait, approval_policy(&providers.snapshot().settings)?)
+                agents.resume_quota_wait(wait, approval_policy_for(&providers.hub().approvals())?)
             } else {
                 bubblepaw_runner::quota_recovery::root_resume_scoped(harness.clone(), scope.clone())(
                     wait,

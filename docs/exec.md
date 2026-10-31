@@ -176,7 +176,7 @@ sync_timeout_secs = 300      # sync calls move to background after this; 0 = bac
 max_output_bytes = 8388608   # per-job spool cap (head and tail kept)
 ```
 
-`ProcessTools::apply_config` replaces the settings for the next exec call. Each
+A hosted `ProcessTools` follows the published `exec` section (`ProcessTools::follow`); `apply_config` sets it standalone. The settings apply to the next exec call. Each
 call snapshots admission caps, foreground timeout and output spool cap together;
 running jobs retain their original foreground wait, hard timeout and spool budget.
 A lower cap rejects new starts while existing jobs continue, and raising or clearing

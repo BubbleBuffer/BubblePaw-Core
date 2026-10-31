@@ -340,6 +340,20 @@ it when they act, so a key is live when its consumer subscribes:
   publication, so an invalid server leaves the previous section and servers serving;
   `McpHost::follow` binds the host to the section and `McpHost::apply(force)`
   reconciles to its latest value.
+- **Exec** (`exec`): `ProcessTools::follow(hub.exec())`; each call reads the section,
+  and workspace views share the subscription.
+- **Agents** (`agents`): `AgentTools::follow(hub.agents())`; limits are read from the
+  section at use. The wake coordinator keeps `auto_wake` and the debounce in atomics,
+  so `AgentTools::reconcile()` (no settings argument) copies them after a reload.
+- **Approvals** (`approvals`), **web** (`web.*` live keys) and **skills** (`skills`):
+  read at use through `SettingsHub::approvals()`, `web()` and `skills()`: the
+  approval policy, read-only tool filter and reminders, web request settings, profile
+  availability and the skill directory check.
+
+`LiveConfig` pushes no settings into components. It publishes the generation, then
+triggers the two reconcilers that must report back or re-derive state: `McpHost::apply`
+(its diff and errors enter the reload report) and the tool registry republish
+(`publish_tools`, which also re-registers agent tools and the web sources).
 
 Sections are published together with each accepted generation. A startup-only key
 that changes (storage, `context.strategy`, `context.lcm.*`, `agent.*`) is not

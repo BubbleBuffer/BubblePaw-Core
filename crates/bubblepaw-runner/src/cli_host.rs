@@ -16,7 +16,7 @@ pub(crate) use crate::{
     host_attach::PreparedRequest,
     host_lifetime::HostLifetime,
     input_files::InputLimits,
-    live_config::{LiveConfig, approval_policy},
+    live_config::{LiveConfig, approval_policy, approval_policy_for},
     model_roles::{RoleDecisionProvider, approver_prompt},
     profiles::child_agent_host_live,
     provider::LiveProviderConfig,

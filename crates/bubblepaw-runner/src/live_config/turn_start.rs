@@ -16,7 +16,7 @@ impl TurnStart for ConfigTurnStart {
                 _ = cancellation.cancelled() => return Err(anyhow!("Cancelled during config refresh")),
                 _ = live.check() => {},
             }
-            live.check_skills(session, &live.providers.snapshot().settings)?;
+            live.check_skills(session, &live.providers.hub().skills())?;
         }
         Ok(())
     }

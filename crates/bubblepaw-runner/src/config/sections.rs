@@ -104,7 +104,7 @@ config_section! {
 }
 config_section! {
     /// Command execution limits; see docs/exec.md. An unset cap means no limit.
-    #[derive(Clone, Debug, Deserialize)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(default)]
     pub struct ExecConfig {
         /// Sync `exec` calls move to background after this many seconds; 0 backgrounds at once.
@@ -179,7 +179,7 @@ impl DelegateSettings {
 }
 config_section! {
     /// File-safe web settings: only the key's environment name is stored/rendered.
-    #[derive(Clone, Debug, Deserialize)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     pub struct WebSettings {
         pub enabled: bool => LIVE,
         /// Ordered backends; a single string is a one-entry list.
@@ -304,7 +304,7 @@ impl WebSettings {
 }
 
 config_section! {
-    #[derive(Clone, Debug, Deserialize)]
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     pub struct ApprovalSettings {
         pub confirm: String => LIVE,
         #[serde(default)]
@@ -477,7 +477,7 @@ config_section! {
     }
 }
 config_section! {
-    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
     #[serde(default)]
     pub struct WebExpose {
         pub fetch: bool => LIVE,

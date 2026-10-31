@@ -317,12 +317,10 @@ fn child_agent_host_impl(
             if let Some(live) = &live {
                 let live = Arc::downgrade(live);
                 manager.set_profile_availability(Arc::new(move |name| match name {
-                    "research" => live
-                        .upgrade()
-                        .is_some_and(|live| live.snapshot().settings.web.enabled),
+                    "research" => live.upgrade().is_some_and(|live| live.hub().web().enabled),
                     "workspace" => live
                         .upgrade()
-                        .is_some_and(|live| !live.snapshot().settings.approvals.read_only),
+                        .is_some_and(|live| !live.hub().approvals().read_only),
                     _ => true,
                 }));
             }

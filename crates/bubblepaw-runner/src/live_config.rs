@@ -1,7 +1,7 @@
 //! Host-owned config refresh. Disk edits are checked once at each turn boundary.
 use crate::{
     agents::AgentTools,
-    config::{EffectiveConfig, Settings},
+    config::{ApprovalSettings, EffectiveConfig, Settings, SkillsConfig},
     memory_files::MemoryFiles,
     net::{NetClient, register_sources},
     provider::LiveProviderConfig,
@@ -106,6 +106,7 @@ impl LiveConfig {
         let stamps = stamps(&effective)?;
         // The MCP host reconciles to the section the hub publishes.
         mcp.follow(providers.hub().mcp());
+        processes.follow(providers.hub().exec());
         let options = providers.load_options();
         let memory = MemoryFiles::new(
             store.clone(),
@@ -148,6 +149,7 @@ impl LiveConfig {
     /// separately, and child resolvers hold only a weak link to this host.
     pub fn bind(self: &Arc<Self>, mut base: ToolRegistry, agents: &Arc<AgentTools>) -> Result<()> {
         register_reload_tool(&mut base, Arc::downgrade(self))?;
+        agents.follow(self.providers.hub().agents());
         *self.agents.lock().unwrap() = Arc::downgrade(agents);
         *self.base.write().unwrap() = base;
         self.publish_tools()?;
@@ -161,7 +163,7 @@ impl LiveConfig {
         config.system_prompt_resolver = Some(Arc::new(move |session, base| match weak.upgrade() {
             Some(live) => {
                 if !live.skills.initialized(session) {
-                    live.check_skills(session, &live.providers.snapshot().settings)?;
+                    live.check_skills(session, &live.providers.hub().skills())?;
                 }
                 let base = live.system_prompt_base(session, base)?;
                 let memory = live.memory.system_prompt(session, &base)?;
@@ -193,7 +195,7 @@ impl LiveConfig {
         }));
     }
     pub fn approval(&self) -> ApprovalPolicy {
-        approval_policy(&self.providers.snapshot().settings)
+        approval_policy_for(&self.providers.hub().approvals())
             .expect("published approval config is validated")
     }
     /// Shared with provider setup writes so a file save cannot overtake a reload.
@@ -236,9 +238,9 @@ impl LiveConfig {
                         "MCP server {name} is not configured and enabled"
                     );
                 }
-                Ok::<_, anyhow::Error>((candidate, prepared, settings))
+                Ok::<_, anyhow::Error>((candidate, prepared))
             })();
-            let (candidate, prepared, settings) = match candidate {
+            let (candidate, prepared) = match candidate {
                 Ok(candidate) => candidate,
                 Err(error) => {
                     // Remember rejected versions, but never acknowledge an edit
@@ -271,9 +273,8 @@ impl LiveConfig {
             add_mcp_diff(&mut report, &mcp);
             report.restart_keys = candidate.restart_only_keys(self.providers.startup_config());
             report.restart_needed = !report.restart_keys.is_empty();
-            self.processes.apply_config(settings.exec.clone());
             if let Some(agents) = self.agents.lock().unwrap().upgrade() {
-                agents.apply_limits(&settings.agents);
+                agents.reconcile();
             }
             {
                 let mut state = self.state.lock().unwrap();
@@ -344,9 +345,10 @@ impl LiveConfig {
             agents.register(&mut tools)?;
             tools.show_always(["agent"]);
         }
-        if let Some(web) = settings
-            .settings
-            .web
+        if let Some(web) = self
+            .providers
+            .hub()
+            .web()
             .net_config_with_env(&|name| settings.effective.environment(name))?
         {
             let mut slot = self.web_client.lock().unwrap();
@@ -365,7 +367,7 @@ impl LiveConfig {
             )?;
         }
         self.mcp.register_tools(&mut tools)?;
-        if settings.settings.approvals.read_only {
+        if self.providers.hub().approvals().read_only {
             let mut filtered = tools.read_only();
             // Read-only workspace access still permits child orchestration and
             // cancellation, as at startup. Child tool views inherit the filter.
@@ -396,9 +398,9 @@ impl LiveConfig {
         *self.tools.write().unwrap() = tools.with_generation(previous.generation() + 1);
         Ok(())
     }
-    fn check_skills(&self, session: &str, settings: &Settings) -> Result<()> {
+    fn check_skills(&self, session: &str, settings: &SkillsConfig) -> Result<()> {
         self.skills
-            .check(session, settings.skills.enabled, &settings.skills.dirs)?;
+            .check(session, settings.enabled, &settings.dirs)?;
         self.processes
             .set_skill_read_roots(session, self.skills.read_roots(session))
     }
@@ -428,6 +430,9 @@ pub(crate) fn file_stamps(paths: Vec<PathBuf>) -> Result<Vec<FileStamp>> {
 }
 
 pub fn approval_policy(settings: &Settings) -> Result<ApprovalPolicy> {
+    approval_policy_for(&settings.approvals)
+}
+pub(crate) fn approval_policy_for(approvals: &ApprovalSettings) -> Result<ApprovalPolicy> {
     let mode = |value: &str| match value {
         "ask" => Ok(ApprovalMode::Ask),
         "auto" => Ok(ApprovalMode::Auto),
@@ -436,16 +441,15 @@ pub fn approval_policy(settings: &Settings) -> Result<ApprovalPolicy> {
         _ => Err(anyhow!("Invalid approval mode")),
     };
     Ok(ApprovalPolicy {
-        confirm: mode(&settings.approvals.confirm)?,
-        tools: settings
-            .approvals
+        confirm: mode(&approvals.confirm)?,
+        tools: approvals
             .tools
             .iter()
             .map(|(name, value)| Ok((name.clone(), mode(value)?)))
             .collect::<Result<_>>()?,
-        deny: settings.approvals.deny.clone(),
+        deny: approvals.deny.clone(),
         timeout_secs: None,
-        hardline: settings.approvals.hardline,
+        hardline: approvals.hardline,
     })
 }
 /// Recognize only an exact host command; ordinary prompts keep their contents.

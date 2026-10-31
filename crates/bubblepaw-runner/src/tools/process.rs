@@ -138,7 +138,7 @@ type SharedEnvironment = Arc<RwLock<Option<Vec<(String, String)>>>>;
 /// and an optional bounded disk spool; no output chunks enter the chat store.
 pub struct ProcessTools {
     workspace: WorkspaceTools,
-    config: Arc<RwLock<ExecConfig>>,
+    config: Arc<crate::exec_feed::ExecFeed>,
     /// Client environment for native commands; `None` inherits the host's.
     inherited_env: SharedEnvironment,
     diagnostics: Arc<OnceLock<crate::cli_output::Output>>,
@@ -366,7 +366,7 @@ impl ProcessTools {
     pub fn new(workspace: WorkspaceTools) -> Self {
         Self {
             workspace,
-            config: Arc::new(RwLock::new(ExecConfig::default())),
+            config: Arc::default(),
             inherited_env: Arc::default(),
             diagnostics: Arc::default(),
             spills: None,
@@ -452,7 +452,11 @@ impl ProcessTools {
     /// Apply settings to future exec calls. Admitted jobs retain their own
     /// foreground deadline, hard timeout and output spool budget.
     pub fn apply_config(&self, config: ExecConfig) {
-        *self.config.write().expect("exec config lock") = config;
+        self.config.set(config);
+    }
+    /// Read the host's published exec section from now on; workspace views share it.
+    pub fn follow(&self, section: tokio::sync::watch::Receiver<Arc<ExecConfig>>) {
+        self.config.follow(section);
     }
     /// Start native commands launched from now on with exactly this environment,
     /// as a standalone run from the invoking client would see it. `None` restores
@@ -460,15 +464,11 @@ impl ProcessTools {
     pub fn set_inherited_env(&self, env: Option<Vec<(String, String)>>) {
         *self.inherited_env.write().expect("inherited env lock") = env;
     }
-
     pub fn set_diagnostics(&self, output: crate::cli_output::Output) {
         let _ = self.diagnostics.set(output);
     }
     pub fn set_skill_read_roots(&self, session: &str, roots: Vec<PathBuf>) -> Result<()> {
         self.workspace.set_skill_read_roots(session, roots)
-    }
-    fn config(&self) -> ExecConfig {
-        self.config.read().expect("exec config lock").clone()
     }
     /// Attach the host's shared completion inbox before admitting jobs.
     pub fn set_wake(&self, wake: Arc<WakeCoordinator>) {
@@ -904,7 +904,7 @@ impl ProcessTools {
             return self.jobs(&context.session_id);
         }
         // One snapshot controls admission, foreground wait and output capture.
-        let config = self.config();
+        let config = self.config.get();
         let starting = name == "exec";
         let cancelling = name == "cancel";
         let fields: &[&str] = match name {
