@@ -366,7 +366,7 @@ impl EffectiveConfig {
             attach_environment: None,
             default_codex_auth_file: None,
             origin_directory: None,
-            value: DEFAULTS.parse()?,
+            value: toml::from_str(DEFAULTS)?,
             sources: BTreeMap::new(),
             bases: BTreeMap::new(),
         };
@@ -460,8 +460,7 @@ impl EffectiveConfig {
             },
         };
         // Do not echo a parser diagnostic's source snippet; it can contain an accidentally supplied credential.
-        let value: Value = text
-            .parse()
+        let value: Value = toml::from_str(&text)
             .map_err(|_| anyhow::anyhow!("invalid TOML in {layer} config {}", path.display()))?;
         let source = format!("{layer}: {}", path.display());
         self.apply(
@@ -1262,8 +1261,7 @@ fn endpoints(providers: &BTreeMap<String, ProviderSettings>) -> Result<ProviderE
     Ok(result)
 }
 pub fn parse_value(value: &str) -> Value {
-    format!("value = {value}")
-        .parse::<Value>()
+    toml::from_str::<Value>(&format!("value = {value}"))
         .ok()
         .and_then(|mut table| {
             let table = table.as_table_mut()?;
@@ -1680,7 +1678,7 @@ mod tests {
                 worker_keep_all: false,
             }
         );
-        let rendered: Value = defaults.render().unwrap().parse().unwrap();
+        let rendered: Value = toml::from_str(&defaults.render().unwrap()).unwrap();
         assert_eq!(
             rendered["agents"]["stale_reminder_secs"].as_integer(),
             Some(7200)
@@ -1762,7 +1760,7 @@ mod tests {
             Some("CLI")
         );
         assert_eq!(effective.source("agents.worker_keep_all"), Some("CLI"));
-        let rendered: Value = effective.render().unwrap().parse().unwrap();
+        let rendered: Value = toml::from_str(&effective.render().unwrap()).unwrap();
         assert_eq!(rendered["agents"]["max_depth"].as_integer(), Some(0));
         assert_eq!(
             rendered["agents"]["worker_retention_days"].as_integer(),
@@ -2248,7 +2246,7 @@ cache_max_bytes = 1048576
         let rendered = effective.render().unwrap();
         assert!(rendered.contains("BUBBLEPAW_CUSTOM_TOKEN"));
         assert!(!rendered.contains("never-render-this-value"));
-        let reloaded: Value = rendered.parse().unwrap();
+        let reloaded: Value = toml::from_str(&rendered).unwrap();
         assert_eq!(
             reloaded["mcp"]["servers"]["remote"]["headers_from"]["X.Trace"].as_str(),
             Some("BUBBLEPAW_CUSTOM_TOKEN")
@@ -2279,7 +2277,7 @@ cache_max_bytes = 1048576
             empty.settings().unwrap().mcp.servers["fixture"].include_tools,
             Some(Vec::new())
         );
-        let rendered: Value = empty.render().unwrap().parse().unwrap();
+        let rendered: Value = toml::from_str(&empty.render().unwrap()).unwrap();
         assert!(
             rendered["mcp"]["servers"]["fixture"]["include_tools"]
                 .as_array()
@@ -2364,7 +2362,7 @@ cache_max_bytes = 1048576
         );
         assert_eq!(cli.source("agent.max_rounds"), Some("CLI"));
         assert!(cli.restart_needed(&defaults));
-        let rendered: Value = cli.render().unwrap().parse().unwrap();
+        let rendered: Value = toml::from_str(&cli.render().unwrap()).unwrap();
         assert_eq!(rendered["agent"]["system_prompt"].as_str(), Some(""));
     }
 
@@ -2422,7 +2420,7 @@ cache_max_bytes = 1048576
         assert_eq!(settings.lcm.raw_tail_tokens, 16000);
         assert_eq!(settings.lcm.apply_target_tokens, Some(45000));
         assert_eq!(settings.lcm.output_reserve_tokens, 24000);
-        let rendered: Value = config.render().unwrap().parse().unwrap();
+        let rendered: Value = toml::from_str(&config.render().unwrap()).unwrap();
         assert_eq!(
             rendered["context"]["lcm"]["summary_input"].as_str(),
             Some("episode")
@@ -2855,7 +2853,7 @@ cache_max_bytes = 1048576
             cli.settings().unwrap().roles.chapter.reasoning_effort,
             ReasoningEffort::Low
         );
-        let rendered: Value = cli.render().unwrap().parse().unwrap();
+        let rendered: Value = toml::from_str(&cli.render().unwrap()).unwrap();
         assert_eq!(
             rendered["roles"]["summary"]["reasoning_effort"].as_str(),
             Some("max")
@@ -3002,7 +3000,7 @@ cache_max_bytes = 1048576
         assert!(rendered.contains("BUBBLEPAW_PRIVATE_KEY"));
         assert!(!rendered.contains("secret-never-print-this"));
         assert!(!rendered.contains("second-secret"));
-        let parsed: Value = rendered.parse().unwrap();
+        let parsed: Value = toml::from_str(&rendered).unwrap();
         assert_eq!(parsed, config.value);
     }
 
@@ -3071,7 +3069,7 @@ cache_max_bytes = 1048576
         assert_eq!(accounts["claude"], "personal");
         assert_eq!(accounts["other"], "other");
         assert_eq!(settings.quota.max_wait_seconds, 0);
-        let rendered: Value = config.render().unwrap().parse().unwrap();
+        let rendered: Value = toml::from_str(&config.render().unwrap()).unwrap();
         assert_eq!(
             rendered["extensions"]["claude"]["account"].as_str(),
             Some("personal")

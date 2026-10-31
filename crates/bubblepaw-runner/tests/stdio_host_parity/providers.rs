@@ -36,7 +36,7 @@ async fn providers_list_and_main_role_share_redacted_live_configuration() {
     assert_eq!(applied["active_main"], "demo/second");
     assert_eq!(applied["reload_needed"], false);
     assert!(!applied.to_string().contains(SECRET));
-    let saved: toml::Value = std::fs::read_to_string(&file).unwrap().parse().unwrap();
+    let saved: toml::Value = toml::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(saved["model"]["main"].as_str(), Some("demo/second"));
     let current = host.ok("providers.list", json!({})).await;
     assert_eq!(current["active_main"], "demo/second");

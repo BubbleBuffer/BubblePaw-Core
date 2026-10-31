@@ -114,7 +114,7 @@ fn decider_switch_defaults_on_and_layers_as_a_boolean() -> Result<()> {
     )];
     let disabled = EffectiveConfig::load(opts.clone())?;
     assert!(!disabled.settings()?.lcm.episodes.decider_enabled);
-    let shown: toml::Value = disabled.render()?.parse()?;
+    let shown: toml::Value = toml::from_str(&disabled.render()?)?;
     assert_eq!(
         shown["context"]["lcm"]["decider_enabled"].as_bool(),
         Some(false)

@@ -50,7 +50,7 @@ fn execution_mode_layers_and_require_restart() {
         ExecutionMode::Js
     );
     assert_eq!(cli.source("agent.execution_mode"), Some("CLI"));
-    let rendered: Value = cli.render().unwrap().parse().unwrap();
+    let rendered: Value = toml::from_str(&cli.render().unwrap()).unwrap();
     assert_eq!(rendered["agent"]["execution_mode"].as_str(), Some("js"));
     opts.cli = vec![override_value("agent.execution_mode", "'invalid'")];
     assert!(EffectiveConfig::load(opts).is_err());

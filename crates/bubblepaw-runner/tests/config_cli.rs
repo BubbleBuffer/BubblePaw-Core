@@ -67,7 +67,7 @@ impl Sandbox {
     fn show(&self, argv: &[&str]) -> Result<Value> {
         let output = self.run(argv, &[])?;
         ensure!(output.status.success(), "{}", failure_text(&output));
-        Ok(String::from_utf8(output.stdout)?.parse()?)
+        Ok(toml::from_str(&String::from_utf8(output.stdout)?)?)
     }
 
     /// Like `show`, but with an explicit empty file so no user layer applies.
@@ -153,7 +153,7 @@ fn effective_config_is_parsable_with_sources_and_no_secret_values() -> Result<()
     assert!(!text.contains(SECRET), "{text}");
 
     let stdout = String::from_utf8(output.stdout.clone())?;
-    let value: Value = stdout.parse()?;
+    let value: Value = toml::from_str(&stdout)?;
     assert_eq!(
         scalar(at(&value, &["providers", "opencode", "key_env"])?),
         "BUBBLEPAW_TEST_ROLE_KEY"
@@ -500,7 +500,7 @@ fn config_is_read_only_and_needs_no_credentials() -> Result<()> {
 
     let output = sb.run(&["--db", db_arg, "config"], &[])?;
     ensure!(output.status.success(), "{}", failure_text(&output));
-    let value: Value = String::from_utf8(output.stdout)?.parse()?;
+    let value: Value = toml::from_str(&String::from_utf8(output.stdout)?)?;
     assert_eq!(scalar(at(&value, &["model", "main"])?), "gpt-6-luna");
 
     let after = snapshot(sb.path())?;
@@ -517,7 +517,7 @@ fn storage_paths_retention_and_cli_precedence_are_layered_without_io() -> Result
     let path = sb.write("settings/storage.toml", "[storage]\ndata_dir = 'state'\nfinished_event_retention_hours = 48\ntelemetry_retention_days = 14\n")?;
     let output = sb.run(&["--config", path.to_str().unwrap(), "config"], &[])?;
     ensure!(output.status.success(), "{}", failure_text(&output));
-    let config: Value = String::from_utf8(output.stdout)?.parse()?;
+    let config: Value = toml::from_str(&String::from_utf8(output.stdout)?)?;
     // Compare as native paths: Windows renders joined paths with backslashes.
     assert_eq!(
         PathBuf::from(config["storage"]["data_dir"].as_str().unwrap()),
@@ -546,7 +546,7 @@ fn storage_paths_retention_and_cli_precedence_are_layered_without_io() -> Result
         &[("BUBBLEPAW_STORAGE__TELEMETRY_RETENTION_DAYS", "3")],
     )?;
     ensure!(output.status.success(), "{}", failure_text(&output));
-    let config: Value = String::from_utf8(output.stdout)?.parse()?;
+    let config: Value = toml::from_str(&String::from_utf8(output.stdout)?)?;
     assert_eq!(
         PathBuf::from(config["storage"]["data_dir"].as_str().unwrap()),
         sb.workspace().join("last-state")

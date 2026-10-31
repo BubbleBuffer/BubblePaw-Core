@@ -65,9 +65,7 @@ fn docs_paths() -> Vec<String> {
                 _ => line.to_owned(),
             })
             .collect();
-        let value: Value = source
-            .join("\n")
-            .parse()
+        let value: Value = toml::from_str(&source.join("\n"))
             .unwrap_or_else(|e| panic!("docs toml block: {e}\n{block}"));
         documented(Node::Table(RawSettings::FIELDS), "", &value, &mut paths);
     }

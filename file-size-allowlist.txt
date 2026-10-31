@@ -22,7 +22,7 @@ crates/bubblepaw-mcp/tests/http.rs 1852
 crates/bubblepaw-mcp/tests/stdio.rs 1010
 crates/bubblepaw-runner/src/agents.rs 3366
 crates/bubblepaw-runner/src/codemode.rs 1886
-crates/bubblepaw-runner/src/config.rs 3296
+crates/bubblepaw-runner/src/config.rs 3294
 crates/bubblepaw-runner/src/delegate/ledger.rs 519
 crates/bubblepaw-runner/src/delegate/metrics.rs 912
 crates/bubblepaw-runner/src/episode_models.rs 991

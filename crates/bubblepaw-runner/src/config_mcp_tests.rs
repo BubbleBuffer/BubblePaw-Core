@@ -67,7 +67,7 @@ fn mcp_server_defer_accepts_toml_env_and_cli_overrides() {
     opts.custom_file = Some(file);
     let from_file = EffectiveConfig::load(opts.clone()).unwrap();
     assert!(!from_file.settings().unwrap().mcp.servers["fixture"].defer);
-    let rendered: Value = from_file.render().unwrap().parse().unwrap();
+    let rendered: Value = toml::from_str(&from_file.render().unwrap()).unwrap();
     assert_eq!(
         rendered["mcp"]["servers"]["fixture"]["defer"].as_bool(),
         Some(false)

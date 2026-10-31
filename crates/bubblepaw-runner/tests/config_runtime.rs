@@ -76,7 +76,7 @@ async fn messages_role_and_registry_route_through_cli() -> Result<()> {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let printed: toml::Value = String::from_utf8(output.stdout)?.parse()?;
+    let printed: toml::Value = toml::from_str(&String::from_utf8(output.stdout)?)?;
     assert_eq!(
         printed["providers"]["opencode-messages"]["kind"].as_str(),
         Some("anthropic-messages")
