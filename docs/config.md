@@ -81,6 +81,33 @@ See [execution modes and embedder APIs](codemode.md).
 The environment override is `BUBBLEPAW_AGENT__EXECUTION_MODE=js`; the CLI
 equivalent is `--set agent.execution_mode=js`.
 
+### Toolsets (2026-10-31)
+
+```toml
+[agent]
+toolset = "all"            # live: the main chat's toolset; "all", "read-only" or a name below
+
+[toolsets.reviewer]
+tools = ["category:files", "web_fetch", "category:mcp:github"]
+```
+
+A toolset lists tool names and `category:<id>` entries. The categories are `files`
+(`list`, `read`, `search`, `edit`, `write`), `commands` (`exec`, `poll`, `wait`,
+`cancel`, `jobs`), `web`, `agents`, `history`, `other` and `mcp:<server>` for one MCP
+server's tools. A category entry matches at every publication, so a tool added by a
+reload or a new server joins a toolset that names its category. `all` and `read-only`
+are built in (every tool; the tools declared read-only) and cannot be defined: a
+`[toolsets.all]` or `[toolsets.read-only]` entry fails validation, as does an unknown
+category, a malformed entry or an `agent.toolset` that names no toolset.
+
+`agent.toolset` and every `tools` list apply live through the tool publish path. The
+published registry stays whole; the main chat sees it through the toolset, and a call
+to a tool outside it fails with "not in the X toolset". Child sessions keep choosing
+tools by their profile and are not narrowed by this setting (toolset options for
+spawned children are not part of this change). The discovery tools `tool_search` and
+`call_tool` count as read-only and belong to the `other` category. The host method
+`tools.list` reports the tools with their categories; see [host API](host-api.md).
+
 ### Root worker instructions, rounds and task files
 
 The root harness keeps its existing instructions and runs without a round ceiling
@@ -356,7 +383,7 @@ triggers the two reconcilers that must report back or re-derive state: `McpHost:
 (`publish_tools`, which also re-registers agent tools and the web sources).
 
 Sections are published together with each accepted generation. A startup-only key
-that changes (storage, `context.strategy`, `context.lcm.*`, `agent.*`) is not
+that changes (storage, `context.strategy`, `context.lcm.*`, `agent.*` except `agent.toolset`) is not
 published; `ReloadReport.restart_keys` names it, and `restart_needed` is its
 non-empty case. Approvals/tools, web, exec, agents and skills still reach their
 components by direct calls from `LiveConfig`.
@@ -468,6 +495,9 @@ retry_base_ms = 500                   # startup-only retry backoff base
 [skills]
 enabled = true                        # SKILL.md catalogs in the system prompt
 dirs = []                             # extra skill collections after project and user skills
+
+[skills.reviewer-notes]
+enabled = true                        # live: false leaves this one skill out of new catalogs
 
 [context.lcm]
 summary_input = "fork"               # fork main Chat prefix; episode explicitly uses compact source

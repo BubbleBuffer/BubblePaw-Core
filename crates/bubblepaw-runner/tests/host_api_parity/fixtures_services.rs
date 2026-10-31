@@ -85,6 +85,8 @@ pub fn all() -> Vec<Fixture> {
                 ok("roles.set_main", json!({"model": "demo/first"})),
             ],
         ),
+        fixture("tools.list", vec![ok("tools.list", json!({})).shape()]),
+        fixture("skills.list", vec![ok("skills.list", json!({})).shape()]),
         fixture(
             "storage.stats",
             vec![ok("storage.stats", json!({})).shape()],

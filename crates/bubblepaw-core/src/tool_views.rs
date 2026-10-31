@@ -35,6 +35,20 @@ impl ToolRegistry {
     pub fn is_deferred(&self, name: &str) -> bool {
         self.deferred.contains(name)
     }
+    /// Definitions of every registered tool, model entrypoints and host capabilities, by name.
+    pub fn entries(&self) -> Vec<ToolDefinition> {
+        let mut all = std::collections::BTreeMap::new();
+        for tool in self.tools.values().chain(self.host_tools.values()) {
+            let definition = tool.definition();
+            all.entry(definition.name.clone()).or_insert(definition);
+        }
+        all.into_values().collect()
+    }
+    /// Whether a removal reason is recorded for the name. Built-in adapters do not
+    /// register such a name again (the discovery tools in native mode).
+    pub fn is_unavailable(&self, name: &str) -> bool {
+        self.unavailable.contains_key(name)
+    }
     pub fn set_deferred(&mut self, name: impl Into<String>, deferred: bool) {
         let name = name.into();
         if deferred {

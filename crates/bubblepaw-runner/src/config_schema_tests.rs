@@ -18,14 +18,25 @@ fn schema_leaves() -> Vec<(String, bool)> {
     all
 }
 
+fn is_fixed(node: Node, key: &str) -> bool {
+    match node {
+        Node::Open(fields, _) => fields.iter().any(|field| field.name == key),
+        _ => false,
+    }
+}
+
 /// Key paths the config docs write, with map names as `<name>`; `None` marks a key the schema lacks.
 fn documented(node: Node, path: &str, value: &Value, out: &mut Vec<String>) {
     let table = value.as_table().filter(|table| !table.is_empty());
-    let Some(table) = table.filter(|_| matches!(node, Node::Table(_) | Node::Map(_))) else {
+    let Some(table) =
+        table.filter(|_| matches!(node, Node::Table(_) | Node::Map(_) | Node::Open(..)))
+    else {
         return out.push(path.to_owned());
     };
     for (key, value) in table {
-        let name = if matches!(node, Node::Map(_)) {
+        let name = if matches!(node, Node::Map(_))
+            || (matches!(node, Node::Open(..)) && !is_fixed(node, key))
+        {
             "<name>"
         } else {
             key

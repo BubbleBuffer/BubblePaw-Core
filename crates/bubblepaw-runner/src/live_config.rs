@@ -22,12 +22,17 @@ use std::{
     time::SystemTime,
 };
 
+mod approval;
 mod diff;
 mod reload_tool;
 use diff::{add_mcp_diff, config_diff};
 mod turn_start;
+mod views;
+pub use approval::approval_policy;
+pub(crate) use approval::approval_policy_for;
 pub(crate) use reload_tool::register_reload_tool;
 use turn_start::ConfigTurnStart;
+pub use views::SkillList;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ReloadReport {
@@ -89,6 +94,7 @@ pub struct LiveConfig {
     store: Store,
     base: RwLock<ToolRegistry>,
     tools: RwLock<ToolRegistry>,
+    main_tools: RwLock<ToolRegistry>,
     removed: Mutex<HashMap<String, String>>,
     web_client: Mutex<Option<NetClient>>,
     agents: Mutex<Weak<AgentTools>>,
@@ -131,6 +137,7 @@ impl LiveConfig {
             store,
             base: RwLock::default(),
             tools: RwLock::default(),
+            main_tools: RwLock::default(),
             removed: Mutex::default(),
             web_client: Mutex::default(),
             agents: Mutex::new(Weak::new()),
@@ -181,7 +188,7 @@ impl LiveConfig {
         let weak = Arc::downgrade(self);
         config.registry_resolver = Some(Arc::new(move || {
             weak.upgrade()
-                .map(|live| live.registry())
+                .map(|live| live.main_registry())
                 .unwrap_or_default()
         }));
         config.turn_start = Some(Arc::new(ConfigTurnStart(Arc::downgrade(self))));
@@ -400,12 +407,19 @@ impl LiveConfig {
         for (name, reason) in removed.iter() {
             tools.remove(name, reason);
         }
-        *self.tools.write().unwrap() = tools.with_generation(previous.generation() + 1);
+        let tools = tools.with_generation(previous.generation() + 1);
+        *self.main_tools.write().unwrap() =
+            crate::toolsets::apply(&tools, &self.providers.hub().toolsets());
+        *self.tools.write().unwrap() = tools;
         Ok(())
     }
     fn check_skills(&self, session: &str, settings: &SkillsConfig) -> Result<()> {
-        self.skills
-            .check(session, settings.enabled, &settings.dirs)?;
+        self.skills.check_toggled(
+            session,
+            settings.enabled,
+            &settings.dirs,
+            &settings.disabled(),
+        )?;
         self.processes
             .set_skill_read_roots(session, self.skills.read_roots(session))
     }
@@ -434,29 +448,6 @@ pub(crate) fn file_stamps(paths: Vec<PathBuf>) -> Result<Vec<FileStamp>> {
         .collect()
 }
 
-pub fn approval_policy(settings: &Settings) -> Result<ApprovalPolicy> {
-    approval_policy_for(&settings.approvals)
-}
-pub(crate) fn approval_policy_for(approvals: &ApprovalSettings) -> Result<ApprovalPolicy> {
-    let mode = |value: &str| match value {
-        "ask" => Ok(ApprovalMode::Ask),
-        "auto" => Ok(ApprovalMode::Auto),
-        "allow" => Ok(ApprovalMode::Allow),
-        "deny" => Ok(ApprovalMode::Deny),
-        _ => Err(anyhow!("Invalid approval mode")),
-    };
-    Ok(ApprovalPolicy {
-        confirm: mode(&approvals.confirm)?,
-        tools: approvals
-            .tools
-            .iter()
-            .map(|(name, value)| Ok((name.clone(), mode(value)?)))
-            .collect::<Result<_>>()?,
-        deny: approvals.deny.clone(),
-        timeout_secs: None,
-        hardline: approvals.hardline,
-    })
-}
 /// Recognize only an exact host command; ordinary prompts keep their contents.
 pub fn reload_command(text: &str) -> Option<Option<&str>> {
     let mut words = text.split_whitespace();

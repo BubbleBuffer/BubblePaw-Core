@@ -6,6 +6,8 @@ use super::*;
 mod config_set;
 #[path = "provider_baseline.rs"]
 mod provider_baseline;
+#[path = "sections/toolsets.rs"]
+mod toolsets;
 
 #[tokio::test]
 async fn model_section_subscribers_see_a_runtime_edit() {

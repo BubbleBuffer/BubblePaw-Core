@@ -114,6 +114,8 @@ device's profile without introducing another host implementation.
 | `attachments.read` | Read |
 | `artifacts.list` | Read |
 | `artifacts.read` | Read |
+| `tools.list` | Read |
+| `skills.list` | Read |
 | `storage.stats` | Read |
 | `shutdown` | Full |
 
@@ -134,6 +136,19 @@ removing the key. Refusals are `-32010` unknown key, `-32011` wrong type, `-3201
 invalid value (file untouched) and `-32013` write failed. Details and the validation
 steps: [config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31).
 
+
+### Tool and skill catalogs
+
+`tools.list` (`Read`) returns `{tools: [{name, category, description, source, server,
+read_only}]}` for every published tool, whatever `agent.toolset` selects: `category` is
+`files`, `commands`, `web`, `agents`, `history`, `other` or `mcp:<server>`, `source` is
+`builtin` or `mcp`, `server` names the MCP server (else null) and `read_only` says
+whether the built-in `read-only` toolset includes it. Built-in categories come first.
+`skills.list` (`Read`) returns `{enabled, skills: [{name, description, source, path,
+enabled}]}`: `enabled` is `skills.enabled`, `source` is `workspace` or `user`, `path` the
+`SKILL.md` file and the per-skill `enabled` the `[skills.<name>]` switch. Both need a
+host with live configuration and share the services error otherwise. Toolsets and skill
+switches are changed with `config.set` ([config](config.md#toolsets-2026-10-31)).
 ## Capability modules
 
 The modules under `host_api/` separate sessions, runs, approvals, questions,

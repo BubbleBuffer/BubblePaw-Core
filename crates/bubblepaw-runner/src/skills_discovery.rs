@@ -4,18 +4,24 @@ use anyhow::{Context, Result, ensure};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     io::Read,
     path::{Path, PathBuf},
 };
 
 const MAX_FRONTMATTER: usize = 64 * 1024;
 
+/// A `SKILL.md` on the search path and whether it came from the workspace walk.
+pub(super) struct Found {
+    pub file: PathBuf,
+    pub workspace: bool,
+}
+
 pub(super) fn discover(
     workspace: &Path,
     user: Option<&Path>,
     extra: &[PathBuf],
-) -> Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+) -> Result<(Vec<PathBuf>, Vec<Found>)> {
     let workspace = workspace
         .canonicalize()
         .context("Skill workspace must exist")?;
@@ -26,27 +32,30 @@ pub(super) fn discover(
         .unwrap_or(&workspace);
     let mut directories = Vec::new();
     for directory in workspace.ancestors() {
-        directories.push(directory.join(".agents/skills"));
-        directories.push(directory.join(".claude/skills"));
+        directories.push((directory.join(".agents/skills"), true));
+        directories.push((directory.join(".claude/skills"), true));
         if directory == root {
             break;
         }
     }
     if let Some(user) = user {
-        directories.push(user.to_owned());
+        directories.push((user.to_owned(), false));
     }
-    directories.extend_from_slice(extra);
+    directories.extend(extra.iter().map(|directory| (directory.clone(), false)));
     let mut stamps = Vec::new();
     let mut files = Vec::new();
     let mut seen = HashSet::new();
-    for directory in directories {
+    for (directory, workspace) in directories {
         if !seen.insert(directory.clone()) {
             continue;
         }
         stamps.push(directory.clone());
         stamps.push(directory.join("SKILL.md"));
         if directory.join("SKILL.md").is_file() {
-            files.push(directory.join("SKILL.md"));
+            files.push(Found {
+                file: directory.join("SKILL.md"),
+                workspace,
+            });
             continue;
         }
         let entries = match std::fs::read_dir(&directory) {
@@ -68,7 +77,7 @@ pub(super) fn discover(
                 let file = child.join("SKILL.md");
                 stamps.push(file.clone());
                 if file.is_file() {
-                    files.push(file);
+                    files.push(Found { file, workspace });
                 }
             }
         }
@@ -76,14 +85,16 @@ pub(super) fn discover(
     Ok((stamps, files))
 }
 
-pub(super) fn load(files: &[PathBuf]) -> Result<Catalog> {
+/// The catalog of the found skills, leaving out the `disabled` names. A disabled name
+/// is gone entirely, so a later skill of the same name does not take its place.
+pub(super) fn load(files: &[Found], disabled: &BTreeSet<String>) -> Result<Catalog> {
     let mut catalog = Catalog::default();
     let mut seen = HashSet::new();
     let mut used = PREFIX.len() + TRUNCATED.len();
-    for path in files {
+    for Found { file: path, .. } in files {
         match load_skill(path) {
             Ok(skill) => {
-                if !seen.insert(skill.name.clone()) {
+                if !seen.insert(skill.name.clone()) || disabled.contains(&skill.name) {
                     continue;
                 }
                 let size = catalog_line(&skill).len();
@@ -109,6 +120,20 @@ pub(super) fn load(files: &[PathBuf]) -> Result<Catalog> {
         }
     }
     Ok(catalog)
+}
+
+/// Every valid skill on the path, the first of each name, with whether the workspace walk found it.
+pub(super) fn all(files: &[Found]) -> Vec<(Skill, bool)> {
+    let mut seen = HashSet::new();
+    files
+        .iter()
+        .filter_map(|found| {
+            load_skill(&found.file)
+                .ok()
+                .map(|skill| (skill, found.workspace))
+        })
+        .filter(|(skill, _)| seen.insert(skill.name.clone()))
+        .collect()
 }
 
 fn load_skill(path: &Path) -> Result<Skill> {
