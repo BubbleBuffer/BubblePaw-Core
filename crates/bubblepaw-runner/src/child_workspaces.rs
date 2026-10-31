@@ -127,13 +127,8 @@ pub(crate) fn install(
         let bound = rebind(current, &native);
         if let Some(source) = child_config.registry_resolver.take() {
             let native = native.clone();
-            let processes = Arc::downgrade(&processes);
-            let live = live.clone();
             child_config.registry_resolver =
                 Some(derived_registry_resolver(source, move |current| {
-                    if let (Some(processes), Some(live)) = (processes.upgrade(), live.as_ref()) {
-                        processes.apply_config(live.snapshot().settings.exec.clone());
-                    }
                     rebind(current, &native)
                 }));
         }

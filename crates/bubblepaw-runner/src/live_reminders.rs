@@ -71,7 +71,7 @@ impl LiveConfig {
         let base = if self.store.session(session)?.parent_session_id.is_some() {
             base.to_owned()
         } else {
-            let read_only = self.providers.snapshot().settings.approvals.read_only;
+            let read_only = self.providers.hub().approvals().read_only;
             format!("{base} {}", root_access_line(read_only))
         };
         Ok(base)

@@ -14,6 +14,8 @@
 extern crate self as bubblepaw_runner;
 
 pub mod agent_handles;
+mod exec_feed;
+mod agent_limits;
 pub mod agents;
 pub mod artifacts;
 #[cfg(feature = "bench")]

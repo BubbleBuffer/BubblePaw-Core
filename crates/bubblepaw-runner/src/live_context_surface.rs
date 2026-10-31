@@ -88,9 +88,8 @@ impl LiveConfig {
             "Cannot refresh context: saved host prefix does not match the bound chat prompt"
         );
         let suffix = &prompt[binding.prefix_bytes..];
-        let settings = self.providers.snapshot().settings.clone();
         self.memory.check(session)?;
-        self.check_skills(session, &settings)?;
+        self.check_skills(session, &self.providers.hub().skills())?;
         let mut through = 0;
         self.store.for_each_message_header(session, |seq, _| {
             through = seq;
@@ -123,7 +122,7 @@ impl LiveConfig {
 
     fn derive_prompt_binding(&self, session: &str, prompt: &str) -> Result<PromptBinding> {
         self.memory.check(session)?;
-        self.check_skills(session, &self.providers.snapshot().settings)?;
+        self.check_skills(session, &self.providers.hub().skills())?;
         let memory = self.memory.system_prompt(session, "")?;
         let component = self.skills.system_prompt(session, &memory);
         if component.is_empty() {

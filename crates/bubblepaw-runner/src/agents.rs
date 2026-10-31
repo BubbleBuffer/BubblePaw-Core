@@ -46,7 +46,7 @@ pub struct AgentRegistry {
     scope: Option<crate::session_scope::SessionScope>,
     state: Mutex<State>,
     wake: Arc<WakeCoordinator>,
-    limits: RwLock<Option<Agents>>,
+    limits: crate::agent_limits::AgentLimits,
     live_approval: AtomicBool,
     approval_sources: Mutex<HashMap<String, ApprovalResolver>>,
     profile_availability: OnceLock<ProfileAvailability>,
@@ -235,7 +235,7 @@ impl AgentTools {
             processes.set_wake(registry.wake.clone());
             processes.set_store(store.clone());
         }
-        *registry.limits.write().expect("agent limits lock") = Some(limits);
+        registry.limits.set(limits);
         let manager = Arc::new(Self {
             store,
             profiles: OnceLock::new(),
@@ -262,31 +262,35 @@ impl AgentTools {
     /// All managers and wake adapters on this host share the latest limits.
     /// Running child turn controls are intentionally kept in their own snapshot.
     pub fn apply_limits(&self, limits: &Agents) {
-        *self.registry.limits.write().expect("agent limits lock") = Some(limits.clone());
+        self.registry.limits.set(limits.clone());
         self.registry.wake.configure(
             limits.auto_wake,
             Duration::from_millis(limits.wake_debounce_ms),
         );
     }
     fn limits(&self) -> Agents {
-        self.registry
-            .limits
-            .read()
-            .expect("agent limits lock")
-            .clone()
-            .unwrap_or_default()
+        self.registry.limits.get()
+    }
+    /// Follow the host's published agents section. Limits are read from it at
+    /// use; `reconcile` carries the wake settings, which are held in atomics.
+    pub fn follow(&self, section: tokio::sync::watch::Receiver<Arc<Agents>>) {
+        self.registry.limits.follow(section);
+        self.reconcile();
+    }
+    /// Apply the followed section's wake settings to the coordinator.
+    pub fn reconcile(&self) {
+        let limits = self.limits();
+        self.registry.wake.configure(
+            limits.auto_wake,
+            Duration::from_millis(limits.wake_debounce_ms),
+        );
     }
     pub fn with_limits(self, limits: Agents) -> Self {
         self.apply_limits(&limits);
         self
     }
     pub fn with_registry(mut self, registry: Arc<AgentRegistry>) -> Self {
-        let configured = self
-            .registry
-            .limits
-            .read()
-            .expect("agent limits lock")
-            .clone();
+        let configured = self.registry.limits.fixed();
         self.registry = registry;
         if let Some(limits) = configured {
             self.apply_limits(&limits);
@@ -2197,12 +2201,7 @@ impl AgentTools {
                 );
             }
             child.changed.notify_waiters();
-            let limits = registry
-                .limits
-                .read()
-                .expect("agent limits lock")
-                .clone()
-                .unwrap_or_default();
+            let limits = registry.limits.get();
             let _ = cleanup_workers_at(&store, &registry, &limits, chrono::Utc::now());
             report_worktree_cleanup(&store, &registry.output).await;
         });

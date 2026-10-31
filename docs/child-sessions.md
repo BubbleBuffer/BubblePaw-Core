@@ -238,7 +238,7 @@ bounds only in-memory handles: evicted children remain in the catalog, appear in
 handle when addressed by `sessionId`. Cancellation includes idle descendants
 whose handles have been evicted.
 
-`AgentTools::apply_limits` updates the shared host settings for future child
+A hosted `AgentTools` follows the published `agents` section (`AgentTools::follow`), and `apply_limits` sets it standalone; either way the shared host settings apply to future child
 admission, wakes, reminders and retention. It does not replace a running turn's
 explicit tool budget or wall-clock timeout. Child harnesses obtain a fresh root
 tool registry at each of their own turn starts (and after explicit reload), then
