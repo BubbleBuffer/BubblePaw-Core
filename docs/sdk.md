@@ -183,6 +183,11 @@ let client = Client::open_configured(config).await?;   // or Client::embedded_co
   route, and `Storage`.
 - `HostConfig` exposes `data_dir()`, `workspace()`, `effective()`,
   `settings()` and `is_central()`.
+- `EffectiveConfig` (runner crate, behind `effective()`) gains `changes_from(&other)`, the
+  changed keys with a live or restart-only flag, and `with_live_from(&live)`, the startup
+  config with only the live keys of `live` applied ([config](config.md#settings-sections)).
+  `Settings::with_live_provider_settings` is replaced by the latter. `HostConfig::load`
+  and `ConfigError` are unchanged.
 - `Client::open_configured(config)` attaches when another process (or a host
   this process already serves) owns the data directory, like `open`; otherwise
   it embeds. `Client::embedded_configured(config)` always embeds. Embedding runs

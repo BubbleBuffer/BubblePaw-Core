@@ -16,7 +16,6 @@ use bubblepaw_core::{
     ModelResponse, PrepareCall, PrepareMode, PreparedContext, Provider, Role, Store,
     SubjectChapterStatus, is_typed_user,
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -43,38 +42,12 @@ pub use summarization_settings::SurfaceRefresh;
 mod summarization_tokens;
 #[path = "summarization_view.rs"]
 mod summarization_view;
+pub use crate::episodes::LcmConfig;
 #[cfg(test)]
 use summarization_hook::{built_after_prepare, has_inventory, prepare_main};
 use summarization_tokens::TokenCache;
 pub use summarization_tokens::canonical_message_tokens;
 
-/// Gather and serving allocations are token targets, independent of agent lifetime.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(default)]
-pub struct LcmConfig {
-    #[serde(flatten)]
-    pub episodes: crate::episodes::EpisodeConfig,
-    /// Recent-tail target for explicit manual and Classical compaction. Automatic
-    /// LCM apply starts raw history immediately after all ready episode coverage.
-    pub raw_tail_tokens: usize,
-    pub index_tokens: usize,
-    pub output_reserve_tokens: usize,
-    pub apply_target_tokens: Option<usize>,
-    #[serde(default)]
-    pub child_compact_threshold_tokens: Option<usize>,
-}
-impl Default for LcmConfig {
-    fn default() -> Self {
-        Self {
-            episodes: Default::default(),
-            raw_tail_tokens: 32_000,
-            index_tokens: 2_000,
-            output_reserve_tokens: 16_000,
-            apply_target_tokens: None,
-            child_compact_threshold_tokens: Some(100_000),
-        }
-    }
-}
 impl LcmConfig {
     pub fn validate(&self) -> Result<()> {
         self.episodes.validate()?;
@@ -173,6 +146,7 @@ pub struct SummarizingContext {
     surface_refresh: Option<SurfaceRefresh>,
     surface_rebinds: Arc<Mutex<HashSet<String>>>,
     live: Option<Arc<crate::provider::LiveProviderConfig>>,
+    context: Option<tokio::sync::watch::Receiver<Arc<crate::settings_hub::ContextLive>>>,
 }
 impl SummarizingContext {
     pub fn new(
@@ -208,6 +182,7 @@ impl SummarizingContext {
             surface_refresh: None,
             surface_rebinds: Arc::default(),
             live: None,
+            context: None,
         })
     }
     /// Attach after constructing the worker, which itself holds the estimator.
@@ -222,9 +197,7 @@ impl SummarizingContext {
     fn config_for(&self, session: &str, model: &str) -> SummaryConfig {
         let mut config = self.config.clone();
         if let Some(live) = &self.live {
-            let generation = live.snapshot();
-            config.threshold_cap = generation.settings.compact_threshold_tokens;
-            config.context_window = generation.context_window(model);
+            self.apply_live_context(&mut config, live, model);
         }
         if self
             .store

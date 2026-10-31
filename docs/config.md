@@ -1,6 +1,6 @@
 # Configuration
 
-**Status:** built 2026-10-09; storage layout, import and cold-storage configuration added 2026-10-12; chat function calling, child session limits, `[exec]` and shared web cache configuration added 2026-10-13; stale-child reminders, background worker retention, completion wake and live config refresh added 2026-10-14; root worker instructions, rounds and task files added 2026-10-17; native default, persisted chat modes, JS opt-in and MCP core/deferred declaration policy added 2026-10-22.
+**Status:** built 2026-10-09; storage layout, import and cold-storage configuration added 2026-10-12; chat function calling, child session limits, `[exec]` and shared web cache configuration added 2026-10-13; stale-child reminders, background worker retention, completion wake and live config refresh added 2026-10-14; root worker instructions, rounds and task files added 2026-10-17; native default, persisted chat modes, JS opt-in and MCP core/deferred declaration policy added 2026-10-22; per-section settings types as the key list and live classification 2026-10-30; section owners on watch channels for model/provider, context and MCP 2026-10-31.
 
 One TOML file replaces the growing set of CLI flags and built-in defaults for
 models, providers, context strategy and approvals.
@@ -307,11 +307,56 @@ active one. `active_main` is the current qualified route; `launched_main` retain
 the startup value; `main` represents the effective disk setting. Clients can show the
 active route and offer a reload action for unapplied disk changes.
 
+### Settings sections
+
+Each config section is one serde struct in `crates/bubblepaw-runner/src/config/sections.rs`
+(the MCP section in `bubblepaw-mcp`, the context sections beside their code), declared
+with `config_section!` from `bubblepaw_core::config_schema`. A field line carries the
+key's type and its liveness, `LIVE` or `RESTART`, so the struct is the single source for:
+
+- **The key list.** `Unknown config key` comes from walking the schema: fixed tables,
+  maps with any non-empty name (`providers.<name>`, `mcp.servers.<name>`,
+  `extensions.<name>`, `delegate.classes.<name>`) and free-form header tables.
+- **Which keys are live.** `restart_needed` and `same_provider_config` diff two configs
+  key by key and read each changed key's flag. `EffectiveConfig::changes_from` returns
+  the changed keys with their flag; `EffectiveConfig::with_live_from(live)` is the
+  startup config with only `live`'s live keys (and their provenance) applied, which is
+  what the provider generation is built from.
+- **The documented keys.** A test parses the `toml` blocks in this page and fails when
+  a documented key is missing from the schema or a schema key is undocumented.
+
+### Section owners (2026-10-31)
+
+A live section has one owner that publishes it whole on a `tokio::sync::watch`
+channel (`settings_hub.rs`); components subscribe to their own section and read
+it when they act, so a key is live when its consumer subscribes:
+
+- **Model/provider** (`model`, `providers`, `roles`): `LiveProviderConfig` owns the
+  generation; `subscribe()` yields each whole generation, `snapshot()` the current one.
+- **Context** (`context.window_tokens`, `compact_threshold_tokens`, `auto_summarize`):
+  `SettingsHub::context()`; the summarizing context reads capacity, threshold and
+  automatic preparation from it at each request.
+- **MCP** (`mcp`): `SettingsHub::mcp()`. `McpSettings::validate` runs before
+  publication, so an invalid server leaves the previous section and servers serving;
+  `McpHost::follow` binds the host to the section and `McpHost::apply(force)`
+  reconciles to its latest value.
+
+Sections are published together with each accepted generation. A startup-only key
+that changes (storage, `context.strategy`, `context.lcm.*`, `agent.*`) is not
+published; `ReloadReport.restart_keys` names it, and `restart_needed` is its
+non-empty case. Approvals/tools, web, exec, agents and skills still reach their
+components by direct calls from `LiveConfig`.
+
+Adding a setting means adding one field line and, if it is new, a line in the Shape
+block below.
+
 ## Shape
 
 ```toml
 [model]
 main = "codex/gpt-6.1-sol"
+provider = "codex"                   # route prefix for an unqualified `main`
+fallbacks = []                       # ordered `<provider>/<model>` routes tried after main
 
 [storage]
 data_dir = ""                       # empty: central store <local data home>/BubblePaw-Core/store
@@ -324,10 +369,15 @@ cold_min_messages = 1024            # large when count OR body bytes reaches its
 cold_min_bytes = 8388608            # 8 MiB
 cold_row_min_bytes = 256            # compress only when the encoded row is smaller
 
+[quota]
+max_wait_seconds = 21600             # 0 declines automatic waits; startup-only
+
 [providers.opencode]
 kind = "chat-completions"
 base_url = "https://opencode.ai/zen/go/v1"
 key_env = "OPENCODE_API_KEY"
+# account = "opencode"               # quota identity; omitted: the entry name
+# auth_file = "~/.codex/auth.json"   # codex kind: credential file instead of key_env
 reasoning = { thinking = "enabled", reasoning_effort = "low" }
 
 [[providers.opencode.models]]          # exact per-model settings
@@ -353,6 +403,13 @@ approver = ["openai/gpt-6-luna"]
 strategy = "lcm"                     # lcm | classical
 memory_files = true                   # AGENTS.md + CLAUDE.md; restart-only switch
 compact_threshold_tokens = 200000
+# window_tokens = 400000            # omitted: the model's catalog window
+auto_summarize = true                 # compact automatically at the threshold
+retry_base_ms = 500                   # startup-only retry backoff base
+
+[skills]
+enabled = true                        # SKILL.md catalogs in the system prompt
+dirs = []                             # extra skill collections after project and user skills
 
 [context.lcm]
 summary_input = "fork"               # fork main Chat prefix; episode explicitly uses compact source
@@ -380,6 +437,8 @@ verbatim_user_tokens = 20000
 confirm = "auto"
 hardline = true                      # fixed destructive-exec patterns; live setting
 tools = { bash = "auto", write = "ask" }
+deny = []                            # exact tool names that are always refused
+read_only = false                    # live: expose only read-only workspace tools
 # auto_prompt = "..."                # approver prompt template; unset uses the built-in default
 
 [agents]                            # Unset caps mean no limit.
@@ -398,6 +457,8 @@ enabled = false
 provider_key_envs = []                 # extra credential variable names allowed at startup/reload/setup
 search = ["deepseek", "ddg"]           # ordered list: deepseek | ddg | searxng:<url> | brave
 fetch_backend = ["direct"]             # ordered list: direct | crawl4ai:<base-url>
+allow_private = false                  # true permits loopback/private-network fetches
+user_agent = "BubblePaw/0.1"
 key_env = "BRAVE_API_KEY"
 deepseek_key_env = "DEEPSEEK_API_KEY" # local worker example selects DEEPSEEK_MODEL_API_KEY
 deepseek_base_url = "https://api.deepseek.com/v1/tools"

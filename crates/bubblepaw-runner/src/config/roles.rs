@@ -1,7 +1,8 @@
 //! Role references: `main`, other roles and `<provider>/<model>` routes. A
 //! failure is a role error, which `HostConfig::load` reports as such.
-use super::RoleEntry;
+use super::{RoleEntry, RoleTable};
 use anyhow::{Context, Result, ensure};
+use bubblepaw_core::config_schema::{Field, Node};
 use std::collections::BTreeMap;
 
 pub(super) fn resolve_role(
@@ -65,3 +66,23 @@ fn resolve(
     stack.pop();
     Ok(models)
 }
+
+/// The four role names; each holds a model list or a table (see `RoleTable`).
+pub(super) const ROLE_FIELDS: &[Field] = &[
+    Field {
+        name: "summary",
+        node: Node::Table(RoleTable::FIELDS),
+    },
+    Field {
+        name: "chapter",
+        node: Node::Table(RoleTable::FIELDS),
+    },
+    Field {
+        name: "decider",
+        node: Node::Table(RoleTable::FIELDS),
+    },
+    Field {
+        name: "approver",
+        node: Node::Table(RoleTable::FIELDS),
+    },
+];

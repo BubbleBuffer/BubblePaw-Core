@@ -224,20 +224,7 @@ pub enum FetchBackend {
     Crawl4Ai { url: String },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct WebExpose {
-    pub fetch: bool,
-    pub search: bool,
-}
-impl Default for WebExpose {
-    fn default() -> Self {
-        Self {
-            fetch: true,
-            search: true,
-        }
-    }
-}
+pub use crate::config::WebExpose;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]

@@ -18,7 +18,10 @@ use std::{
 };
 use tokio::task::JoinSet;
 
+mod follow;
 mod registry;
+mod state;
+use state::{Entry, Registered};
 
 /// Ordered inventory changes. Tool fields use registered names; lifecycle
 /// fields use configured server names. Diagnostics never contain config values.
@@ -59,6 +62,8 @@ struct HostInner {
     reapers: Mutex<JoinSet<()>>,
     retired: Mutex<Vec<Weak<Server>>>,
     closed: AtomicBool,
+    /// The MCP section this host follows, once subscribed.
+    section: Mutex<Option<tokio::sync::watch::Receiver<Arc<McpSettings>>>>,
 }
 #[derive(Default)]
 struct HostState {
@@ -66,18 +71,6 @@ struct HostState {
     tools: BTreeMap<String, Registered>,
     removed: BTreeMap<String, String>,
     warnings: Vec<String>,
-}
-struct Entry {
-    server: Arc<Server>,
-    config: McpServerSettings,
-    listed: Vec<Value>,
-}
-#[derive(Clone)]
-struct Registered {
-    server_name: String,
-    server: Arc<Server>,
-    original_name: String,
-    definition: ToolDefinition,
 }
 impl McpHost {
     /// Standalone startup: credentials and child env come from this process.
@@ -111,6 +104,7 @@ impl McpHost {
                 reapers: Mutex::new(JoinSet::new()),
                 retired: Mutex::default(),
                 closed: AtomicBool::new(false),
+                section: Mutex::new(None),
             }),
         };
         if let Err(error) = host.reload(settings, None).await {

@@ -1,6 +1,6 @@
 # Live config refresh
 
-Status: Built through 2026-10-30. Live session model and compaction controls; hooks and plugins stay deferred
+Status: Built through 2026-10-31 (section owners on watch channels, see [config](config.md#section-owners-2026-10-31)). Live session model and compaction controls; hooks and plugins stay deferred
 ([decisions](decisions.md)).
 
 The approved refresh path is implemented in the runner: turn-start file stats,
