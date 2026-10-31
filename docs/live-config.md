@@ -129,6 +129,9 @@ The explicit `config.reload` and the HTTP route run the same check immediately.
 `config.set` writes one key into the config file and then runs this same reload, so a
 live key reaches its subscriber at once and a restart-only key is reported in
 `restart_keys` ([config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31)).
+`providers.save`, `providers.remove` and `roles.set_main` write the file and then reload through
+the host config the same way (2026-10-31), so its accepted config and file stamps follow the
+write: a turn-start check and a later `providers.reload` report nothing left to apply.
 
 ### MCP without breaking calls
 

@@ -332,6 +332,18 @@ impl SetupState {
         file.persist(&self.target).map_err(|_| io_error())?;
         Ok(())
     }
+    /// The provider update lock, held across prepare, write and apply when no
+    /// host config exists. With one, `LiveConfig::check_locked` takes it
+    /// around its own apply, so holding it here would deadlock.
+    pub(crate) fn provider_update_guard(&self) -> ApiResult<Option<std::sync::MutexGuard<'_, ()>>> {
+        match (&self.host_config, &self.live) {
+            (None, Some(live)) => live.lock_update().map(Some).map_err(|_| io_error()),
+            _ => Ok(None),
+        }
+    }
+    /// Write the file and, without a host config, apply it. Callers hold the
+    /// host update lock when there is one, and call `apply_host` after
+    /// releasing the file and provider locks.
     pub(crate) fn write_apply(
         &self,
         doc: &DocumentMut,
@@ -353,12 +365,33 @@ impl SetupState {
             // The reply describes the configuration about to be published.
             reply["main_unavailable"] = json!(prepared.unavailable().map(ToString::to_string));
         }
-        // All fallible preparation precedes the file replacement. Publication is infallible.
+        // All fallible preparation precedes the file replacement.
         self.write(doc)?;
-        if let (Some(live), Some(prepared)) = (&self.live, prepared) {
+        if self.host_config.is_none()
+            && let (Some(live), Some(prepared)) = (&self.live, prepared)
+        {
             live.apply_prepared(prepared);
         }
         Ok(reply)
+    }
+    /// With a host config, apply a written file through its reload, as
+    /// `config.set` does, so its accepted config and file stamps follow the write.
+    pub(crate) async fn apply_host(&self) -> ApiResult<()> {
+        let Some(host) = &self.host_config else {
+            return Ok(());
+        };
+        let report = host.check_locked(true, None).await;
+        if report.applied {
+            return Ok(());
+        }
+        Err(ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!(
+                "saved to {}, but not applied: {}",
+                self.target.display(),
+                report.errors.join("; ")
+            ),
+        ))
     }
 }
 pub(crate) fn target_provider(doc: &DocumentMut, name: &str) -> bool {
@@ -393,6 +426,11 @@ impl ProviderSetup {
             Some(host) => Some(host.lock_update().await),
             None => None,
         };
+        let reply = self.set_main_locked(model)?;
+        self.0.apply_host().await?;
+        Ok(reply)
+    }
+    fn set_main_locked(&self, model: &str) -> ApiResult<Value> {
         let (provider, id) = model.split_once('/').ok_or_else(bad)?;
         if !valid_name(provider)
             || id.is_empty()
@@ -401,13 +439,7 @@ impl ProviderSetup {
             return Err(bad());
         }
         let _guard = self.0.files.lock().map_err(|_| io_error())?;
-        let _update = self
-            .0
-            .live
-            .as_ref()
-            .map(|live| live.lock_update())
-            .transpose()
-            .map_err(|_| io_error())?;
+        let _update = self.0.provider_update_guard()?;
         if !self
             .0
             .load()?
