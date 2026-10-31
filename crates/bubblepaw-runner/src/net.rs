@@ -6,6 +6,7 @@ use regex::Regex;
 use reqwest::{Url, header};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     fmt,
@@ -147,14 +148,12 @@ fn search_label(backend: &SearchBackend) -> String {
 }
 /// Cooldown and cache identity; API keys appear only as digests.
 fn search_identity(backend: &SearchBackend) -> String {
+    let digest = |key: &str| bubblepaw_core::hex_lower(Sha256::digest(key.as_bytes()));
     match backend {
-        SearchBackend::Brave { api_key } => {
-            format!("brave:{}", bubblepaw_core::fingerprint(api_key.as_bytes()))
+        SearchBackend::Brave { api_key } => format!("brave:{}", digest(api_key)),
+        SearchBackend::DeepSeek { base_url, api_key } => {
+            format!("deepseek:{base_url}:{}", digest(api_key))
         }
-        SearchBackend::DeepSeek { base_url, api_key } => format!(
-            "deepseek:{base_url}:{}",
-            bubblepaw_core::fingerprint(api_key.as_bytes())
-        ),
         other => search_label(other),
     }
 }

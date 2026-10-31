@@ -29,7 +29,7 @@ crates/bubblepaw-runner/src/episode_models.rs 991
 crates/bubblepaw-runner/src/episode_worker.rs 1053
 crates/bubblepaw-runner/src/host_transport.rs 828
 crates/bubblepaw-runner/src/main.rs 717
-crates/bubblepaw-runner/src/net.rs 2763
+crates/bubblepaw-runner/src/net.rs 2762
 crates/bubblepaw-runner/src/opencode_console.rs 676
 crates/bubblepaw-runner/src/probes.rs 1435
 crates/bubblepaw-runner/src/provider.rs 880
