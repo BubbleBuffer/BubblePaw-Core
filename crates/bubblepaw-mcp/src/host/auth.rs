@@ -5,6 +5,9 @@
 use super::*;
 use crate::oauth::ServerAuth;
 
+const MAX_HEADER_VALUE: usize = 8 * 1024;
+const MAX_HEADERS: usize = 32;
+
 impl HostInner {
     /// The server's shared sign-in state, created on first use and kept across
     /// restarts. `None` for servers without OAuth.
@@ -42,7 +45,121 @@ impl HostInner {
     }
 }
 
+impl HostInner {
+    /// The server's secret file, when the host has a data directory.
+    pub(super) fn secrets_path(&self, name: &str) -> Option<PathBuf> {
+        self.auth_dir
+            .as_deref()
+            .map(|dir| crate::oauth::store::path(dir, name))
+    }
+
+    /// Deletes a removed server's secret file: tokens and header values.
+    pub(super) fn forget_secrets(&self, name: &str) {
+        self.header_names.lock().unwrap().remove(name);
+        if let Some(path) = self.secrets_path(name) {
+            let _lock = crate::oauth::store::lock(&path);
+            let _ = crate::oauth::store::remove_all(&path);
+        }
+    }
+
+    /// Re-reads which header secrets each HTTP server has (names only).
+    pub(super) fn load_header_names(&self, settings: &McpSettings) {
+        let names = settings
+            .servers
+            .iter()
+            .filter(|(_, config)| config.url.is_some())
+            .filter_map(|(name, _)| {
+                let path = self.secrets_path(name)?;
+                let names: Vec<String> = crate::oauth::store::read_headers(&path)
+                    .into_keys()
+                    .collect();
+                (!names.is_empty()).then(|| (name.clone(), names))
+            })
+            .collect();
+        *self.header_names.lock().unwrap() = names;
+    }
+}
+
 impl McpHost {
+    /// Stores (`Some`) or removes (`None`) one header value for an HTTP server
+    /// in its secret file, then reconnects the server. The value never appears
+    /// in errors, status or logs.
+    pub async fn set_header(&self, server: &str, header: &str, value: Option<&str>) -> Result<()> {
+        ensure!(
+            !self.inner.closed.load(Ordering::SeqCst),
+            "MCP host shut down"
+        );
+        let config = self
+            .inner
+            .state
+            .lock()
+            .unwrap()
+            .settings
+            .servers
+            .get(server)
+            .cloned()
+            .ok_or_else(|| anyhow!("MCP server {server} is not configured"))?;
+        ensure!(
+            config.url.is_some(),
+            "MCP server {server} is not an HTTP server"
+        );
+        ensure!(
+            reqwest::header::HeaderName::from_bytes(header.as_bytes()).is_ok(),
+            "header must be a valid HTTP header name"
+        );
+        ensure!(
+            !crate::config::reserved_header(&header.to_ascii_lowercase()),
+            "header is a reserved protocol header"
+        );
+        if let Some(value) = value {
+            ensure!(!value.is_empty(), "header value must not be empty");
+            ensure!(
+                value.len() <= MAX_HEADER_VALUE
+                    && reqwest::header::HeaderValue::from_str(value).is_ok(),
+                "header value is not a valid HTTP header value"
+            );
+            ensure!(
+                !(config.oauth && header.eq_ignore_ascii_case("authorization")),
+                "oauth cannot be combined with an Authorization header"
+            );
+        }
+        let path = self
+            .inner
+            .secrets_path(server)
+            .ok_or_else(|| anyhow!("MCP header secrets need a data directory"))?;
+        let (header, value) = (header.to_owned(), value.map(str::to_owned));
+        let names = tokio::task::spawn_blocking(move || {
+            let lock = crate::oauth::store::lock(&path)?;
+            let mut names: Vec<String> = crate::oauth::store::read_headers(&path)
+                .into_keys()
+                .filter(|known| !known.eq_ignore_ascii_case(&header))
+                .collect();
+            ensure!(
+                value.is_none() || names.len() < MAX_HEADERS,
+                "too many stored MCP headers"
+            );
+            crate::oauth::store::set_header(&path, &header, value.as_deref())?;
+            if value.is_some() {
+                names.push(header);
+            }
+            names.sort();
+            drop(lock);
+            Ok::<_, anyhow::Error>(names)
+        })
+        .await
+        .map_err(|_| anyhow!("cannot store the MCP header"))??;
+        {
+            let mut cache = self.inner.header_names.lock().unwrap();
+            if names.is_empty() {
+                cache.remove(server);
+            } else {
+                cache.insert(server.to_owned(), names);
+            }
+        }
+        restart(Arc::downgrade(&self.inner), server).await;
+        Ok(())
+    }
+
     fn signed_in_server(&self, server: &str) -> Result<Arc<ServerAuth>> {
         let config = self
             .inner

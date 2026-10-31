@@ -188,6 +188,12 @@ characters) and end in `_API_KEY`, `_KEY` or `_TOKEN`, or appear in
 The allowlist defaults to empty and applies to MCP headers independently of web
 provider setup.
 
+A literal header value, such as a "Header token" in the `Authorization` header,
+is a secret and never goes into the config. Set it with the `mcp.headers.set`
+host method; it is kept in the server's secret file and sent next to the
+`headers_from` ones, and the stored value wins for the same header name. See
+[mcp](mcp.md#header-secrets).
+
 `oauth = true` (default false, live) signs an HTTP server in with the MCP
 authorization flow instead of an env credential. It requires `url` and cannot
 be combined with an `Authorization` entry in `headers_from`. Tokens are stored
@@ -412,10 +418,16 @@ an unknown key is a 400 error. Hosts without an effective config omit `settings`
 converted to the TOML type the schema expects. It returns
 `{key, applied, reload}`: `applied` is `"live"` or `"restart_required"` from the
 key's flag, and `reload` is the `ReloadReport` of the reload it ran. `value: null`
-removes the key from the file so its default applies. The steps, all under the host
+removes the key from the file so its default applies. On a dynamic map entry
+(`providers.<name>`, `mcp.servers.<name>`, `toolsets.<name>`, `skills.<name>`,
+`models.classes.<name>`, `extensions.<name>`) `null` removes the whole table in one
+call; any other table (`agents`, `mcp`, `mcp.servers`) still refuses it, and a
+non-null value for an entry key is refused too. Removing an MCP server also deletes
+its stored secrets ([mcp](mcp.md#header-secrets)). The steps, all under the host
 update lock that serializes reloads and provider saves (`config_set.rs`):
 
-1. The key must be a leaf (or free-form table) in the schema. Map keys are settable
+1. The key must be a leaf (or free-form table) in the schema, or, with `null`, a map
+   entry. Map keys are settable
    per leaf (`providers.<name>.kind`, `mcp.servers.<name>.enabled`, `roles.summary.models`,
    `extensions.<name>.env.<VAR>`); setting a leaf of a missing entry creates it. A key
    that contains a dot in a name cannot be addressed.

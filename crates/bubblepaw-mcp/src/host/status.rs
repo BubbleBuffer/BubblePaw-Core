@@ -57,6 +57,8 @@ pub struct McpServerStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     pub auth: McpAuthStatus,
+    /// Names (never values) of the header secrets set with `mcp.headers.set`.
+    pub headers: Vec<String>,
     /// Tools the model sees from this server.
     pub tool_count: usize,
     /// Every tool the server lists, with its filter result. Empty unless running.
@@ -68,11 +70,12 @@ impl McpHost {
     pub fn servers(&self) -> Vec<McpServerStatus> {
         let state = self.inner.state.lock().unwrap();
         let auth = self.inner.auth.lock().unwrap();
+        let headers = self.inner.header_names.lock().unwrap();
         state
             .settings
             .servers
             .keys()
-            .filter_map(|name| status(&state, &auth, name))
+            .filter_map(|name| status(&state, &auth, &headers, name))
             .collect()
     }
 
@@ -89,12 +92,13 @@ impl HostInner {
         let changed = {
             let state = self.state.lock().unwrap();
             let auth = self.auth.lock().unwrap();
+            let headers = self.header_names.lock().unwrap();
             let mut sent = self.sent.lock().unwrap();
             let mut names: BTreeSet<String> = sent.keys().cloned().collect();
             names.extend(state.settings.servers.keys().cloned());
             let mut changed = Vec::new();
             for name in names {
-                let current = status(&state, &auth, &name).unwrap_or_else(|| {
+                let current = status(&state, &auth, &headers, &name).unwrap_or_else(|| {
                     let mut gone = sent[&name].clone();
                     gone.state = McpServerState::Removed;
                     gone.error = None;
@@ -122,6 +126,7 @@ impl HostInner {
 fn status(
     state: &HostState,
     auth: &BTreeMap<String, Arc<ServerAuth>>,
+    headers: &BTreeMap<String, Vec<String>>,
     name: &str,
 ) -> Option<McpServerStatus> {
     let config = state.settings.servers.get(name)?;
@@ -184,6 +189,7 @@ fn status(
         state: server_state,
         error,
         auth,
+        headers: headers.get(name).cloned().unwrap_or_default(),
         tool_count,
         tools,
     })

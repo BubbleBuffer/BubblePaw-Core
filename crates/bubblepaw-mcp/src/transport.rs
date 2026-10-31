@@ -18,10 +18,17 @@ impl Connection {
         allowed_envs: &[String],
         client_env: Option<&McpClientEnv>,
         auth: Option<Arc<crate::oauth::ServerAuth>>,
+        stored_headers: &std::collections::BTreeMap<String, String>,
     ) -> Result<Arc<Self>> {
         config.validate(allowed_envs)?;
         let connection = if config.url.is_some() {
-            Self::Http(HttpConnection::new(config, allowed_envs, client_env, auth)?)
+            Self::Http(HttpConnection::new(
+                config,
+                allowed_envs,
+                client_env,
+                auth,
+                stored_headers,
+            )?)
         } else {
             Self::Stdio(protocol::Connection::spawn(config, workspace, client_env)?)
         };
