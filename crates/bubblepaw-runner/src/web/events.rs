@@ -1,6 +1,6 @@
 //! The live event stream. Missed events come from the host replay; live events
 //! come from the page broadcast, which `start_tasks` feeds from the host.
-use super::{HostEvent, WebState, host::host_ctx};
+use super::{WebState, host::host_ctx};
 use crate::host_api::events;
 use axum::{
     extract::State,
@@ -11,6 +11,14 @@ use bubblepaw_core::HarnessEvent;
 use futures_util::stream;
 use std::{collections::VecDeque, convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
+
+/// What the page broadcast carries to each SSE stream.
+#[derive(Clone)]
+pub(super) enum HostEvent {
+    Core(Arc<HarnessEvent>),
+    Reset,
+    Mcp(Arc<bubblepaw_mcp::McpServerStatus>),
+}
 
 fn sse_event(event: &HarnessEvent) -> Event {
     Event::default()
@@ -79,6 +87,9 @@ pub(super) async fn events_stream(
                         cursor = cursor.max(event.sequence);
                         sse_event(event.as_ref())
                     }
+                    Ok(HostEvent::Mcp(status)) => Event::default()
+                        .event("mcp.server")
+                        .data(serde_json::to_string(status.as_ref()).unwrap_or_default()),
                     Ok(HostEvent::Reset) | Err(broadcast::error::RecvError::Lagged(_)) => {
                         Event::default().event("reset").data("{}")
                     }
@@ -89,4 +100,37 @@ pub(super) async fn events_stream(
         },
     );
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
+
+/// Sends `mcp.server` SSE events: one server's whole state per change, and
+/// every server's state again after a lag.
+pub(super) fn forward_mcp_status(state: &Arc<WebState>) {
+    let Some(live) = state.services.live_config.as_ref() else {
+        return;
+    };
+    let mut statuses = live.mcp().subscribe();
+    let weak = Arc::downgrade(state);
+    let stop = state.stop.clone();
+    tokio::spawn(async move {
+        loop {
+            let received =
+                tokio::select! { _ = stop.cancelled() => break, value = statuses.recv() => value };
+            let Some(state) = weak.upgrade() else {
+                break;
+            };
+            let changed = match received {
+                Ok(status) => vec![status],
+                Err(broadcast::error::RecvError::Lagged(_)) => state
+                    .services
+                    .live_config
+                    .as_ref()
+                    .map(|live| live.mcp().servers())
+                    .unwrap_or_default(),
+                Err(broadcast::error::RecvError::Closed) => break,
+            };
+            for status in changed {
+                let _ = state.events.send(HostEvent::Mcp(Arc::new(status)));
+            }
+        }
+    });
 }

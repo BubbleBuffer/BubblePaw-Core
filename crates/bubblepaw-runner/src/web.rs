@@ -18,8 +18,9 @@ use axum::{
     middleware,
     routing::{get, post},
 };
-use bubblepaw_core::{CancellationToken, EventKind, Harness, HarnessEvent, Store};
+use bubblepaw_core::{CancellationToken, EventKind, Harness, Store};
 use errors::ApiError;
+use events::HostEvent;
 use serde::Serialize;
 use std::{
     collections::{HashMap, VecDeque},
@@ -99,11 +100,6 @@ struct Transient {
     sequence: Option<u64>,
     /// Live events per session processed since the last durable event.
     live: HashMap<String, u64>,
-}
-#[derive(Clone)]
-enum HostEvent {
-    Core(Arc<HarnessEvent>),
-    Reset,
 }
 struct WebState {
     harness: Arc<Harness>,
@@ -469,6 +465,7 @@ fn start_tasks(state: &Arc<WebState>) -> Result<()> {
             }
         }
     });
+    events::forward_mcp_status(state);
     let weak = Arc::downgrade(state);
     let refresh = state.refresh.clone();
     let stop = state.stop.clone();

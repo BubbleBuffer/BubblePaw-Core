@@ -160,6 +160,11 @@ characters) and end in `_API_KEY`, `_KEY` or `_TOKEN`, or appear in
 The allowlist defaults to empty and applies to MCP headers independently of web
 provider setup.
 
+`oauth = true` (default false, live) signs an HTTP server in with the MCP
+authorization flow instead of an env credential. It requires `url` and cannot
+be combined with an `Authorization` entry in `headers_from`. Tokens are stored
+in `<data dir>/auth/`, never in the config; see [mcp](mcp.md#oauth-sign-in).
+
 HTTP servers cannot set stdio `args`, `cwd`, `env` or `env_from`, or a `command`.
 Stdio servers cannot set `headers_from`. Header names follow HTTP token syntax;
 case-insensitive duplicates, framing and connection headers, `Accept`,

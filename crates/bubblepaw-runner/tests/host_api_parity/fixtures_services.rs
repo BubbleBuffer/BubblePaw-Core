@@ -184,5 +184,32 @@ pub fn all() -> Vec<Fixture> {
                 ),
             ],
         ),
+        // MCP: the parity config has no servers, so sign-in controls report
+        // the unknown server; a real sign-in is covered by the MCP crate tests.
+        fixture("mcp.servers.list", vec![ok("mcp.servers.list", json!({}))]),
+        fixture(
+            "mcp.auth.start",
+            vec![err(
+                "mcp.auth.start",
+                json!({"server": "missing"}),
+                "MCP server missing is not configured",
+            )],
+        ),
+        fixture(
+            "mcp.auth.complete",
+            vec![err(
+                "mcp.auth.complete",
+                json!({"server": "missing", "redirect_url": "http://127.0.0.1:1/callback"}),
+                "MCP server missing is not configured",
+            )],
+        ),
+        fixture(
+            "mcp.auth.sign_out",
+            vec![err(
+                "mcp.auth.sign_out",
+                json!({"server": "missing"}),
+                "MCP server missing is not configured",
+            )],
+        ),
     ]
 }
