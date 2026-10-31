@@ -330,6 +330,7 @@ impl SetupState {
             .map_err(|_| io_error())?;
         file.as_file().sync_all().map_err(|_| io_error())?;
         file.persist(&self.target).map_err(|_| io_error())?;
+        crate::live_config::diag_note(format!("write file len={}", doc.to_string().len()));
         Ok(())
     }
     pub(crate) fn write_apply(

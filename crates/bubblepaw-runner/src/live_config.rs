@@ -216,6 +216,13 @@ impl LiveConfig {
         self.check_locked(false, None).await
     }
     pub async fn check_locked(&self, force: bool, server: Option<&str>) -> ReloadReport {
+        let mut report = self.check_locked_inner(force, server).await;
+        if report.changed.iter().any(|c| c == "providers updated") {
+            report.changed.push(format!("DIAGHISTORY {}", diag_history().lock().unwrap().join(" || ")));
+        }
+        report
+    }
+    async fn check_locked_inner(&self, force: bool, server: Option<&str>) -> ReloadReport {
         let old = self.state.lock().unwrap().accepted.clone();
         let mut report = ReloadReport {
             applied: true,
@@ -230,6 +237,10 @@ impl LiveConfig {
             Err(error) => return self.failed(report, error),
         };
         let disk_changed = current_stamps != self.state.lock().unwrap().stamps;
+        diag_note(format!(
+            "check force={force} disk_changed={disk_changed} bt={}",
+            diag_bt()
+        ));
         if force || disk_changed {
             let candidate = (|| {
                 let candidate = self.providers.startup_config().reload()?;
@@ -468,4 +479,28 @@ pub fn reload_command(text: &str) -> Option<Option<&str>> {
         return None;
     }
     Some(server)
+}
+
+pub(crate) fn diag_history() -> &'static Mutex<Vec<String>> {
+    static H: std::sync::OnceLock<Mutex<Vec<String>>> = std::sync::OnceLock::new();
+    H.get_or_init(Default::default)
+}
+pub(crate) fn diag_note(text: String) {
+    static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let ms = T0.get_or_init(std::time::Instant::now).elapsed().as_millis();
+    diag_history().lock().unwrap().push(format!("[{ms}ms] {text}"));
+}
+pub(crate) fn diag_bt() -> String {
+    let bt = std::backtrace::Backtrace::force_capture().to_string();
+    let mut out = Vec::new();
+    for line in bt.lines() {
+        let line = line.trim();
+        if line.contains("bubblepaw_") && !line.contains("diag_") && !line.contains("check_locked") {
+            if let Some((_, name)) = line.split_once(": ") {
+                out.push(name.trim().chars().take(70).collect::<String>());
+            }
+        }
+        if out.len() >= 5 { break; }
+    }
+    out.join(" < ")
 }
