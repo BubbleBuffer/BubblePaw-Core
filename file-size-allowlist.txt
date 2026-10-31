@@ -97,7 +97,7 @@ crates/bubblepaw-runner/tests/skills.rs 533
 crates/bubblepaw-runner/tests/summarization.rs 1710
 crates/bubblepaw-runner/tests/usage.rs 509
 crates/bubblepaw-runner/tests/web_input_files.rs 519
-crates/bubblepaw-runner/tests/web_providers.rs 1574
+crates/bubblepaw-runner/tests/web_providers.rs 1572
 crates/bubblepaw-runner/tests/web_transport.rs 1167
 crates/bubblepaw-runner/tests/worker_lifecycle.rs 996
 crates/bubblepaw-runner/tests/workspace_edit.rs 520

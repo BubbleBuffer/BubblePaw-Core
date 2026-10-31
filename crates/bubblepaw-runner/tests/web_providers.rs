@@ -180,10 +180,8 @@ async fn saving_omitted_replay_policy_preserves_provider_defaults() {
             .settings()
             .unwrap();
         assert!(loaded.providers["local"].reasoning_replay().is_empty());
-        let doc: toml::Value = std::fs::read_to_string(&files.custom)
-            .unwrap()
-            .parse()
-            .unwrap();
+        let doc: toml::Value =
+            toml::from_str(&std::fs::read_to_string(&files.custom).unwrap()).unwrap();
         assert!(
             doc["providers"]["local"]["models"][0]
                 .get("reasoning_replay")
