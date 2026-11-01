@@ -169,10 +169,10 @@ async fn null_removes_a_whole_map_entry_but_a_plain_table_refuses_it() {
         assert_eq!(error.kind(), "unknown_key", "{key}");
         assert_eq!(std::fs::read(&fixture.file).unwrap(), before, "{key}");
     }
-    // A value for an entry key stays refused: only null removes it.
+    // A non-object value for an entry key stays refused: only null removes it.
     let error = refusal(
         setup
-            .config_set("toolsets.looker", Some(&json!({"tools": ["read"]})))
+            .config_set("toolsets.looker", Some(&json!("read")))
             .await
             .unwrap_err(),
     );
@@ -228,7 +228,7 @@ enabled=false
         );
     }
     assert_eq!(
-        edit_document(&mut doc, "providers.b", Some(&json!({"kind": "x"})))
+        edit_document(&mut doc, "providers.b", Some(&json!("x")))
             .unwrap_err()
             .kind(),
         "unknown_key"
@@ -342,5 +342,69 @@ async fn the_host_methods_list_set_and_gate_settings() {
     .await
     .unwrap_err();
     assert_eq!((error.rpc_code(), error.http_status()), (-32011, 400));
+    fixture.shutdown().await;
+}
+
+#[test]
+fn an_object_replaces_a_whole_entry_in_place_and_null_still_removes_it() {
+    let mut doc: DocumentMut =
+        "# top\n[mcp.servers.a]\n# header note\ncommand='old'\nargs=['x']\n\n[agents]\nauto_wake=true\n"
+            .parse()
+            .unwrap();
+    let entry = json!({"url": "http://127.0.0.1:1/mcp", "enabled": false});
+    edit_document(&mut doc, "mcp.servers.a", Some(&entry)).unwrap();
+    let text = doc.to_string();
+    assert!(text.starts_with("# top\n[mcp.servers.a]\n"), "{text}");
+    assert!(text.contains("url = \"http://127.0.0.1:1/mcp\"") && text.contains("enabled = false"));
+    assert!(
+        !text.contains("command") && !text.contains("args"),
+        "{text}"
+    );
+    assert!(text.contains("[agents]\nauto_wake=true"), "{text}");
+    // A new entry is added; a sibling stays.
+    edit_document(&mut doc, "mcp.servers.b", Some(&json!({"command": "x"}))).unwrap();
+    let text = doc.to_string();
+    assert!(text.contains("[mcp.servers.b]\ncommand = \"x\""), "{text}");
+    assert!(text.contains("[mcp.servers.a]"));
+    edit_document(&mut doc, "mcp.servers.a", None).unwrap();
+    assert!(!doc.to_string().contains("servers.a"));
+}
+
+#[test]
+fn a_non_map_table_and_a_scalar_refuse_an_object() {
+    let mut doc: DocumentMut = "[agents]\nauto_wake=true\n".parse().unwrap();
+    let before = doc.to_string();
+    for key in ["agents", "mcp", "mcp.servers"] {
+        let error = edit_document(&mut doc, key, Some(&json!({"auto_wake": false}))).unwrap_err();
+        assert_eq!(error.kind(), "unknown_key", "{key}");
+    }
+    // A non-object value on an entry key is still refused.
+    let error = edit_document(&mut doc, "mcp.servers.a", Some(&json!("x"))).unwrap_err();
+    assert_eq!(error.kind(), "unknown_key");
+    assert_eq!(doc.to_string(), before);
+}
+
+#[tokio::test]
+async fn an_invalid_object_leaves_the_file_byte_identical() {
+    let fixture = Fixture::new(&config("[mcp.servers.a]\ncommand='x'\nenabled=false\n")).await;
+    let before = std::fs::read(&fixture.file).unwrap();
+    for entry in [
+        json!({"command": "x", "url": "http://127.0.0.1:1/mcp"}),
+        json!({"enabled": false}),
+        json!({"command": "x", "no_such_field": 1}),
+        json!({"command": 5}),
+    ] {
+        let error = refusal(
+            setup(&fixture)
+                .config_set("mcp.servers.a", Some(&entry))
+                .await
+                .unwrap_err(),
+        );
+        assert!(
+            matches!(error.kind(), "invalid_value" | "wrong_type"),
+            "{entry}: {error}"
+        );
+        assert_eq!(std::fs::read(&fixture.file).unwrap(), before, "{entry}");
+    }
     fixture.shutdown().await;
 }

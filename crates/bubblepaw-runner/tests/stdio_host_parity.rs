@@ -148,6 +148,8 @@ async fn initialize_advertises_host_parity_without_changing_protocol() {
 mod children;
 #[path = "stdio_host_parity/mcp.rs"]
 mod mcp;
+#[path = "stdio_host_parity/mcp_entry.rs"]
+mod mcp_entry;
 #[path = "stdio_host_parity/providers.rs"]
 mod providers;
 #[path = "stdio_host_parity/sessions.rs"]

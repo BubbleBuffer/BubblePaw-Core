@@ -97,7 +97,8 @@ pub struct ConfigGetParams {
     #[serde(default)]
     pub key: Option<String>,
 }
-/// `config.set`: one leaf key; `null` removes it so its default applies.
+/// `config.set`: one leaf key (`null` removes it so its default applies), or a
+/// dynamic map entry (an object replaces the whole entry, `null` removes it).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConfigSetParams {

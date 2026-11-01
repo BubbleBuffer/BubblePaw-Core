@@ -62,6 +62,32 @@ impl HostInner {
         }
     }
 
+    /// Forgets the OAuth tokens of every server whose `url` changed or that
+    /// stopped being a URL server: they belong to the old resource. Stored
+    /// headers stay. Servers new to `settings` have nothing to forget.
+    pub(super) fn drop_stale_tokens(&self, settings: &McpSettings) {
+        let previous = self.state.lock().unwrap().settings.clone();
+        for (name, config) in &settings.servers {
+            let Some(old) = previous
+                .servers
+                .get(name)
+                .and_then(|old| old.url.as_deref())
+            else {
+                continue;
+            };
+            if config.url.as_deref() == Some(old) {
+                continue;
+            }
+            if let Some(auth) = self.auth.lock().unwrap().remove(name) {
+                auth.close();
+            }
+            if let Some(path) = self.secrets_path(name) {
+                let _lock = crate::oauth::store::lock(&path);
+                let _ = crate::oauth::store::remove(&path);
+            }
+        }
+    }
+
     /// Re-reads which header secrets each HTTP server has (names only).
     pub(super) fn load_header_names(&self, settings: &McpSettings) {
         let names = settings

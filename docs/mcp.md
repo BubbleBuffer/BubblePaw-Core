@@ -289,7 +289,11 @@ and the stored value wins for the same name. Each connection reads the file,
 and applying a change reconnects that server. Sign-out forgets only the OAuth
 tokens; header values stay. Disabling a server keeps its secrets; removing it
 from the config (`config.set` with `null` on `mcp.servers.<name>`, or editing
-the file) deletes the whole file. An `oauth` server refuses an `Authorization`
+the file) deletes the whole file. Replacing a server with an object `config.set`
+keeps the file, so stored headers survive a switch between `command` and `url`
+(they stay unused on a command server and apply again on a URL one). The OAuth
+tokens belong to the old resource and are dropped when the entry's `url` changes
+or it stops being a URL server; an unchanged `url` keeps them. An `oauth` server refuses an `Authorization`
 header.
 
 ## Verification
@@ -325,7 +329,9 @@ error messages hold no token. `crates/bubblepaw-mcp/tests/headers.rs` runs a
 local fake HTTP server that records headers: a stored header arrives and wins
 over `headers_from`, removal stops it, no value shows in status, notifications
 or errors, and removing the server deletes the file; `stdio_host_parity` repeats
-this through `mcp.headers.set` and `config.set`. Existing stdio and scripted runner tests retain
+this through `mcp.headers.set` and `config.set`; `stdio_host_parity/mcp_entry.rs`
+covers whole-entry `config.set` (disabled start, switching transport with a stored
+header, token drop on a URL change, refused objects). Existing stdio and scripted runner tests retain
 approval, effect-recording, interruption, and shutdown coverage.
 
 Acceptance uses Linux with Rust 1.97.1: workspace formatting, strict Clippy,
