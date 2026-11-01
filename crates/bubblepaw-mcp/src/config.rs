@@ -7,6 +7,34 @@ use bubblepaw_core::{
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt, path::PathBuf};
 
+/// A refusal that concerns one field of a server entry (`url`, `command`,
+/// `headers_from`...). The message is the text a plain error would carry; the
+/// field lets a caller point at the right input.
+#[derive(Debug)]
+pub struct FieldError {
+    pub field: &'static str,
+    message: &'static str,
+}
+impl FieldError {
+    fn new(field: &'static str, message: &'static str) -> Self {
+        Self { field, message }
+    }
+}
+impl fmt::Display for FieldError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.message)
+    }
+}
+impl std::error::Error for FieldError {}
+
+macro_rules! ensure_field {
+    ($cond:expr, $field:expr, $message:literal) => {
+        if !$cond {
+            return Err(FieldError::new($field, $message).into());
+        }
+    };
+}
+
 config_section! {
     #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
     #[serde(default)]
@@ -136,46 +164,55 @@ impl McpServerSettings {
 
     /// Validate before resolving credentials or opening either transport.
     /// Diagnostics name fields only, including for malformed secret references.
+    /// A refusal that concerns one field of the entry is a [`FieldError`].
     pub fn validate(&self, header_key_envs: &[String]) -> Result<()> {
         ensure!(
             header_key_envs.iter().all(|name| valid_header_env(name)),
             "header_key_envs must contain environment variable identifiers"
         );
         let command = !self.command.trim().is_empty();
-        ensure!(
+        // Both set blames `url`, neither blames `command`: the field the owner
+        // most likely meant for the server's type.
+        ensure_field!(
             command != self.url.is_some(),
+            if command { "url" } else { "command" },
             "exactly one of command or url is required"
         );
-        ensure!(
+        ensure_field!(
             self.startup_timeout_secs > 0,
+            "startup_timeout_secs",
             "startup_timeout_secs must be positive"
         );
-        ensure!(
+        ensure_field!(
             self.call_timeout_secs > 0,
+            "call_timeout_secs",
             "call_timeout_secs must be positive"
         );
         if let Some(url) = &self.url {
-            ensure!(
+            ensure_field!(
                 self.command.is_empty()
                     && self.args.is_empty()
                     && self.cwd.is_none()
                     && self.env.is_empty()
                     && self.env_from.is_empty(),
+                "url",
                 "url cannot be combined with command, args, cwd, env or env_from"
             );
-            ensure!(
+            ensure_field!(
                 !url.chars().any(char::is_control),
+                "url",
                 "url must be a valid HTTP endpoint"
             );
             let url = reqwest::Url::parse(url)
-                .map_err(|_| anyhow::anyhow!("url must be a valid HTTP endpoint"))?;
-            ensure!(
+                .map_err(|_| FieldError::new("url", "url must be a valid HTTP endpoint"))?;
+            ensure_field!(
                 matches!(url.scheme(), "http" | "https")
                     && url.host_str().is_some()
                     && url.username().is_empty()
                     && url.password().is_none()
                     && url.query().is_none()
                     && url.fragment().is_none(),
+                "url",
                 "url must be HTTP(S) without credentials, query or fragment"
             );
             let loopback = url.host_str().is_some_and(|host| {
@@ -187,43 +224,53 @@ impl McpServerSettings {
                         .parse::<std::net::IpAddr>()
                         .is_ok_and(|address| address.is_loopback())
             });
-            ensure!(
+            ensure_field!(
                 url.scheme() == "https" || loopback,
+                "url",
                 "url must use https unless it points at this machine (localhost/127.0.0.1/::1)"
             );
-            ensure!(
+            ensure_field!(
                 !self.oauth
                     || !self
                         .headers_from
                         .keys()
                         .any(|name| name.eq_ignore_ascii_case("authorization")),
+                "headers_from",
                 "oauth cannot be combined with an Authorization header in headers_from"
             );
         } else {
-            ensure!(self.headers_from.is_empty(), "headers_from requires url");
-            ensure!(!self.oauth, "oauth requires url");
+            ensure_field!(
+                self.headers_from.is_empty(),
+                "headers_from",
+                "headers_from requires url"
+            );
+            ensure_field!(!self.oauth, "oauth", "oauth requires url");
         }
         let mut names = std::collections::BTreeSet::new();
         for (header, name) in &self.headers_from {
-            ensure!(
+            ensure_field!(
                 reqwest::header::HeaderName::from_bytes(header.as_bytes()).is_ok(),
+                "headers_from",
                 "headers_from must use valid HTTP header names"
             );
             let header = header.to_ascii_lowercase();
-            ensure!(
+            ensure_field!(
                 names.insert(header.clone()),
+                "headers_from",
                 "headers_from contains duplicate header names"
             );
-            ensure!(
+            ensure_field!(
                 !reserved_header(&header),
+                "headers_from",
                 "headers_from contains a reserved protocol header"
             );
-            ensure!(
+            ensure_field!(
                 valid_header_env(name)
                     && (["_API_KEY", "_KEY", "_TOKEN"]
                         .iter()
                         .any(|suffix| name.ends_with(suffix))
                         || header_key_envs.contains(name)),
+                "headers_from",
                 "headers_from values must be allowed environment variable identifiers"
             );
         }

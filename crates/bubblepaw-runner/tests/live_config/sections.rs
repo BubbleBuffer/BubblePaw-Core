@@ -4,6 +4,8 @@ use super::*;
 
 #[path = "config_set.rs"]
 mod config_set;
+#[path = "config_set_keys.rs"]
+mod config_set_keys;
 #[path = "provider_baseline.rs"]
 mod provider_baseline;
 #[path = "sections/toolsets.rs"]

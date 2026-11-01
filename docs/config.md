@@ -458,6 +458,19 @@ Errors keep distinct codes on every transport (HTTP 400 except the last):
 `-32010` `unknown_key`, `-32011` `wrong_type`, `-32012` `invalid_value`,
 `-32013` `write_failed` (HTTP 500).
 
+Over JSON-RPC (stdio, HTTP `/rpc`, the SDK) a refusal that is about one leaf also
+carries `error.data = {"key": "<full dotted key>"}`, so a form can show the message by
+the field that failed. A leaf write names the key it wrote (wrong type, invalid value)
+unless validation points at another leaf. A whole-entry write names the failing leaf
+when validation can tell: `mcp.servers.<name>.url` for a malformed, non-HTTPS or
+credential-carrying URL or for a URL combined with command fields, `.command` when
+neither command nor url is set, `.headers_from`, `.oauth`, `.call_timeout_secs`,
+`.startup_timeout_secs`, `.env`, `.env_from` (a value that fails type parsing, such as a
+negative timeout, names no leaf). "Exactly one of command or url"
+names `url` when both are set and `command` when neither is. Refusals no one leaf
+caused (wrong JSON type for a field, an unknown field, a section) omit `data`. The
+message text is unchanged.
+
 ## Shape
 
 ```toml

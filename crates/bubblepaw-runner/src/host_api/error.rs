@@ -1,3 +1,4 @@
+use serde_json::{Value, json};
 use std::fmt;
 
 /// One application error shared by JSON-RPC, CLI and HTTP adapters.
@@ -6,6 +7,8 @@ pub struct HostError {
     pub message: String,
     pub status: u16,
     pub code: i32,
+    /// The JSON-RPC error `data`, for the refusals that carry one.
+    pub data: Option<Value>,
     source: Option<anyhow::Error>,
 }
 impl HostError {
@@ -14,6 +17,7 @@ impl HostError {
             message: message.into(),
             status,
             code: -32000,
+            data: None,
             source: None,
         }
     }
@@ -31,6 +35,7 @@ impl HostError {
             message: format!("Host profile does not permit {method}"),
             status: 403,
             code: -32003,
+            data: None,
             source: None,
         }
     }
@@ -41,6 +46,7 @@ impl HostError {
             message: error.to_string(),
             status: 409,
             code: crate::no_provider::CODE,
+            data: None,
             source: Some(error.into()),
         }
     }
@@ -78,6 +84,7 @@ impl From<anyhow::Error> for HostError {
                 message: set.to_string(),
                 status: set.status(),
                 code: set.code(),
+                data: set.key().map(|key| json!({ "key": key })),
                 source: None,
             };
         }
@@ -127,6 +134,7 @@ impl From<anyhow::Error> for HostError {
             message: text,
             status,
             code: -32000,
+            data: None,
             source: Some(error),
         }
     }
