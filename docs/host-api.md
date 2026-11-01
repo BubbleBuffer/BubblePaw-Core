@@ -138,7 +138,8 @@ to HTTP, the CLI or the SDK.
 (`Full`) changes one leaf key in the config file and applies it through the reload
 path: `{key, applied: "live" | "restart_required", reload}`, with `value: null`
 removing the key; on a map entry (`mcp.servers.<name>`, `providers.<name>`,
-`toolsets.<name>`, `skills.<name>`) `null` removes the whole entry. Refusals are `-32010` unknown key, `-32011` wrong type, `-32012`
+`toolsets.<name>`, `skills.<name>`) `null` removes the whole entry and a JSON object
+replaces it in one validated write. Refusals are `-32010` unknown key, `-32011` wrong type, `-32012`
 invalid value (file untouched) and `-32013` write failed. Details and the validation
 steps: [config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31).
 
@@ -158,8 +159,10 @@ switches are changed with `config.set` ([config](config.md#toolsets-2026-10-31))
 
 ### MCP server methods
 
-MCP server settings change through `config.set` on `mcp.servers.<name>.*`
-(`enabled` turns a server on or off; `oauth`, `url`, `include_tools`,
+MCP server settings change through `config.set` on `mcp.servers.<name>.*`, or write
+a whole server with one object on `mcp.servers.<name>` (so a new server can start
+disabled, and a server can switch between `command` and `url` without losing its
+stored secrets). Leaf keys: (`enabled` turns a server on or off; `oauth`, `url`, `include_tools`,
 `exclude_tools` and the rest are ordinary leaves). These methods cover only what
 config cannot (details: [mcp](mcp.md#oauth-sign-in)):
 
@@ -181,7 +184,8 @@ config cannot (details: [mcp](mcp.md#oauth-sign-in)):
   32 headers per server; `Authorization` is refused for an `oauth` server.
   Values are never returned or logged.
 - Removing a server with `config.set {key: "mcp.servers.<name>", value: null}`
-  also deletes its secret file.
+  also deletes its secret file. Replacing it with an object keeps the file; the
+  OAuth tokens go only when the entry's `url` changes or it stops being a URL server.
 
 A status is `{name, transport: "stdio" | "http", enabled, state: "running" |
 "stopped" | "error" | "removed", error?, auth: {state, error?}, headers:

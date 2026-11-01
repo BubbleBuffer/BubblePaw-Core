@@ -5,7 +5,7 @@ use super::*;
 
 #[allow(dead_code)]
 #[path = "../../../bubblepaw-mcp/tests/oauth/fake.rs"]
-mod fake;
+pub(super) mod fake;
 
 impl Host {
     /// Waits for an `mcp.server` notification matching `predicate`.

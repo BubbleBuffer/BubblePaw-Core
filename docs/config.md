@@ -421,9 +421,14 @@ key's flag, and `reload` is the `ReloadReport` of the reload it ran. `value: nul
 removes the key from the file so its default applies. On a dynamic map entry
 (`providers.<name>`, `mcp.servers.<name>`, `toolsets.<name>`, `skills.<name>`,
 `models.classes.<name>`, `extensions.<name>`) `null` removes the whole table in one
-call; any other table (`agents`, `mcp`, `mcp.servers`) still refuses it, and a
-non-null value for an entry key is refused too. Removing an MCP server also deletes
-its stored secrets ([mcp](mcp.md#header-secrets)). The steps, all under the host
+call, and a JSON object replaces the whole entry in one write: its fields become the
+entry's keys (nested objects inline), the entry keeps its place and header comment in
+the file, and validation runs on the complete new entry, so
+`{url: "...", enabled: false}` is accepted as one write and the server never starts.
+Any other table (`agents`, `mcp`, `mcp.servers`) still refuses an object, as it
+refuses `null`, and a non-object, non-null value for an entry key is refused too.
+Removing an MCP server also deletes its stored secrets, while replacing one keeps them
+except OAuth tokens whose URL no longer applies ([mcp](mcp.md#header-secrets)). The steps, all under the host
 update lock that serializes reloads and provider saves (`config_set.rs`):
 
 1. The key must be a leaf (or free-form table) in the schema, or, with `null`, a map

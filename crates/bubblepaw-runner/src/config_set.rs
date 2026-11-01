@@ -92,6 +92,16 @@ fn to_item(value: &Value) -> Result<Item, ConfigSetError> {
         .ok_or_else(|| wrong(&"unrepresentable value"))
 }
 
+/// A map entry written as one table: every field of the object, nested
+/// objects inline.
+fn entry_item(fields: &serde_json::Map<String, Value>) -> Result<Item, ConfigSetError> {
+    let mut table = Table::new();
+    for (name, field) in fields {
+        table.insert(name, to_item(field)?);
+    }
+    Ok(Item::Table(table))
+}
+
 /// Set (`Some`) or remove (`None`) the dotted `key` in a config document. Pure
 /// over the document: comments, ordering and untouched keys stay. Removing the
 /// last key of a table drops the emptied table, so a map entry can be deleted
@@ -103,13 +113,18 @@ pub fn edit_document(
 ) -> Result<(), ConfigSetError> {
     let info = key_info(key)
         .ok_or_else(|| ConfigSetError::UnknownKey(format!("Unknown config key: {key}")))?;
-    // `null` on a map entry removes the whole table; any other section stays refused.
-    if !info.settable && !(value.is_none() && info.entry) {
+    // `null` removes a whole map entry and an object replaces it; any other
+    // section stays refused.
+    let whole_entry = info.entry && !info.settable;
+    if !info.settable && !(whole_entry && value.is_none_or(Value::is_object)) {
         return Err(ConfigSetError::UnknownKey(format!(
             "{key} is a section; set one of its keys"
         )));
     }
-    let item = value.map(to_item).transpose()?;
+    let item = match value {
+        Some(Value::Object(fields)) if whole_entry => Some(entry_item(fields)?),
+        value => value.map(to_item).transpose()?,
+    };
     let parts: Vec<&str> = key.split('.').collect();
     edit_table(doc.as_table_mut(), &parts, item.as_ref(), key).map(|_| ())
 }
@@ -129,6 +144,18 @@ fn edit_table(
                 // Replace the value under its existing key: the key keeps its
                 // leading comment, the value its trailing one.
                 match table.get_mut(first) {
+                    // A whole entry replaces the fields of the existing table in
+                    // place, so its position and header comment stay.
+                    Some(old) if old.is_table_like() && matches!(new, Item::Table(_)) => {
+                        let Item::Table(fields) = new else {
+                            unreachable!()
+                        };
+                        let old = old.as_table_like_mut().expect("checked table-like");
+                        old.clear();
+                        for (name, field) in fields {
+                            old.insert(&name, field);
+                        }
+                    }
                     Some(old) => {
                         if let (Item::Value(old), Item::Value(next)) = (&*old, &mut new) {
                             *next.decor_mut() = old.decor().clone();

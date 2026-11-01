@@ -191,8 +191,8 @@ impl McpHost {
                 "MCP server {name} is not configured and enabled"
             );
         }
-        let mut jobs = JoinSet::new();
-        let mut filter_updates = BTreeMap::new();
+        self.inner.drop_stale_tokens(settings);
+        let (mut jobs, mut filter_updates) = (JoinSet::new(), BTreeMap::new());
         {
             let state = self.inner.state.lock().unwrap();
             for (name, config) in &settings.servers {
