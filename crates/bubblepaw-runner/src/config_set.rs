@@ -4,7 +4,7 @@
 //! turn-start check uses.
 use crate::{
     config::{
-        EffectiveConfig,
+        EffectiveConfig, LeafError,
         redact::{ConfigTypeError, key_info},
     },
     live_config::{ReloadReport, approval_policy},
@@ -27,8 +27,26 @@ pub enum ConfigSetError {
     InvalidValue(String),
     /// The file could not be read or written, or the saved change failed to apply.
     WriteFailed(String),
+    /// Any of the above, tied to the one leaf it is about (its full dotted key).
+    AtKey(String, Box<ConfigSetError>),
 }
 impl ConfigSetError {
+    /// Tie this refusal to `key`. A refusal already tied to a leaf keeps its own.
+    #[must_use]
+    pub fn at(self, key: impl Into<String>) -> Self {
+        match self {
+            Self::AtKey(..) => self,
+            other => Self::AtKey(key.into(), Box::new(other)),
+        }
+    }
+    /// The full dotted key of the leaf the refusal is about, when it is about
+    /// exactly one; `None` otherwise. Sent as `data.key` in the host API.
+    pub fn key(&self) -> Option<&str> {
+        match self {
+            Self::AtKey(key, _) => Some(key),
+            _ => None,
+        }
+    }
     /// The host-API error code on every adapter; HTTP uses [`Self::status`].
     pub fn code(&self) -> i32 {
         match self {
@@ -36,11 +54,13 @@ impl ConfigSetError {
             Self::WrongType(_) => -32011,
             Self::InvalidValue(_) => -32012,
             Self::WriteFailed(_) => -32013,
+            Self::AtKey(_, error) => error.code(),
         }
     }
     pub fn status(&self) -> u16 {
         match self {
             Self::WriteFailed(_) => 500,
+            Self::AtKey(_, error) => error.status(),
             _ => 400,
         }
     }
@@ -51,16 +71,19 @@ impl ConfigSetError {
             Self::WrongType(_) => "wrong_type",
             Self::InvalidValue(_) => "invalid_value",
             Self::WriteFailed(_) => "write_failed",
+            Self::AtKey(_, error) => error.kind(),
         }
     }
 }
 impl std::fmt::Display for ConfigSetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let (Self::UnknownKey(m)
-        | Self::WrongType(m)
-        | Self::InvalidValue(m)
-        | Self::WriteFailed(m)) = self;
-        f.write_str(m)
+        match self {
+            Self::UnknownKey(m)
+            | Self::WrongType(m)
+            | Self::InvalidValue(m)
+            | Self::WriteFailed(m) => f.write_str(m),
+            Self::AtKey(_, error) => std::fmt::Display::fmt(error, f),
+        }
     }
 }
 impl std::error::Error for ConfigSetError {}
@@ -196,10 +219,17 @@ fn edit_table(
 
 fn classify(error: anyhow::Error) -> ConfigSetError {
     let message = format!("{error:#}");
-    if error.chain().any(|cause| cause.is::<ConfigTypeError>()) {
+    let refusal = if error.chain().any(|cause| cause.is::<ConfigTypeError>()) {
         ConfigSetError::WrongType(message)
     } else {
         ConfigSetError::InvalidValue(message)
+    };
+    match error
+        .chain()
+        .find_map(|cause| cause.downcast_ref::<LeafError>())
+    {
+        Some(leaf) => refusal.at(leaf.key.clone()),
+        None => refusal,
     }
 }
 
@@ -267,7 +297,14 @@ impl ProviderSetup {
         if doc.to_string() == original {
             return Ok(false);
         }
-        self.validate(&doc)?;
+        // A leaf write is about its own key unless validation names another.
+        let leaf_write = key_info(key).is_some_and(|info| info.settable);
+        self.validate(&doc).map_err(|error| match error {
+            ConfigSetError::WrongType(_) | ConfigSetError::InvalidValue(_) if leaf_write => {
+                error.at(key)
+            }
+            error => error,
+        })?;
         self.0.write(&doc).map_err(|error| {
             ConfigSetError::WriteFailed(format!("cannot write the config file: {}", error.1))
         })?;

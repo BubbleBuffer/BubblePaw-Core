@@ -9,7 +9,7 @@ mod protocol;
 mod transport;
 
 pub use client_env::McpClientEnv;
-pub use config::{McpServerSettings, McpSettings, McpToolSettings};
+pub use config::{FieldError, McpServerSettings, McpSettings, McpToolSettings};
 pub use host::{
     McpAuthState, McpAuthStatus, McpDiff, McpHost, McpHostOptions, McpServerState, McpServerStatus,
     McpToolStatus, tool_name,

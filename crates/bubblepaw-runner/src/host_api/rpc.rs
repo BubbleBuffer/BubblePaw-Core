@@ -3,6 +3,14 @@ use super::*;
 fn failure(id: Value, code: i32, message: impl std::fmt::Display) -> Value {
     json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message.to_string()}})
 }
+/// A host failure; `data` is added only when the error carries some.
+fn host_failure(id: Value, error: &HostError) -> Value {
+    let mut response = failure(id, error.rpc_code(), error);
+    if let Some(data) = &error.data {
+        response["error"]["data"] = data.clone();
+    }
+    response
+}
 pub async fn handle_bytes(ctx: &HostCtx, profile: Profile, bytes: &[u8]) -> Option<Value> {
     match serde_json::from_slice(bytes) {
         Ok(request) => handle(ctx, profile, request).await,
@@ -24,6 +32,6 @@ pub async fn handle(ctx: &HostCtx, profile: Profile, request: Value) -> Option<V
     let result = dispatch(ctx, profile, method, params).await;
     id.map(|id| match result {
         Ok(result) => json!({"jsonrpc":"2.0","id":id,"result":result}),
-        Err(error) => failure(id, error.rpc_code(), error),
+        Err(error) => host_failure(id, &error),
     })
 }

@@ -140,7 +140,10 @@ path: `{key, applied: "live" | "restart_required", reload}`, with `value: null`
 removing the key; on a map entry (`mcp.servers.<name>`, `providers.<name>`,
 `toolsets.<name>`, `skills.<name>`) `null` removes the whole entry and a JSON object
 replaces it in one validated write. Refusals are `-32010` unknown key, `-32011` wrong type, `-32012`
-invalid value (file untouched) and `-32013` write failed. Details and the validation
+invalid value (file untouched) and `-32013` write failed. When the refusal is about one
+leaf, the error's `data` is `{"key": "<full dotted key>"}`, such as
+`mcp.servers.docs.url` for a bad URL in an object write; with no single culprit `data` is
+omitted. Details and the validation
 steps: [config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31).
 
 

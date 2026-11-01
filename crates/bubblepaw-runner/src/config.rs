@@ -26,6 +26,10 @@ use toml::Value;
 
 #[path = "config/live_settings.rs"]
 mod live_settings;
+#[path = "config/mcp_validate.rs"]
+mod mcp_validate;
+pub use mcp_validate::LeafError;
+use mcp_validate::validate_mcp;
 #[path = "config/redact.rs"]
 pub(crate) mod redact;
 #[path = "config/roles.rs"]
@@ -1228,93 +1232,6 @@ pub fn parse_value(value: &str) -> Value {
             (table.len() == 1).then(|| table.remove("value"))?
         })
         .unwrap_or_else(|| Value::String(value.into()))
-}
-/// Shape checks for `[mcp]` before typed deserialization. Secrets are never read
-/// here: `env_from` entries are checked as environment names only.
-fn validate_mcp(mcp: Option<&Value>) -> Result<()> {
-    let settings: McpSettings = mcp
-        .cloned()
-        .unwrap_or_else(|| Value::Table(toml::map::Map::new()))
-        .try_into()
-        .map_err(|_| anyhow::anyhow!("Invalid config value: mcp; invalid field type"))?;
-    // Validate the allowlist even when no servers are configured.
-    let probe = bubblepaw_mcp::McpServerSettings {
-        command: "validation-only".into(),
-        ..Default::default()
-    };
-    probe.validate(&settings.header_key_envs).map_err(|_| {
-        anyhow::anyhow!(
-            "Invalid config value: mcp.header_key_envs; expected environment variable identifiers"
-        )
-    })?;
-    let Some(servers) = mcp.and_then(|mcp| mcp.get("servers")) else {
-        return Ok(());
-    };
-    let servers = servers.as_table().context("mcp.servers must be a table")?;
-    for (name, server) in servers {
-        ensure!(valid_id(name), "Invalid config value: mcp.servers.{name}");
-        let server = server
-            .as_table()
-            .with_context(|| format!("Invalid config value: mcp.servers.{name}"))?;
-        settings.servers[name]
-            .validate(&settings.header_key_envs)
-            .with_context(|| format!("Invalid config value: mcp.servers.{name}"))?;
-        for key in ["startup_timeout_secs", "call_timeout_secs"] {
-            if let Some(seconds) = server.get(key) {
-                ensure!(
-                    seconds.as_integer().is_some_and(|seconds| seconds > 0),
-                    "Invalid config value: mcp.servers.{name}.{key}; must be positive"
-                );
-            }
-        }
-        validate_mcp_approval(
-            server.get("approval"),
-            &format!("mcp.servers.{name}.approval"),
-        )?;
-        if let Some(env) = server.get("env").and_then(Value::as_table) {
-            for key in env.keys() {
-                ensure!(
-                    env_name(key),
-                    "Invalid config value: mcp.servers.{name}.env"
-                );
-            }
-        }
-        if let Some(env_from) = server.get("env_from").and_then(Value::as_table) {
-            // The value is the host variable's name; its secret is read at spawn time.
-            for (key, value) in env_from {
-                ensure!(
-                    env_name(key) && value.as_str().is_some_and(env_name),
-                    "Invalid config value: mcp.servers.{name}.env_from; expected environment variable names"
-                );
-            }
-        }
-        if let Some(tools) = server.get("tools") {
-            let tools = tools
-                .as_table()
-                .with_context(|| format!("Invalid config value: mcp.servers.{name}.tools"))?;
-            for (tool, settings) in tools {
-                if let Some(settings) = settings.as_table() {
-                    validate_mcp_approval(
-                        settings.get("approval"),
-                        &format!("mcp.servers.{name}.tools.{tool}.approval"),
-                    )?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-fn validate_mcp_approval(value: Option<&Value>, path: &str) -> Result<()> {
-    if let Some(value) = value {
-        ensure!(
-            matches!(value.as_str(), Some("confirm" | "none")),
-            "Invalid config value: {path}; expected confirm or none"
-        );
-    }
-    Ok(())
-}
-fn env_name(name: &str) -> bool {
-    !name.is_empty() && !name.contains(['=', '\0'])
 }
 fn validate_keys(value: &Value, path: &str) -> Result<()> {
     ensure!(
