@@ -5,7 +5,7 @@ use bubblepaw_remote::{
     device::DeviceKey,
     frame::ByteFrames,
     pairing::{self, ClientOptions, PairingCode, PendingClient, PendingHost},
-    store::{PairStore, PairedClient, PairedHost, Profile},
+    store::{DeviceKind, PairStore, PairedClient, PairedHost, Profile},
 };
 use tokio::io::DuplexStream;
 
@@ -24,6 +24,7 @@ fn options(host: &DeviceKey) -> ClientOptions {
         host_id: host.id(),
         reach_address: "ws://relay.example.test/".to_owned(),
         client_name: "Phone".to_owned(),
+        client_kind: Some(DeviceKind::Phone),
     }
 }
 
@@ -64,6 +65,7 @@ async fn success_comparison_numbers_match_and_both_stores_persist() {
     assert_eq!(host.comparison().len(), 6);
     assert!(host.comparison().bytes().all(|b| b.is_ascii_digit()));
     assert_eq!(host.client_suggested_name(), "Phone");
+    assert_eq!(host.client_kind(), DeviceKind::Phone);
     let dir = tempfile::tempdir().unwrap();
     let host_path = dir.path().join("host/clients.json");
     let client_path = dir.path().join("client/hosts.json");
@@ -87,10 +89,22 @@ async fn success_comparison_numbers_match_and_both_stores_persist() {
     let paired_client = clients.get(&client_key.id()).unwrap();
     assert_eq!(paired_client.name, "My phone");
     assert_eq!(paired_client.profile, Profile::Edit);
+    assert_eq!(
+        paired_client.kind,
+        DeviceKind::Phone,
+        "the declared kind is stored"
+    );
+    assert_eq!(paired_client.last_seen, None);
     let paired_host = hosts.get(&host_key.id()).unwrap();
     assert_eq!(paired_host.public_key, host_key.public_key());
     assert_eq!(paired_host.name, "Workstation");
     assert_eq!(paired_host.reach_address, "ws://relay.example.test/");
+    assert_eq!(
+        paired_host.profile,
+        Some(Profile::Edit),
+        "the granted profile is kept"
+    );
+    assert!(paired_host.paired_at.is_some());
     assert!(hosts.revoke(&host_key.id()).unwrap());
     assert!(!hosts.revoke(&host_key.id()).unwrap());
 }

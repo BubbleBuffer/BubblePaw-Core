@@ -6,8 +6,9 @@
 use anyhow::{Context, Result};
 use bubblepaw_remote::relay::{Relay, RelayConfig};
 use bubblepaw_sdk::remote::{
-    self, Limits, PairedDevice, RemoteAddress, RemoteConnect, RemoteError, RemotePair, RemoteReach,
-    RemoteServeOptions, RemoteServer,
+    self, DeviceKeyPaths, DeviceKind, HostPresence, Limits, PairedDevice, ProcessKind,
+    RemoteAddress, RemoteConnect, RemoteError, RemotePair, RemoteReach, RemoteServeOptions,
+    RemoteServer, SavedHost, list_hosts,
 };
 use bubblepaw_sdk::{Client, ClientError, ConfigOptions, HostConfig, Profile};
 use serde_json::json;
@@ -89,6 +90,7 @@ impl Fixture {
             key_file: device.join("device.bpkey"),
             hosts: device.join("hosts.json"),
             device_name: "Test phone".into(),
+            device_kind: DeviceKind::Phone,
             limits: Limits::default(),
         }
     }
@@ -184,7 +186,11 @@ async fn lists_sessions_and_runs_a_turn(fixture: Fixture) -> Result<()> {
     // The host sees the same session through its own client.
     let local = fixture.host.call("session.list", json!({})).await?;
     assert_eq!(local, list);
-    assert_eq!(fixture.server.devices()?, vec![device]);
+    let mut seen = fixture.server.devices()?;
+    assert_eq!(seen.len(), 1);
+    assert!(seen[0].last_seen.is_some(), "a connect records last_seen");
+    seen[0].last_seen = None;
+    assert_eq!(seen, vec![device]);
     client.close().await?;
     fixture.server.shutdown().await;
     fixture.host.close().await?;
@@ -256,6 +262,166 @@ async fn profiles_limit_what_a_device_may_call() -> Result<()> {
     read.close().await?;
     full.close().await?;
     fixture.server.shutdown().await;
+    fixture.host.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn last_seen_and_kind_reach_the_device_list() -> Result<()> {
+    let fixture = fixture().await?;
+    let (connect, paired) = fixture.pair("phone", Profile::Full).await?;
+    assert_eq!(paired.kind, DeviceKind::Phone);
+    assert_eq!(paired.last_seen, None);
+    let hosts_file = connect.hosts.clone();
+    let client = Client::connect_remote(connect).await?;
+    client.call("session.list", json!({})).await?;
+    let devices = fixture.server.devices()?;
+    assert_eq!(devices[0].kind, DeviceKind::Phone);
+    assert!(devices[0].last_seen.is_some());
+    // The device side records the connection too.
+    let saved = list_hosts(&hosts_file)?;
+    assert_eq!(saved.len(), 1);
+    assert_eq!(saved[0].id, fixture.server.host_id());
+    assert_eq!(saved[0].label, "Test host");
+    assert_eq!(saved[0].profile, Some(Profile::Full));
+    assert!(saved[0].paired_at.is_some());
+    assert!(saved[0].last_connected.is_some());
+    client.close().await?;
+    fixture.server.shutdown().await;
+    fixture.host.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_second_serve_is_refused_and_status_names_the_holder() -> Result<()> {
+    let fixture = fixture().await?;
+    let data = fixture.root.path().join("data");
+    let paths = remote::RemotePaths::in_data_dir(&data);
+    let status = remote::serve_status(&paths);
+    assert!(status.shared);
+    assert_eq!(status.pid, Some(std::process::id()));
+    assert_eq!(status.process, Some(ProcessKind::Embedded));
+    assert_eq!(status.host_id, Some(fixture.server.host_id()));
+    let again = RemoteServeOptions::in_data_dir(
+        &data,
+        RemoteReach::Local {
+            port: 0,
+            address: None,
+        },
+        "Second".into(),
+    );
+    let error = fixture.host.serve_remote(again).err();
+    assert!(error.is_some(), "a second serve must be refused");
+    assert!(
+        error
+            .unwrap()
+            .to_string()
+            .contains("is serving this data directory")
+    );
+    // Changing the device key is refused while sharing.
+    let key = DeviceKeyPaths::from(&paths);
+    assert!(remote::regenerate_device_key(&key).is_err());
+    fixture.server.shutdown().await;
+    assert!(!remote::serve_status(&paths).shared);
+    fixture.host.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn saved_hosts_list_forget_and_probe_through_the_relay() -> Result<()> {
+    let fixture = fixture().await?;
+    let (connect, _) = fixture.pair("phone", Profile::Read).await?;
+    let hosts_file = connect.hosts.clone();
+    let key_file = connect.key_file.clone();
+    let host: SavedHost = list_hosts(&hosts_file)?.remove(0);
+    assert_eq!(host.address, fixture.address);
+    let wait = Duration::from_secs(5);
+    let online = remote::probe_host(&host, &key_file, Limits::default(), wait).await?;
+    assert_eq!(online, HostPresence::Online);
+    let host_id = fixture.server.host_id();
+    fixture.server.shutdown().await;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let now = remote::probe_host(&host, &key_file, Limits::default(), wait).await?;
+        if now == HostPresence::Offline {
+            break;
+        }
+        assert!(tokio::time::Instant::now() < deadline, "still online");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(remote::forget_host(&hosts_file, &host_id)?);
+    assert!(!remote::forget_host(&hosts_file, &host_id)?);
+    assert!(list_hosts(&hosts_file)?.is_empty());
+    fixture.host.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_direct_probe_reads_online_then_offline() -> Result<()> {
+    let fixture = direct_fixture().await?;
+    let (connect, _) = fixture.pair("phone", Profile::Read).await?;
+    let host = list_hosts(&connect.hosts)?.remove(0);
+    let wait = Duration::from_secs(2);
+    let probe = || remote::probe_host(&host, &connect.key_file, Limits::default(), wait);
+    assert_eq!(probe().await?, HostPresence::Online);
+    fixture.server.shutdown().await;
+    assert_eq!(probe().await?, HostPresence::Offline);
+    fixture.host.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn the_device_key_exports_imports_and_regenerates() -> Result<()> {
+    let fixture = fixture().await?;
+    let (connect, paired) = fixture.pair("phone", Profile::Full).await?;
+    let data = fixture.root.path().join("data");
+    let paths = remote::RemotePaths::in_data_dir(&data);
+    let key = DeviceKeyPaths::from(&paths);
+    let before = remote::device_key_info(&key.key_file)?;
+    assert_eq!(before.id, fixture.server.host_id());
+    assert_eq!(before.fingerprint.len(), 64);
+    let file = fixture.root.path().join("exported.bpkey");
+    remote::export_device_key(&key.key_file, &file, "correct horse")?;
+    assert!(remote::export_device_key(&key.key_file, &file, "correct horse").is_err());
+    assert!(remote::export_device_key(&key.key_file, &file.with_extension("x"), "").is_err());
+    fixture.server.shutdown().await;
+
+    // A wrong passphrase changes nothing; the right one keeps the same ID and
+    // every pairing.
+    assert!(remote::import_device_key(&key, &file, Some("wrong")).is_err());
+    assert!(remote::import_device_key(&key, &file, None).is_err());
+    let same = remote::import_device_key(&key, &file, Some("correct horse"))?;
+    assert_eq!(same.id, before.id);
+    assert_eq!((same.cleared_devices, same.cleared_hosts), (0, 0));
+    assert_eq!(remote::list_devices(&key.clients)?.len(), 1);
+
+    // Regenerating changes the ID and clears both directions.
+    let change = remote::regenerate_device_key(&key)?;
+    assert_eq!(change.old_id.as_deref(), Some(before.id.as_str()));
+    assert_ne!(change.id, before.id);
+    assert_eq!(change.cleared_devices, 1);
+    assert!(remote::list_devices(&key.clients)?.is_empty());
+    assert_eq!(remote::device_key_info(&key.key_file)?.id, change.id);
+
+    // The old pairing is refused: the host now has another ID and does not
+    // know the device.
+    let options = RemoteServeOptions::in_data_dir(
+        &data,
+        RemoteReach::Relay(match &fixture.address {
+            RemoteAddress::Relay(url) => url.clone(),
+            other => panic!("expected a relay address, got {other:?}"),
+        }),
+        "Test host".into(),
+    );
+    let server = fixture.host.serve_remote(options)?;
+    server.wait_online(Duration::from_secs(10)).await?;
+    assert_eq!(server.host_id(), change.id);
+    assert_ne!(server.host_id(), paired.id);
+    match Client::connect_remote(connect).await {
+        Err(_) => {}
+        Ok(_) => panic!("a device paired with the old key connected"),
+    }
+    server.shutdown().await;
     fixture.host.close().await?;
     Ok(())
 }

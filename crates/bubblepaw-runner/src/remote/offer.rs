@@ -7,7 +7,7 @@ use anyhow::{Result, anyhow};
 use bubblepaw_remote::device::{DeviceId, DeviceKey};
 use bubblepaw_remote::frame::FrameIo;
 use bubblepaw_remote::pairing::{self, PairingCode, PendingHost};
-use bubblepaw_remote::store::{PairStore, PairedClient};
+use bubblepaw_remote::store::{DeviceKind, PairStore, PairedClient};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -124,6 +124,7 @@ pub struct PairingRequest {
     comparison: String,
     device_name: String,
     device_id: String,
+    device_kind: DeviceKind,
     answer: oneshot::Sender<Answer>,
 }
 
@@ -149,6 +150,11 @@ impl PairingRequest {
 
     pub fn device_id(&self) -> &str {
         &self.device_id
+    }
+
+    /// What the device says it is (`Other` when it did not say).
+    pub fn device_kind(&self) -> DeviceKind {
+        self.device_kind
     }
 
     /// Store the device with the offer's profile, under `name` or the name it
@@ -241,6 +247,7 @@ async fn decide<T: FrameIo>(
         comparison: pending.comparison().to_owned(),
         device_name: pending.client_suggested_name().to_owned(),
         device_id: DeviceId::from_public_key(pending.client_public_key()).to_string(),
+        device_kind: pending.client_kind(),
         answer,
     };
     if requests.send(request).await.is_err() {
@@ -268,6 +275,8 @@ async fn decide<T: FrameIo>(
             label: name,
             profile,
             paired_at: stored.and_then(|client| client.paired_at),
+            kind: stored.map(|client| client.kind).unwrap_or_default(),
+            last_seen: None,
         })
     }
     .await;

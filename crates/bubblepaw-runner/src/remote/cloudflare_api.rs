@@ -204,3 +204,68 @@ impl ApiClient {
         Ok(())
     }
 }
+
+/// One zone as the API lists it.
+pub(super) struct ZoneInfo {
+    pub id: String,
+    pub name: String,
+    pub account_name: Option<String>,
+}
+
+fn zone_info(zone: &Value) -> Option<ZoneInfo> {
+    Some(ZoneInfo {
+        id: zone["id"].as_str()?.to_owned(),
+        name: zone["name"].as_str()?.to_owned(),
+        account_name: zone["account"]["name"].as_str().map(str::to_owned),
+    })
+}
+
+impl ApiClient {
+    /// The zones this token can see, up to a few hundred.
+    pub(super) async fn zones(&self) -> Result<Vec<ZoneInfo>> {
+        let mut zones = Vec::new();
+        for page in 1..=5 {
+            let found = self
+                .call(
+                    reqwest::Method::GET,
+                    &format!("/zones?per_page=100&page={page}"),
+                    None,
+                )
+                .await?;
+            let found: Vec<ZoneInfo> = found
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(zone_info)
+                .collect();
+            let full = found.len() >= 100;
+            zones.extend(found);
+            if !full {
+                break;
+            }
+        }
+        Ok(zones)
+    }
+
+    /// One zone by ID.
+    pub(super) async fn zone(&self, id: &str) -> Result<ZoneInfo> {
+        let zone = self
+            .call(reqwest::Method::GET, &format!("/zones/{id}"), None)
+            .await?;
+        zone_info(&zone).context("unreadable zone")
+    }
+
+    /// The name of the token's first account, if the token may read accounts.
+    pub(super) async fn first_account_name(&self) -> Option<String> {
+        let accounts = self
+            .call(reqwest::Method::GET, "/accounts?per_page=1", None)
+            .await
+            .ok()?;
+        accounts
+            .as_array()?
+            .first()?
+            .get("name")?
+            .as_str()
+            .map(str::to_owned)
+    }
+}

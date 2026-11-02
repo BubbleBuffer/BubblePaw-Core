@@ -11,6 +11,7 @@
 //! a relay or tunnel that alters the selector can only make the attempt fail.
 use anyhow::{Context, Result, bail};
 use bubblepaw_remote::device::DeviceId;
+pub use bubblepaw_remote::store::DeviceKind;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -21,20 +22,35 @@ pub mod cli;
 mod cli_tunnel;
 mod client;
 mod cloudflare_api;
+mod cloudflare_status;
 mod cloudflared;
 mod control;
+mod device_key;
 mod domain;
+mod hosts;
 pub mod install;
 mod keys;
 mod offer;
 mod reach;
+mod serve_lock;
 mod server;
 
 pub use bubblepaw_remote::relay::Limits;
 pub use client::{PairedHostInfo, PendingPairing, RemoteConnect, RemoteError, RemotePair};
+pub use cloudflare_status::{
+    CloudflareAccount, CloudflareLogin, CloudflareZone, CloudflaredInfo, TokenSource, TunnelLogin,
+    cloudflare_account, cloudflare_login_state, cloudflared_info, forget_cloudflare_token,
+    store_cloudflare_token, tunnel_login, update_cloudflared,
+};
+pub use device_key::{
+    DeviceKeyChange, DeviceKeyInfo, DeviceKeyPaths, device_key_info, export_device_key,
+    import_device_key, regenerate_device_key,
+};
+pub use hosts::{HostPresence, SavedHost, forget_host, list_hosts, probe_host};
 pub use keys::load_or_create_key;
 pub use offer::{PairingOffer, PairingRequest};
 pub use reach::{CloudflareApi, CloudflareTunnel, RemoteReach, TunnelMode};
+pub use serve_lock::{ProcessKind, ServeStatus, serve_status};
 pub use server::{RemoteServeOptions, RemoteServer, RemoteStatus, SessionBackend};
 
 pub use client::{connect, pair};
@@ -71,10 +87,12 @@ pub struct RemotePaths {
     pub control: PathBuf,
     /// Cloudflare Tunnel state: credentials, the API token file, `cloudflared`.
     pub cloudflare: PathBuf,
+    /// This device's saved hosts: the hosts it can open (client side).
+    pub hosts: PathBuf,
 }
 
 impl RemotePaths {
-    /// `<data-dir>/remote/{host.bpkey,clients.json,serve.lock,control/,cloudflare/}`.
+    /// `<data-dir>/remote/{host.bpkey,clients.json,hosts.json,serve.lock,control/,cloudflare/}`.
     pub fn in_data_dir(data_dir: &Path) -> Self {
         let dir = data_dir.join("remote");
         Self {
@@ -83,6 +101,7 @@ impl RemotePaths {
             lock: dir.join("serve.lock"),
             control: dir.join("control"),
             cloudflare: dir.join("cloudflare"),
+            hosts: dir.join("hosts.json"),
         }
     }
 
@@ -266,6 +285,11 @@ pub struct PairedDevice {
     pub profile: crate::host_api::Profile,
     /// Unix seconds; `None` for entries written before pairing dates were kept.
     pub paired_at: Option<u64>,
+    /// What the device declared while pairing; `Other` for older entries.
+    pub kind: DeviceKind,
+    /// Unix seconds of its last accepted tunnel (written at most once a
+    /// minute); `None` if it never connected.
+    pub last_seen: Option<u64>,
 }
 
 /// The devices in a host's paired-device store, sorted by ID.
@@ -280,6 +304,8 @@ pub fn list_devices(clients: &Path) -> Result<Vec<PairedDevice>> {
             label: client.name.clone(),
             profile: api_profile(client.profile),
             paired_at: client.paired_at,
+            kind: client.kind,
+            last_seen: client.last_seen,
         })
         .collect())
 }

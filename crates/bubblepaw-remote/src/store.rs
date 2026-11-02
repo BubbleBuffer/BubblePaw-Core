@@ -22,6 +22,33 @@ pub enum Profile {
     Full,
 }
 
+/// What sort of device a peer says it is. The device declares it while
+/// pairing; it is a display hint (an icon), never a trust input. Entries
+/// written before kinds existed read as `Other`.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeviceKind {
+    Desktop,
+    Phone,
+    Tablet,
+    #[default]
+    Other,
+}
+
+impl DeviceKind {
+    fn is_other(&self) -> bool {
+        *self == Self::Other
+    }
+}
+
+/// Unix seconds now.
+pub fn unix_now() -> Option<u64> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|elapsed| elapsed.as_secs())
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PairedClient {
@@ -31,6 +58,13 @@ pub struct PairedClient {
     /// When the host approved the pairing, in Unix seconds. Absent in older files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub paired_at: Option<u64>,
+    /// What the device declared while pairing (`Other` when it did not).
+    #[serde(default, skip_serializing_if = "DeviceKind::is_other")]
+    pub kind: DeviceKind,
+    /// Unix seconds of the last accepted tunnel; the host writes it at most
+    /// once a minute per device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_seen: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -40,6 +74,15 @@ pub struct PairedHost {
     pub public_key: [u8; 32],
     pub name: String,
     pub reach_address: String,
+    /// The profile the host granted this device when it approved the pairing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
+    /// When the host approved the pairing, in Unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paired_at: Option<u64>,
+    /// Unix seconds of the last tunnel this device opened to the host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_connected: Option<u64>,
 }
 
 pub trait PeerRecord: Clone + Serialize + DeserializeOwned {
@@ -167,6 +210,28 @@ impl<T: PeerRecord> PairStore<T> {
         self.persist(entries)
     }
 
+    /// Change one stored entry and save. Returns false (writing nothing) when
+    /// the device is not in the store, so a revoked device is never re-added.
+    pub fn update(&mut self, id: &DeviceId, change: impl FnOnce(&mut T)) -> Result<bool> {
+        let mut entries = self.entries.clone();
+        let Some(entry) = entries.get_mut(&id.to_string()) else {
+            return Ok(false);
+        };
+        change(entry);
+        entry.validate()?;
+        self.persist(entries)?;
+        Ok(true)
+    }
+
+    /// Remove every entry and save. Returns how many there were.
+    pub fn clear(&mut self) -> Result<usize> {
+        let count = self.entries.len();
+        if count > 0 {
+            self.persist(BTreeMap::new())?;
+        }
+        Ok(count)
+    }
+
     pub fn revoke(&mut self, id: &DeviceId) -> Result<bool> {
         let mut entries = self.entries.clone();
         if entries.remove(&id.to_string()).is_none() {
@@ -276,6 +341,8 @@ mod tests {
                 name: "Phone".into(),
                 profile: Profile::Full,
                 paired_at: None,
+                kind: DeviceKind::Other,
+                last_seen: None,
             })
             .unwrap();
         let result = store.persist_with_sync(BTreeMap::new(), |_| {

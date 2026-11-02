@@ -49,7 +49,7 @@ impl RelayAdmission for PermissiveAdmission {}
 pub(super) async fn authenticate<S>(
     ws: &mut WebSocketStream<S>,
     limits: &Limits,
-) -> Result<RelayProof>
+) -> Result<(RelayProof, bool)>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -74,9 +74,10 @@ where
             &Signature::from_bytes(&signature),
         )
         .map_err(|_| Error::AuthenticationFailed)?;
+    let presence = role == wire::PRESENCE;
     let (role, target) = if role == wire::REGISTER && target.is_empty() {
         (RelayRole::Host, None)
-    } else if role == wire::CONNECT {
+    } else if role == wire::CONNECT || presence {
         (
             RelayRole::Client,
             Some(DeviceId::parse(&target).map_err(|_| Error::AuthenticationFailed)?),
@@ -84,13 +85,16 @@ where
     } else {
         return Err(Error::AuthenticationFailed);
     };
-    Ok(RelayProof {
-        public_key: key,
-        challenge,
-        signature,
-        role,
-        target,
-    })
+    Ok((
+        RelayProof {
+            public_key: key,
+            challenge,
+            signature,
+            role,
+            target,
+        },
+        presence,
+    ))
 }
 
 pub(super) fn permitted(policy: &dyn RelayAdmission, proof: &RelayProof) -> bool {

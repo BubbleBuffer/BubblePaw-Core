@@ -9,6 +9,9 @@ use tokio_tungstenite::{
 
 pub(super) const REGISTER: u8 = 2;
 pub(super) const CONNECT: u8 = 3;
+/// Ask whether a host is registered. Signed like a connect request, names the
+/// same target, and gets one `Presence` reply; no session is opened.
+pub(super) const PRESENCE: u8 = 11;
 
 #[derive(Clone)]
 pub(super) enum Wire {
@@ -26,6 +29,7 @@ pub(super) enum Wire {
     Close(u64),
     Connected(u64, [u8; 32]),
     Reject,
+    Presence(bool),
 }
 
 pub(super) fn signed(challenge: &[u8; 32], role: u8, target: &str) -> Vec<u8> {
@@ -81,6 +85,7 @@ impl Wire {
             Self::Close(id) => [vec![8], id.to_be_bytes().to_vec()].concat(),
             Self::Connected(id, key) => [vec![9], id.to_be_bytes().to_vec(), key.to_vec()].concat(),
             Self::Reject => vec![10],
+            Self::Presence(online) => vec![12, u8::from(*online)],
         }
     }
 
@@ -100,7 +105,7 @@ impl Wire {
             1 if bytes.len() == 33 => Ok(Self::Challenge(
                 bytes[1..].try_into().map_err(|_| invalid())?,
             )),
-            REGISTER | CONNECT if (97..=225).contains(&bytes.len()) => Ok(Self::Auth {
+            REGISTER | CONNECT | PRESENCE if (97..=225).contains(&bytes.len()) => Ok(Self::Auth {
                 role: op,
                 key: bytes[1..33].try_into().map_err(|_| invalid())?,
                 signature: bytes[33..97].try_into().map_err(|_| invalid())?,
@@ -126,6 +131,7 @@ impl Wire {
             }
             8 if bytes.len() == 9 => Ok(Self::Close(sid()?)),
             10 if bytes.len() == 1 => Ok(Self::Reject),
+            12 if bytes.len() == 2 && bytes[1] <= 1 => Ok(Self::Presence(bytes[1] == 1)),
             _ => Err(invalid()),
         }
     }

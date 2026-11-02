@@ -46,14 +46,36 @@ fn refused(headers: &HeaderMap) -> Option<Reply> {
     })
 }
 
+fn zone() -> Value {
+    json!({"id": "zone-1", "name": "example.com", "account": {"id": "acct-1", "name": "Acme Inc"}})
+}
+
+fn other_zone() -> Value {
+    json!({"id": "zone-2", "name": "other.dev", "account": {"id": "acct-1", "name": "Acme Inc"}})
+}
+
+async fn zone_by_id(headers: HeaderMap, Path(id): Path<String>) -> Reply {
+    if let Some(refused) = refused(&headers) {
+        return refused;
+    }
+    match id.as_str() {
+        "zone-1" => ok(zone()),
+        _ => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"success": false, "errors": [{"code": 7003, "message": "no such zone"}]})),
+        ),
+    }
+}
+
 async fn zones(headers: HeaderMap, Query(query): Query<HashMap<String, String>>) -> Reply {
     if let Some(refused) = refused(&headers) {
         return refused;
     }
     let found = match query.get("name").map(String::as_str) {
         Some("example.com") => {
-            json!([{"id": "zone-1", "name": "example.com", "account": {"id": "acct-1"}}])
+            json!([zone()])
         }
+        None => json!([zone(), other_zone()]),
         _ => json!([]),
     };
     ok(found)
@@ -136,6 +158,7 @@ impl FakeApi {
         }));
         let app = Router::new()
             .route("/zones", get(zones))
+            .route("/zones/{id}", get(zone_by_id))
             .route("/accounts/{account}/cfd_tunnel", post(create_tunnel))
             .route(
                 "/zones/{zone}/dns_records",

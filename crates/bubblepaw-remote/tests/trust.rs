@@ -136,6 +136,8 @@ fn json_stores_authorize_exact_id_and_key_using_the_saved_profile() {
             name: "Phone".into(),
             profile: Profile::Edit,
             paired_at: None,
+            kind: bubblepaw_remote::store::DeviceKind::Other,
+            last_seen: None,
         })
         .unwrap();
     let mut loaded = PairStore::<PairedClient>::open(path).unwrap();
@@ -154,6 +156,9 @@ fn json_stores_authorize_exact_id_and_key_using_the_saved_profile() {
             public_key: key.public_key(),
             name: "Host".into(),
             reach_address: "ws://example.test".into(),
+            profile: None,
+            paired_at: None,
+            last_connected: None,
         })
         .unwrap();
     assert_eq!(
@@ -201,6 +206,8 @@ async fn json_policy_is_used_by_the_tunnel_and_exposes_its_grant() {
             name: "Preconfigured".into(),
             profile: Profile::Read,
             paired_at: None,
+            kind: bubblepaw_remote::store::DeviceKind::Other,
+            last_seen: None,
         })
         .unwrap();
     let alice_trust = [bob.public_key()];

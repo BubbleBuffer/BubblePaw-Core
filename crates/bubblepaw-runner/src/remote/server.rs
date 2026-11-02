@@ -3,6 +3,7 @@
 //! device's profile.
 use super::offer::{self, OfferSlot, PairingOffer};
 use super::reach::{self, RemoteReach};
+use super::serve_lock::{ProcessKind, ServeLock};
 use super::{
     Limits, PairedDevice, RemoteAddress, SELECT_PAIR, SELECT_SESSION, adapter, api_profile,
     cloudflared, control, list_devices, load_or_create_key, revoke_device,
@@ -28,6 +29,8 @@ use tokio::task::JoinHandle;
 const SELECT_WAIT: Duration = Duration::from_secs(10);
 /// How long tunnel admission may take.
 const ADMIT_WAIT: Duration = Duration::from_secs(30);
+/// A device's `last_seen` is rewritten at most this often.
+const SEEN_EVERY: Duration = Duration::from_secs(60);
 /// How often the paired-device store is checked for changes by other processes.
 const STORE_POLL: Duration = Duration::from_secs(1);
 pub(super) const BACKOFF_MIN: Duration = Duration::from_secs(1);
@@ -55,6 +58,12 @@ pub struct RemoteServeOptions {
     pub host_name: String,
     /// Relay limits (relay reach only).
     pub limits: Limits,
+    /// The serve lock to hold while serving, so a second server for the same
+    /// data directory (this CLI or another embedder) refuses to start. `None`
+    /// serves without it, for tests that share one directory.
+    pub lock: Option<PathBuf>,
+    /// Recorded with the lock so [`super::serve_status`] can say who shares.
+    pub process: ProcessKind,
 }
 
 impl RemoteServeOptions {
@@ -67,6 +76,8 @@ impl RemoteServeOptions {
             clients: paths.clients,
             host_name,
             limits: Limits::default(),
+            lock: Some(paths.lock),
+            process: ProcessKind::Embedded,
         }
     }
 }
@@ -111,6 +122,7 @@ pub struct RemoteServer {
     inner: Arc<Inner>,
     port: Option<u16>,
     tasks: Vec<JoinHandle<()>>,
+    _lock: Option<ServeLock>,
 }
 
 impl RemoteServer {
@@ -119,6 +131,14 @@ impl RemoteServer {
     /// tunnels. Call from within a Tokio runtime.
     pub fn start(options: RemoteServeOptions, backend: Option<SessionBackend>) -> Result<Self> {
         let key = load_or_create_key(&options.key_file, &options.host_name)?;
+        let lock = match &options.lock {
+            Some(path) => Some(ServeLock::acquire(
+                path,
+                options.process,
+                &key.id().to_string(),
+            )?),
+            None => None,
+        };
         let inner = Arc::new(Inner {
             authorizer: DeviceListAuthorizer::new(std::iter::empty())
                 .map_err(|error| anyhow!("{error}"))?,
@@ -169,7 +189,12 @@ impl RemoteServer {
                 )));
             }
         }
-        Ok(Self { inner, port, tasks })
+        Ok(Self {
+            inner,
+            port,
+            tasks,
+            _lock: lock,
+        })
     }
 
     /// This host's device ID, which devices need to reach it.
@@ -294,6 +319,30 @@ impl Inner {
         };
         self.refresh(true)?;
         Ok(removed)
+    }
+
+    /// Record that a device opened a tunnel, at most once a minute per device,
+    /// so a busy phone does not rewrite the store on every reconnect. A failure
+    /// to write never refuses the device.
+    async fn touch_last_seen(&self, id: &DeviceId) {
+        let _writing = self.store_writes.lock().await;
+        let now = bubblepaw_remote::store::unix_now();
+        let result = (|| -> Result<()> {
+            let mut store = PairStore::<PairedClient>::open(&self.options.clients)?;
+            let recent = store.get(id).is_some_and(|client| {
+                client
+                    .last_seen
+                    .zip(now)
+                    .is_some_and(|(seen, now)| now.saturating_sub(seen) < SEEN_EVERY.as_secs())
+            });
+            if !recent {
+                store.update(id, |client| client.last_seen = now)?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            tracing::debug!("could not record when a device was last seen: {error:#}");
+        }
     }
 
     pub(super) fn set_offline(&self, error: Option<String>) {
@@ -447,6 +496,7 @@ async fn serve_tunnel<T: SplitFrames + 'static>(inner: &Arc<Inner>, session: T) 
         .authorization()
         .cloned()
         .context("tunnel admitted without a grant")?;
+    inner.touch_last_seen(&peer.id).await;
     let Some(backend) = inner.backend.clone() else {
         return Ok(());
     };

@@ -15,6 +15,8 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
             name: "Phone".into(),
             profile: Profile::Read,
             paired_at: None,
+            kind: bubblepaw_remote::store::DeviceKind::Other,
+            last_seen: None,
         })
         .unwrap();
     store
@@ -23,6 +25,8 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
             name: "Renamed".into(),
             profile: Profile::Full,
             paired_at: None,
+            kind: bubblepaw_remote::store::DeviceKind::Other,
+            last_seen: None,
         })
         .unwrap();
     assert_eq!(store.devices().count(), 1);
@@ -34,6 +38,8 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
                 name: "bad key".into(),
                 profile: Profile::Read,
                 paired_at: None,
+                kind: bubblepaw_remote::store::DeviceKind::Other,
+                last_seen: None,
             })
             .is_err()
     );
@@ -76,6 +82,9 @@ fn corrupt_or_misidentified_stores_are_errors() {
         public_key: key.public_key(),
         name: "Desktop".into(),
         reach_address: "ws://relay.test/".into(),
+        profile: None,
+        paired_at: None,
+        last_connected: None,
     };
     let value = serde_json::json!({"version":1,"devices":{"0000-0000-0000-0000":host}});
     std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
@@ -96,9 +105,84 @@ fn failed_persistence_preserves_memory() {
                 name: "Phone".into(),
                 profile: Profile::Read,
                 paired_at: None,
+                kind: bubblepaw_remote::store::DeviceKind::Other,
+                last_seen: None,
             })
             .is_err()
     );
     assert_eq!(store.devices().count(), 0);
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+}
+
+#[test]
+fn kind_and_last_seen_round_trip_and_old_entries_read_as_other() {
+    use bubblepaw_remote::store::DeviceKind;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("clients.json");
+    let key = DeviceKey::from_seed(&[51; 32]);
+    let old_key = DeviceKey::from_seed(&[52; 32]);
+    let mut store = PairStore::<PairedClient>::open(&path).unwrap();
+    store
+        .insert(PairedClient {
+            public_key: key.public_key(),
+            name: "Phone".into(),
+            profile: Profile::Read,
+            paired_at: Some(10),
+            kind: DeviceKind::Phone,
+            last_seen: None,
+        })
+        .unwrap();
+    assert!(
+        store
+            .update(&key.id(), |client| client.last_seen = Some(99))
+            .unwrap()
+    );
+    assert!(
+        !store
+            .update(&old_key.id(), |client| client.last_seen = Some(1))
+            .unwrap(),
+        "an unknown device is not added"
+    );
+    let reloaded = PairStore::<PairedClient>::open(&path).unwrap();
+    let client = reloaded.get(&key.id()).unwrap();
+    assert_eq!(client.kind, DeviceKind::Phone);
+    assert_eq!(client.last_seen, Some(99));
+    // A file written before kinds existed has neither field.
+    let legacy = serde_json::json!({"version":1,"devices":{old_key.id().to_string(): {
+        "public_key": old_key.public_key(), "name": "Old", "profile": "edit"
+    }}});
+    std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+    let legacy = PairStore::<PairedClient>::open(&path).unwrap();
+    let client = legacy.get(&old_key.id()).unwrap();
+    assert_eq!(client.kind, DeviceKind::Other);
+    assert_eq!(client.last_seen, None);
+}
+
+#[test]
+fn clear_removes_every_entry() {
+    use bubblepaw_remote::store::DeviceKind;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("clients.json");
+    let mut store = PairStore::<PairedClient>::open(&path).unwrap();
+    for seed in [61u8, 62] {
+        store
+            .insert(PairedClient {
+                public_key: DeviceKey::from_seed(&[seed; 32]).public_key(),
+                name: "Device".into(),
+                profile: Profile::Read,
+                paired_at: None,
+                kind: DeviceKind::Other,
+                last_seen: None,
+            })
+            .unwrap();
+    }
+    assert_eq!(store.clear().unwrap(), 2);
+    assert_eq!(store.clear().unwrap(), 0);
+    assert_eq!(
+        PairStore::<PairedClient>::open(&path)
+            .unwrap()
+            .devices()
+            .count(),
+        0
+    );
 }
