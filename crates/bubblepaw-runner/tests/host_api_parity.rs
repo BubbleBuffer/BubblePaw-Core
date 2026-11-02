@@ -1,7 +1,8 @@
 //! Transport parity for the host API table. Every `host_api::METHODS` entry has
 //! a fixture, and each fixture runs through the real `stdio` process, through
 //! `POST /rpc` of the real `web` process, and through the host-API client,
-//! attached to a `stdio` host's endpoint and embedded on the host context. All
+//! attached to a `stdio` host's endpoint, embedded on the host context, and on
+//! a paired device through a relay and an encrypted tunnel (`remote`). All
 //! share one data directory: each runs every step and shuts down, then the next
 //! runs the same steps against its own paired sessions. Normalized replies must match step
 //! for step, so an adapter that drops, renames or rewrites a field fails here.
@@ -26,6 +27,8 @@ mod gates;
 mod normalize;
 #[path = "host_api_parity/peer.rs"]
 mod peer;
+#[path = "host_api_parity/remote.rs"]
+mod remote;
 #[path = "host_api_parity/run.rs"]
 mod run;
 #[path = "host_api_parity/same_store.rs"]
@@ -70,8 +73,8 @@ fn every_table_method_has_exactly_one_fixture_that_exercises_it() {
 }
 
 /// Every table method, through every transport, against one store: stdio,
-/// `/rpc`, and the host-API client attached to a CLI host's endpoint and
-/// embedded on the host context.
+/// `/rpc`, and the host-API client attached to a CLI host's endpoint,
+/// embedded on the host context, and remote through a relay tunnel.
 #[tokio::test]
 async fn every_transport_agrees_on_every_table_method() {
     let root = tempfile::tempdir().unwrap();
@@ -96,4 +99,6 @@ async fn every_transport_agrees_on_every_table_method() {
     )
     .await;
     run::compare(&stdio, &embedded);
+    let remote = run::phase(peer::Transport::Remote, root.path(), "remote", &fixtures).await;
+    run::compare(&stdio, &remote);
 }

@@ -433,6 +433,7 @@ dependencies = [
  "bubblepaw-core",
  "bubblepaw-mcp",
  "bubblepaw-process",
+ "bubblepaw-remote",
  "bubblepaw-runner",
  "chrono",
  "clap",
@@ -441,6 +442,7 @@ dependencies = [
  "html2text",
  "httpdate",
  "libc",
+ "qrcode",
  "regex",
  "reqwest",
  "rquickjs",
@@ -458,6 +460,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
@@ -467,6 +470,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "bubblepaw-core",
+ "bubblepaw-remote",
  "bubblepaw-runner",
  "serde_json",
  "tempfile",
@@ -1898,6 +1902,12 @@ checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "quinn"

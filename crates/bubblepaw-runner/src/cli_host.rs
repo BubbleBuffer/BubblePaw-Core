@@ -22,7 +22,7 @@ pub(crate) use crate::{
     provider::LiveProviderConfig,
     provider_setup::ProviderSetup,
     question::QuestionTools,
-    register_native_tools_with_exec,
+    register_native_tools_with_exec, remote,
     root_prompt::root_system_prompt,
     runtime_note::RuntimeNotes,
     session_host,

@@ -135,8 +135,12 @@ pub async fn serve_embedded(
 
 /// One host-API JSON-RPC session on the host context, after `attach.session`.
 /// The reply names the protocol version; the shared session loop serves the rest.
+/// An optional `profile` (`read`, `edit` or `full`, default `full`) lowers what
+/// the session may call, for a client that serves someone else, such as a
+/// paired remote device.
 pub(super) async fn session_request(
     id: Value,
+    profile: Option<Value>,
     reader: BufReader<tokio::io::ReadHalf<Connection>>,
     mut write: tokio::io::WriteHalf<Connection>,
     sessions: SessionSource,
@@ -150,6 +154,14 @@ pub(super) async fn session_request(
         )
         .await;
     }
+    let profile = match profile.map(serde_json::from_value::<Profile>) {
+        None => Profile::Full,
+        Some(Ok(profile)) => profile,
+        Some(Err(_)) => {
+            let error = json!({"code":-32602,"message":"profile must be read, edit or full"});
+            return write_json(&mut write, &json!({"jsonrpc":"2.0","id":id,"error":error})).await;
+        }
+    };
     let started = tokio::select! {
         _ = host_stop.cancelled() => return Ok(()),
         started = sessions() => started,
@@ -167,5 +179,5 @@ pub(super) async fn session_request(
         &json!({"jsonrpc":"2.0","id":id,"result":{"protocol_version":HOST_PROTOCOL_VERSION}}),
     )
     .await?;
-    rpc_session::serve_stream(&ctx, Profile::Full, reader, write, &host_stop).await
+    rpc_session::serve_stream(&ctx, profile, reader, write, &host_stop).await
 }

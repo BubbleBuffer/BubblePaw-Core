@@ -42,6 +42,8 @@ pub enum Transport {
     Attached,
     /// A host-API client on the CLI host context, built in this process.
     Embedded,
+    /// A paired device's client reaching that context through a relay tunnel.
+    Remote,
 }
 
 pub fn seed(root: &Path) {
@@ -70,6 +72,8 @@ enum Io {
         input: Option<ChildStdin>,
         /// The embedded host context and the runtime it registered in.
         host: Option<Box<(HostContext, HostLifetime)>>,
+        /// The relay and remote server behind a remote client.
+        remote: Option<Box<crate::remote::Parts>>,
     },
 }
 
@@ -147,6 +151,7 @@ impl Peer {
                         client,
                         input,
                         host: None,
+                        remote: None,
                     },
                 }
             }
@@ -161,6 +166,22 @@ impl Peer {
                         client,
                         input: None,
                         host: Some(Box::new((context, lifetime))),
+                        remote: None,
+                    },
+                }
+            }
+            Transport::Remote => {
+                let (context, lifetime) = embedded_host(root).await;
+                let (client, remote) = crate::remote::connect(context.ctx()).await;
+                Self {
+                    transport,
+                    next: 1,
+                    child: None,
+                    io: Io::Client {
+                        client,
+                        input: None,
+                        host: Some(Box::new((context, lifetime))),
+                        remote: Some(Box::new(remote)),
                     },
                 }
             }
@@ -274,9 +295,13 @@ impl Peer {
             client,
             input,
             host,
+            remote,
         } = io
         {
             client.close().await;
+            if let Some(remote) = remote {
+                remote.server.shutdown().await;
+            }
             // End of stdin ends the attached host's own stdio command.
             drop(input);
             if let Some(host) = host {
@@ -287,7 +312,9 @@ impl Peer {
         }
         let Some(mut child) = child else { return };
         match transport {
-            Transport::Embedded => unreachable!("the embedded host has no child"),
+            Transport::Embedded | Transport::Remote => {
+                unreachable!("in-process hosts have no child")
+            }
             Transport::Stdio | Transport::Attached => {
                 let status = tokio::time::timeout(TIMEOUT, child.wait())
                     .await

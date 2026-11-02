@@ -50,6 +50,7 @@ required-features = ["test-fixtures"]
 bubblepaw-core = { path = "../bubblepaw-core" }
 bubblepaw-mcp = { path = "../bubblepaw-mcp" }
 bubblepaw-process = { path = "../bubblepaw-process" }
+bubblepaw-remote = { path = "../bubblepaw-remote" }
 anyhow.workspace = true
 base64 = "0.23"
 async-trait.workspace = true
@@ -75,6 +76,8 @@ clap = { version = "4", features = ["derive"] }
 tiktoken-rs = "0.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+qrcode = { version = "0.14", default-features = false }
+zeroize = "1.9"
 axum = { version = "0.8", optional = true }
 
 [dev-dependencies]

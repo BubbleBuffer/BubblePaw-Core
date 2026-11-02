@@ -19,6 +19,8 @@ sync_timeout_secs = 300
 max_output_bytes = 8388608
 [quota]
 max_wait_seconds = 21600
+[remote]
+enabled = false
 [providers.codex]
 kind = "codex"
 base_url = "https://chatgpt.com/backend-api/codex"

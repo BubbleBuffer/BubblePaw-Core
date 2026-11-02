@@ -20,8 +20,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 /// Control protocol version this build speaks. `host.json` records the host's
 /// version, and a client refuses a host that reports a different one.
-// Version 2 replaced the invocation environment with references; 3 adds `attach.session`.
-pub const HOST_PROTOCOL_VERSION: u32 = 3;
+// 2: invocation references; 3: `attach.session`; 4: its optional `profile` (older hosts serve `full`).
+pub const HOST_PROTOCOL_VERSION: u32 = 4;
 
 /// Metadata file the host publishes in the data directory.
 pub const HOST_METADATA_FILE: &str = "host.json";

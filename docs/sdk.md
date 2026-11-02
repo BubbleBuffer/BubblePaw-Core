@@ -1,6 +1,6 @@
 # Rust SDK
 
-Status: built through 2026-10-29, including the shared host method table, context-fact reads and host user answers to child questions.
+Status: built through 2026-11-02, including the shared host method table, context-fact reads, host user answers to child questions and remote hosts over a relay.
 
 `bubblepaw-sdk` is the supported Rust surface for embedding BubblePaw. It is the
 one dependency an outside program needs. It re-exports curated types from
@@ -218,6 +218,56 @@ the host-API error code `-32004` (HTTP 409). The message names the config keys
 variant, configure a provider with `call`, then retry on the same client.
 
 `HostBuilder` stays the way to build a host with custom tools or providers.
+
+### Remote hosts
+
+A device reaches a host through a relay over an end-to-end encrypted tunnel
+([remote](remote.md#runner-remote-host)). `bubblepaw_sdk::remote` re-exports the
+types; tests use an in-process `bubblepaw_remote::relay::Relay`.
+
+```rust,ignore
+// Host: serve an embedded client (CLI host or HostBuilder) through the relay.
+let server = client.serve_remote(RemoteServeOptions::in_data_dir(&data_dir, relay, "My PC".into()))?;
+server.wait_online(Duration::from_secs(10)).await?;
+let mut offer = server.pair(Profile::Read).await?;      // show offer.qr_payload() / offer.code()
+let request = offer.next().await.expect("a device");    // None when the code expires
+// show request.comparison(), then:
+let device = request.approve(None).await?;              // or request.decline()
+
+// Device: pair once, then connect.
+let pending = remote::pair(RemotePair { relay, host_id, code, key_file, hosts, device_name, limits }).await?;
+// show pending.comparison(); finish waits for the host's decision
+let host = pending.finish().await?;
+let remote_client = Client::connect_remote(RemoteConnect { relay, host_id, key_file, hosts, limits }).await?;
+remote_client.call("session.list", json!({})).await?;
+```
+
+- `Client::serve_remote(RemoteServeOptions) -> Result<RemoteServer, ClientError>`
+  works only on an embedded client; tunnels run on its host context with each
+  device's profile and host-wide reads. `RemoteServeOptions {relay, key_file,
+  clients, host_name, limits}`; `in_data_dir` uses `<data_dir>/remote/`.
+- `RemoteServer`: `host_id()`, `status()` / `watch_status()` (`Connecting`,
+  `Online`, `Offline`), `wait_online(timeout)`, `pair(Profile) -> PairingOffer`,
+  `devices() -> Vec<PairedDevice>`, `revoke(id) -> bool` (closes that device's
+  live tunnels), `tunnel_count()`, `shutdown()`. It reconnects with backoff and
+  stops on drop. One `PairingOffer` is open at a time; dropping it closes it.
+- `PairingOffer`: `code()`, `qr_payload() -> &PairingPayload`, `expires_in()`,
+  `next() -> Option<PairingRequest>`. A wrong code keeps the offer open.
+  `PairingRequest`: `comparison()`, `device_name()`, `device_id()`,
+  `approve(name) -> PairedDevice`, `decline()`.
+- `PairedDevice {id, label, profile, paired_at}` (Serialize); also from
+  `remote::list_devices(path)`, and `remote::revoke_device(path, id)` edits the
+  store from another process (a running server notices within a second).
+- `remote::pair(RemotePair) -> Result<PendingPairing, RemoteError>`;
+  `PendingPairing`: `comparison()`, `host_name()`, `host_id()`,
+  `finish() -> PairedHostInfo {id, name, relay}`. The device key is created at
+  `key_file` when missing; the host is saved in `hosts` only after approval.
+- `Client::connect_remote(RemoteConnect) -> Result<Client, RemoteError>` returns a
+  client with the same `call`, `subscribe` and `close`. A call above the
+  device's profile is `ClientError::Rpc` with code -32003; a revoked or closed
+  tunnel gives `Disconnected`, and the next connect is `RemoteError::Refused`.
+- `RemoteError`: `WrongCode`, `ExpiredCode`, `ReusedCode`, `Declined`,
+  `NotPaired`, `Refused`, `Unreachable(String)`, `Other(String)`.
 
 ## HostBuilder
 

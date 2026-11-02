@@ -9,11 +9,12 @@ use bubblepaw_runner::{
 };
 use bubblepaw_runner::{
     cli,
-    config::{EffectiveConfig, Override, Settings},
+    config::{EffectiveConfig, Override},
     host_attach::{self, PreparedRequest},
     host_config::{self, ConfigOptions},
     input_files::InputLimits,
     pricing::PriceTable,
+    remote::cli as remote_cli,
     trace::read_report,
     usage::UsageSettings,
     usage_report,
@@ -25,7 +26,7 @@ use cli::{
     Cli, Command, DelegationsCommand, LoginProvider, ProviderChoice, QuotaCommand, UsageCommand,
 };
 use serde_json::Value;
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 
 fn config_overrides(
     cli: &Cli,
@@ -275,15 +276,6 @@ fn run_prompt(prompt: Option<&str>, prompt_file: Option<&std::path::Path>) -> Re
     }
 }
 
-/// The data directory: `--db <file>` selects the sibling `<stem>.data`
-/// directory; otherwise `storage.data_dir` or the central default.
-fn storage_paths(cli: &Cli, settings: &Settings) -> Result<PathBuf> {
-    if let Some(db) = &cli.db {
-        return Ok(Store::legacy_data_dir(db));
-    }
-    Ok(host_config::storage_paths(settings)?.data_dir)
-}
-
 fn main() -> std::process::ExitCode {
     #[cfg(windows)]
     {
@@ -501,9 +493,12 @@ async fn run_cli() -> Result<()> {
     let data_dir = if let Some(directory) = &ephemeral {
         directory.path().join("data")
     } else {
-        storage_paths(&cli, &settings)?
+        cli_store::storage_paths(&cli, &settings)?
     };
     let data_dir = std::path::absolute(data_dir)?;
+    if let Some(done) = remote_cli::early(&cli, &settings, &data_dir).await {
+        return done;
+    }
     if let Command::Login { provider, account } | Command::Logout { provider, account } =
         &cli.command
     {

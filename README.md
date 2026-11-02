@@ -41,7 +41,7 @@ flowchart LR
   tools -- "runs" --> procs["Shell and<br/>subprocesses"]
 ```
 
-Apps reach the host in one of three ways: BubblePaw Desktop starts it as a child and talks JSON-RPC over stdio, the CLI runs inside it, and Rust apps embed it through `bubblepaw-sdk`. The host runs each chat through the agent loop in `bubblepaw-core`, which stores every accepted input and finished message in SQLite. Each step asks a model for its next move, then runs the tools it calls: workspace tools, CodeMode or MCP servers (through `bubblepaw-mcp`). Child processes run in owned process trees (`bubblepaw-process`). `bubblepaw-remote` is a library for paired devices; nothing uses it yet.
+Apps reach the host in one of three ways: BubblePaw Desktop starts it as a child and talks JSON-RPC over stdio, the CLI runs inside it, and Rust apps embed it through `bubblepaw-sdk`. The host runs each chat through the agent loop in `bubblepaw-core`, which stores every accepted input and finished message in SQLite. Each step asks a model for its next move, then runs the tools it calls: workspace tools, CodeMode or MCP servers (through `bubblepaw-mcp`). Child processes run in owned process trees (`bubblepaw-process`). `bubblepaw-remote` carries the host API to paired devices through a relay (`bubblepaw remote serve`).
 
 | Crate | Path | What it does |
 | --- | --- | --- |
@@ -50,7 +50,7 @@ Apps reach the host in one of three ways: BubblePaw Desktop starts it as a child
 | `bubblepaw-mcp` | [crates/bubblepaw-mcp](crates/bubblepaw-mcp) | The host-owned MCP client over stdio and Streamable HTTP. |
 | `bubblepaw-process` | [crates/bubblepaw-process](crates/bubblepaw-process) | The process-tree helper. Each child starts in an owned tree: a process group on Unix, a kill-on-close job object on Windows. |
 | `bubblepaw-sdk` | [crates/bubblepaw-sdk](crates/bubblepaw-sdk) | Re-exports the core surface for Rust embedders and adds `HostBuilder`. |
-| `bubblepaw-remote` | [crates/bubblepaw-remote](crates/bubblepaw-remote) | Paired device identities, encrypted transport and a metadata-only relay. Library only; runner wiring is deferred. |
+| `bubblepaw-remote` | [crates/bubblepaw-remote](crates/bubblepaw-remote) | Paired device identities, encrypted transport and a metadata-only relay, used by `bubblepaw remote`. |
 | `bubblepaw-claude-code` | [extensions/claude-code](extensions/claude-code) | Bun provider extension that drives Claude Code one model step at a time. |
 
 The project documentation is in [`docs/`](docs/). Its index is [docs/README.md](docs/README.md).
@@ -203,6 +203,9 @@ in a build with that feature.
 | `serving wipe` | Wipe the disposable serving projection. |
 | `stats` | Archive size and write counters. |
 | `trace-report` | Summarize a JSONL behavior trace without contacting a provider. |
+| `remote serve` | Serve this host to paired devices through the `[remote]` relay, in the foreground. See [remote](docs/remote.md#runner-remote-host). |
+| `remote pair` | Pair a device: terminal QR code and one-time code (5 minutes), check number, y/N. `--profile read\|edit\|full`, default `read`. |
+| `remote devices` | List paired devices; `remote devices revoke ID` removes one and closes its tunnels. |
 | `delegate` | Run one delegated assignment (Markdown with TOML front matter). |
 | `delegations report` | Cost per accepted outcome by category, class, model and route reason. |
 | `chapter-bench` | (feature `bench`) Compare chapter selection on recorded chats without executing their tools. |

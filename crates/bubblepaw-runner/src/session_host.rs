@@ -175,8 +175,7 @@ pub(super) async fn execute(
         Some(episode)
     };
     let notes = Arc::new(RuntimeNotes::new(repl.clone(), processes.clone()));
-    // Delegate metrics read the existing observation records; a user trace still
-    // receives every record.
+    // Delegate metrics read existing observation records; a user trace still gets every record.
     let delegate_collector = delegation.is_some().then(|| {
         bubblepaw_runner::delegate::metrics::Collector::new(
             trace.as_ref().map(JsonlTrace::observation),
@@ -470,6 +469,7 @@ pub(super) async fn execute(
                 .await
             }
             Command::Stdio => host_context(ctx.clone(), host_mode.take(), &cancellation).await,
+            Command::Remote { .. } => remote::cli::serve(&ctx, &settings, &cancellation).await,
             Command::Run { session, name, .. } => {
                 let prompt = task_prompt
                     .as_deref()

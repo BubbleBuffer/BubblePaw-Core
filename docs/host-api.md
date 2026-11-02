@@ -245,6 +245,10 @@ shared status to its existing REST error envelope.
   cancels child work through the same control as the other front ends. Session
   listing includes usage. Catalog, quota, export, usage and serving maintenance
   retain their separate command entry points.
+- **Remote:** `bubblepaw remote serve` serves paired devices through a relay over
+  an end-to-end encrypted tunnel. Each tunnel is a stdio-shaped session with the
+  device's stored profile (`read`, `edit` or `full`) and `ReadScope::Host`; a
+  method above it is refused with -32003. See [remote](remote.md#runner-remote-host).
 - **SDK:** re-exports `dispatch`, `Method`, `Profile`, `ReadScope`, `HostCtx`, `HostError` and
   the typed capability API. `Host::api()` supplies the built host's context.
   Existing todo/question helpers call the same implementations.

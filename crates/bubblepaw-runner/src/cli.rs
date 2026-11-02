@@ -339,6 +339,11 @@ pub enum Command {
         #[arg(long)]
         max_cost_usd: Option<f64>,
     },
+    /// Remote access through a relay: serve, pair devices, list or revoke them.
+    Remote {
+        #[command(subcommand)]
+        command: crate::remote::cli::RemoteCommand,
+    },
     /// Serve the host over loopback HTTP (JSON-RPC at /rpc, SSE events, REST shims), embedding the harness in this process.
     #[cfg(feature = "web")]
     Web {
