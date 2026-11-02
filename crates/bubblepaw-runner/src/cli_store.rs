@@ -13,6 +13,18 @@ use bubblepaw_runner::{
 use serde_json::{Value, json};
 use std::{io::Write, path::Path, sync::Arc, time::Duration};
 
+/// The data directory: `--db <file>` selects the sibling `<stem>.data`
+/// directory; otherwise `storage.data_dir` or the central default.
+pub(crate) fn storage_paths(
+    cli: &crate::cli::Cli,
+    settings: &bubblepaw_runner::config::Settings,
+) -> Result<std::path::PathBuf> {
+    if let Some(db) = &cli.db {
+        return Ok(Store::legacy_data_dir(db));
+    }
+    Ok(bubblepaw_runner::host_config::storage_paths(settings)?.data_dir)
+}
+
 /// Messages per `session.history` page; each page is written before the next is read.
 const HISTORY_PAGE: usize = 1000;
 

@@ -271,6 +271,10 @@ impl<T: FrameIo> PendingHost<T> {
             public_key: self.client.public_key,
             name,
             profile,
+            paired_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|elapsed| elapsed.as_secs()),
         };
         if let Err(error) = store.insert(peer) {
             let _ = send_decision(&mut self.tunnel, &Decision::StorageFailed).await;

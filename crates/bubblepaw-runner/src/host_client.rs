@@ -155,6 +155,16 @@ impl Shared {
     }
 }
 
+/// The carrier's side of [`HostClient::over_carrier`].
+pub(crate) struct CarrierEnds {
+    /// Requests to send, each one serialized JSON-RPC frame.
+    pub records: mpsc::Receiver<Incoming>,
+    /// Every frame the carrier reads from the host.
+    pub frames: mpsc::Sender<Value>,
+    /// Fires when the client closes.
+    pub stop: CancellationToken,
+}
+
 /// One host-API session. Calls may run concurrently through `&self`.
 pub struct HostClient {
     shared: Arc<Shared>,
@@ -268,6 +278,39 @@ impl HostClient {
             shared,
             stop,
             tasks: vec![writer, reader],
+        }
+    }
+
+    /// A session over a caller-owned message carrier, such as a remote tunnel.
+    /// `start` receives the records to send (one JSON-RPC frame each, `None`
+    /// at the end) and a sender for every frame the carrier reads, and returns
+    /// its tasks. The session ends when the carrier drops that sender.
+    pub(crate) fn over_carrier(
+        start: impl FnOnce(CarrierEnds) -> Vec<tokio::task::JoinHandle<()>>,
+    ) -> Self {
+        let (outgoing, records) = mpsc::channel::<Incoming>(16);
+        let (frames, mut received) = mpsc::channel::<Value>(128);
+        let stop = CancellationToken::new();
+        let shared = Shared::new(outgoing, 1);
+        let mut tasks = start(CarrierEnds {
+            records,
+            frames,
+            stop: stop.clone(),
+        });
+        let router = {
+            let shared = shared.clone();
+            tokio::spawn(async move {
+                while let Some(frame) = received.recv().await {
+                    shared.deliver(frame);
+                }
+                shared.disconnect();
+            })
+        };
+        tasks.push(router);
+        Self {
+            shared,
+            stop,
+            tasks,
         }
     }
 

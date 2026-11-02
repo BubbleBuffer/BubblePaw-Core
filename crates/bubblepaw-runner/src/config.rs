@@ -30,6 +30,8 @@ mod live_settings;
 mod mcp_validate;
 pub use mcp_validate::LeafError;
 use mcp_validate::validate_mcp;
+#[path = "config/key_names.rs"]
+mod key_names;
 #[path = "config/redact.rs"]
 pub(crate) mod redact;
 #[path = "config/roles.rs"]
@@ -40,7 +42,11 @@ mod schema;
 mod sections;
 #[path = "config/skills_section.rs"]
 mod skills_section;
+use key_names::{collect_key_names, key_names};
+#[path = "config/remote_section.rs"]
+mod remote_section;
 pub use redact::SettingEntry;
+pub use remote_section::RemoteSettings;
 use roles::resolve_role;
 pub use schema::Change;
 use schema::{REASONING, known_path};
@@ -669,6 +675,7 @@ impl EffectiveConfig {
         raw.web.validate()?;
         raw.delegate.validate()?;
         raw.exec.validate()?;
+        raw.remote.validate()?;
         crate::toolsets::validate(&raw.toolsets, &raw.agent.toolset)?;
         for directory in &mut raw.skills.dirs {
             if directory.is_relative() {
@@ -756,6 +763,7 @@ impl EffectiveConfig {
             storage: raw.storage,
             exec: raw.exec,
             quota: raw.quota,
+            remote: raw.remote,
             extensions,
             mcp: raw.mcp,
             delegate: raw.delegate,
@@ -826,6 +834,7 @@ pub struct Settings {
     pub storage: StorageSettings,
     pub exec: ExecConfig,
     pub quota: QuotaSettings,
+    pub remote: RemoteSettings,
     pub extensions: Vec<ExtensionConfig>,
     /// Live host servers; secrets are resolved at connection time only.
     pub mcp: McpSettings,
@@ -1110,6 +1119,7 @@ config_section! {
         storage: StorageSettings => Node::Table(StorageSettings::FIELDS),
         exec: ExecConfig => Node::Table(ExecConfig::FIELDS),
         quota: QuotaSettings => Node::Table(QuotaSettings::FIELDS),
+        remote: RemoteSettings => Node::Table(RemoteSettings::FIELDS),
         providers: BTreeMap<String, ProviderSettings> => Node::Map(&Node::Table(ProviderSettings::FIELDS)),
         roles: BTreeMap<String, RoleEntry> => Node::Table(roles::ROLE_FIELDS),
         context: ContextSettings => Node::Table(ContextSettings::FIELDS),
@@ -1384,33 +1394,6 @@ fn render_leaves(
         ));
     }
 }
-fn key_names(value: &Value) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    collect_key_names(value, "", &mut names);
-    names
-}
-fn collect_key_names(value: &Value, path: &str, names: &mut BTreeSet<String>) {
-    if (path.ends_with(".key_env") || path == "web.deepseek_key_env")
-        && let Some(name) = value.as_str()
-    {
-        names.insert(name.into());
-    }
-    // An env_from value names a host secret; it is exempt from generic overrides like key_env.
-    let parts: Vec<_> = path.split('.').collect();
-    if matches!(
-        parts.as_slice(),
-        ["mcp", "servers", _, "env_from", _] | ["mcp", "servers", _, "headers_from", _, ..]
-    ) && let Some(name) = value.as_str()
-    {
-        names.insert(name.into());
-    }
-    if let Value::Table(table) = value {
-        for (key, value) in table {
-            collect_key_names(value, &join_path(path, key), names);
-        }
-    }
-}
-
 /// Whether a configured provider alias is an OpenCode Go route. Only these
 /// get the `x-opencode-session` header. The alias decides, not the URL: the
 /// same wire kind serves OpenCode and plain provider hosts alike.

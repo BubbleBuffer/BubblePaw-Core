@@ -493,6 +493,10 @@ cold_row_min_bytes = 256            # compress only when the encoded row is smal
 [quota]
 max_wait_seconds = 21600             # 0 declines automatic waits; startup-only
 
+[remote]
+# relay = "wss://relay.example.net"  # the relay `bubblepaw remote` dials out to; startup-only
+enabled = false                      # `remote serve` refuses to start unless true; startup-only
+
 [providers.opencode]
 kind = "chat-completions"
 base_url = "https://opencode.ai/zen/go/v1"

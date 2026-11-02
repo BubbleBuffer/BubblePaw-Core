@@ -747,7 +747,7 @@ async fn endpoint_is_user_only_and_the_host_listens_on_no_network_port() {
         .map(String::as_str)
         .collect();
     assert_eq!(keys, HashSet::from(["pid", "endpoint", "protocol_version"]));
-    assert_eq!(metadata["protocol_version"], 3);
+    assert_eq!(metadata["protocol_version"], 4);
     assert_eq!(metadata["pid"].as_u64(), Some(host.pid as u64));
 
     let endpoint = PathBuf::from(metadata["endpoint"].as_str().unwrap());

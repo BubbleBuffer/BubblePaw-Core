@@ -1,13 +1,15 @@
 # Remote transport
 
-Status: implemented library, relay and pluggable trust, 2026-10-29; 67 focused
-Linux tests pass. Host
-dispatcher, runner commands, deployment and application integration are deferred.
+Status: library, relay and pluggable trust built 2026-10-29. Runner wiring
+(`bubblepaw remote serve | pair | devices`), the SDK remote client and profile
+enforcement over the tunnel built 2026-11-02. Relay deployment, the host's own
+WSS endpoint, Cloudflare Tunnel, hub trust and Desktop/phone UI are deferred.
 
 `bubblepaw-remote` carries opaque host-protocol messages between paired devices.
 It supplies identities, key files, bounded encrypted streams, pairing stores and
 an authenticated WebSocket rendezvous relay. It does not interpret host requests
-or enforce permission profiles; the host dispatcher must authorize each request.
+or enforce permission profiles; the runner's [remote host](#runner-remote-host)
+serves each tunnel through the host-API method table with the device's profile.
 
 ## Device identities and `.bpkey`
 
@@ -218,10 +220,85 @@ address another client's stream. Duplicate host registrations are rejected.
 Defaults: 65,535 data bytes, 120-second idle timeout, 32 connections per source
 IP, 16 pending clients and 128 total sessions per host, and bounded queues of 16.
 WebSocket frame/message allocation also has an envelope allowance. Queues fail
-closed under overload. Behind Caddy the source IP is the proxy's IP, so this
+closed under overload, with one exception (2026-11-02): a `connect` client's
+connection carries a single session, so its inbound queue waits for the reader
+(up to the idle timeout) and pushes back through TCP instead of failing a burst
+such as a turn's event notifications. The relay's routing queues and the host's
+per-session inbound queues still fail closed; there is no end-to-end flow
+control, so a client that reads slower than the host writes for long enough is
+disconnected. Behind Caddy the source IP is the proxy's IP, so this
 limit becomes shared unless separate trusted proxy handling is added later.
 State is transient: online registrations and the live routing/limit bookkeeping
 needed to forward sessions; nothing is persisted. Logs never include payloads.
+
+## Runner remote host
+
+The runner serves its host API to paired devices through a relay. Settings
+(restart-only, see [config](config.md)):
+
+```toml
+[remote]
+enabled = false               # true to allow remote serve and pair
+relay = "wss://relay.example" # the relay's WebSocket URL
+```
+
+Files live in `<data_dir>/remote/`: `host.bpkey` (the host's device key, created
+on first use, plain format, owner-only 0600 on Unix, never printed),
+`clients.json` (the `PairStore<PairedClient>` of paired devices with profile and
+`paired_at`) and `serve.lock`.
+
+### Commands
+
+- `bubblepaw remote serve` runs in the foreground until Ctrl-C. It registers the
+  host key with the relay, reconnects with backoff (1 s doubling to 60 s), and
+  serves each admitted tunnel as a host-API session with the device's profile,
+  host-wide reads (`ReadScope::Host`) and `event` / `events.gap` notifications,
+  exactly as stdio. When another process already owns the data directory (a
+  running `bubblepaw stdio`, web host or embedded SDK host), it serves through
+  that host's control endpoint with `attach.session {profile}` (see
+  [host attach](host-attach.md)) and exits when that host stops. Otherwise it
+  opens the store itself.
+- `bubblepaw remote pair [--profile read|edit|full]` (default `read`) prints a
+  terminal QR code and the ten-character code, valid five minutes. The QR holds
+  the `PairingPayload` JSON `{"v":1,"relay":...,"host":...,"code":...}`
+(`PairingPayload::parse` reads it on the device). When a device proves the code,
+  both sides show the same six-digit check number and the host asks
+  `[y/N]`; only `y` stores the device with the profile. A wrong code keeps the
+  offer open and stores nothing. The device must see the decision within about
+  two minutes (the relay idle limit).
+- `bubblepaw remote devices` lists ID, profile, paired date and label
+  (`--json` prints `PairedDevice` records). `bubblepaw remote devices revoke <id>`
+  removes the device; a running server notices the store change within a second,
+  closes that device's live tunnels and refuses its next handshake.
+
+Limit: the relay accepts one registration per host key, so `remote pair` cannot
+run while `remote serve` runs for the same data directory; both take
+`serve.lock` and the second one stops with an error. Stop the server, pair,
+then serve again. An SDK embedder pairs in-process with `RemoteServer::pair`
+while serving. Revocation works across processes.
+
+### Wire use
+
+Each relay session starts with one cleartext selector frame from the device:
+`bubblepaw-remote/host-api/v1` for a host-API tunnel or `bubblepaw-remote/pair/v1`
+for pairing. It routes only; trust comes from the Noise handshake that follows.
+After admission, each Noise message carries one JSON-RPC record (the stdio
+framing without the newline, bounded to 1 MiB). Both sides send an empty message
+every 20 seconds as a keepalive, and the relay client pings, so idle tunnels
+outlive the relay's 120-second idle timeout. A profile change or revocation
+cancels the affected tunnels. A call cut off by a closed tunnel fails with
+`Disconnected` and is never replayed.
+
+### SDK
+
+`bubblepaw_sdk::remote` re-exports the pieces; see [Rust SDK](sdk.md#remote-hosts).
+`Client::serve_remote(RemoteServeOptions)` serves an embedded host and returns a
+`RemoteServer` (`host_id`, `status` / `wait_online`, `pair(profile)` returning a
+`PairingOffer`, `devices`, `revoke`, `shutdown`). On the device,
+`remote::pair(RemotePair)` returns a `PendingPairing` (`comparison`, `finish`) and
+`Client::connect_remote(RemoteConnect)` returns a `Client` with the same `call`
+and `subscribe` as a local one. Failures are `RemoteError` (`WrongCode`,
+`ExpiredCode`, `ReusedCode`, `Declined`, `NotPaired`, `Refused`, `Unreachable`).
 
 ## Threat notes and verification
 
@@ -234,8 +311,8 @@ The six-digit comparison guards pairing against a MITM relay; compare it on the
 two physical devices before approving. This requires an honest display and user
 confirmation. The code is a secret and must not be logged. Pairing and key-file
 passphrases have separate roles. A stolen unlocked key or compromised endpoint
-can impersonate that device; revoke it and replace its identity. Permission
-profiles are metadata until the future dispatcher enforces them.
+can impersonate that device; revoke it and replace its identity. The runner
+enforces the stored profile on every host-API call over the tunnel.
 
 Focused scripted and loopback transport tests cover key-format vectors, key
 conversion, encrypted byte/WebSocket streams, trust rejection, pairing outcomes,
@@ -248,3 +325,10 @@ Source formatting was applied on Linux; full workspace formatting, strict Clippy
 existing suite results are checked by CI's `rust` job.
 No live model acceptance or VPS deployment is claimed. CI formats and lints the
 crate and runs `cargo test -p bubblepaw-remote`.
+
+Runner wiring (2026-11-02) is covered by local-transport tests with an
+in-process relay and the scripted demo provider: `bubblepaw-sdk` `tests/remote.rs`
+(a paired device lists sessions and runs a turn with notifications; a wrong code
+stores nothing; revoke closes the live tunnel and the next connect is refused; a
+`read` device gets -32003 for `config.set` while a `full` device succeeds), and
+the host-API parity test's remote phase, compared with stdio.

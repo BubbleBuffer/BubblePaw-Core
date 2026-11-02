@@ -51,6 +51,7 @@ mod host;
 pub mod net;
 pub mod providers;
 pub mod questions;
+pub mod remote;
 pub mod store;
 pub mod todo;
 pub mod tools;

@@ -9,6 +9,7 @@ use bubblepaw_runner::{
     host_config::{self, HostConfig},
     host_lifetime::HostLifetime,
     host_transport::{self, HostEndpoint},
+    remote::{RemoteConnect, RemoteError, RemoteServeOptions, RemoteServer, SessionBackend},
     session_host::host_context::HostContext,
 };
 use serde_json::Value;
@@ -92,6 +93,31 @@ impl Client {
             session: HostClient::attach(data_dir.as_ref(), ATTACH_WAIT).await?,
             embedded: None,
         })
+    }
+
+    /// Connect to a paired host through a relay (see [`crate::remote`]). The
+    /// client has the same calls and notifications as a local one, limited by
+    /// the profile the host gave this device; it counts as attached, and
+    /// `close` ends only this session.
+    pub async fn connect_remote(options: RemoteConnect) -> Result<Self, RemoteError> {
+        Ok(Self {
+            session: bubblepaw_runner::remote::connect(options).await?,
+            embedded: None,
+        })
+    }
+
+    /// Serve this embedded host to paired devices through a relay until the
+    /// returned server is shut down or dropped. Attached clients cannot serve.
+    pub fn serve_remote(&self, options: RemoteServeOptions) -> Result<RemoteServer, ClientError> {
+        let embedded = self.embedded.as_ref().ok_or_else(|| {
+            ClientError::Host("only a client that embeds its host can serve it remotely".into())
+        })?;
+        let ctx = match &embedded.owner {
+            Owner::Builder(host) => host.api().clone(),
+            Owner::Configured(context) => context.ctx().clone(),
+        };
+        RemoteServer::start(options, Some(SessionBackend::Context(Box::new(ctx))))
+            .map_err(host_error)
     }
 
     /// Attach when another process owns `data_dir`; otherwise open its store,

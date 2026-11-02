@@ -152,16 +152,40 @@ pub(super) async fn recv<S>(ws: &mut WebSocketStream<S>, limits: &Limits) -> Res
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    tokio::time::timeout(limits.idle_timeout, async {
-        loop {
-            match ws.next().await.ok_or(Error::Closed)?? {
-                Message::Binary(bytes) => return Wire::decode(&bytes, limits),
-                Message::Ping(_) | Message::Pong(_) => continue,
-                Message::Close(_) => return Err(Error::Closed),
-                _ => return Err(Error::Protocol("relay requires binary frames")),
-            }
+    // Every message, keepalive controls included, restarts the idle timer.
+    loop {
+        let message = tokio::time::timeout(limits.idle_timeout, ws.next())
+            .await
+            .map_err(|_| Error::IdleTimeout)?
+            .ok_or(Error::Closed)??;
+        match message {
+            Message::Binary(bytes) => return Wire::decode(&bytes, limits),
+            Message::Ping(_) | Message::Pong(_) => continue,
+            Message::Close(_) => return Err(Error::Closed),
+            _ => return Err(Error::Protocol("relay requires binary frames")),
         }
-    })
+    }
+}
+
+/// Ticks at a quarter of the idle timeout, first after one period, so an
+/// otherwise quiet registration or session keeps both ends from timing out.
+pub(super) fn keepalive(limits: &Limits) -> tokio::time::Interval {
+    let period = (limits.idle_timeout / 4).max(std::time::Duration::from_millis(10));
+    let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    interval
+}
+
+/// A WebSocket ping; the peer's automatic pong restarts this side's timer.
+pub(super) async fn ping<S>(ws: &mut WebSocketStream<S>, limits: &Limits) -> Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    tokio::time::timeout(
+        limits.idle_timeout,
+        ws.send(Message::Ping(Default::default())),
+    )
     .await
-    .map_err(|_| Error::IdleTimeout)?
+    .map_err(|_| Error::IdleTimeout)??;
+    Ok(())
 }
