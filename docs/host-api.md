@@ -277,3 +277,20 @@ approval-decision and question-tracker calls in transport source. It reports the
 file and forbidden identifier. See [verification](verification.md) for acceptance
 levels and [session API](session-api.md) / [web contract](web-contract.md) for the
 wire contracts.
+
+## Remote device management is outside the method table
+
+The Remote access settings (paired devices, device key, saved hosts, Cloudflare
+domain mode, the serve lock) add no host methods. A remote client cannot do any of
+them to the host it is talking to: they act on the local machine's files and
+processes, or on the device's own key and host list, and the control endpoint
+and the SDK are their only doors. They are listed here as exclusions from the
+parity rule:
+
+| Operation | Why it is not a method |
+| --- | --- |
+| Paired devices list and revoke | Edited by the host's owner on the host (`bubblepaw remote devices`, the control endpoint, `RemoteServer::devices` / `revoke`); a paired device must not manage others, and a revoked device cannot answer. |
+| Device key info, export, import, regenerate | Local key material; never crosses a tunnel. |
+| Saved hosts list, forget, probe | The device's own store, read before any tunnel exists. |
+| Cloudflare login state, zones, `tunnel_login`, `cloudflared` update | Credentials and a program on the host machine. |
+| `serve_status` | Answers "is this data directory already shared" before a server exists. |

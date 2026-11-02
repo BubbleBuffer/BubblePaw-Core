@@ -8,7 +8,9 @@ use zeroize::Zeroizing;
 
 use crate::device::{DeviceId, DeviceKey, noise_public_key};
 use crate::frame::FrameIo;
-use crate::store::{PairStore, PairedClient, PairedHost, PeerRecord, Profile, validate_name};
+use crate::store::{
+    DeviceKind, PairStore, PairedClient, PairedHost, PeerRecord, Profile, unix_now, validate_name,
+};
 use crate::trust::AuthorizedPeer;
 use crate::tunnel::{Side, Tunnel, exchange};
 use crate::{Error, Result};
@@ -28,6 +30,10 @@ const PAIR_TIMEOUT: Duration = Duration::from_secs(300);
 struct Identity {
     public_key: [u8; 32],
     name: String,
+    /// Declared by the pairing device inside the encrypted tunnel; absent from
+    /// the host (hosts have no kind) and from older clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    kind: Option<DeviceKind>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -44,6 +50,9 @@ pub struct ClientOptions {
     pub host_id: DeviceId,
     pub reach_address: String,
     pub client_name: String,
+    /// What this device says it is, shown by the host next to the device. `None`
+    /// sends nothing (and works with hosts that predate kinds).
+    pub client_kind: Option<DeviceKind>,
 }
 
 /// Pairing is not persisted until the host explicitly approves this value.
@@ -120,7 +129,7 @@ pub async fn accept<T: FrameIo>(
     let peer_static = handshake.peer_static;
     let mut tunnel = Tunnel::from_handshake(io, handshake);
     let client = tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), async {
-        send_identity(&mut tunnel, key, host_name).await?;
+        send_identity(&mut tunnel, key, host_name, None).await?;
         receive_identity(&mut tunnel, &peer_static).await
     })
     .await
@@ -181,9 +190,12 @@ async fn connect_inner<T: FrameIo>(
         public_key: identity.public_key,
         name: identity.name,
         reach_address: options.reach_address,
+        profile: None,
+        paired_at: None,
+        last_connected: None,
     };
     host.validate()?;
-    send_identity(&mut tunnel, key, &options.client_name).await?;
+    send_identity(&mut tunnel, key, &options.client_name, options.client_kind).await?;
     Ok(PendingClient {
         tunnel,
         comparison,
@@ -217,11 +229,13 @@ async fn send_identity<T: FrameIo>(
     tunnel: &mut Tunnel<T>,
     key: &DeviceKey,
     name: &str,
+    kind: Option<DeviceKind>,
 ) -> Result<()> {
     tunnel
         .send(&serde_json::to_vec(&Identity {
             public_key: key.public_key(),
             name: name.to_owned(),
+            kind,
         })?)
         .await
 }
@@ -255,6 +269,11 @@ impl<T: FrameIo> PendingHost<T> {
         &self.client.name
     }
 
+    /// What the pairing device declared it is; `Other` when it declared nothing.
+    pub fn client_kind(&self) -> DeviceKind {
+        self.client.kind.unwrap_or_default()
+    }
+
     /// Call only after the host user confirms the number on both devices.
     /// The host chooses the saved name and permission profile.
     pub async fn approve(
@@ -271,10 +290,9 @@ impl<T: FrameIo> PendingHost<T> {
             public_key: self.client.public_key,
             name,
             profile,
-            paired_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .ok()
-                .map(|elapsed| elapsed.as_secs()),
+            paired_at: unix_now(),
+            kind: self.client.kind.unwrap_or_default(),
+            last_seen: None,
         };
         if let Err(error) = store.insert(peer) {
             let _ = send_decision(&mut self.tunnel, &Decision::StorageFailed).await;
@@ -312,13 +330,16 @@ impl<T: FrameIo> PendingClient<T> {
             return Err(Error::Protocol("pairing decision is oversized"));
         }
         match serde_json::from_slice::<Decision>(&bytes)? {
-            Decision::Approved { .. } => {
+            Decision::Approved { profile } => {
+                let mut host = self.host;
+                host.profile = Some(profile);
+                host.paired_at = unix_now();
                 let authorized = AuthorizedPeer {
-                    id: self.host.id(),
-                    public_key: self.host.public_key,
+                    id: host.id(),
+                    public_key: host.public_key,
                     profile: Profile::Full,
                 };
-                store.insert(self.host)?;
+                store.insert(host)?;
                 self.tunnel.set_authorization(authorized);
             }
             Decision::Declined => return Err(Error::ComparisonDeclined),

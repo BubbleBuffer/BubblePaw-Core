@@ -9,10 +9,17 @@
 //! the offer's [`PairingPayload`]) and [`PendingPairing::finish`] stores the
 //! host once the host approves; [`crate::Client::connect_remote`] then
 //! returns a client with the same calls and notifications as a local one.
+pub use bubblepaw_runner::config::{RemoteMode, RemoteSettings};
 pub use bubblepaw_runner::remote::{
-    CLOUDFLARED_VERSION, CloudflareApi, CloudflareTunnel, InstallSource, Limits, PairedDevice,
-    PairedHostInfo, PairingOffer, PairingPayload, PairingRequest, PendingPairing, RemoteAddress,
+    CLOUDFLARE_TOKEN_ENV, CLOUDFLARED_VERSION, CloudflareAccount, CloudflareApi, CloudflareLogin,
+    CloudflareTunnel, CloudflareZone, CloudflaredInfo, DeviceKeyChange, DeviceKeyInfo,
+    DeviceKeyPaths, DeviceKind, HostPresence, InstallSource, Limits, PairedDevice, PairedHostInfo,
+    PairingOffer, PairingPayload, PairingRequest, PendingPairing, ProcessKind, RemoteAddress,
     RemoteConnect, RemoteError, RemotePair, RemotePaths, RemoteReach, RemoteServeOptions,
-    RemoteServer, RemoteStatus, SessionBackend, TunnelMode, check_hostname, find_cloudflared,
-    install::install as install_cloudflared, list_devices, load_or_create_key, pair, revoke_device,
+    RemoteServer, RemoteStatus, SavedHost, ServeStatus, SessionBackend, TokenSource, TunnelLogin,
+    TunnelMode, check_hostname, cloudflare_account, cloudflare_login_state, cloudflared_info,
+    device_key_info, export_device_key, find_cloudflared, forget_cloudflare_token, forget_host,
+    import_device_key, install::install as install_cloudflared, list_devices, list_hosts,
+    load_or_create_key, pair, probe_host, regenerate_device_key, revoke_device, serve_status,
+    store_cloudflare_token, tunnel_login, update_cloudflared,
 };

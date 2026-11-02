@@ -291,3 +291,50 @@ async fn client_session_holds_a_burst_until_its_reader_catches_up() {
     drop(host);
     relay.shutdown().await;
 }
+
+#[tokio::test]
+async fn a_presence_probe_reports_online_and_offline_without_a_session() {
+    let relay = start(RelayConfig::default()).await;
+    let url = format!("ws://{}", relay.local_addr());
+    let host_key = key(41);
+    let asker = key(42);
+    let limits = Limits::default();
+    assert!(
+        !relay::probe(&url, &asker, &host_key.id(), limits.clone())
+            .await
+            .unwrap(),
+        "nothing registered yet"
+    );
+    let mut host = relay::register(&url, &host_key, limits.clone())
+        .await
+        .unwrap();
+    assert!(
+        relay::probe(&url, &asker, &host_key.id(), limits.clone())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !relay::probe(&url, &asker, &key(43).id(), limits.clone())
+            .await
+            .unwrap(),
+        "another ID is offline"
+    );
+    // The probe opened no session on the host.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), host.accept())
+            .await
+            .is_err()
+    );
+    drop(host);
+    let mut online = true;
+    for _ in 0..50 {
+        online = relay::probe(&url, &asker, &host_key.id(), limits.clone())
+            .await
+            .unwrap();
+        if !online {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(!online, "a dropped registration goes offline");
+}

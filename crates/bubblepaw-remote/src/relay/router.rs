@@ -181,10 +181,24 @@ impl RelayRouter {
         S: AsyncRead + AsyncWrite + Unpin + Send,
     {
         let limits = &self.inner.config.limits;
-        let proof = admission::authenticate(&mut ws, limits).await?;
+        let (proof, presence) = admission::authenticate(&mut ws, limits).await?;
         if !admission::permitted(policy.as_ref(), &proof) {
             wire::send(&mut ws, &Wire::Reject, limits).await?;
             return Err(Error::AuthenticationFailed);
+        }
+        if presence {
+            // A presence query opens no session: it learns online or offline for
+            // the one host it names, answers once and ends.
+            let online = proof.target.as_ref().is_some_and(|target| {
+                self.inner
+                    .state
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .routing
+                    .is_online(&target.to_string())
+            });
+            wire::send(&mut ws, &Wire::Presence(online), limits).await?;
+            return Ok(());
         }
         let (sender, mut outgoing) = mpsc::channel(limits.queue_capacity);
         let role_byte = if proof.role == RelayRole::Host {

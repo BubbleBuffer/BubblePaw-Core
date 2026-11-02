@@ -239,7 +239,7 @@ let device = request.approve(None).await?;              // or request.decline()
 
 // Device: pair once, then connect.
 // address: payload.address() from the scanned PairingPayload (RemoteAddress::Relay or Direct)
-let pending = remote::pair(RemotePair { address, host_id, code, key_file, hosts, device_name, limits }).await?;
+let pending = remote::pair(RemotePair { address, host_id, code, key_file, hosts, device_name, device_kind, limits }).await?;
 // show pending.comparison(); finish waits for the host's decision
 let host = pending.finish().await?;
 let remote_client = Client::connect_remote(RemoteConnect { address, host_id, key_file, hosts, limits }).await?;
@@ -280,6 +280,15 @@ remote_client.call("session.list", json!({})).await?;
   tunnel gives `Disconnected`, and the next connect is `RemoteError::Refused`.
 - `RemoteError`: `WrongCode`, `ExpiredCode`, `ReusedCode`, `Declined`,
   `NotPaired`, `Refused`, `Unreachable(String)`, `Other(String)`.
+
+Device pages: `PairedDevice` also has `kind` and `last_seen`; `device_key_info`,
+`export_device_key`, `import_device_key` and `regenerate_device_key` manage the
+device key; `list_hosts`, `forget_host` and `probe_host` manage saved hosts;
+`serve_status` says whether this data directory is already shared;
+`cloudflare_login_state`, `tunnel_login`, `cloudflare_account`, `cloudflared_info`
+and `update_cloudflared` cover Cloudflare domain mode; `RemoteMode` and
+`RemoteSettings` are re-exported. Shapes and semantics:
+[remote](remote.md#device-list-device-key-saved-hosts-and-cloudflare-status-sdk).
 
 ## HostBuilder
 

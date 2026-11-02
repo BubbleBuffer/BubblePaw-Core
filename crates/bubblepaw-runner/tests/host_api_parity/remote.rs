@@ -34,6 +34,8 @@ pub async fn connect(ctx: &HostCtx) -> (HostClient, Parts) {
         clients: keys.path().join("clients.json"),
         host_name: "Parity host".into(),
         limits: Limits::default(),
+        lock: None,
+        process: bubblepaw_runner::remote::ProcessKind::Embedded,
     };
     let server = RemoteServer::start(
         options,
@@ -51,6 +53,7 @@ pub async fn connect(ctx: &HostCtx) -> (HostClient, Parts) {
         key_file: device_key.clone(),
         hosts: hosts.clone(),
         device_name: "Parity device".into(),
+        device_kind: bubblepaw_runner::remote::DeviceKind::Other,
         limits: Limits::default(),
     });
     let (pending, request) = tokio::join!(pairing, offer.next());

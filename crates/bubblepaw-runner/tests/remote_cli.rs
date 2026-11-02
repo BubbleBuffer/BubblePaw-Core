@@ -141,6 +141,7 @@ async fn devices_pair_and_revoke_while_serve_runs() {
         key_file: device.join("device.bpkey"),
         hosts: device.join("hosts.json"),
         device_name: "CLI phone".into(),
+        device_kind: bubblepaw_runner::remote::DeviceKind::Other,
         limits: Default::default(),
     })
     .await

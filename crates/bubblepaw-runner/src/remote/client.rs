@@ -10,7 +10,7 @@ use bubblepaw_remote::direct;
 use bubblepaw_remote::frame::FrameIo;
 use bubblepaw_remote::pairing::{self, ClientOptions, PendingClient};
 use bubblepaw_remote::relay;
-use bubblepaw_remote::store::{PairStore, PairedHost};
+use bubblepaw_remote::store::{DeviceKind, PairStore, PairedHost, unix_now};
 use bubblepaw_remote::tunnel;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -77,7 +77,7 @@ impl From<bubblepaw_remote::Error> for RemoteError {
     }
 }
 
-fn other(context: &str, error: impl std::fmt::Display) -> RemoteError {
+pub(super) fn other(context: &str, error: impl std::fmt::Display) -> RemoteError {
     RemoteError::Other(format!("{context}: {error}"))
 }
 
@@ -109,6 +109,9 @@ pub struct RemotePair {
     pub hosts: PathBuf,
     /// The name this device suggests to the host.
     pub device_name: String,
+    /// What this device says it is; the host shows it next to the device.
+    /// `Other` sends nothing, which also works with hosts that predate kinds.
+    pub device_kind: DeviceKind,
     pub limits: Limits,
 }
 
@@ -118,6 +121,7 @@ impl std::fmt::Debug for RemotePair {
             .field("address", &self.address)
             .field("host_id", &self.host_id)
             .field("device_name", &self.device_name)
+            .field("device_kind", &self.device_kind)
             .finish_non_exhaustive()
     }
 }
@@ -137,6 +141,7 @@ impl RemotePair {
             key_file,
             hosts,
             device_name,
+            device_kind: DeviceKind::Other,
             limits: Limits::default(),
         }
     }
@@ -149,13 +154,15 @@ pub struct PairedHostInfo {
     pub name: String,
     /// Where the host was reached while pairing; pass it to [`RemoteConnect`].
     pub address: RemoteAddress,
+    /// The profile the host granted this device.
+    pub profile: Option<crate::host_api::Profile>,
 }
 
 fn host_id(text: &str) -> Result<DeviceId, RemoteError> {
     DeviceId::parse(text).map_err(|error| other("invalid host ID", error))
 }
 
-fn device_key(path: &Path, label: &str) -> Result<DeviceKey, RemoteError> {
+pub(super) fn device_key(path: &Path, label: &str) -> Result<DeviceKey, RemoteError> {
     load_or_create_key(path, label).map_err(|error| RemoteError::Other(format!("{error:#}")))
 }
 
@@ -202,6 +209,11 @@ pub async fn connect(options: RemoteConnect) -> Result<HostClient, RemoteError> 
         .await
         .map_err(|_| RemoteError::Unreachable("tunnel admission timed out".into()))??;
     let (reader, writer) = tunnel.split()?;
+    // Remember when this host was last opened; a failed write does not fail the
+    // connection.
+    if let Err(error) = hosts_touch(&options.hosts, &target) {
+        tracing::debug!("could not record the connection time: {error}");
+    }
     Ok(adapter::client(reader, writer))
 }
 
@@ -243,10 +255,15 @@ impl PendingPairing {
         let mut store = PairStore::<PairedHost>::open(&self.hosts)
             .map_err(|error| other("could not read the paired-host store", error))?;
         self.pending.finish(&mut store).await?;
+        let profile = store
+            .get(&host_id(&host.id)?)
+            .and_then(|saved| saved.profile)
+            .map(super::api_profile);
         Ok(PairedHostInfo {
             id: host.id,
             name: host.name,
             address: self.address,
+            profile,
         })
     }
 }
@@ -266,6 +283,7 @@ pub async fn pair(options: RemotePair) -> Result<PendingPairing, RemoteError> {
             host_id: target,
             reach_address: options.address.to_reach(),
             client_name: options.device_name,
+            client_kind: (options.device_kind != DeviceKind::Other).then_some(options.device_kind),
         },
     )
     .await?;
@@ -274,4 +292,11 @@ pub async fn pair(options: RemotePair) -> Result<PendingPairing, RemoteError> {
         hosts: options.hosts,
         address: options.address,
     })
+}
+
+fn hosts_touch(path: &Path, target: &DeviceId) -> Result<(), bubblepaw_remote::Error> {
+    let mut store = PairStore::<PairedHost>::open(path)?;
+    let now = unix_now();
+    store.update(target, |host| host.last_connected = now)?;
+    Ok(())
 }

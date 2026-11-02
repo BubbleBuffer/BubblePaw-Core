@@ -7,7 +7,9 @@
 //! - `exit_first_after_ms`: the first serving run exits after this long.
 //!
 //! `tunnel create --credentials-file F NAME` writes a credentials file;
-//! `tunnel route dns` and `tunnel login` succeed. Serving runs stay up until
+//! `tunnel route dns` succeeds. `tunnel login` prints the sidecar's `login_url`
+//! after the usual preamble, writes `cert.contents` to `cert.path` and exits;
+//! `--version` prints the sidecar's `version`. Serving runs stay up until
 //! stdin closes, as the managed process does when its host stops.
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -52,7 +54,29 @@ fn main() {
             std::fs::write(path, credentials.to_string()).expect("write credentials");
             return;
         }
-        ["tunnel", "route", "dns", ..] | ["tunnel", "login"] => return,
+        ["tunnel", "route", "dns", ..] => return,
+        ["tunnel", "login"] => {
+            if let Some(url) = config["login_url"].as_str() {
+                eprintln!(
+                    "Please open the following URL and log in with your Cloudflare account:\n"
+                );
+                eprintln!("{url}\n");
+                eprintln!("Leave cloudflared running to download the cert automatically.");
+            }
+            if let (Some(path), Some(contents)) = (
+                config["cert"]["path"].as_str(),
+                config["cert"]["contents"].as_str(),
+            ) {
+                std::fs::write(path, contents).expect("write the certificate");
+            }
+            return;
+        }
+        ["--version"] => {
+            if let Some(version) = config["version"].as_str() {
+                println!("cloudflared version {version} (built 2026-01-01T00:00:00Z)");
+            }
+            return;
+        }
         _ => {}
     }
     let mut stderr = std::io::stderr();

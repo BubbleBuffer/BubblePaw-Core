@@ -227,6 +227,7 @@ async fn open_socket(url: &str, limits: &Limits) -> Result<Socket> {
 async fn authenticate<S: AsyncRead + AsyncWrite + Unpin>(
     mut ws: WebSocketStream<S>,
     key: &DeviceKey,
+    role: u8,
     target: Option<&DeviceId>,
     limits: &Limits,
 ) -> Result<WebSocketStream<S>> {
@@ -234,11 +235,6 @@ async fn authenticate<S: AsyncRead + AsyncWrite + Unpin>(
     wire::validate_config(&ws, limits)?;
     let Wire::Challenge(challenge) = wire::recv(&mut ws, limits).await? else {
         return Err(Error::AuthenticationFailed);
-    };
-    let role = if target.is_some() {
-        wire::CONNECT
-    } else {
-        wire::REGISTER
     };
     let target = target.map(ToString::to_string).unwrap_or_default();
     let signature = key.sign(&wire::signed(&challenge, role, &target));
@@ -271,7 +267,7 @@ pub async fn register_socket<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let mut ws = authenticate(ws, key, None, &limits).await?;
+    let mut ws = authenticate(ws, key, wire::REGISTER, None, &limits).await?;
     if !matches!(wire::recv(&mut ws, &limits).await?, Wire::Registered) {
         return Err(Error::AuthenticationFailed);
     }
@@ -295,6 +291,31 @@ where
     })
 }
 
+/// Ask the relay whether the host `target` is registered now. The relay
+/// answers online or offline for the one ID named and nothing else; the query is
+/// signed with `key` like a connect request and opens no session, so it never
+/// disturbs the host. A relay that refuses this device fails with an error.
+pub async fn probe(url: &str, key: &DeviceKey, target: &DeviceId, limits: Limits) -> Result<bool> {
+    probe_socket(open_socket(url, &limits).await?, key, target, limits).await
+}
+
+/// [`probe`] over a WebSocket upgraded by the embedding account/session client.
+pub async fn probe_socket<S>(
+    ws: WebSocketStream<S>,
+    key: &DeviceKey,
+    target: &DeviceId,
+    limits: Limits,
+) -> Result<bool>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let mut ws = authenticate(ws, key, wire::PRESENCE, Some(target), &limits).await?;
+    match wire::recv(&mut ws, &limits).await? {
+        Wire::Presence(online) => Ok(online),
+        _ => Err(Error::AuthenticationFailed),
+    }
+}
+
 /// Wait until the target host accepts a new independently routed session.
 pub async fn connect(
     url: &str,
@@ -315,7 +336,7 @@ pub async fn connect_socket<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    let mut ws = authenticate(ws, key, Some(target), &limits).await?;
+    let mut ws = authenticate(ws, key, wire::CONNECT, Some(target), &limits).await?;
     let Wire::Connected(id, peer) = wire::recv(&mut ws, &limits).await? else {
         return Err(Error::AuthenticationFailed);
     };

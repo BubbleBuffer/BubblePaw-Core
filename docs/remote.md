@@ -6,7 +6,8 @@ enforcement over the tunnel built 2026-11-02. Also 2026-11-02: the host's own
 WebSocket endpoint with direct connect, Cloudflare Tunnel reach (`quick` and
 `domain` modes, `remote tunnel install | login | token`), pairing and revoking
 while `remote serve` runs, and the relay binary in releases. Hub trust, service
-files and Desktop/phone UI are deferred.
+files and Desktop/phone UI are deferred. Device kind, last seen, device key,
+saved hosts, presence, serve status and Cloudflare status SDK calls: 2026-11-02.
 
 `bubblepaw-remote` carries opaque host-protocol messages between paired devices.
 It supplies identities, key files, bounded encrypted streams, pairing stores and
@@ -420,6 +421,64 @@ it) and the host ID. `remote::pair(RemotePair)` returns a `PendingPairing` (`com
 `Client::connect_remote(RemoteConnect)` returns a `Client` with the same `call`
 and `subscribe` as a local one. Failures are `RemoteError` (`WrongCode`,
 `ExpiredCode`, `ReusedCode`, `Declined`, `NotPaired`, `Refused`, `Unreachable`).
+
+### Device list, device key, saved hosts and Cloudflare status (SDK)
+
+Added 2026-11-02 so an app's Remote access pages need nothing from the CLI.
+Everything is in `bubblepaw_sdk::remote`; none of it is a host method (see
+[exclusions](host-api.md#remote-device-management-is-outside-the-method-table)).
+
+- **Paired devices.** `PairedDevice` (host side) and the stored entries carry
+  `kind` (`DeviceKind`: `desktop | phone | tablet | other`) and `last_seen`
+  (unix seconds, written when a tunnel is accepted, at most once a minute per
+  device). The connecting side declares the kind in `RemotePair.device_kind`; it
+  travels in the encrypted pairing identity, is only a display hint and never
+  affects trust. `Other` is not sent, so old hosts keep working, and old entries
+  read as `other`. A saved host also stores the granted `profile`, `paired_at`
+  and `last_connected`.
+- **Device key.** `device_key_info(key_file) -> DeviceKeyInfo {id, fingerprint}`,
+  `export_device_key(key_file, dest, passphrase)` (Argon2id and AES-GCM `.bpkey`;
+  an empty passphrase or an existing `dest` is refused),
+  `import_device_key(&DeviceKeyPaths, src, passphrase)` and
+  `regenerate_device_key(&DeviceKeyPaths)`, both returning a
+  `DeviceKeyChange {old_id, id, fingerprint, cleared_devices, cleared_hosts}`.
+  A new ID breaks every pairing in both directions (devices paired with this
+  host look for the old host ID; saved hosts no longer know this device), so both
+  stores are cleared and the counts returned. Importing a key with the same ID
+  changes nothing. A wrong passphrase or a damaged file changes nothing. Both
+  refuse while the serve lock is held. Host and client roles share one key file
+  (`RemotePaths::key_file`). No key material or passphrase is logged or returned.
+- **Saved hosts.** `list_hosts(hosts_file) -> Vec<SavedHost {id, label, address,
+  profile, paired_at, last_connected}>`, `forget_host(hosts_file, id) -> bool`
+  (this device only; the host keeps the device until it revokes it) and
+  `probe_host(&SavedHost, key_file, Limits, timeout) -> HostPresence`
+  (`Online | Offline`). A relay host is asked with a presence query; an
+  unreachable relay is an error. A direct or Cloudflare address is probed with a
+  WebSocket connection attempt dropped at once; a failure reads as offline.
+- **Presence query.** Relay auth role byte 11 (`PRESENCE`), signed like CONNECT
+  and naming the target ID. The relay answers one frame `[12, 0|1]`
+  (`Wire::Presence`) and closes. It passes `admit_client` and `may_connect`, so it
+  reveals only online or offline for an ID the device may connect to, and opens no
+  session.
+- **Serve lock.** `serve_remote` and `bubblepaw remote serve | pair` take the same
+  lock (`RemotePaths::lock`, held by the `RemoteServer` until it is dropped or
+  shut down); a second server is refused. `serve_status(&RemotePaths) ->
+  ServeStatus {shared, pid, process: Cli | Embedded, host_id}` reports the holder
+  from `serve.json` beside the lock (on Windows the lock itself blocks reads).
+- **Cloudflare.** `cloudflare_login_state(paths, cert_override) -> CloudflareLogin
+  {cert, token}` (`token`: `Env | File`), `store_cloudflare_token` and
+  `forget_cloudflare_token`, `tunnel_login(cloudflared, cert_override) ->
+  TunnelLogin` (`url()`, `wait(timeout)`, `cancel()`; Core opens no browser),
+  `cloudflare_account(paths, cert_override, base_url) -> CloudflareAccount {name,
+  zones}` (with an API token `GET /zones`; with only `cert.pem` the token in its
+  `ARGO TUNNEL TOKEN` block is used in memory for a read-only `GET /zones/{id}`;
+  the account name comes from the zone data when the API gives it),
+  `cloudflared_info(program, paths) -> CloudflaredInfo {path, version, pinned,
+  update_available, managed}` and `update_cloudflared(paths, &InstallSource)`,
+  the same checksum-verified install as `remote tunnel install`. The cert-only
+  path (reading the token from cert.pem) is unverified against real Cloudflare.
+- `RemoteMode` and `RemoteSettings` are re-exported from the runner config. Core
+  has no default relay URL.
 
 ## Threat notes and verification
 

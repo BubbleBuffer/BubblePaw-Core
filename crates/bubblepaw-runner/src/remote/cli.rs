@@ -1,6 +1,8 @@
 //! `bubblepaw remote serve | pair | devices | tunnel`.
 use super::cli_tunnel::{self, PairingUi, TunnelCommand};
-use super::{RemotePaths, RemoteServeOptions, RemoteServer, RemoteStatus, SessionBackend};
+use super::{
+    ProcessKind, RemotePaths, RemoteServeOptions, RemoteServer, RemoteStatus, SessionBackend,
+};
 use super::{list_devices, revoke_device};
 use crate::cli::{Cli, Command};
 use crate::config::{RemoteMode, Settings};
@@ -77,28 +79,6 @@ fn host_name() -> String {
         .map(|name| name.trim().to_owned())
         .find(|name| !name.is_empty() && name.len() <= 64)
         .unwrap_or_else(|| "BubblePaw host".to_owned())
-}
-
-/// Held while this process serves the host remotely.
-fn lock(paths: &RemotePaths) -> Result<std::fs::File> {
-    use fs2::FileExt;
-    if let Some(parent) = paths.lock.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("could not create {}", parent.display()))?;
-    }
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&paths.lock)
-        .with_context(|| format!("could not open {}", paths.lock.display()))?;
-    if file.try_lock_exclusive().is_err() {
-        bail!(
-            "another `bubblepaw remote serve` or `remote pair` is serving this data directory \
-             and its control endpoint did not answer; stop it first"
-        );
-    }
-    Ok(file)
 }
 
 /// Commands that run before the store opens: `pair`, `devices`, `tunnel`,
@@ -272,8 +252,8 @@ async fn pair(settings: &Settings, data_dir: &Path, profile: ProfileArg, ui: &Ui
         );
     }
     let reach = cli_tunnel::reach(settings, &paths)?;
-    let _lock = lock(&paths)?;
-    let options = RemoteServeOptions::in_data_dir(data_dir, reach, host_name());
+    let mut options = RemoteServeOptions::in_data_dir(data_dir, reach, host_name());
+    options.process = ProcessKind::Cli;
     let server = RemoteServer::start(options, None)?;
     server.wait_online(ONLINE_WAIT).await?;
     let mut offer = server.pair(profile.into()).await?;
@@ -372,8 +352,8 @@ async fn run_server(
 async fn serve_attached(settings: &Settings, data_dir: &Path) -> Result<()> {
     let paths = RemotePaths::in_data_dir(data_dir);
     let reach = cli_tunnel::reach(settings, &paths)?;
-    let _lock = lock(&paths)?;
-    let options = RemoteServeOptions::in_data_dir(data_dir, reach, host_name());
+    let mut options = RemoteServeOptions::in_data_dir(data_dir, reach, host_name());
+    options.process = ProcessKind::Cli;
     let backend = SessionBackend::Attach(data_dir.to_owned());
     let server = RemoteServer::start(options, Some(backend))?;
     eprintln!("Serving through the running host for this data directory.");
@@ -398,8 +378,8 @@ pub async fn serve(ctx: &HostCtx, settings: &Settings, cancel: &CancellationToke
         .to_owned();
     let paths = RemotePaths::in_data_dir(&data_dir);
     let reach = cli_tunnel::reach(settings, &paths)?;
-    let _lock = lock(&paths)?;
-    let options = RemoteServeOptions::in_data_dir(&data_dir, reach, host_name());
+    let mut options = RemoteServeOptions::in_data_dir(&data_dir, reach, host_name());
+    options.process = ProcessKind::Cli;
     let server = RemoteServer::start(
         options,
         Some(SessionBackend::Context(Box::new(ctx.clone()))),

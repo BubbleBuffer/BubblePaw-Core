@@ -9,8 +9,8 @@ mod wire;
 
 pub use admission::{PermissiveAdmission, RelayAdmission, RelayProof, RelayRole};
 pub use client::{
-    Host, RelayReader, RelaySession, RelayWriter, connect, connect_socket, register,
-    register_socket,
+    Host, RelayReader, RelaySession, RelayWriter, connect, connect_socket, probe, probe_socket,
+    register, register_socket,
 };
 pub use router::RelayRouter;
 pub use server::{Relay, RelayConfig};

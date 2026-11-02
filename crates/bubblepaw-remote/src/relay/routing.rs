@@ -35,6 +35,11 @@ fn enqueue(sender: &mpsc::Sender<Wire>, frame: Wire) -> Result<()> {
 }
 
 impl State {
+    /// Whether a host is registered under this device ID.
+    pub(super) fn is_online(&self, host: &str) -> bool {
+        self.hosts.contains_key(host)
+    }
+
     pub(super) fn attach(
         &mut self,
         role: u8,
