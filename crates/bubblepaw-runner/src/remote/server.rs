@@ -1,35 +1,37 @@
-//! The host side: registered at the relay, it admits paired devices into
-//! tunnels and serves each through the host API with the device's profile.
+//! The host side: reachable through a relay or its own endpoint, it admits
+//! paired devices into tunnels and serves each through the host API with the
+//! device's profile.
 use super::offer::{self, OfferSlot, PairingOffer};
+use super::reach::{self, RemoteReach};
 use super::{
-    Limits, PairedDevice, SELECT_PAIR, SELECT_SESSION, adapter, api_profile, list_devices,
-    load_or_create_key, revoke_device,
+    Limits, PairedDevice, RemoteAddress, SELECT_PAIR, SELECT_SESSION, adapter, api_profile,
+    cloudflared, control, list_devices, load_or_create_key, revoke_device,
 };
 use crate::host_api::{HostCtx, Profile};
 use anyhow::{Context, Result, anyhow};
 use bubblepaw_core::CancellationToken;
 use bubblepaw_remote::device::{DeviceId, DeviceKey};
-use bubblepaw_remote::frame::FrameIo;
-use bubblepaw_remote::relay::{self, RelaySession};
+use bubblepaw_remote::frame::SplitFrames;
+use bubblepaw_remote::relay;
 use bubblepaw_remote::store::{PairStore, PairedClient};
 use bubblepaw_remote::trust::DeviceListAuthorizer;
 use bubblepaw_remote::tunnel;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-/// How long a new relay session may take to say what it wants.
+/// How long a new session may take to say what it wants.
 const SELECT_WAIT: Duration = Duration::from_secs(10);
 /// How long tunnel admission may take.
 const ADMIT_WAIT: Duration = Duration::from_secs(30);
 /// How often the paired-device store is checked for changes by other processes.
 const STORE_POLL: Duration = Duration::from_secs(1);
-const BACKOFF_MIN: Duration = Duration::from_secs(1);
-const BACKOFF_MAX: Duration = Duration::from_secs(60);
+pub(super) const BACKOFF_MIN: Duration = Duration::from_secs(1);
+pub(super) const BACKOFF_MAX: Duration = Duration::from_secs(60);
 
 /// Where tunnels are served.
 #[derive(Clone)]
@@ -43,23 +45,24 @@ pub enum SessionBackend {
 
 #[derive(Clone, Debug)]
 pub struct RemoteServeOptions {
-    /// The relay's `wss://` (or `ws://`) URL.
-    pub relay: String,
+    /// How devices reach the host.
+    pub reach: RemoteReach,
     /// The host device key, created on first use.
     pub key_file: PathBuf,
     /// The paired-device store.
     pub clients: PathBuf,
     /// The name devices see while pairing.
     pub host_name: String,
+    /// Relay limits (relay reach only).
     pub limits: Limits,
 }
 
 impl RemoteServeOptions {
     /// Options with the standard paths in `data_dir` and default limits.
-    pub fn in_data_dir(data_dir: &std::path::Path, relay: String, host_name: String) -> Self {
+    pub fn in_data_dir(data_dir: &Path, reach: RemoteReach, host_name: String) -> Self {
         let paths = super::RemotePaths::in_data_dir(data_dir);
         Self {
-            relay,
+            reach,
             key_file: paths.key_file,
             clients: paths.clients,
             host_name,
@@ -68,12 +71,15 @@ impl RemoteServeOptions {
     }
 }
 
-/// The relay registration's state.
+/// Whether devices can reach the host now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RemoteStatus {
     Connecting,
+    /// Registered at the relay, or the endpoint is published (see
+    /// [`RemoteServer::address`]).
     Online,
-    /// The last attempt failed; the server retries with backoff.
+    /// The last attempt failed; the server retries with backoff
+    /// ([`RemoteServer::last_error`] says why).
     Offline,
 }
 
@@ -83,7 +89,7 @@ struct Live {
     stop: CancellationToken,
 }
 
-struct Inner {
+pub(super) struct Inner {
     options: RemoteServeOptions,
     key: DeviceKey,
     backend: Option<SessionBackend>,
@@ -93,20 +99,24 @@ struct Inner {
     next: AtomicU64,
     offer: OfferSlot,
     store_writes: tokio::sync::Mutex<()>,
-    stop: CancellationToken,
+    pub(super) status: watch::Sender<RemoteStatus>,
+    pub(super) address: watch::Sender<Option<RemoteAddress>>,
+    pub(super) last_error: Mutex<Option<String>>,
+    pub(super) stop: CancellationToken,
 }
 
-/// A running remote server. Dropping it stops the server and closes its tunnels.
+/// A running remote server. Dropping it stops the server, closes its tunnels
+/// and stops its `cloudflared`.
 pub struct RemoteServer {
     inner: Arc<Inner>,
-    status: watch::Receiver<RemoteStatus>,
+    port: Option<u16>,
     tasks: Vec<JoinHandle<()>>,
 }
 
 impl RemoteServer {
-    /// Load or create the host key, read the paired devices and start
-    /// registering at the relay. With no backend, the server only pairs and
-    /// refuses tunnels.
+    /// Load or create the host key, read the paired devices and start making
+    /// the host reachable. With no backend, the server only pairs and refuses
+    /// tunnels. Call from within a Tokio runtime.
     pub fn start(options: RemoteServeOptions, backend: Option<SessionBackend>) -> Result<Self> {
         let key = load_or_create_key(&options.key_file, &options.host_name)?;
         let inner = Arc::new(Inner {
@@ -120,17 +130,46 @@ impl RemoteServer {
             next: AtomicU64::new(1),
             offer: OfferSlot::default(),
             store_writes: tokio::sync::Mutex::new(()),
+            status: watch::Sender::new(RemoteStatus::Connecting),
+            address: watch::Sender::new(None),
+            last_error: Mutex::new(None),
             stop: CancellationToken::new(),
         });
         inner.refresh(true)?;
-        let (status_tx, status) = watch::channel(RemoteStatus::Connecting);
-        let relay_task = tokio::spawn(relay_loop(inner.clone(), status_tx));
-        let poll_task = tokio::spawn(poll_store(inner.clone()));
-        Ok(Self {
-            inner,
-            status,
-            tasks: vec![relay_task, poll_task],
-        })
+        let mut tasks = vec![tokio::spawn(poll_store(inner.clone()))];
+        let mut port = None;
+        match inner.options.reach.clone() {
+            RemoteReach::Relay(url) => {
+                inner.address.send_replace(Some(RemoteAddress::Relay(url)));
+                tasks.push(tokio::spawn(relay_loop(inner.clone())));
+            }
+            RemoteReach::Local {
+                port: wanted,
+                address,
+            } => {
+                let listener = reach::bind(wanted)?;
+                let bound = listener.local_addr()?.port();
+                port = Some(bound);
+                let address = address.unwrap_or_else(|| format!("ws://127.0.0.1:{bound}"));
+                inner
+                    .address
+                    .send_replace(Some(RemoteAddress::Direct(address)));
+                inner.status.send_replace(RemoteStatus::Online);
+                tasks.push(tokio::spawn(reach::direct_loop(inner.clone(), listener)));
+            }
+            RemoteReach::Cloudflare(tunnel) => {
+                let listener = reach::bind(tunnel.port)?;
+                let bound = listener.local_addr()?.port();
+                port = Some(bound);
+                tasks.push(tokio::spawn(reach::direct_loop(inner.clone(), listener)));
+                tasks.push(tokio::spawn(cloudflared::supervise(
+                    inner.clone(),
+                    tunnel,
+                    bound,
+                )));
+            }
+        }
+        Ok(Self { inner, port, tasks })
     }
 
     /// This host's device ID, which devices need to reach it.
@@ -139,39 +178,56 @@ impl RemoteServer {
     }
 
     pub fn status(&self) -> RemoteStatus {
-        *self.status.borrow()
+        *self.inner.status.borrow()
     }
 
     /// A receiver that sees every status change.
     pub fn watch_status(&self) -> watch::Receiver<RemoteStatus> {
-        self.status.clone()
+        self.inner.status.subscribe()
     }
 
-    /// Wait until the relay accepted the registration.
+    /// Where devices reach the host now; `None` until a quick tunnel has its
+    /// address. A quick tunnel's address changes when `cloudflared` restarts.
+    pub fn address(&self) -> Option<RemoteAddress> {
+        self.inner.address.borrow().clone()
+    }
+
+    /// A receiver that sees every address change.
+    pub fn watch_address(&self) -> watch::Receiver<Option<RemoteAddress>> {
+        self.inner.address.subscribe()
+    }
+
+    /// The local port of the host's own endpoint (not for relay reach).
+    pub fn local_port(&self) -> Option<u16> {
+        self.port
+    }
+
+    /// Why the host last went offline, if it did.
+    pub fn last_error(&self) -> Option<String> {
+        self.inner.last_error.lock().unwrap().clone()
+    }
+
+    /// Wait until devices can reach the host.
     pub async fn wait_online(&self, timeout: Duration) -> Result<()> {
-        let mut status = self.status.clone();
+        let mut status = self.inner.status.subscribe();
         tokio::time::timeout(
             timeout,
             status.wait_for(|status| *status == RemoteStatus::Online),
         )
         .await
-        .context("the relay did not accept the host in time")?
+        .map_err(|_| match self.last_error() {
+            Some(error) => anyhow!("the host did not come online in time: {error}"),
+            None => anyhow!("the host did not come online in time"),
+        })?
         .map_err(|_| anyhow!("the remote server stopped"))?;
         Ok(())
     }
 
     /// Open a pairing offer for a device that will get `profile`. Replaces an
-    /// earlier offer.
+    /// earlier offer. The offer carries the current address, so the host must
+    /// have one (see [`Self::wait_online`]).
     pub async fn pair(&self, profile: Profile) -> Result<PairingOffer> {
-        let id = self.inner.next.fetch_add(1, Ordering::Relaxed);
-        PairingOffer::install(
-            &self.inner.offer,
-            id,
-            &self.inner.options.relay,
-            &self.inner.key.id(),
-            profile,
-        )
-        .await
+        self.inner.pair(profile).await
     }
 
     pub fn devices(&self) -> Result<Vec<PairedDevice>> {
@@ -181,12 +237,7 @@ impl RemoteServer {
     /// Remove a device and close its live tunnels now. Returns false when no
     /// such device was paired.
     pub async fn revoke(&self, id: &str) -> Result<bool> {
-        let removed = {
-            let _writing = self.inner.store_writes.lock().await;
-            revoke_device(&self.inner.options.clients, id)?
-        };
-        self.inner.refresh(true)?;
-        Ok(removed)
+        self.inner.revoke(id).await
     }
 
     /// The number of open tunnels.
@@ -194,7 +245,23 @@ impl RemoteServer {
         self.inner.tunnels.lock().unwrap().len()
     }
 
-    /// Stop registering, close every tunnel and wait for the server's tasks.
+    /// Serve a local control endpoint in `dir` (the current user only, like
+    /// the host's own control endpoint) so other processes can pair and
+    /// revoke through this server: `bubblepaw remote pair` and `remote
+    /// devices revoke` use `RemotePaths::control`.
+    pub async fn open_control(&mut self, dir: &Path) -> Result<()> {
+        // The Unix endpoint creates its directory; the Windows pipe does not.
+        std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
+        let endpoint = crate::host_transport::HostEndpoint::bind(dir)
+            .await
+            .context("could not open the remote control endpoint")?;
+        self.tasks
+            .push(tokio::spawn(control::serve(self.inner.clone(), endpoint)));
+        Ok(())
+    }
+
+    /// Stop serving, close every tunnel, stop `cloudflared` and wait for the
+    /// server's tasks.
     pub async fn shutdown(mut self) {
         self.inner.stop.cancel();
         for task in std::mem::take(&mut self.tasks) {
@@ -210,6 +277,33 @@ impl Drop for RemoteServer {
 }
 
 impl Inner {
+    pub(super) async fn pair(&self, profile: Profile) -> Result<PairingOffer> {
+        let address = self
+            .address
+            .borrow()
+            .clone()
+            .context("the host has no public address yet; wait until it is online")?;
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        PairingOffer::install(&self.offer, id, &address, &self.key.id(), profile).await
+    }
+
+    pub(super) async fn revoke(&self, id: &str) -> Result<bool> {
+        let removed = {
+            let _writing = self.store_writes.lock().await;
+            revoke_device(&self.options.clients, id)?
+        };
+        self.refresh(true)?;
+        Ok(removed)
+    }
+
+    pub(super) fn set_offline(&self, error: Option<String>) {
+        if let Some(error) = &error {
+            tracing::warn!("{error}");
+        }
+        *self.last_error.lock().unwrap() = error;
+        self.status.send_replace(RemoteStatus::Offline);
+    }
+
     /// Reload the paired devices when the store changed (or always with
     /// `force`): new admissions use the new list, and live tunnels whose
     /// device is gone or whose profile changed are closed.
@@ -251,18 +345,22 @@ impl Inner {
     }
 }
 
-async fn relay_loop(inner: Arc<Inner>, status: watch::Sender<RemoteStatus>) {
+async fn relay_loop(inner: Arc<Inner>) {
+    let RemoteReach::Relay(url) = inner.options.reach.clone() else {
+        return;
+    };
     let mut backoff = BACKOFF_MIN;
     loop {
-        status.send_replace(RemoteStatus::Connecting);
+        inner.status.send_replace(RemoteStatus::Connecting);
         let registered = tokio::select! {
             _ = inner.stop.cancelled() => return,
-            host = relay::register(&inner.options.relay, &inner.key, inner.options.limits.clone()) => host,
+            host = relay::register(&url, &inner.key, inner.options.limits.clone()) => host,
         };
-        match registered {
+        let error = match registered {
             Ok(mut host) => {
                 backoff = BACKOFF_MIN;
-                status.send_replace(RemoteStatus::Online);
+                *inner.last_error.lock().unwrap() = None;
+                inner.status.send_replace(RemoteStatus::Online);
                 loop {
                     let session = tokio::select! {
                         _ = inner.stop.cancelled() => return,
@@ -272,16 +370,13 @@ async fn relay_loop(inner: Arc<Inner>, status: watch::Sender<RemoteStatus>) {
                         Ok(session) => {
                             tokio::spawn(handle(inner.clone(), session));
                         }
-                        Err(error) => {
-                            tracing::warn!("relay registration ended: {error}");
-                            break;
-                        }
+                        Err(error) => break format!("relay registration ended: {error}"),
                     }
                 }
             }
-            Err(error) => tracing::warn!("could not register at the relay: {error}"),
-        }
-        status.send_replace(RemoteStatus::Offline);
+            Err(error) => format!("could not register at the relay: {error}"),
+        };
+        inner.set_offline(Some(error));
         tokio::select! {
             _ = inner.stop.cancelled() => return,
             _ = tokio::time::sleep(backoff) => {}
@@ -309,7 +404,9 @@ async fn poll_store(inner: Arc<Inner>) {
     }
 }
 
-async fn handle(inner: Arc<Inner>, mut session: RelaySession) {
+/// Serve one session (a relay session or a direct socket): its first frame
+/// selects a host-API tunnel or a pairing attempt.
+pub(super) async fn handle<T: SplitFrames + 'static>(inner: Arc<Inner>, mut session: T) {
     let selector = tokio::select! {
         _ = inner.stop.cancelled() => return,
         selector = tokio::time::timeout(SELECT_WAIT, session.recv_frame()) => selector,
@@ -336,7 +433,7 @@ async fn handle(inner: Arc<Inner>, mut session: RelaySession) {
     }
 }
 
-async fn serve_tunnel(inner: &Arc<Inner>, session: RelaySession) -> Result<()> {
+async fn serve_tunnel<T: SplitFrames + 'static>(inner: &Arc<Inner>, session: T) -> Result<()> {
     // Admit against the store as it is now, not as of the last poll.
     inner.refresh(false)?;
     let tunnel = tokio::time::timeout(

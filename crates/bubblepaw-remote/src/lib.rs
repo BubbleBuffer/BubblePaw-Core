@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod device;
+pub mod direct;
 pub mod frame;
 pub mod pairing;
 pub mod relay;

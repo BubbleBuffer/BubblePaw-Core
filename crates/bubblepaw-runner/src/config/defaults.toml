@@ -21,6 +21,8 @@ max_output_bytes = 8388608
 max_wait_seconds = 21600
 [remote]
 enabled = false
+mode = "relay"
+port = 0
 [providers.codex]
 kind = "codex"
 base_url = "https://chatgpt.com/backend-api/codex"

@@ -2,8 +2,11 @@
 
 Status: library, relay and pluggable trust built 2026-10-29. Runner wiring
 (`bubblepaw remote serve | pair | devices`), the SDK remote client and profile
-enforcement over the tunnel built 2026-11-02. Relay deployment, the host's own
-WSS endpoint, Cloudflare Tunnel, hub trust and Desktop/phone UI are deferred.
+enforcement over the tunnel built 2026-11-02. Also 2026-11-02: the host's own
+WebSocket endpoint with direct connect, Cloudflare Tunnel reach (`quick` and
+`domain` modes, `remote tunnel install | login | token`), pairing and revoking
+while `remote serve` runs, and the relay binary in releases. Hub trust, service
+files and Desktop/phone UI are deferred.
 
 `bubblepaw-remote` carries opaque host-protocol messages between paired devices.
 It supplies identities, key files, bounded encrypted streams, pairing stores and
@@ -233,24 +236,103 @@ needed to forward sessions; nothing is persisted. Logs never include payloads.
 
 ## Runner remote host
 
-The runner serves its host API to paired devices through a relay. Settings
-(restart-only, see [config](config.md)):
+The runner serves its host API to paired devices. Devices reach the host in
+one of three modes, set by `remote.mode` (restart-only, see [config](config.md)):
+
+| Mode | How devices reach the host | Address | Account |
+| --- | --- | --- | --- |
+| `relay` (default) | the host dials out to `remote.relay` | `wss://relay...` + host ID | none |
+| `quick` | a trycloudflare.com quick tunnel in front of the host's endpoint | `wss://<random>.trycloudflare.com`, new on every start | none |
+| `domain` | a named Cloudflare Tunnel on your own domain | `wss://<remote.hostname>` | Cloudflare |
 
 ```toml
 [remote]
-enabled = false               # true to allow remote serve and pair
-relay = "wss://relay.example" # the relay's WebSocket URL
+enabled = true                    # remote serve and pair refuse to run otherwise
+mode = "domain"                   # relay | quick | domain
+relay = "wss://relay.example"     # mode relay
+port = 0                          # host endpoint on 127.0.0.1 (quick, domain); 0 = free port
+hostname = "paw.example.com"      # mode domain
+# cloudflared = "/path/to/cloudflared"
 ```
+
+In `quick` and `domain` modes the host serves its own WebSocket endpoint on
+`127.0.0.1:<port>` only (never another interface), and a managed `cloudflared`
+publishes it. Each WebSocket connection starts with the same selector frame and
+Noise handshake as a relay session, so `cloudflared` and Cloudflare see only
+ciphertext; TLS at Cloudflare's edge does not decrypt the tunnel. The device
+dials the address from the pairing code directly. A connection idle for 120
+seconds is closed (the 20-second keepalive keeps live tunnels open), and at most
+128 direct connections are open at once.
 
 Files live in `<data_dir>/remote/`: `host.bpkey` (the host's device key, created
 on first use, plain format, owner-only 0600 on Unix, never printed),
 `clients.json` (the `PairStore<PairedClient>` of paired devices with profile and
-`paired_at`) and `serve.lock`.
+`paired_at`), `serve.lock`, `control/` (the running server's control endpoint)
+and `cloudflare/` (tunnel state, below).
+
+### Cloudflare Tunnel setup
+
+`cloudflared` is found at `remote.cloudflared`, else at
+`<data_dir>/remote/cloudflare/bin/cloudflared[.exe]`, else on `PATH`. Nothing
+downloads it automatically. `bubblepaw remote tunnel install` downloads the
+pinned release (`2026.10.1`, `CLOUDFLARED_VERSION`) from GitHub into that
+`bin/` directory and checks its SHA-256 against GitHub's asset digest and the
+checksum line in the release notes (both must agree when both exist). A
+mismatch is refused and leaves no file or new directory behind. Builds exist
+for Linux (amd64, arm64, arm) and Windows (amd64, 386); on macOS install it with
+Homebrew and put it on `PATH`.
+
+`quick` needs nothing else. `serve` runs `cloudflared --no-autoupdate tunnel
+--url http://127.0.0.1:<port>`, reads the `https://<name>.trycloudflare.com`
+address from its log and prints `Devices reach this host at wss://...`. Every
+start, including an automatic restart after `cloudflared` exits, gets a new
+address: devices paired at the old one must pair again, and the server prints
+the new address.
+
+`domain` needs one of:
+
+- `bubblepaw remote tunnel login`, which runs `cloudflared tunnel login` (a
+  browser login that leaves `~/.cloudflared/cert.pem`). Setup then runs
+  `cloudflared tunnel create` and `cloudflared tunnel route dns`.
+- An API token with Cloudflare Tunnel edit and DNS edit permissions, in
+  `BUBBLEPAW_CLOUDFLARE_TOKEN` or the owner-only file
+  `<data_dir>/remote/cloudflare/api-token`, written by
+  `bubblepaw remote tunnel token` from stdin
+  (`bubblepaw remote tunnel token < token.txt`). Never put it in the config
+  file. Setup then uses the Cloudflare API: it finds the zone of `hostname`,
+  creates a locally managed tunnel `bubblepaw-<hostname with dashes>` with a
+  fresh 32-byte secret, and adds a proxied CNAME `hostname ->
+  <tunnel id>.cfargotunnel.com` (an existing CNAME to another tunnel is
+  updated; any other record for that name stops setup and is left alone).
+
+Setup runs once, on the first `serve`. The credentials file (`tunnel.json`) and
+`state.json` stay in `<data_dir>/remote/cloudflare/`, owner-only. Later starts
+run `cloudflared --no-autoupdate tunnel run --credentials-file ... --url
+http://127.0.0.1:<port> <tunnel id>`; the host is online once `cloudflared`
+logs a registered connection. To move to another hostname, delete that
+directory and the old tunnel in Cloudflare. The address `wss://<hostname>` never
+changes, so devices stay paired across restarts.
+
+`cloudflared` runs as a child of `serve` with stdin held open, its output logged
+at debug level (`bubblepaw::cloudflared`), and is killed when the server stops.
+When it exits the server goes offline, says why, and restarts it with backoff
+(1 s doubling to 60 s, reset after a minute of running).
+
+### Autostart
+
+Only `relay` and `domain` hosts may start sharing without a person starting
+them. A service or login item runs `bubblepaw remote serve --autostart`; in
+`quick` mode that prints a note and exits successfully, so the host starts
+unshared. Run `bubblepaw remote serve` by hand to share it through a quick
+tunnel. Core never switches to `quick` on its own. Embedders use
+`RemoteMode::autostarts()` for the same rule.
 
 ### Commands
 
-- `bubblepaw remote serve` runs in the foreground until Ctrl-C. It registers the
-  host key with the relay, reconnects with backoff (1 s doubling to 60 s), and
+- `bubblepaw remote serve [--autostart]` runs in the foreground until Ctrl-C. In
+  relay mode it registers the host key with the relay and reconnects with
+  backoff (1 s doubling to 60 s); in the tunnel modes it serves the endpoint and
+  runs `cloudflared`. It prints the address and status changes on stderr and
   serves each admitted tunnel as a host-API session with the device's profile,
   host-wide reads (`ReadScope::Host`) and `event` / `events.gap` notifications,
   exactly as stdio. When another process already owns the data directory (a
@@ -260,26 +342,57 @@ on first use, plain format, owner-only 0600 on Unix, never printed),
   opens the store itself.
 - `bubblepaw remote pair [--profile read|edit|full]` (default `read`) prints a
   terminal QR code and the ten-character code, valid five minutes. The QR holds
-  the `PairingPayload` JSON `{"v":1,"relay":...,"host":...,"code":...}`
-(`PairingPayload::parse` reads it on the device). When a device proves the code,
-  both sides show the same six-digit check number and the host asks
-  `[y/N]`; only `y` stores the device with the profile. A wrong code keeps the
-  offer open and stores nothing. The device must see the decision within about
-  two minutes (the relay idle limit).
+  the `PairingPayload` JSON: `{"v":1,"relay":...,"host":...,"code":...}` for a
+  relay host, `{"v":1,"direct":"wss://...","host":...,"code":...}` for a tunnel
+  host (`PairingPayload::parse` reads it on the device and requires exactly one
+  of the two). When a device proves the code, both sides show the same six-digit
+  check number and the host asks `[y/N]`; only `y` stores the device with the
+  profile. A wrong code keeps the offer open and stores nothing. With `--json`
+  it prints JSON lines instead (`offer` with `payload`, `code`, `expires_in`;
+  `request` with `device_name`, `device_id`, `comparison`, answered by a `y`
+  line on stdin; `paired`).
 - `bubblepaw remote devices` lists ID, profile, paired date and label
   (`--json` prints `PairedDevice` records). `bubblepaw remote devices revoke <id>`
-  removes the device; a running server notices the store change within a second,
-  closes that device's live tunnels and refuses its next handshake.
+  removes the device and closes its live tunnels at once; the device's next
+  handshake is refused.
+- `bubblepaw remote tunnel install | login | token`: see above.
 
-Limit: the relay accepts one registration per host key, so `remote pair` cannot
-run while `remote serve` runs for the same data directory; both take
-`serve.lock` and the second one stops with an error. Stop the server, pair,
-then serve again. An SDK embedder pairs in-process with `RemoteServer::pair`
-while serving. Revocation works across processes.
+### Pairing and revoking while serving
+
+`remote serve` opens a control endpoint in `<data_dir>/remote/control/`, a Unix
+socket or named pipe for the current user only, like the
+[host's own](host-attach.md) (`host.json` names it). `remote pair` and `remote
+devices revoke` use it when it answers: the running server makes the offer with
+its current address, so the change takes effect without a restart. The endpoint
+speaks JSON lines: `{"op":"pair","profile":"full"}`, then the events above and an
+`{"op":"approve"}` or `{"op":"decline"}` answer; `{"op":"revoke","id":"..."}`
+answers `{"event":"revoked","removed":true}`. Closing the connection withdraws
+the offer. Pairing codes cross only this user-only endpoint and are never logged.
+
+Without a running server, `remote pair` starts one for the pairing itself
+(relay and domain modes; a quick tunnel's address would die with it, so quick
+mode asks you to start `remote serve` first), and `remote devices revoke` edits
+the store. A running server also notices store changes by other writers within
+a second. `serve.lock` keeps a second server from starting for the same data
+directory.
+
+### Flow control
+
+There is no end-to-end flow control. The relay and the host queue a bounded
+number of messages per session and close a session that overruns them; a
+client that reads slower than the host writes (a slow phone during a burst of
+event notifications) may be disconnected and must reconnect. Reconnecting
+loses no host state: `events.gap` says what it missed.
+
+### Relay binary
+
+Releases ship `bubblepaw-relay` next to `bubblepaw` for Linux x86_64 and Windows
+x86_64 (`bubblepaw-relay-<tag>-<target>.tar.gz` / `.zip`, listed in
+`SHA256SUMS`). See [Relay](#relay) for running it.
 
 ### Wire use
 
-Each relay session starts with one cleartext selector frame from the device:
+Each relay session or direct WebSocket connection starts with one cleartext selector frame from the device:
 `bubblepaw-remote/host-api/v1` for a host-API tunnel or `bubblepaw-remote/pair/v1`
 for pairing. It routes only; trust comes from the Noise handshake that follows.
 After admission, each Noise message carries one JSON-RPC record (the stdio
@@ -293,9 +406,17 @@ cancels the affected tunnels. A call cut off by a closed tunnel fails with
 
 `bubblepaw_sdk::remote` re-exports the pieces; see [Rust SDK](sdk.md#remote-hosts).
 `Client::serve_remote(RemoteServeOptions)` serves an embedded host and returns a
-`RemoteServer` (`host_id`, `status` / `wait_online`, `pair(profile)` returning a
-`PairingOffer`, `devices`, `revoke`, `shutdown`). On the device,
-`remote::pair(RemotePair)` returns a `PendingPairing` (`comparison`, `finish`) and
+`RemoteServer` (`host_id`, `status` / `wait_online`, `address` / `watch_address`,
+`local_port`, `last_error`, `pair(profile)` returning a `PairingOffer`,
+`devices`, `revoke`, `open_control(dir)`, `shutdown`). `RemoteServeOptions.reach`
+is a `RemoteReach`: `Relay(url)`, `Local { port, address }` (the endpoint on
+127.0.0.1 for a caller that publishes it itself) or `Cloudflare(CloudflareTunnel
+{ mode: TunnelMode::Quick | Domain { hostname }, port, cloudflared, dir, api })`
+with `api: Option<CloudflareApi>` for token setup. `find_cloudflared` and
+`install_cloudflared(bin_dir, &InstallSource::default())` locate and install the
+program. On the device, `RemotePair` and `RemoteConnect` take an `address:
+RemoteAddress` (`Relay(url)` or `Direct(url)`; `PairingPayload::address()` gives
+it) and the host ID. `remote::pair(RemotePair)` returns a `PendingPairing` (`comparison`, `finish`) and
 `Client::connect_remote(RemoteConnect)` returns a `Client` with the same `call`
 and `subscribe` as a local one. Failures are `RemoteError` (`WrongCode`,
 `ExpiredCode`, `ReusedCode`, `Declined`, `NotPaired`, `Refused`, `Unreachable`).
@@ -332,3 +453,15 @@ in-process relay and the scripted demo provider: `bubblepaw-sdk` `tests/remote.r
 stores nothing; revoke closes the live tunnel and the next connect is refused; a
 `read` device gets -32003 for `config.set` while a `full` device succeeds), and
 the host-API parity test's remote phase, compared with stdio.
+
+Direct and Cloudflare reach (2026-11-02), local transport with fakes only (no
+Cloudflare account, network service or live model): `bubblepaw-sdk`
+`tests/remote.rs` pairs and runs a demo turn over `ws://127.0.0.1`;
+`bubblepaw-runner` `tests/remote_tunnel.rs` runs a fake `cloudflared`
+(`bubblepaw-fake-cloudflared`) for quick-tunnel address parsing and restart, and
+a local fake Cloudflare API for domain setup (created once, reused, foreign DNS
+records left alone, the `cloudflared` login path); `tests/remote_install.rs`
+installs from a fake release and refuses a bad checksum; `tests/remote_cli.rs`
+pairs from a second `bubblepaw remote pair --json` process while `bubblepaw
+remote serve` runs, connects and runs a turn without a restart, and revokes from
+a third process.

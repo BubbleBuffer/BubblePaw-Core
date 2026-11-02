@@ -1,11 +1,15 @@
 //! The device side: pair with a host once, then connect to it through the
-//! relay and use it like a local host.
-use super::{Limits, SELECT_PAIR, SELECT_SESSION, adapter, load_or_create_key};
+//! relay or straight to its endpoint and use it like a local host.
+use super::carrier::{Carrier, DIRECT_IDLE, Idle};
+use super::{
+    Limits, PairingPayload, RemoteAddress, SELECT_PAIR, SELECT_SESSION, adapter, load_or_create_key,
+};
 use crate::host_client::HostClient;
 use bubblepaw_remote::device::{DeviceId, DeviceKey};
+use bubblepaw_remote::direct;
 use bubblepaw_remote::frame::FrameIo;
 use bubblepaw_remote::pairing::{self, ClientOptions, PendingClient};
-use bubblepaw_remote::relay::{self, RelaySession};
+use bubblepaw_remote::relay;
 use bubblepaw_remote::store::{PairStore, PairedHost};
 use bubblepaw_remote::tunnel;
 use std::path::{Path, PathBuf};
@@ -31,7 +35,7 @@ pub enum RemoteError {
     NotPaired,
     /// The host does not admit this device (revoked or never paired there).
     Refused,
-    /// The relay or the host could not be reached.
+    /// The relay, the tunnel or the host could not be reached.
     Unreachable(String),
     Other(String),
 }
@@ -80,8 +84,9 @@ fn other(context: &str, error: impl std::fmt::Display) -> RemoteError {
 /// Where and how to reach a paired remote host.
 #[derive(Clone, Debug)]
 pub struct RemoteConnect {
-    pub relay: String,
-    /// The host's device ID.
+    /// The relay, or the host's direct address.
+    pub address: RemoteAddress,
+    /// The host's device ID; its paired key is checked in the tunnel either way.
     pub host_id: String,
     /// This device's key file (created by pairing).
     pub key_file: PathBuf,
@@ -93,7 +98,8 @@ pub struct RemoteConnect {
 /// What a device needs to pair with a host, usually from its QR code.
 #[derive(Clone)]
 pub struct RemotePair {
-    pub relay: String,
+    /// The relay, or the host's direct address (from the QR code).
+    pub address: RemoteAddress,
     pub host_id: String,
     /// The one-time code. A secret: never log it.
     pub code: String,
@@ -109,10 +115,30 @@ pub struct RemotePair {
 impl std::fmt::Debug for RemotePair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RemotePair")
-            .field("relay", &self.relay)
+            .field("address", &self.address)
             .field("host_id", &self.host_id)
             .field("device_name", &self.device_name)
             .finish_non_exhaustive()
+    }
+}
+
+impl RemotePair {
+    /// Pairing options from a scanned QR payload.
+    pub fn from_payload(
+        payload: &PairingPayload,
+        key_file: PathBuf,
+        hosts: PathBuf,
+        device_name: String,
+    ) -> Self {
+        Self {
+            address: payload.address(),
+            host_id: payload.host.clone(),
+            code: payload.code.clone(),
+            key_file,
+            hosts,
+            device_name,
+            limits: Limits::default(),
+        }
     }
 }
 
@@ -121,7 +147,8 @@ impl std::fmt::Debug for RemotePair {
 pub struct PairedHostInfo {
     pub id: String,
     pub name: String,
-    pub relay: String,
+    /// Where the host was reached while pairing; pass it to [`RemoteConnect`].
+    pub address: RemoteAddress,
 }
 
 fn host_id(text: &str) -> Result<DeviceId, RemoteError> {
@@ -132,16 +159,27 @@ fn device_key(path: &Path, label: &str) -> Result<DeviceKey, RemoteError> {
     load_or_create_key(path, label).map_err(|error| RemoteError::Other(format!("{error:#}")))
 }
 
+/// How long dialing a direct address may take.
+const DIAL_WAIT: Duration = Duration::from_secs(30);
+
 async fn open_session(
-    relay_url: &str,
+    address: &RemoteAddress,
     key: &DeviceKey,
     target: &DeviceId,
     limits: Limits,
     selector: &[u8],
-) -> Result<RelaySession, RemoteError> {
-    let mut session = relay::connect(relay_url, key, target, limits).await?;
-    session.send_frame(selector).await?;
-    Ok(session)
+) -> Result<Carrier, RemoteError> {
+    let mut carrier = match address {
+        RemoteAddress::Relay(url) => {
+            Carrier::Relay(relay::connect(url, key, target, limits).await?)
+        }
+        RemoteAddress::Direct(url) => Carrier::Direct(Box::new(Idle::new(
+            direct::connect(url, DIAL_WAIT).await?,
+            DIRECT_IDLE,
+        ))),
+    };
+    carrier.send_frame(selector).await?;
+    Ok(carrier)
 }
 
 /// Connect to a paired host and return a host-API client for it.
@@ -152,7 +190,7 @@ pub async fn connect(options: RemoteConnect) -> Result<HostClient, RemoteError> 
     let host = hosts.get(&target).ok_or(RemoteError::NotPaired)?.clone();
     let key = device_key(&options.key_file, DEVICE_LABEL)?;
     let session = open_session(
-        &options.relay,
+        &options.address,
         &key,
         &target,
         options.limits,
@@ -171,9 +209,9 @@ pub async fn connect(options: RemoteConnect) -> Result<HostClient, RemoteError> 
 /// [`Self::finish`] waits for the host's decision (confirm within two
 /// minutes, the relay's idle limit).
 pub struct PendingPairing {
-    pending: PendingClient<RelaySession>,
+    pending: PendingClient<Carrier>,
     hosts: PathBuf,
-    relay: String,
+    address: RemoteAddress,
 }
 
 impl std::fmt::Debug for PendingPairing {
@@ -208,7 +246,7 @@ impl PendingPairing {
         Ok(PairedHostInfo {
             id: host.id,
             name: host.name,
-            relay: self.relay,
+            address: self.address,
         })
     }
 }
@@ -218,14 +256,15 @@ impl PendingPairing {
 pub async fn pair(options: RemotePair) -> Result<PendingPairing, RemoteError> {
     let target = host_id(&options.host_id)?;
     let key = device_key(&options.key_file, &options.device_name)?;
-    let session = open_session(&options.relay, &key, &target, options.limits, SELECT_PAIR).await?;
+    let session =
+        open_session(&options.address, &key, &target, options.limits, SELECT_PAIR).await?;
     let pending = pairing::connect(
         session,
         &key,
         &options.code,
         ClientOptions {
             host_id: target,
-            reach_address: options.relay.clone(),
+            reach_address: options.address.to_reach(),
             client_name: options.device_name,
         },
     )
@@ -233,6 +272,6 @@ pub async fn pair(options: RemotePair) -> Result<PendingPairing, RemoteError> {
     Ok(PendingPairing {
         pending,
         hosts: options.hosts,
-        relay: options.relay,
+        address: options.address,
     })
 }

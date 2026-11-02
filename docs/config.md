@@ -494,8 +494,12 @@ cold_row_min_bytes = 256            # compress only when the encoded row is smal
 max_wait_seconds = 21600             # 0 declines automatic waits; startup-only
 
 [remote]
-# relay = "wss://relay.example.net"  # the relay `bubblepaw remote` dials out to; startup-only
 enabled = false                      # `remote serve` refuses to start unless true; startup-only
+mode = "relay"                       # relay | quick | domain (docs/remote.md); startup-only
+# relay = "wss://relay.example.net"  # the relay `bubblepaw remote` dials out to (mode relay)
+port = 0                             # host endpoint on 127.0.0.1 (quick, domain); 0 = free port
+# hostname = "paw.example.com"       # public hostname of the named tunnel (mode domain)
+# cloudflared = "/usr/local/bin/cloudflared"  # default: `remote tunnel install` copy, then PATH
 
 [providers.opencode]
 kind = "chat-completions"

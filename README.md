@@ -41,7 +41,7 @@ flowchart LR
   tools -- "runs" --> procs["Shell and<br/>subprocesses"]
 ```
 
-Apps reach the host in one of three ways: BubblePaw Desktop starts it as a child and talks JSON-RPC over stdio, the CLI runs inside it, and Rust apps embed it through `bubblepaw-sdk`. The host runs each chat through the agent loop in `bubblepaw-core`, which stores every accepted input and finished message in SQLite. Each step asks a model for its next move, then runs the tools it calls: workspace tools, CodeMode or MCP servers (through `bubblepaw-mcp`). Child processes run in owned process trees (`bubblepaw-process`). `bubblepaw-remote` carries the host API to paired devices through a relay (`bubblepaw remote serve`).
+Apps reach the host in one of three ways: BubblePaw Desktop starts it as a child and talks JSON-RPC over stdio, the CLI runs inside it, and Rust apps embed it through `bubblepaw-sdk`. The host runs each chat through the agent loop in `bubblepaw-core`, which stores every accepted input and finished message in SQLite. Each step asks a model for its next move, then runs the tools it calls: workspace tools, CodeMode or MCP servers (through `bubblepaw-mcp`). Child processes run in owned process trees (`bubblepaw-process`). `bubblepaw-remote` carries the host API to paired devices through a relay or a Cloudflare Tunnel (`bubblepaw remote serve`).
 
 | Crate | Path | What it does |
 | --- | --- | --- |
@@ -203,9 +203,10 @@ in a build with that feature.
 | `serving wipe` | Wipe the disposable serving projection. |
 | `stats` | Archive size and write counters. |
 | `trace-report` | Summarize a JSONL behavior trace without contacting a provider. |
-| `remote serve` | Serve this host to paired devices through the `[remote]` relay, in the foreground. See [remote](docs/remote.md#runner-remote-host). |
-| `remote pair` | Pair a device: terminal QR code and one-time code (5 minutes), check number, y/N. `--profile read\|edit\|full`, default `read`. |
+| `remote serve` | Serve this host to paired devices as `[remote]` configures (`mode` relay, quick or domain), in the foreground. `--autostart` for services: quick mode stays unshared. See [remote](docs/remote.md#runner-remote-host). |
+| `remote pair` | Pair a device: terminal QR code and one-time code (5 minutes), check number, y/N. `--profile read\|edit\|full`, default `read`. Goes through a running `remote serve`; `--json` for JSON lines. |
 | `remote devices` | List paired devices; `remote devices revoke ID` removes one and closes its tunnels. |
+| `remote tunnel` | `install` downloads the pinned `cloudflared` and checks its SHA-256; `login` runs `cloudflared tunnel login`; `token` stores a Cloudflare API token from stdin. |
 | `delegate` | Run one delegated assignment (Markdown with TOML front matter). |
 | `delegations report` | Cost per accepted outcome by category, class, model and route reason. |
 | `chapter-bench` | (feature `bench`) Compare chapter selection on recorded chats without executing their tools. |

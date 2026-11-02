@@ -5,7 +5,8 @@ use bubblepaw_remote::relay::{Relay, RelayConfig};
 use bubblepaw_runner::host_api::{HostCtx, Profile};
 use bubblepaw_runner::host_client::HostClient;
 use bubblepaw_runner::remote::{
-    self, Limits, RemoteConnect, RemotePair, RemoteServeOptions, RemoteServer, SessionBackend,
+    self, Limits, RemoteAddress, RemoteConnect, RemotePair, RemoteReach, RemoteServeOptions,
+    RemoteServer, SessionBackend,
 };
 use std::time::Duration;
 
@@ -28,7 +29,7 @@ pub async fn connect(ctx: &HostCtx) -> (HostClient, Parts) {
         .unwrap();
     let url = format!("ws://{}", relay.local_addr());
     let options = RemoteServeOptions {
-        relay: url.clone(),
+        reach: RemoteReach::Relay(url.clone()),
         key_file: keys.path().join("host.bpkey"),
         clients: keys.path().join("clients.json"),
         host_name: "Parity host".into(),
@@ -44,7 +45,7 @@ pub async fn connect(ctx: &HostCtx) -> (HostClient, Parts) {
     let hosts = keys.path().join("hosts.json");
     let mut offer = server.pair(Profile::Full).await.unwrap();
     let pairing = remote::pair(RemotePair {
-        relay: url.clone(),
+        address: RemoteAddress::Relay(url.clone()),
         host_id: server.host_id(),
         code: offer.code().to_owned(),
         key_file: device_key.clone(),
@@ -59,7 +60,7 @@ pub async fn connect(ctx: &HostCtx) -> (HostClient, Parts) {
     finished.unwrap();
     approved.unwrap();
     let client = remote::connect(RemoteConnect {
-        relay: url,
+        address: RemoteAddress::Relay(url),
         host_id: server.host_id(),
         key_file: device_key,
         hosts,

@@ -40,6 +40,12 @@ name = "bubblepaw-runner-fake-mcp"
 path = "../bubblepaw-mcp/src/bin/fake_mcp.rs"
 required-features = ["test-fixtures"]
 
+# Stand-in for cloudflared in the remote tunnel tests.
+[[bin]]
+name = "bubblepaw-fake-cloudflared"
+path = "src/bin/fake_cloudflared.rs"
+required-features = ["test-fixtures"]
+
 # Native argv roundtrip fixture; tests copy it into their isolated workspace.
 [[bin]]
 name = "bubblepaw-argv-probe"
@@ -56,6 +62,7 @@ base64 = "0.23"
 async-trait.workspace = true
 chrono.workspace = true
 fs2 = "0.4"
+getrandom = "0.3"
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"

@@ -46,7 +46,7 @@ use key_names::{collect_key_names, key_names};
 #[path = "config/remote_section.rs"]
 mod remote_section;
 pub use redact::SettingEntry;
-pub use remote_section::RemoteSettings;
+pub use remote_section::{RemoteMode, RemoteSettings};
 use roles::resolve_role;
 pub use schema::Change;
 use schema::{REASONING, known_path};
