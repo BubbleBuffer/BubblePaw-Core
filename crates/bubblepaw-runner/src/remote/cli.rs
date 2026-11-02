@@ -1,10 +1,9 @@
-//! `bubblepaw remote serve | pair | devices`.
-use super::{
-    PairingOffer, RemotePaths, RemoteServeOptions, RemoteServer, SessionBackend, list_devices,
-    revoke_device,
-};
+//! `bubblepaw remote serve | pair | devices | tunnel`.
+use super::cli_tunnel::{self, PairingUi, TunnelCommand};
+use super::{RemotePaths, RemoteServeOptions, RemoteServer, RemoteStatus, SessionBackend};
+use super::{list_devices, revoke_device};
 use crate::cli::{Cli, Command};
-use crate::config::Settings;
+use crate::config::{RemoteMode, Settings};
 use crate::host_api::{HostCtx, Profile};
 use anyhow::{Context, Result, bail};
 use bubblepaw_core::CancellationToken;
@@ -14,16 +13,22 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
-/// How long `remote pair` waits for the relay to accept the host.
-const ONLINE_WAIT: Duration = Duration::from_secs(30);
+/// How long a standalone `remote pair` waits for the host to come online.
+const ONLINE_WAIT: Duration = Duration::from_secs(90);
 /// How often attached serving checks that the local host is still there.
 const HOST_PROBE: Duration = Duration::from_secs(5);
 
 #[derive(Subcommand, Clone, Serialize, Deserialize)]
 pub enum RemoteCommand {
-    /// Serve this host to paired devices through the configured relay (foreground).
-    Serve,
+    /// Serve this host to paired devices as `[remote]` configures (foreground).
+    Serve {
+        /// Started by a service or login item: in quick mode, exit without
+        /// sharing the host (quick tunnels only start by hand).
+        #[arg(long)]
+        autostart: bool,
+    },
     /// Pair a device: shows a QR code and a one-time code valid for 5 minutes.
+    /// Goes through a running `remote serve` when there is one.
     Pair {
         /// What the device may do.
         #[arg(long, value_enum, default_value_t = ProfileArg::Read)]
@@ -33,6 +38,11 @@ pub enum RemoteCommand {
     Devices {
         #[command(subcommand)]
         command: Option<DevicesCommand>,
+    },
+    /// Set up Cloudflare Tunnel access.
+    Tunnel {
+        #[command(subcommand)]
+        command: TunnelCommand,
     },
 }
 
@@ -60,17 +70,6 @@ impl From<ProfileArg> for Profile {
     }
 }
 
-fn relay(settings: &Settings) -> Result<String> {
-    if !settings.remote.enabled {
-        bail!("remote access is off; set remote.enabled = true and remote.relay in the config");
-    }
-    settings
-        .remote
-        .relay
-        .clone()
-        .context("remote.relay is not set; set it to the relay's wss:// URL")
-}
-
 fn host_name() -> String {
     ["COMPUTERNAME", "HOSTNAME"]
         .iter()
@@ -80,7 +79,7 @@ fn host_name() -> String {
         .unwrap_or_else(|| "BubblePaw host".to_owned())
 }
 
-/// Held while this process uses the host's relay registration.
+/// Held while this process serves the host remotely.
 fn lock(paths: &RemotePaths) -> Result<std::fs::File> {
     use fs2::FileExt;
     if let Some(parent) = paths.lock.parent() {
@@ -95,29 +94,40 @@ fn lock(paths: &RemotePaths) -> Result<std::fs::File> {
         .with_context(|| format!("could not open {}", paths.lock.display()))?;
     if file.try_lock_exclusive().is_err() {
         bail!(
-            "another `bubblepaw remote serve` or `remote pair` is running for this data directory; \
-             stop it first (pairing while serving is not supported from a second process)"
+            "another `bubblepaw remote serve` or `remote pair` is serving this data directory \
+             and its control endpoint did not answer; stop it first"
         );
     }
     Ok(file)
 }
 
-/// Commands that run before the store opens: `pair`, `devices`, and `serve`
-/// when another process owns the store (served through that host). `None`
-/// lets `serve` continue to own the store itself.
+/// Commands that run before the store opens: `pair`, `devices`, `tunnel`,
+/// and `serve` when another process owns the store (served through that
+/// host). `None` lets `serve` continue to own the store itself.
 pub async fn early(cli: &Cli, settings: &Settings, data_dir: &Path) -> Option<Result<()>> {
     let Command::Remote { command } = &cli.command else {
         return None;
     };
     let paths = RemotePaths::in_data_dir(data_dir);
+    let ui = Ui { json: cli.json };
     match command {
         RemoteCommand::Devices { command: None } => Some(devices(&paths, cli.json)),
         RemoteCommand::Devices {
             command: Some(DevicesCommand::Revoke { id }),
-        } => Some(revoke(&paths, id)),
-        RemoteCommand::Pair { profile } => Some(pair(settings, data_dir, (*profile).into()).await),
-        RemoteCommand::Serve => {
-            if let Err(error) = relay(settings) {
+        } => Some(revoke(&paths, id).await),
+        RemoteCommand::Pair { profile } => Some(pair(settings, data_dir, *profile, &ui).await),
+        RemoteCommand::Tunnel { command } => {
+            Some(cli_tunnel::tunnel(command, settings, &paths).await)
+        }
+        RemoteCommand::Serve { autostart } => {
+            if *autostart && !settings.remote.mode.autostarts() {
+                eprintln!(
+                    "remote.mode = \"quick\" does not start automatically; the host stays \
+                     unshared. Run `bubblepaw remote serve` by hand to share it."
+                );
+                return Some(Ok(()));
+            }
+            if let Err(error) = cli_tunnel::reach(settings, &paths) {
                 return Some(Err(error));
             }
             let probe = crate::host_transport::connect(data_dir, Duration::from_millis(200)).await;
@@ -162,56 +172,116 @@ fn devices(paths: &RemotePaths, json: bool) -> Result<()> {
     Ok(())
 }
 
-fn revoke(paths: &RemotePaths, id: &str) -> Result<()> {
-    if !revoke_device(&paths.clients, id)? {
+async fn revoke(paths: &RemotePaths, id: &str) -> Result<()> {
+    let removed = match cli_tunnel::revoke_through_server(paths, id).await? {
+        Some(removed) => removed,
+        None => revoke_device(&paths.clients, id)?,
+    };
+    if !removed {
         bail!("no paired device {id}");
     }
-    println!("Revoked {id}. A running `remote serve` closes its tunnels within a second.");
+    println!("Revoked {id}. A running `remote serve` has closed its tunnels.");
     Ok(())
 }
 
-fn print_offer(offer: &PairingOffer) -> Result<()> {
-    let payload = offer.qr_payload().encode();
-    let qr = qrcode::QrCode::new(payload.as_bytes()).context("could not build the QR code")?;
-    let image = qr
-        .render::<qrcode::render::unicode::Dense1x2>()
-        .dark_color(qrcode::render::unicode::Dense1x2::Light)
-        .light_color(qrcode::render::unicode::Dense1x2::Dark)
-        .quiet_zone(true)
-        .build();
-    let mut out = std::io::stdout().lock();
-    writeln!(out, "{image}")?;
-    writeln!(out, "Pairing code: {}", offer.code())?;
-    writeln!(
-        out,
-        "Scan the QR code or enter the code on the device. It expires in {} minutes.",
-        offer.expires_in().as_secs().div_ceil(60)
-    )?;
-    out.flush()?;
-    Ok(())
+/// The terminal side of pairing; `--json` prints JSON lines instead.
+struct Ui {
+    json: bool,
 }
 
-async fn confirm(question: String) -> bool {
-    tokio::task::spawn_blocking(move || {
-        print!("{question} [y/N] ");
-        let _ = std::io::stdout().flush();
-        let mut answer = String::new();
-        std::io::stdin().read_line(&mut answer).is_ok()
-            && matches!(answer.trim(), "y" | "Y" | "yes" | "Yes")
-    })
-    .await
-    .unwrap_or(false)
+impl PairingUi for Ui {
+    fn offer(&self, payload: &str, code: &str, expires_in: u64) -> Result<()> {
+        let mut out = std::io::stdout().lock();
+        if self.json {
+            let line = serde_json::json!({
+                "event": "offer", "payload": payload, "code": code, "expires_in": expires_in,
+            });
+            writeln!(out, "{line}")?;
+            out.flush()?;
+            return Ok(());
+        }
+        let qr = qrcode::QrCode::new(payload.as_bytes()).context("could not build the QR code")?;
+        let image = qr
+            .render::<qrcode::render::unicode::Dense1x2>()
+            .dark_color(qrcode::render::unicode::Dense1x2::Light)
+            .light_color(qrcode::render::unicode::Dense1x2::Dark)
+            .quiet_zone(true)
+            .build();
+        writeln!(out, "{image}")?;
+        writeln!(out, "Pairing code: {code}")?;
+        writeln!(
+            out,
+            "Scan the QR code or enter the code on the device. It expires in {} minutes.",
+            expires_in.div_ceil(60)
+        )?;
+        out.flush()?;
+        Ok(())
+    }
+
+    async fn confirm(&self, device_name: &str, device_id: &str, comparison: &str) -> bool {
+        let question = match self.json {
+            true => serde_json::json!({
+                "event": "request", "device_name": device_name, "device_id": device_id,
+                "comparison": comparison,
+            })
+            .to_string(),
+            false => format!(
+                "Device \"{device_name}\" ({device_id}) wants to pair.\nCheck number: \
+                 {comparison}. Does the device show the same number? [y/N] "
+            ),
+        };
+        let json = self.json;
+        tokio::task::spawn_blocking(move || {
+            match json {
+                true => println!("{question}"),
+                false => print!("{question}"),
+            }
+            let _ = std::io::stdout().flush();
+            let mut answer = String::new();
+            std::io::stdin().read_line(&mut answer).is_ok()
+                && matches!(answer.trim(), "y" | "Y" | "yes" | "Yes")
+        })
+        .await
+        .unwrap_or(false)
+    }
+
+    fn paired(&self, id: &str, label: &str, profile: &str) -> Result<()> {
+        match self.json {
+            true => println!(
+                "{}",
+                serde_json::json!({"event": "paired", "id": id, "label": label, "profile": profile})
+            ),
+            false => println!("Paired {label} ({id}) with the {profile} profile."),
+        }
+        Ok(())
+    }
 }
 
-async fn pair(settings: &Settings, data_dir: &Path, profile: Profile) -> Result<()> {
-    let relay = relay(settings)?;
+async fn pair(settings: &Settings, data_dir: &Path, profile: ProfileArg, ui: &Ui) -> Result<()> {
     let paths = RemotePaths::in_data_dir(data_dir);
+    if cli_tunnel::pair_through_server(&paths, profile, ui)
+        .await?
+        .is_some()
+    {
+        return Ok(());
+    }
+    if settings.remote.enabled && settings.remote.mode == RemoteMode::Quick {
+        bail!(
+            "a quick tunnel's address only lives as long as `remote serve`; start `bubblepaw \
+             remote serve` and run `bubblepaw remote pair` in another terminal"
+        );
+    }
+    let reach = cli_tunnel::reach(settings, &paths)?;
     let _lock = lock(&paths)?;
-    let options = RemoteServeOptions::in_data_dir(data_dir, relay, host_name());
+    let options = RemoteServeOptions::in_data_dir(data_dir, reach, host_name());
     let server = RemoteServer::start(options, None)?;
     server.wait_online(ONLINE_WAIT).await?;
-    let mut offer = server.pair(profile).await?;
-    print_offer(&offer)?;
+    let mut offer = server.pair(profile.into()).await?;
+    ui.offer(
+        &offer.qr_payload().encode(),
+        offer.code(),
+        offer.expires_in().as_secs(),
+    )?;
     let request = tokio::select! {
         request = offer.next() => request,
         _ = tokio::signal::ctrl_c() => None,
@@ -220,44 +290,79 @@ async fn pair(settings: &Settings, data_dir: &Path, profile: Profile) -> Result<
         server.shutdown().await;
         bail!("no device paired before the code expired");
     };
-    let question = format!(
-        "Device \"{}\" ({}) wants to pair.\nCheck number: {}. Does the device show the same number?",
-        request.device_name(),
-        request.device_id(),
-        request.comparison()
-    );
-    let result = if confirm(question).await {
+    let approved = ui
+        .confirm(
+            request.device_name(),
+            request.device_id(),
+            request.comparison(),
+        )
+        .await;
+    let result = if approved {
         let device = request.approve(None).await?;
-        println!(
-            "Paired {} ({}) with the {} profile.",
-            device.label,
-            device.id,
-            serde_json::to_value(device.profile)?
-                .as_str()
-                .unwrap_or_default()
-        );
-        Ok(())
+        let profile = serde_json::to_value(device.profile)?;
+        ui.paired(
+            &device.id,
+            &device.label,
+            profile.as_str().unwrap_or_default(),
+        )
     } else {
         request.decline();
         Err(anyhow::anyhow!("pairing declined; nothing was stored"))
     };
-    // Let the decision reach the device before the registration closes.
+    // Let the decision reach the device before the host goes away.
     tokio::time::sleep(Duration::from_millis(500)).await;
     server.shutdown().await;
     result
 }
 
 async fn run_server(
-    server: RemoteServer,
+    mut server: RemoteServer,
+    paths: &RemotePaths,
     stop: impl std::future::Future<Output = Result<()>>,
 ) -> Result<()> {
+    server.open_control(&paths.control).await?;
     eprintln!(
-        "Remote host {} serving through the relay; press Ctrl-C to stop.",
+        "Remote host {} starting; press Ctrl-C to stop. Pair devices with `bubblepaw remote pair` \
+         in another terminal.",
         server.host_id()
     );
-    let result = tokio::select! {
-        result = stop => result,
-        _ = tokio::signal::ctrl_c() => Ok(()),
+    let mut address = server.watch_address();
+    let mut status = server.watch_status();
+    address.mark_changed();
+    let mut announced = false;
+    let mut stop = std::pin::pin!(stop);
+    let result = loop {
+        tokio::select! {
+            result = &mut stop => break result,
+            _ = tokio::signal::ctrl_c() => break Ok(()),
+            changed = address.changed() => {
+                if changed.is_err() {
+                    break Ok(());
+                }
+                let current = address.borrow_and_update().clone();
+                if let Some(current) = current {
+                    if announced {
+                        eprintln!("The address changed; devices paired at the old one must pair again.");
+                    }
+                    eprintln!("Devices reach this host at {}", current.url());
+                    announced = true;
+                }
+            }
+            changed = status.changed() => {
+                if changed.is_err() {
+                    break Ok(());
+                }
+                let current = *status.borrow_and_update();
+                match current {
+                    RemoteStatus::Online => eprintln!("Remote host online."),
+                    RemoteStatus::Offline => eprintln!(
+                        "Remote host offline: {}",
+                        server.last_error().unwrap_or_default()
+                    ),
+                    RemoteStatus::Connecting => {}
+                }
+            }
+        }
     };
     server.shutdown().await;
     result
@@ -265,10 +370,10 @@ async fn run_server(
 
 /// Serve through the host that owns the store. Ends when that host stops.
 async fn serve_attached(settings: &Settings, data_dir: &Path) -> Result<()> {
-    let relay = relay(settings)?;
     let paths = RemotePaths::in_data_dir(data_dir);
+    let reach = cli_tunnel::reach(settings, &paths)?;
     let _lock = lock(&paths)?;
-    let options = RemoteServeOptions::in_data_dir(data_dir, relay, host_name());
+    let options = RemoteServeOptions::in_data_dir(data_dir, reach, host_name());
     let backend = SessionBackend::Attach(data_dir.to_owned());
     let server = RemoteServer::start(options, Some(backend))?;
     eprintln!("Serving through the running host for this data directory.");
@@ -281,25 +386,25 @@ async fn serve_attached(settings: &Settings, data_dir: &Path) -> Result<()> {
             }
         }
     };
-    run_server(server, host_gone).await
+    run_server(server, &paths, host_gone).await
 }
 
 /// `remote serve` in the process that owns the store.
 pub async fn serve(ctx: &HostCtx, settings: &Settings, cancel: &CancellationToken) -> Result<()> {
-    let relay = relay(settings)?;
     let data_dir = ctx
         .store
         .data_dir()
         .context("host has no data directory")?
         .to_owned();
     let paths = RemotePaths::in_data_dir(&data_dir);
+    let reach = cli_tunnel::reach(settings, &paths)?;
     let _lock = lock(&paths)?;
-    let options = RemoteServeOptions::in_data_dir(&data_dir, relay, host_name());
+    let options = RemoteServeOptions::in_data_dir(&data_dir, reach, host_name());
     let server = RemoteServer::start(
         options,
         Some(SessionBackend::Context(Box::new(ctx.clone()))),
     )?;
-    run_server(server, async {
+    run_server(server, &paths, async {
         cancel.cancelled().await;
         Ok(())
     })

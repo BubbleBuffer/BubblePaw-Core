@@ -1,12 +1,12 @@
 //! Host-side pairing: one active offer at a time, holding a one-time code.
 //! A device that proves the code becomes a [`PairingRequest`] the person at
 //! the host confirms (after comparing the check number) or declines.
-use super::{PairedDevice, PairingPayload, paired_profile};
+use super::{PairedDevice, PairingPayload, RemoteAddress, paired_profile};
 use crate::host_api::Profile;
 use anyhow::{Result, anyhow};
 use bubblepaw_remote::device::{DeviceId, DeviceKey};
+use bubblepaw_remote::frame::FrameIo;
 use bubblepaw_remote::pairing::{self, PairingCode, PendingHost};
-use bubblepaw_remote::relay::RelaySession;
 use bubblepaw_remote::store::{PairStore, PairedClient};
 use std::path::Path;
 use std::sync::Arc;
@@ -51,17 +51,12 @@ impl PairingOffer {
     pub(super) async fn install(
         slot: &OfferSlot,
         id: u64,
-        relay: &str,
+        address: &RemoteAddress,
         host: &DeviceId,
         profile: Profile,
     ) -> Result<Self> {
         let code = PairingCode::generate().map_err(|error| anyhow!("{error}"))?;
-        let payload = PairingPayload {
-            v: 1,
-            relay: relay.to_owned(),
-            host: host.to_string(),
-            code: code.code().to_owned(),
-        };
+        let payload = PairingPayload::new(address, host.to_string(), code.code().to_owned());
         let deadline = Instant::now() + super::PAIRING_WINDOW;
         let (requests, receiver) = mpsc::channel(1);
         *slot.lock().await = Some(ActiveOffer {
@@ -183,9 +178,9 @@ fn expired_code() -> Option<PairingCode> {
 
 /// Run one pairing attempt on `session`. Returns once the device is stored,
 /// declined, or the attempt failed. `store` serializes paired-store writes.
-pub(super) async fn attempt(
+pub(super) async fn attempt<T: FrameIo>(
     slot: &OfferSlot,
-    session: RelaySession,
+    session: T,
     key: &DeviceKey,
     host_name: &str,
     clients: &Path,
@@ -234,8 +229,8 @@ pub(super) async fn attempt(
     decide(pending, profile, requests, clients, store).await
 }
 
-async fn decide(
-    pending: PendingHost<RelaySession>,
+async fn decide<T: FrameIo>(
+    pending: PendingHost<T>,
     profile: Profile,
     requests: mpsc::Sender<PairingRequest>,
     clients: &Path,

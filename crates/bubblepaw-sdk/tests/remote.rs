@@ -1,11 +1,13 @@
-//! Remote access through an in-process relay: pairing, a paired device using
-//! the host through `Client::connect_remote`, profiles and revocation. The
-//! host is the CLI host's own context on the scripted demo provider.
+//! Remote access through an in-process relay and through the host's own
+//! WebSocket endpoint (`ws://127.0.0.1`, as a Cloudflare Tunnel would publish
+//! it): pairing, a paired device using the host through
+//! `Client::connect_remote`, profiles and revocation. The host is the CLI
+//! host's own context on the scripted demo provider.
 use anyhow::{Context, Result};
 use bubblepaw_remote::relay::{Relay, RelayConfig};
 use bubblepaw_sdk::remote::{
-    self, Limits, PairedDevice, RemoteConnect, RemoteError, RemotePair, RemoteServeOptions,
-    RemoteServer,
+    self, Limits, PairedDevice, RemoteAddress, RemoteConnect, RemoteError, RemotePair, RemoteReach,
+    RemoteServeOptions, RemoteServer,
 };
 use bubblepaw_sdk::{Client, ClientError, ConfigOptions, HostConfig, Profile};
 use serde_json::json;
@@ -27,13 +29,28 @@ auto_wake=false
 
 struct Fixture {
     root: tempfile::TempDir,
-    _relay: Relay,
-    relay: String,
+    _relay: Option<Relay>,
+    address: RemoteAddress,
     host: Client,
     server: RemoteServer,
 }
 
 async fn fixture() -> Result<Fixture> {
+    let relay = Relay::bind("127.0.0.1:0".parse()?, RelayConfig::default()).await?;
+    let url = format!("ws://{}", relay.local_addr());
+    fixture_with(RemoteReach::Relay(url), Some(relay)).await
+}
+
+/// A host serving its own endpoint on a free loopback port.
+async fn direct_fixture() -> Result<Fixture> {
+    let reach = RemoteReach::Local {
+        port: 0,
+        address: None,
+    };
+    fixture_with(reach, None).await
+}
+
+async fn fixture_with(reach: RemoteReach, relay: Option<Relay>) -> Result<Fixture> {
     let root = tempfile::tempdir()?;
     std::fs::write(root.path().join("config.toml"), CONFIG)?;
     let config = HostConfig::load(ConfigOptions {
@@ -45,19 +62,15 @@ async fn fixture() -> Result<Fixture> {
         overrides: Vec::new(),
     })?;
     let host = Client::embedded_configured(config).await?;
-    let relay_server = Relay::bind("127.0.0.1:0".parse()?, RelayConfig::default()).await?;
-    let relay = format!("ws://{}", relay_server.local_addr());
-    let options = RemoteServeOptions::in_data_dir(
-        &root.path().join("data"),
-        relay.clone(),
-        "Test host".into(),
-    );
+    let options =
+        RemoteServeOptions::in_data_dir(&root.path().join("data"), reach, "Test host".into());
     let server = host.serve_remote(options)?;
     server.wait_online(Duration::from_secs(10)).await?;
+    let address = server.address().context("an online host has an address")?;
     Ok(Fixture {
         root,
-        _relay: relay_server,
-        relay,
+        _relay: relay,
+        address,
         host,
         server,
     })
@@ -70,7 +83,7 @@ impl Fixture {
 
     fn pair_options(&self, device: &Path, code: String) -> RemotePair {
         RemotePair {
-            relay: self.relay.clone(),
+            address: self.address.clone(),
             host_id: self.server.host_id(),
             code,
             key_file: device.join("device.bpkey"),
@@ -82,7 +95,7 @@ impl Fixture {
 
     fn connect_options(&self, device: &Path) -> RemoteConnect {
         RemoteConnect {
-            relay: self.relay.clone(),
+            address: self.address.clone(),
             host_id: self.server.host_id(),
             key_file: device.join("device.bpkey"),
             hosts: device.join("hosts.json"),
@@ -97,7 +110,7 @@ impl Fixture {
         let mut offer = self.server.pair(profile).await?;
         let payload = offer.qr_payload().clone();
         assert_eq!(payload.host, self.server.host_id());
-        assert_eq!(payload.relay, self.relay);
+        assert_eq!(payload.address(), self.address);
         let pairing = remote::pair(self.pair_options(&device, offer.code().to_owned()));
         let (pending, request) = tokio::join!(pairing, offer.next());
         let pending = pending?;
@@ -123,7 +136,21 @@ fn wrong(code: &str) -> String {
 
 #[tokio::test]
 async fn paired_device_lists_sessions_and_runs_a_turn() -> Result<()> {
-    let fixture = fixture().await?;
+    lists_sessions_and_runs_a_turn(fixture().await?).await
+}
+
+#[tokio::test]
+async fn direct_endpoint_pairs_and_runs_a_turn() -> Result<()> {
+    let fixture = direct_fixture().await?;
+    let RemoteAddress::Direct(url) = &fixture.address else {
+        panic!("a local endpoint has a direct address");
+    };
+    assert!(url.starts_with("ws://127.0.0.1:"), "{url}");
+    assert!(fixture.server.local_port().is_some());
+    lists_sessions_and_runs_a_turn(fixture).await
+}
+
+async fn lists_sessions_and_runs_a_turn(fixture: Fixture) -> Result<()> {
     let (connect, device) = fixture.pair("phone", Profile::Full).await?;
     assert!(device.paired_at.is_some());
     let client = Client::connect_remote(connect).await?;

@@ -1,6 +1,6 @@
 # Rust SDK
 
-Status: built through 2026-11-02, including the shared host method table, context-fact reads, host user answers to child questions and remote hosts over a relay.
+Status: built through 2026-11-02, including the shared host method table, context-fact reads, host user answers to child questions and remote hosts over a relay or a Cloudflare Tunnel.
 
 `bubblepaw-sdk` is the supported Rust surface for embedding BubblePaw. It is the
 one dependency an outside program needs. It re-exports curated types from
@@ -221,13 +221,16 @@ variant, configure a provider with `call`, then retry on the same client.
 
 ### Remote hosts
 
-A device reaches a host through a relay over an end-to-end encrypted tunnel
-([remote](remote.md#runner-remote-host)). `bubblepaw_sdk::remote` re-exports the
-types; tests use an in-process `bubblepaw_remote::relay::Relay`.
+A device reaches a host through a relay, or directly at the host's own
+WebSocket endpoint (published by a Cloudflare Tunnel), over an end-to-end
+encrypted tunnel ([remote](remote.md#runner-remote-host)). `bubblepaw_sdk::remote`
+re-exports the types; tests use an in-process `bubblepaw_remote::relay::Relay`
+or `RemoteReach::Local` on `ws://127.0.0.1`.
 
 ```rust,ignore
 // Host: serve an embedded client (CLI host or HostBuilder) through the relay.
-let server = client.serve_remote(RemoteServeOptions::in_data_dir(&data_dir, relay, "My PC".into()))?;
+// reach: RemoteReach::Relay(url), Local { port, address } or Cloudflare(CloudflareTunnel { .. })
+let server = client.serve_remote(RemoteServeOptions::in_data_dir(&data_dir, reach, "My PC".into()))?;
 server.wait_online(Duration::from_secs(10)).await?;
 let mut offer = server.pair(Profile::Read).await?;      // show offer.qr_payload() / offer.code()
 let request = offer.next().await.expect("a device");    // None when the code expires
@@ -235,19 +238,28 @@ let request = offer.next().await.expect("a device");    // None when the code ex
 let device = request.approve(None).await?;              // or request.decline()
 
 // Device: pair once, then connect.
-let pending = remote::pair(RemotePair { relay, host_id, code, key_file, hosts, device_name, limits }).await?;
+// address: payload.address() from the scanned PairingPayload (RemoteAddress::Relay or Direct)
+let pending = remote::pair(RemotePair { address, host_id, code, key_file, hosts, device_name, limits }).await?;
 // show pending.comparison(); finish waits for the host's decision
 let host = pending.finish().await?;
-let remote_client = Client::connect_remote(RemoteConnect { relay, host_id, key_file, hosts, limits }).await?;
+let remote_client = Client::connect_remote(RemoteConnect { address, host_id, key_file, hosts, limits }).await?;
 remote_client.call("session.list", json!({})).await?;
 ```
 
 - `Client::serve_remote(RemoteServeOptions) -> Result<RemoteServer, ClientError>`
   works only on an embedded client; tunnels run on its host context with each
-  device's profile and host-wide reads. `RemoteServeOptions {relay, key_file,
+  device's profile and host-wide reads. `RemoteServeOptions {reach, key_file,
   clients, host_name, limits}`; `in_data_dir` uses `<data_dir>/remote/`.
+  `RemoteReach::Cloudflare(CloudflareTunnel {mode: TunnelMode::Quick | Domain
+  {hostname}, port, cloudflared, dir, api: Option<CloudflareApi>})` runs a managed
+  `cloudflared`; `find_cloudflared(configured, &paths)` and
+  `install_cloudflared(&paths.cloudflare_bin(), &InstallSource::default())` find
+  or install it.
 - `RemoteServer`: `host_id()`, `status()` / `watch_status()` (`Connecting`,
-  `Online`, `Offline`), `wait_online(timeout)`, `pair(Profile) -> PairingOffer`,
+  `Online`, `Offline`), `wait_online(timeout)`, `address()` / `watch_address()`
+  (`Option<RemoteAddress>`; a quick tunnel's changes on restart), `local_port()`,
+  `last_error()`, `open_control(dir)` (lets `bubblepaw remote pair` and `revoke`
+  in other processes reach this server), `pair(Profile) -> PairingOffer`,
   `devices() -> Vec<PairedDevice>`, `revoke(id) -> bool` (closes that device's
   live tunnels), `tunnel_count()`, `shutdown()`. It reconnects with backoff and
   stops on drop. One `PairingOffer` is open at a time; dropping it closes it.

@@ -339,7 +339,7 @@ pub enum Command {
         #[arg(long)]
         max_cost_usd: Option<f64>,
     },
-    /// Remote access through a relay: serve, pair devices, list or revoke them.
+    /// Remote access through a relay or a Cloudflare Tunnel: serve, pair devices, list or revoke them.
     Remote {
         #[command(subcommand)]
         command: crate::remote::cli::RemoteCommand,

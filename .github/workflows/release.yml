@@ -1,6 +1,7 @@
 # Release for the public BubblePaw-Core repo: a pushed v* tag builds the
 # bubblepaw binary for Linux and Windows, with default features and with the
-# web feature, and attaches the archives to a GitHub release for that tag.
+# web feature, plus the bubblepaw-relay binary for both, and attaches the
+# archives and their SHA256SUMS to a GitHub release for that tag.
 #
 name: release
 
@@ -40,6 +41,9 @@ jobs:
           args=(--release --locked --target "${{ matrix.target }}" -p bubblepaw-runner --bin bubblepaw)
           if [[ -n "${{ matrix.features }}" ]]; then args+=(--features "${{ matrix.features }}"); fi
           cargo build "${args[@]}"
+          if [[ "${{ matrix.variant }}" == default ]]; then
+            cargo build --release --locked --target "${{ matrix.target }}" -p bubblepaw-remote --bin bubblepaw-relay
+          fi
       - name: package
         shell: bash
         run: |
@@ -53,6 +57,18 @@ jobs:
           else
             cp "target/${{ matrix.target }}/release/bubblepaw" "dist/$name/"
             tar -C dist -czf "dist/$name.tar.gz" "$name"
+          fi
+          if [[ "${{ matrix.variant }}" == default ]]; then
+            relay="bubblepaw-relay-${GITHUB_REF_NAME}-${{ matrix.target }}"
+            mkdir -p "dist/$relay"
+            cp LICENSE "dist/$relay/"
+            if [[ "${{ runner.os }}" == Windows ]]; then
+              cp "target/${{ matrix.target }}/release/bubblepaw-relay.exe" "dist/$relay/"
+              (cd dist && 7z a -tzip "$relay.zip" "$relay" >/dev/null)
+            else
+              cp "target/${{ matrix.target }}/release/bubblepaw-relay" "dist/$relay/"
+              tar -C dist -czf "dist/$relay.tar.gz" "$relay"
+            fi
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

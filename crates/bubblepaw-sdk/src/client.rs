@@ -106,8 +106,9 @@ impl Client {
         })
     }
 
-    /// Serve this embedded host to paired devices through a relay until the
-    /// returned server is shut down or dropped. Attached clients cannot serve.
+    /// Serve this embedded host to paired devices (through a relay or its own
+    /// endpoint, as `options.reach` says) until the returned server is shut down
+    /// or dropped. Attached clients cannot serve.
     pub fn serve_remote(&self, options: RemoteServeOptions) -> Result<RemoteServer, ClientError> {
         let embedded = self.embedded.as_ref().ok_or_else(|| {
             ClientError::Host("only a client that embeds its host can serve it remotely".into())
