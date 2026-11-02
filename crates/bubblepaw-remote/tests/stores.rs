@@ -14,6 +14,7 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
             public_key: key.public_key(),
             name: "Phone".into(),
             profile: Profile::Read,
+            paired_at: None,
         })
         .unwrap();
     store
@@ -21,6 +22,7 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
             public_key: key.public_key(),
             name: "Renamed".into(),
             profile: Profile::Full,
+            paired_at: None,
         })
         .unwrap();
     assert_eq!(store.devices().count(), 1);
@@ -30,7 +32,8 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
             .insert(PairedClient {
                 public_key: [0; 32],
                 name: "bad key".into(),
-                profile: Profile::Read
+                profile: Profile::Read,
+                paired_at: None,
             })
             .is_err()
     );
@@ -91,7 +94,8 @@ fn failed_persistence_preserves_memory() {
             .insert(PairedClient {
                 public_key: key.public_key(),
                 name: "Phone".into(),
-                profile: Profile::Read
+                profile: Profile::Read,
+                paired_at: None,
             })
             .is_err()
     );

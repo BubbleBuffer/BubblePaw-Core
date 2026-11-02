@@ -15,6 +15,26 @@ pub trait FrameIo: Send {
     async fn recv_frame(&mut self) -> Result<Vec<u8>>;
 }
 
+/// The receive direction of a carrier split by [`SplitFrames`].
+#[async_trait]
+pub trait FrameReader: Send {
+    async fn recv_frame(&mut self) -> Result<Vec<u8>>;
+}
+
+/// The send direction of a carrier split by [`SplitFrames`].
+#[async_trait]
+pub trait FrameWriter: Send {
+    async fn send_frame(&mut self, frame: &[u8]) -> Result<()>;
+}
+
+/// A carrier whose two directions can be driven concurrently, so a tunnel on
+/// it can receive while it sends (see `Tunnel::split`).
+pub trait SplitFrames: FrameIo + Sized {
+    type Reader: FrameReader + 'static;
+    type Writer: FrameWriter + 'static;
+    fn split_frames(self) -> (Self::Reader, Self::Writer);
+}
+
 /// A four-byte, big-endian length followed by one bounded record.
 pub struct ByteFrames<T> {
     inner: T,

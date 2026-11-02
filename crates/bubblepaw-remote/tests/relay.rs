@@ -253,3 +253,41 @@ async fn public_session_rejects_oversized_frames_before_queueing() {
     drop(host);
     relay.shutdown().await;
 }
+
+#[tokio::test]
+async fn client_session_holds_a_burst_until_its_reader_catches_up() {
+    let relay = start(RelayConfig::default()).await;
+    let url = format!("ws://{}", relay.local_addr());
+    let host_key = key(12);
+    let mut host = relay::register(&url, &host_key, Limits::default())
+        .await
+        .unwrap();
+    let client_key = key(13);
+    let host_id = host_key.id();
+    let (accepted, connected) = tokio::join!(
+        host.accept(),
+        relay::connect(&url, &client_key, &host_id, Limits::default())
+    );
+    let mut accepted = accepted.unwrap();
+    let mut connected = connected.unwrap();
+    // Far more frames than the client's queue holds, sent before it reads. The
+    // pause lets the relay forward each one: its own routing queues still fail
+    // closed, so this checks only the client side of the burst.
+    let count = Limits::default().queue_capacity * 4;
+    for index in 0..count {
+        accepted
+            .send_frame(&(index as u32).to_be_bytes().repeat(256))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    for index in 0..count {
+        let frame = connected.recv_frame().await.unwrap();
+        assert_eq!(frame, (index as u32).to_be_bytes().repeat(256));
+    }
+    drop(connected);
+    drop(accepted);
+    drop(host);
+    relay.shutdown().await;
+}

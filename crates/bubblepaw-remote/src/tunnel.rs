@@ -12,6 +12,9 @@ use crate::{
     trust::{AuthorizedPeer, PeerAuthorizer, PublicKey},
 };
 
+mod split;
+pub use split::{SplitTunnel, TunnelReader, TunnelWriter};
+
 pub const MAX_MESSAGE_LEN: usize = 16 * 1024 * 1024;
 pub const MAX_CHUNK_PAYLOAD: usize = MAX_FRAME_LEN - 16 - 1;
 const PROLOGUE: &[u8] = b"bubblepaw-remote/noise/v1";
@@ -84,7 +87,10 @@ pub async fn exchange<T: FrameIo>(
 }
 
 async fn checked_frame<T: FrameIo>(io: &mut T) -> Result<Vec<u8>> {
-    let frame = io.recv_frame().await?;
+    checked(io.recv_frame().await?)
+}
+
+fn checked(frame: Vec<u8>) -> Result<Vec<u8>> {
     if frame.len() > MAX_FRAME_LEN {
         return Err(Error::OversizedFrame);
     }
@@ -166,19 +172,10 @@ impl<T: FrameIo> Tunnel<T> {
     }
 
     async fn send_payload(&mut self, payload: &[u8]) -> Result<()> {
-        let mut remaining = payload;
-        loop {
-            let length = remaining.len().min(MAX_CHUNK_PAYLOAD);
-            let more = remaining.len() > length;
-            let mut plaintext = Vec::with_capacity(length + 1);
-            plaintext.push(u8::from(more));
-            plaintext.extend_from_slice(&remaining[..length]);
+        for plaintext in chunks(payload) {
             self.write_record(&plaintext).await?;
-            remaining = &remaining[length..];
-            if !more {
-                return Ok(());
-            }
         }
+        Ok(())
     }
 
     pub async fn recv(&mut self) -> Result<Vec<u8>> {
@@ -197,28 +194,50 @@ impl<T: FrameIo> Tunnel<T> {
         let mut message = Vec::new();
         loop {
             let plaintext = self.read_record().await?;
-            let (&continuation, payload) = plaintext
-                .split_first()
-                .ok_or(Error::Protocol("missing encrypted chunk marker"))?;
-            if continuation > 1 || (continuation == 1 && payload.len() != MAX_CHUNK_PAYLOAD) {
-                return Err(Error::Protocol("invalid encrypted chunk marker or length"));
-            }
-            if message.len() + payload.len() > MAX_MESSAGE_LEN {
-                return Err(Error::OversizedFrame);
-            }
-            let required = message.len() + payload.len();
-            if required > message.capacity() {
-                let capacity = required
-                    .max(message.capacity().saturating_mul(2))
-                    .min(MAX_MESSAGE_LEN);
-                message.reserve_exact(capacity - message.len());
-            }
-            message.extend_from_slice(payload);
-            if continuation == 0 {
+            if append_chunk(&mut message, &plaintext)? {
                 return Ok(message);
             }
         }
     }
+}
+
+/// Plaintext records for one message: a continuation byte, then the payload.
+fn chunks(payload: &[u8]) -> impl Iterator<Item = Vec<u8>> + '_ {
+    let mut remaining = Some(payload);
+    std::iter::from_fn(move || {
+        let current = remaining.take()?;
+        let length = current.len().min(MAX_CHUNK_PAYLOAD);
+        let more = current.len() > length;
+        let mut plaintext = Vec::with_capacity(length + 1);
+        plaintext.push(u8::from(more));
+        plaintext.extend_from_slice(&current[..length]);
+        if more {
+            remaining = Some(&current[length..]);
+        }
+        Some(plaintext)
+    })
+}
+
+/// Add one decrypted record to `message`; true once the message is complete.
+fn append_chunk(message: &mut Vec<u8>, plaintext: &[u8]) -> Result<bool> {
+    let (&continuation, payload) = plaintext
+        .split_first()
+        .ok_or(Error::Protocol("missing encrypted chunk marker"))?;
+    if continuation > 1 || (continuation == 1 && payload.len() != MAX_CHUNK_PAYLOAD) {
+        return Err(Error::Protocol("invalid encrypted chunk marker or length"));
+    }
+    if message.len() + payload.len() > MAX_MESSAGE_LEN {
+        return Err(Error::OversizedFrame);
+    }
+    let required = message.len() + payload.len();
+    if required > message.capacity() {
+        let capacity = required
+            .max(message.capacity().saturating_mul(2))
+            .min(MAX_MESSAGE_LEN);
+        message.reserve_exact(capacity - message.len());
+    }
+    message.extend_from_slice(payload);
+    Ok(continuation == 0)
 }
 
 /// Admit the peer through caller-owned policy after its Ed25519 identity has

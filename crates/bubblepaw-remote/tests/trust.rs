@@ -135,6 +135,7 @@ fn json_stores_authorize_exact_id_and_key_using_the_saved_profile() {
             public_key: key.public_key(),
             name: "Phone".into(),
             profile: Profile::Edit,
+            paired_at: None,
         })
         .unwrap();
     let mut loaded = PairStore::<PairedClient>::open(path).unwrap();
@@ -199,6 +200,7 @@ async fn json_policy_is_used_by_the_tunnel_and_exposes_its_grant() {
             public_key: alice.public_key(),
             name: "Preconfigured".into(),
             profile: Profile::Read,
+            paired_at: None,
         })
         .unwrap();
     let alice_trust = [bob.public_key()];

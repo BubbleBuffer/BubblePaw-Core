@@ -5,9 +5,9 @@ use super::{
 use crate::{
     Error, Result,
     device::{DeviceId, DeviceKey},
-    frame::FrameIo,
+    frame::{FrameIo, FrameReader, FrameWriter, SplitFrames},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
@@ -66,6 +66,13 @@ pub struct RelaySession {
     outgoing: mpsc::Sender<Command>,
     incoming: mpsc::Receiver<Vec<u8>>,
     limits: Limits,
+    guard: Arc<SessionGuard>,
+}
+
+/// Closes the session once its last half is dropped.
+struct SessionGuard {
+    id: u64,
+    outgoing: mpsc::Sender<Command>,
     task: Option<JoinHandle<()>>,
     overload_shutdown: Option<watch::Sender<bool>>,
 }
@@ -79,7 +86,7 @@ impl RelaySession {
     }
 }
 
-impl Drop for RelaySession {
+impl Drop for SessionGuard {
     fn drop(&mut self) {
         if self
             .outgoing
@@ -98,25 +105,84 @@ impl Drop for RelaySession {
     }
 }
 
+async fn send_data(
+    outgoing: &mpsc::Sender<Command>,
+    id: u64,
+    frame: &[u8],
+    limits: &Limits,
+) -> Result<()> {
+    if frame.len() > limits.max_frame_bytes {
+        return Err(Error::OversizedFrame);
+    }
+    command(outgoing, Wire::Data(id, frame.to_vec()), limits).await
+}
+
+async fn recv_data(incoming: &mut mpsc::Receiver<Vec<u8>>, limits: &Limits) -> Result<Vec<u8>> {
+    tokio::time::timeout(limits.idle_timeout, incoming.recv())
+        .await
+        .map_err(|_| Error::IdleTimeout)?
+        .ok_or(Error::Closed)
+}
+
 #[async_trait::async_trait]
 impl FrameIo for RelaySession {
     async fn send_frame(&mut self, frame: &[u8]) -> Result<()> {
-        if frame.len() > self.limits.max_frame_bytes {
-            return Err(Error::OversizedFrame);
-        }
-        command(
-            &self.outgoing,
-            Wire::Data(self.id, frame.to_vec()),
-            &self.limits,
-        )
-        .await
+        send_data(&self.outgoing, self.id, frame, &self.limits).await
     }
 
     async fn recv_frame(&mut self) -> Result<Vec<u8>> {
-        tokio::time::timeout(self.limits.idle_timeout, self.incoming.recv())
-            .await
-            .map_err(|_| Error::IdleTimeout)?
-            .ok_or(Error::Closed)
+        recv_data(&mut self.incoming, &self.limits).await
+    }
+}
+
+/// The receive direction of a split [`RelaySession`]. Like the whole session,
+/// a receive with no data for the idle timeout fails.
+pub struct RelayReader {
+    incoming: mpsc::Receiver<Vec<u8>>,
+    limits: Limits,
+    _guard: Arc<SessionGuard>,
+}
+
+/// The send direction of a split [`RelaySession`].
+pub struct RelayWriter {
+    id: u64,
+    outgoing: mpsc::Sender<Command>,
+    limits: Limits,
+    _guard: Arc<SessionGuard>,
+}
+
+#[async_trait::async_trait]
+impl FrameReader for RelayReader {
+    async fn recv_frame(&mut self) -> Result<Vec<u8>> {
+        recv_data(&mut self.incoming, &self.limits).await
+    }
+}
+
+#[async_trait::async_trait]
+impl FrameWriter for RelayWriter {
+    async fn send_frame(&mut self, frame: &[u8]) -> Result<()> {
+        send_data(&self.outgoing, self.id, frame, &self.limits).await
+    }
+}
+
+impl SplitFrames for RelaySession {
+    type Reader = RelayReader;
+    type Writer = RelayWriter;
+
+    fn split_frames(self) -> (RelayReader, RelayWriter) {
+        (
+            RelayReader {
+                incoming: self.incoming,
+                limits: self.limits.clone(),
+                _guard: self.guard.clone(),
+            },
+            RelayWriter {
+                id: self.id,
+                outgoing: self.outgoing,
+                limits: self.limits,
+                _guard: self.guard,
+            },
+        )
     }
 }
 
@@ -261,12 +327,21 @@ where
     let task_limits = limits.clone();
     let task = tokio::spawn(async move {
         let result: Result<()> = async {
+            let mut keepalive = wire::keepalive(&task_limits);
             loop {
                 tokio::select! {
+                    _ = keepalive.tick() => wire::ping(&mut ws, &task_limits).await?,
                     frame = wire::recv(&mut ws, &task_limits) => {
                         match frame? {
                             Wire::Data(session, bytes) if session == id => {
-                                incoming_tx.try_send(bytes).map_err(|_| Error::Limit("inbound queue"))?;
+                                // This connection carries one session, so waiting
+                                // for its reader pushes back on the relay instead
+                                // of failing a burst; a reader stalled for the idle
+                                // timeout still fails the session.
+                                tokio::time::timeout(task_limits.idle_timeout, incoming_tx.send(bytes))
+                                    .await
+                                    .map_err(|_| Error::Limit("inbound queue"))?
+                                    .map_err(|_| Error::Closed)?;
                             }
                             Wire::Close(session) if session == id => return Ok(()),
                             _ => return Err(Error::Protocol("unexpected session frame")),
@@ -285,11 +360,15 @@ where
     Ok(RelaySession {
         id,
         peer,
+        guard: Arc::new(SessionGuard {
+            id,
+            outgoing: outgoing.clone(),
+            task: Some(task),
+            overload_shutdown: None,
+        }),
         outgoing,
         incoming,
         limits,
-        task: Some(task),
-        overload_shutdown: None,
     })
 }
 
@@ -306,9 +385,11 @@ async fn host_loop<S>(
 {
     let mut sessions: HashMap<u64, mpsc::Sender<Vec<u8>>> = HashMap::new();
     let result: Result<()> = async {
+        let mut keepalive = wire::keepalive(&limits);
         loop {
             tokio::select! {
                 _ = shutdown_rx.changed() => return Ok(()),
+                _ = keepalive.tick() => wire::ping(&mut ws, &limits).await?,
                 frame = wire::recv(&mut ws, &limits) => match frame? {
                     Wire::Incoming(id, peer) => {
                         if sessions.len() >= limits.sessions_per_host || sessions.contains_key(&id) {
@@ -316,9 +397,13 @@ async fn host_loop<S>(
                         }
                         let (sender, receiver) = mpsc::channel(limits.queue_capacity);
                         sessions.insert(id, sender);
+                        let guard = Arc::new(SessionGuard {
+                            id, outgoing: outgoing.clone(), task: None,
+                            overload_shutdown: Some(shutdown.clone()),
+                        });
                         let session = RelaySession {
                             id, peer, outgoing: outgoing.clone(), incoming: receiver,
-                            limits: limits.clone(), task: None, overload_shutdown: Some(shutdown.clone()),
+                            limits: limits.clone(), guard,
                         };
                         if incoming.try_send(session).is_err() {
                             sessions.remove(&id);

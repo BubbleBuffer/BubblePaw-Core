@@ -28,6 +28,9 @@ pub struct PairedClient {
     pub public_key: [u8; 32],
     pub name: String,
     pub profile: Profile,
+    /// When the host approved the pairing, in Unix seconds. Absent in older files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paired_at: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -272,6 +275,7 @@ mod tests {
                 public_key: key.public_key(),
                 name: "Phone".into(),
                 profile: Profile::Full,
+                paired_at: None,
             })
             .unwrap();
         let result = store.persist_with_sync(BTreeMap::new(), |_| {
