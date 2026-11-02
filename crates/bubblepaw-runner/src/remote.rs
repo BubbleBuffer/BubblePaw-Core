@@ -34,6 +34,7 @@ mod offer;
 mod reach;
 mod serve_lock;
 mod server;
+mod server_options;
 
 pub use bubblepaw_remote::relay::Limits;
 pub use client::{PairedHostInfo, PendingPairing, RemoteConnect, RemoteError, RemotePair};

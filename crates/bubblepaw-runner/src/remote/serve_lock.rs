@@ -132,7 +132,7 @@ pub(super) fn status_at(lock: &Path) -> ServeStatus {
     let Ok(file) = std::fs::File::open(lock) else {
         return free;
     };
-    if file.try_lock_shared().is_ok() {
+    if FileExt::try_lock_shared(&file).is_ok() {
         let _ = FileExt::unlock(&file);
         return free;
     }

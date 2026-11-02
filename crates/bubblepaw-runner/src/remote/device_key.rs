@@ -139,12 +139,10 @@ pub fn export_device_key(key_file: &Path, dest: &Path, passphrase: &str) -> Resu
 }
 
 fn refuse_while_serving(paths: &DeviceKeyPaths) -> Result<()> {
-    if let Some(lock) = &paths.lock {
-        if status_at(lock).shared {
-            bail!(
-                "this host is being shared right now; stop sharing before changing the device key"
-            );
-        }
+    if let Some(lock) = &paths.lock
+        && status_at(lock).shared
+    {
+        bail!("this host is being shared right now; stop sharing before changing the device key");
     }
     Ok(())
 }
