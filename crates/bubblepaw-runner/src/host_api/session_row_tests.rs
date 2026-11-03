@@ -60,7 +60,10 @@ async fn idle_row_has_its_workspace_and_no_attention_flags() -> Result<()> {
     let ctx = HostCtx::for_store(store, root.path());
     let row = rows(&ctx, &session.id).await?;
     let workspace = row["workspace"].as_str().expect("workspace is a path");
-    assert_eq!(std::path::Path::new(workspace), root.path());
+    assert_eq!(
+        std::fs::canonicalize(workspace)?,
+        std::fs::canonicalize(root.path())?
+    );
     assert_eq!(row["needs_you"], false);
     assert_eq!(row["running"], false);
     assert!(row["usage"].is_object(), "existing fields stay: {row}");
