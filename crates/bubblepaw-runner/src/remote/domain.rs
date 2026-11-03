@@ -3,10 +3,10 @@
 //! login`), its credentials kept in the data directory, and a proxied CNAME
 //! from the configured hostname to it.
 use super::cloudflare_api::ApiClient;
+use super::keys::write_private;
 use super::reach::CloudflareTunnel;
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 
@@ -82,25 +82,6 @@ pub fn api_token(dir: &Path) -> Result<Option<String>> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error).with_context(|| format!("could not read {}", path.display())),
     }
-}
-
-/// Write `contents` to `path`, owner-only on Unix, replacing it atomically.
-pub(super) fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
-    let dir = path.parent().context("no parent directory")?;
-    std::fs::create_dir_all(dir).with_context(|| format!("could not create {}", dir.display()))?;
-    let mut file = tempfile::NamedTempFile::new_in(dir)
-        .with_context(|| format!("could not write in {}", dir.display()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        file.as_file()
-            .set_permissions(std::fs::Permissions::from_mode(0o600))?;
-    }
-    file.write_all(contents)?;
-    file.as_file().sync_all()?;
-    file.persist(path)
-        .with_context(|| format!("could not write {}", path.display()))?;
-    Ok(())
 }
 
 fn read_state(dir: &Path) -> Result<Option<State>> {

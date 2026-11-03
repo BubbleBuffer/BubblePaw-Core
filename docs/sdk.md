@@ -1,6 +1,6 @@
 # Rust SDK
 
-Status: built through 2026-11-02, including the shared host method table, context-fact reads, host user answers to child questions and remote hosts over a relay or a Cloudflare Tunnel.
+Status: built through 2026-11-03 (features `host` and `web`), including the shared host method table, context-fact reads, host user answers to child questions and remote hosts over a relay or a Cloudflare Tunnel.
 
 `bubblepaw-sdk` is the supported Rust surface for embedding BubblePaw. It is the
 one dependency an outside program needs. It re-exports curated types from
@@ -22,6 +22,37 @@ development repo's `release` branch, `scripts/publish-public.sh --push` (run fro
 `release`) commits the exported tree to BubblePaw-Core. Consumers that pin a Core
 revision or tag, such as Scratch, then bump that pin. The 2026-10-25 todo SDK
 module and the redacted fatal error text reach consumers this way.
+
+## Features
+
+- `host` (default): the embedded host. `Host`, `HostBuilder`, the embedded
+  `Client` constructors (`embedded`, `embedded_configured`, `open`,
+  `open_configured`), `Client::serve_remote`, the store, harness, tools,
+  approvals, providers, context, MCP and process control, `host_api`,
+  `HostConfig` and the host side of remote access (`RemoteServer`, pairing
+  offers, Cloudflare Tunnel setup, model traffic through a paired device).
+- `web` (implies `host`): the local web host configuration.
+
+Without `host` (`default-features = false`) the crate keeps the remote client
+only: `Client::connect_remote` and `Client::attach` with `call`, `subscribe`,
+`is_attached` and `close`, `Profile`, and the device side of `remote`:
+`pair`, `RemotePair`, `PendingPairing`, `PairingPayload`, saved hosts
+(`list_hosts`, `forget_host`, `probe_host`, `SavedHost`), the device key
+(`load_or_create_key`, `device_key_info`, `export_device_key`,
+`import_device_key`, `regenerate_device_key`) and `serve_status`. The runner
+behind it drops its `host` feature the same way, which removes the MCP and
+process crates, the JavaScript engine, the HTTP client and the web host from the
+build. `bubblepaw-core` stays, because the client uses its `CancellationToken`,
+so SQLite is still compiled in. Default builds are unchanged.
+
+CI checks the host-less build with strict Clippy, a dependency-tree guard, a
+`cargo check` for `aarch64-linux-android`, and `crates/bubblepaw-client-check`:
+a client built without `host` pairs with a host in the same process and calls
+`session.list`. That test crate must run on its own
+(`cargo test -p bubblepaw-client-check`): a workspace-wide build turns `host`
+back on for the SDK. Its host side is the runner with defaults, so the runner's
+own host-less variant is covered by the build and the Android check, not by that
+test.
 
 ## Shared host methods
 

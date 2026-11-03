@@ -82,6 +82,25 @@ fn create_key(path: &Path, label: &str) -> Result<DeviceKey> {
         .context("could not load the new device key")
 }
 
+/// Write `contents` to `path`, owner-only on Unix, replacing it atomically.
+pub(super) fn write_private(path: &Path, contents: &[u8]) -> Result<()> {
+    let dir = path.parent().context("no parent directory")?;
+    std::fs::create_dir_all(dir).with_context(|| format!("could not create {}", dir.display()))?;
+    let mut file = tempfile::NamedTempFile::new_in(dir)
+        .with_context(|| format!("could not write in {}", dir.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(contents)?;
+    file.as_file().sync_all()?;
+    file.persist(path)
+        .with_context(|| format!("could not write {}", path.display()))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::load_or_create_key;

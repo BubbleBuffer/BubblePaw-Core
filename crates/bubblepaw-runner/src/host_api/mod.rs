@@ -55,15 +55,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::Arc};
 
-/// Profiles are cumulative. Full additionally permits host configuration,
-/// process and environment controls, session deletion and shutdown.
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Profile {
-    Read,
-    Edit,
-    Full,
-}
+pub use crate::profile::Profile;
 
 #[derive(Clone)]
 pub struct HostCtx {

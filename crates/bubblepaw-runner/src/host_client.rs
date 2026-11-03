@@ -2,8 +2,11 @@
 //! or over a host control endpoint after `attach.session`. Both run the same
 //! session loop as stdio (`rpc_session`), so replies and notifications have the
 //! stdio shapes. The client adds no methods; every call goes to the table.
-use crate::host_api::{HostCtx, Profile, ReadScope};
+#[cfg(feature = "host")]
+use crate::host_api::{HostCtx, ReadScope};
 use crate::host_transport::{self, HOST_PROTOCOL_VERSION};
+#[cfg(feature = "host")]
+use crate::profile::Profile;
 use crate::rpc_session::{self, Incoming, RECORD_LIMIT};
 use bubblepaw_core::CancellationToken;
 use serde_json::{Value, json};
@@ -174,6 +177,7 @@ pub struct HostClient {
 }
 
 impl HostClient {
+    #[cfg(feature = "host")]
     /// A session on `ctx` in this process, with `ReadScope::Host`. Must be
     /// called inside a Tokio runtime.
     pub fn in_process(mut ctx: HostCtx) -> Self {

@@ -1,16 +1,25 @@
 //! One client for a BubblePaw host, embedded in this process or attached to
 //! the host that owns a data directory. Every call goes to the host-API method
 //! table through the same session loop as `bubblepaw stdio`.
+//!
+//! Without the `host` feature only the remote forms exist: [`Client::attach`]
+//! and [`Client::connect_remote`].
+#[cfg(feature = "host")]
 use crate::host::{Host, HostBuilder};
+#[cfg(feature = "host")]
 use bubblepaw_core::{CancellationToken, Store};
+#[cfg(feature = "host")]
 use bubblepaw_runner::{
     host_attach,
-    host_client::HostClient,
     host_config::{self, HostConfig},
     host_lifetime::HostLifetime,
     host_transport::{self, HostEndpoint},
-    remote::{RemoteConnect, RemoteError, RemoteServeOptions, RemoteServer, SessionBackend},
+    remote::{RemoteServeOptions, RemoteServer, SessionBackend},
     session_host::host_context::HostContext,
+};
+use bubblepaw_runner::{
+    host_client::HostClient,
+    remote::{RemoteConnect, RemoteError},
 };
 use serde_json::Value;
 use std::{path::Path, time::Duration};
@@ -28,9 +37,11 @@ const ATTACH_WAIT: Duration = Duration::from_secs(5);
 pub struct Client {
     session: HostClient,
     /// `Some` exactly when this client embedded the host.
+    #[cfg(feature = "host")]
     embedded: Option<Embedded>,
 }
 
+#[cfg(feature = "host")]
 struct Embedded {
     owner: Owner,
     lifetime: HostLifetime,
@@ -38,6 +49,7 @@ struct Embedded {
     endpoint: Option<tokio::task::JoinHandle<anyhow::Result<()>>>,
 }
 
+#[cfg(feature = "host")]
 /// What an embedded client serves: a host an embedder built, or the CLI
 /// host's own context.
 enum Owner {
@@ -46,6 +58,7 @@ enum Owner {
 }
 
 impl Client {
+    #[cfg(feature = "host")]
     /// Build the host and serve it from this process. A store with a data
     /// directory publishes its endpoint there, as a CLI host does; an
     /// in-memory store serves this client only.
@@ -78,6 +91,7 @@ impl Client {
         })
     }
 
+    #[cfg(feature = "host")]
     /// Serve the CLI host's own context for `config` from this process: the
     /// host `bubblepaw stdio` runs with the same configuration, with its
     /// providers, live provider reload and model roles. It publishes the
@@ -91,6 +105,7 @@ impl Client {
     pub async fn attach(data_dir: impl AsRef<Path>) -> Result<Self, ClientError> {
         Ok(Self {
             session: HostClient::attach(data_dir.as_ref(), ATTACH_WAIT).await?,
+            #[cfg(feature = "host")]
             embedded: None,
         })
     }
@@ -102,10 +117,12 @@ impl Client {
     pub async fn connect_remote(options: RemoteConnect) -> Result<Self, RemoteError> {
         Ok(Self {
             session: bubblepaw_runner::remote::connect(options).await?,
+            #[cfg(feature = "host")]
             embedded: None,
         })
     }
 
+    #[cfg(feature = "host")]
     /// Serve this embedded host to paired devices (through a relay or its own
     /// endpoint, as `options.reach` says) until the returned server is shut down
     /// or dropped. Attached clients cannot serve.
@@ -121,6 +138,7 @@ impl Client {
             .map_err(host_error)
     }
 
+    #[cfg(feature = "host")]
     /// Attach when another process owns `data_dir`; otherwise open its store,
     /// pass it to `build` and embed the host. `build` runs only when this
     /// process becomes the owner.
@@ -135,6 +153,7 @@ impl Client {
         }
     }
 
+    #[cfg(feature = "host")]
     /// Attach when another process owns the configured data directory;
     /// otherwise embed the CLI host's context as
     /// [`Client::embedded_configured`] does.
@@ -145,6 +164,7 @@ impl Client {
         }
     }
 
+    #[cfg(feature = "host")]
     /// The opened store when this process becomes the owner of `data_dir`,
     /// or a client attached to its owner.
     async fn own_or_attach(
@@ -184,6 +204,7 @@ impl Client {
         }
     }
 
+    #[cfg(feature = "host")]
     /// The CLI host's startup on an opened store: housekeeping, the endpoint,
     /// then the host context.
     async fn serve_configured(config: HostConfig, store: Store) -> Result<Self, ClientError> {
@@ -243,9 +264,17 @@ impl Client {
     /// `close` ends its own session only, and a host that has no provider yet
     /// is configured through `providers.*` calls on either kind of client.
     pub fn is_attached(&self) -> bool {
-        self.embedded.is_none()
+        #[cfg(feature = "host")]
+        {
+            self.embedded.is_none()
+        }
+        #[cfg(not(feature = "host"))]
+        {
+            true
+        }
     }
 
+    #[cfg(feature = "host")]
     /// The host an embedder built, or `None` when attached or configured.
     pub fn host(&self) -> Option<&Host> {
         match &self.embedded.as_ref()?.owner {
@@ -258,9 +287,18 @@ impl Client {
     /// Attached: end this session only.
     pub async fn close(self) -> Result<(), ClientError> {
         self.session.close().await;
-        let Some(embedded) = self.embedded else {
-            return Ok(());
-        };
+        #[cfg(feature = "host")]
+        if let Some(embedded) = self.embedded {
+            return embedded.shutdown().await;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "host")]
+impl Embedded {
+    async fn shutdown(self) -> Result<(), ClientError> {
+        let embedded = self;
         embedded.stop.cancel();
         let served = match embedded.endpoint {
             Some(endpoint) => endpoint
@@ -283,6 +321,7 @@ impl Client {
     }
 }
 
+#[cfg(feature = "host")]
 fn host_error(error: anyhow::Error) -> ClientError {
     ClientError::Host(format!("{error:#}"))
 }

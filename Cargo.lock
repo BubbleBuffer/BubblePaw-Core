@@ -349,6 +349,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bubblepaw-client-check"
+version = "0.2.1"
+dependencies = [
+ "anyhow",
+ "bubblepaw-remote",
+ "bubblepaw-runner",
+ "bubblepaw-sdk",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "bubblepaw-core"
 version = "0.2.1"
 dependencies = [
