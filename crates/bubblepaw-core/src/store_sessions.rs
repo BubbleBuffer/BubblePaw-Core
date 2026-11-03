@@ -2,6 +2,27 @@
 use super::*;
 
 impl Store {
+    /// Whether a run of this session is running now. One indexed existence
+    /// query per store, without loading run records.
+    pub fn has_running_run(&self, session_id: &str) -> Result<bool> {
+        if let Some(store) = self.scoped(session_id)? {
+            return store.has_running_run(session_id);
+        }
+        let exists = |store: &Self| {
+            store.read(|conn| {
+                Ok(conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM runs WHERE session_id=?1 AND status='running')",
+                    [session_id],
+                    |row| row.get::<_, bool>(0),
+                )?)
+            })
+        };
+        if exists(self)? {
+            return Ok(true);
+        }
+        self.host().map_or(Ok(false), |host| exists(&host))
+    }
+
     pub fn create_session(&self, title: impl Into<String>) -> Result<Session> {
         self.create_session_with_strategy(title, ContextStrategy::default())
     }
