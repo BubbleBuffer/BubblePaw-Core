@@ -3,6 +3,7 @@
 use bubblepaw_core::RunOptions;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SessionParams {
@@ -16,6 +17,10 @@ pub struct OpenParams {
     pub title: Option<String>,
     #[serde(default, alias = "parent_id")]
     pub parent_session_id: Option<String>,
+    /// Workspace directory of a new root session; ignored when `session_id` or
+    /// a parent is given. Tunnel callers may name only a workspace the host knows.
+    #[serde(default)]
+    pub workspace: Option<PathBuf>,
 }
 #[derive(Deserialize, Serialize)]
 pub struct RunParams {

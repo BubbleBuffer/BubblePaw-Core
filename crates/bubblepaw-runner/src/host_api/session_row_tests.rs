@@ -65,6 +65,7 @@ async fn idle_row_has_its_workspace_and_no_attention_flags() -> Result<()> {
         std::fs::canonicalize(root.path())?
     );
     assert_eq!(row["needs_you"], false);
+    assert_eq!(row["waiting_for"], Value::Null);
     assert_eq!(row["running"], false);
     assert!(row["usage"].is_object(), "existing fields stay: {row}");
     Ok(())
@@ -81,11 +82,14 @@ async fn pending_question_sets_needs_you() -> Result<()> {
     })?;
     let row = rows(&ctx, &session.id).await?;
     assert_eq!(row["needs_you"], true);
+    assert_eq!(row["waiting_for"], "question");
     assert_eq!(row["running"], false);
     store.update_host_state(&session.id, "row-fixture", "question", |_| {
         Ok(json!({"id":"question","status":"answered","text":"answer?"}))
     })?;
-    assert_eq!(rows(&ctx, &session.id).await?["needs_you"], false);
+    let row = rows(&ctx, &session.id).await?;
+    assert_eq!(row["needs_you"], false);
+    assert_eq!(row["waiting_for"], Value::Null);
     Ok(())
 }
 
@@ -111,6 +115,7 @@ async fn running_turn_sets_running() -> Result<()> {
     let row = rows(&ctx, &session.id).await?;
     assert_eq!(row["running"], true);
     assert_eq!(row["needs_you"], false);
+    assert_eq!(row["waiting_for"], Value::Null);
     dispatch(
         &ctx,
         Profile::Edit,
@@ -171,7 +176,16 @@ async fn pending_approval_sets_needs_you() -> Result<()> {
     .await??;
     let row = rows(&ctx, &session.id).await?;
     assert_eq!(row["needs_you"], true);
+    assert_eq!(row["waiting_for"], "approval");
     assert_eq!(row["running"], true);
+    // With a question pending as well, the approval is the one reported.
+    store.update_host_state(&session.id, "row-fixture", "question", |_| {
+        Ok(json!({"id":"question","status":"pending","text":"answer?"}))
+    })?;
+    assert_eq!(rows(&ctx, &session.id).await?["waiting_for"], "approval");
+    store.update_host_state(&session.id, "row-fixture", "question", |_| {
+        Ok(json!({"id":"question","status":"answered","text":"answer?"}))
+    })?;
     dispatch(
         &ctx,
         Profile::Edit,
@@ -188,6 +202,7 @@ async fn pending_approval_sets_needs_you() -> Result<()> {
     .await?;
     let row = rows(&ctx, &session.id).await?;
     assert_eq!(row["needs_you"], false);
+    assert_eq!(row["waiting_for"], Value::Null);
     assert_eq!(row["running"], false);
     Ok(())
 }

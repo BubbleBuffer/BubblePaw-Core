@@ -65,9 +65,20 @@ pub struct SessionWithUsage {
     /// A pending approval or a pending question waits for a person.
     #[serde(default)]
     pub needs_you: bool,
+    /// What `needs_you` waits for; null exactly when `needs_you` is false. A
+    /// pending approval wins over a pending question when both wait.
+    #[serde(default)]
+    pub waiting_for: Option<WaitingFor>,
     /// A turn of this session is running.
     #[serde(default)]
     pub running: bool,
+}
+/// What a session that needs a person is waiting for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WaitingFor {
+    Approval,
+    Question,
 }
 #[derive(Serialize, Deserialize)]
 pub struct SessionPage {
@@ -104,7 +115,7 @@ fn with_usage(
 ) -> anyhow::Result<SessionWithUsage> {
     // Archived chats stay cold: they have no usage, approvals, question or run.
     let active = ctx.store.active_session_metadata(&session.id)?.is_some();
-    let (usage, workspace, needs_you, running) = if active {
+    let (usage, workspace, waiting_for, running) = if active {
         let usage = serde_json::to_value(crate::usage::session_usage(
             &ctx.store,
             &session.id,
@@ -116,18 +127,24 @@ fn with_usage(
             crate::worktrees::workspace(&ctx.store, &session.id, host)
                 .unwrap_or_else(|_| host.clone())
         });
-        let needs_you = ctx
+        let waiting_for = if !ctx.harness.pending_approvals(&session.id)?.is_empty() {
+            Some(WaitingFor::Approval)
+        } else if ctx
             .store
             .host_state(&session.id, "question")?
             .is_some_and(|question| question["status"] == "pending")
-            || !ctx.harness.pending_approvals(&session.id)?.is_empty();
+        {
+            Some(WaitingFor::Question)
+        } else {
+            None
+        };
         let running = ctx.store.has_running_run(&session.id)?;
-        (usage, workspace, needs_you, running)
+        (usage, workspace, waiting_for, running)
     } else {
         (
             Value::Null,
             ctx.store.session_workspace(&session.id)?,
-            false,
+            None,
             false,
         )
     };
@@ -135,7 +152,8 @@ fn with_usage(
         session: session.clone(),
         usage,
         workspace,
-        needs_you,
+        needs_you: waiting_for.is_some(),
+        waiting_for,
         running,
     })
 }
@@ -258,6 +276,7 @@ pub(super) fn command(ctx: &HostCtx, method: MethodId, params: Value) -> Result<
                 object.insert("title".into(), json!(title));
                 object.insert("parent_session_id".into(), json!(parent));
                 object.insert("session_id".into(), json!(params["session_id"].as_str()));
+                object.insert("workspace".into(), json!(params["workspace"].as_str()));
             }
             encode(open(ctx, decode(normalized)?)?)
         }
