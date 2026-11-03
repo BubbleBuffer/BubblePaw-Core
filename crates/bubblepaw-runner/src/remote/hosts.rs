@@ -27,7 +27,7 @@ pub struct SavedHost {
     pub address: RemoteAddress,
     /// The profile the host granted this device; `None` for hosts saved before
     /// the grant was kept.
-    pub profile: Option<crate::host_api::Profile>,
+    pub profile: Option<crate::profile::Profile>,
     /// Whether the host lets this device send model traffic through it.
     pub egress: bool,
     /// Unix seconds when the host approved the pairing.

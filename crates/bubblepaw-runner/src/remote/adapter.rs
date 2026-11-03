@@ -3,23 +3,34 @@
 //! loop (in process) or a control-endpoint session (attached); client side, it
 //! carries a [`HostClient`]. No method logic lives here.
 use super::KEEPALIVE;
-use crate::host_api::{HostCtx, Profile, ReadScope};
+#[cfg(feature = "host")]
+use crate::host_api::{HostCtx, ReadScope};
 use crate::host_client::{CarrierEnds, HostClient};
+#[cfg(feature = "host")]
 use crate::host_transport::{self, HOST_PROTOCOL_VERSION};
+#[cfg(feature = "host")]
+use crate::profile::Profile;
+#[cfg(feature = "host")]
 use crate::rpc_session::{self, Incoming, RECORD_LIMIT};
+#[cfg(feature = "host")]
 use anyhow::{Context, Result, anyhow, bail};
 use bubblepaw_core::CancellationToken;
 use bubblepaw_remote::frame::{FrameReader, FrameWriter};
 use bubblepaw_remote::tunnel::{TunnelReader, TunnelWriter};
-use serde_json::{Value, json};
+use serde_json::Value;
+#[cfg(feature = "host")]
+use serde_json::json;
+#[cfg(feature = "host")]
 use std::path::Path;
 use std::time::Duration;
+#[cfg(feature = "host")]
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
 /// How long a stalled peer may hold one outgoing message.
 pub(super) const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long an attached session may take to open on the local host.
+#[cfg(feature = "host")]
 const ATTACH_WAIT: Duration = Duration::from_secs(5);
 
 fn keepalive() -> tokio::time::Interval {
@@ -60,6 +71,7 @@ pub(super) async fn next_message<R: FrameReader>(reader: &mut TunnelReader<R>) -
     }
 }
 
+#[cfg(feature = "host")]
 /// Serve one admitted tunnel in this process through the shared session loop,
 /// with `profile` and host-wide reads, until either side ends it or `stop` fires.
 pub(super) async fn serve_in_process<R, W>(
@@ -126,6 +138,7 @@ where
     result
 }
 
+#[cfg(feature = "host")]
 /// Serve one admitted tunnel through the host that owns `data_dir`, on an
 /// `attach.session` with `profile`. Frames pass through unchanged, except that
 /// a newline inside a message (only JSON whitespace) becomes a space.

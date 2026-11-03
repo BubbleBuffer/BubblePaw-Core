@@ -103,7 +103,7 @@ pub(super) async fn tunnel(
                 bail!("expected one API token on stdin");
             }
             let path = paths.cloudflare.join(domain::TOKEN_FILE);
-            domain::write_private(&path, token.as_bytes())?;
+            super::keys::write_private(&path, token.as_bytes())?;
             println!("Stored the Cloudflare API token in {}.", path.display());
             Ok(())
         }

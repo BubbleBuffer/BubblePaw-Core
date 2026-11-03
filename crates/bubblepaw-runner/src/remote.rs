@@ -18,27 +18,41 @@ use std::time::Duration;
 
 mod adapter;
 mod carrier;
+#[cfg(feature = "host")]
 pub mod cli;
+#[cfg(feature = "host")]
 mod cli_tunnel;
 mod client;
+#[cfg(feature = "host")]
 mod cloudflare_api;
+#[cfg(feature = "host")]
 mod cloudflare_status;
+#[cfg(feature = "host")]
 mod cloudflared;
+#[cfg(feature = "host")]
 mod control;
 mod device_key;
+#[cfg(feature = "host")]
 mod domain;
+#[cfg(feature = "host")]
 pub mod egress;
 mod hosts;
+#[cfg(feature = "host")]
 pub mod install;
 mod keys;
+#[cfg(feature = "host")]
 mod offer;
+#[cfg(feature = "host")]
 mod reach;
 mod serve_lock;
+#[cfg(feature = "host")]
 mod server;
+#[cfg(feature = "host")]
 mod server_options;
 
 pub use bubblepaw_remote::relay::Limits;
 pub use client::{PairedHostInfo, PendingPairing, RemoteConnect, RemoteError, RemotePair};
+#[cfg(feature = "host")]
 pub use cloudflare_status::{
     CloudflareAccount, CloudflareLogin, CloudflareZone, CloudflaredInfo, TokenSource, TunnelLogin,
     cloudflare_account, cloudflare_login_state, cloudflared_info, forget_cloudflare_token,
@@ -50,15 +64,21 @@ pub use device_key::{
 };
 pub use hosts::{HostPresence, SavedHost, forget_host, list_hosts, probe_host};
 pub use keys::load_or_create_key;
+#[cfg(feature = "host")]
 pub use offer::{PairingOffer, PairingRequest};
+#[cfg(feature = "host")]
 pub use reach::{CloudflareApi, CloudflareTunnel, RemoteReach, TunnelMode};
 pub use serve_lock::{ProcessKind, ServeStatus, serve_status};
+#[cfg(feature = "host")]
 pub use server::{RemoteServeOptions, RemoteServer, RemoteStatus, SessionBackend};
 
 pub use client::{connect, pair};
+#[cfg(feature = "host")]
 pub use domain::{TOKEN_ENV as CLOUDFLARE_TOKEN_ENV, check_hostname};
+#[cfg(feature = "host")]
 pub use install::{CLOUDFLARED_VERSION, InstallSource};
 
+#[cfg(feature = "host")]
 /// The `cloudflared` from `remote tunnel install` in `paths`, else the
 /// configured one or `cloudflared` on PATH.
 pub fn find_cloudflared(configured: Option<&Path>, paths: &RemotePaths) -> Result<PathBuf> {
@@ -71,11 +91,13 @@ pub(crate) const SELECT_SESSION: &[u8] = b"bubblepaw-remote/host-api/v1";
 pub(crate) const SELECT_PAIR: &[u8] = b"bubblepaw-remote/pair/v1";
 /// Selects one egress session: model traffic forwarded through this device
 /// (see [`egress`]).
+#[cfg(feature = "host")]
 pub(crate) const SELECT_EGRESS: &[u8] = b"bubblepaw-remote/egress/v1";
 /// An empty tunnel message is a keepalive; both ends send one this often so a
 /// quiet session outlives the relay session's idle timeout.
 pub(crate) const KEEPALIVE: Duration = Duration::from_secs(20);
 /// How long a pairing code stays valid.
+#[cfg(feature = "host")]
 pub(crate) const PAIRING_WINDOW: Duration = Duration::from_secs(300);
 
 /// Where a host keeps its remote identity and paired devices.
@@ -117,24 +139,23 @@ impl RemotePaths {
 }
 
 /// A host-API profile for a paired-device profile; the variants match.
-pub(crate) fn api_profile(profile: bubblepaw_remote::store::Profile) -> crate::host_api::Profile {
+pub(crate) fn api_profile(profile: bubblepaw_remote::store::Profile) -> crate::profile::Profile {
     use bubblepaw_remote::store::Profile as Paired;
     match profile {
-        Paired::Read => crate::host_api::Profile::Read,
-        Paired::Edit => crate::host_api::Profile::Edit,
-        Paired::Full => crate::host_api::Profile::Full,
+        Paired::Read => crate::profile::Profile::Read,
+        Paired::Edit => crate::profile::Profile::Edit,
+        Paired::Full => crate::profile::Profile::Full,
     }
 }
 
+#[cfg(feature = "host")]
 /// A paired-device profile for a host-API profile.
-pub(crate) fn paired_profile(
-    profile: crate::host_api::Profile,
-) -> bubblepaw_remote::store::Profile {
+pub(crate) fn paired_profile(profile: crate::profile::Profile) -> bubblepaw_remote::store::Profile {
     use bubblepaw_remote::store::Profile as Paired;
     match profile {
-        crate::host_api::Profile::Read => Paired::Read,
-        crate::host_api::Profile::Edit => Paired::Edit,
-        crate::host_api::Profile::Full => Paired::Full,
+        crate::profile::Profile::Read => Paired::Read,
+        crate::profile::Profile::Edit => Paired::Edit,
+        crate::profile::Profile::Full => Paired::Full,
     }
 }
 
@@ -282,12 +303,13 @@ mod payload_tests {
     }
 }
 
+#[cfg(feature = "host")]
 /// One paired device as the host lists it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct PairedDevice {
     pub id: String,
     pub label: String,
-    pub profile: crate::host_api::Profile,
+    pub profile: crate::profile::Profile,
     /// Unix seconds; `None` for entries written before pairing dates were kept.
     pub paired_at: Option<u64>,
     /// What the device declared while pairing; `Other` for older entries.
@@ -300,6 +322,7 @@ pub struct PairedDevice {
     pub egress: bool,
 }
 
+#[cfg(feature = "host")]
 /// The devices in a host's paired-device store, sorted by ID.
 pub fn list_devices(clients: &Path) -> Result<Vec<PairedDevice>> {
     let store =
@@ -319,6 +342,7 @@ pub fn list_devices(clients: &Path) -> Result<Vec<PairedDevice>> {
         .collect())
 }
 
+#[cfg(feature = "host")]
 /// Remove one device from the store. A running server closes its tunnels when
 /// it notices the change (within about a second); [`RemoteServer::revoke`]
 /// (and `bubblepaw remote devices revoke` while `remote serve` runs) closes

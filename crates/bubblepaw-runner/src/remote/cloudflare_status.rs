@@ -7,8 +7,9 @@
 use super::RemotePaths;
 use super::cloudflare_api::{ApiClient, ZoneInfo};
 use super::cloudflared::program_name;
-use super::domain::{TOKEN_ENV, TOKEN_FILE, write_private};
+use super::domain::{TOKEN_ENV, TOKEN_FILE};
 use super::install::{self, CLOUDFLARED_VERSION, InstallSource};
+use super::keys::write_private;
 use super::reach::{CLOUDFLARE_API, CloudflareApi};
 use anyhow::{Context, Result, bail};
 use base64::Engine;

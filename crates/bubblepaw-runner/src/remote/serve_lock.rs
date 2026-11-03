@@ -9,10 +9,12 @@
 //! removed when it is released; the lock file's own bytes stay empty because a
 //! Windows lock also blocks other handles from reading them.
 use super::RemotePaths;
+#[cfg(feature = "host")]
 use anyhow::{Context, Result, bail};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+#[cfg(feature = "host")]
 use std::time::Duration;
 
 /// What kind of process holds the serve lock.
@@ -49,6 +51,7 @@ fn info_path(lock: &Path) -> PathBuf {
     lock.with_extension("json")
 }
 
+#[cfg(feature = "host")]
 /// The lock, held while a process serves the host remotely. Dropping it
 /// releases the lock.
 #[derive(Debug)]
@@ -57,6 +60,7 @@ pub struct ServeLock {
     info: PathBuf,
 }
 
+#[cfg(feature = "host")]
 impl ServeLock {
     /// Take the lock at `lock` and record the holder. Fails when another
     /// process (or this one) already serves this data directory.
@@ -97,13 +101,14 @@ impl ServeLock {
         };
         let info = info_path(lock);
         // Best effort: the lock is what counts; the note only says who holds it.
-        if let Err(error) = super::domain::write_private(&info, &serde_json::to_vec(&holder)?) {
+        if let Err(error) = super::keys::write_private(&info, &serde_json::to_vec(&holder)?) {
             tracing::debug!("could not record the serve lock holder: {error:#}");
         }
         Ok(Self { _file: file, info })
     }
 }
 
+#[cfg(feature = "host")]
 impl Drop for ServeLock {
     fn drop(&mut self) {
         // Remove the note before the lock goes with the file handle.

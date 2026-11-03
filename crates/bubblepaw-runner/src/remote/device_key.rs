@@ -6,7 +6,7 @@
 //! Both stores are cleared and the counts returned. Nothing here logs or
 //! returns key material or a passphrase.
 use super::RemotePaths;
-use super::domain::write_private;
+use super::keys::write_private;
 use super::serve_lock::status_at;
 use anyhow::{Context, Result, bail};
 use bubblepaw_remote::device::{DeviceKey, KeyFile};

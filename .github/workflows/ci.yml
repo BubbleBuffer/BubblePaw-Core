@@ -89,6 +89,54 @@ jobs:
         if: ${{ always() }}
         run: df -h / && du -sh target
 
+  # The SDK without its `host` feature: the remote client an app that never
+  # embeds a host (the phone app) builds. See docs/sdk.md, "Features".
+  client-only:
+    name: client only (no host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: toolchain
+        run: rustup toolchain install stable --profile minimal -c clippy && rustup default stable && rustup target add aarch64-linux-android
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: clippy (runner and sdk without host)
+        run: |
+          cargo clippy -p bubblepaw-runner --no-default-features --locked -- -D warnings -A deprecated
+          cargo clippy -p bubblepaw-sdk --no-default-features --all-targets --locked -- -D warnings -A deprecated
+      - name: the embedded host stays out of the dependency tree
+        run: |
+          tree=$(cargo tree -p bubblepaw-sdk --no-default-features -e normal --locked)
+          for crate in bubblepaw-mcp bubblepaw-process rquickjs reqwest html2text clap; do
+            if echo "$tree" | grep -q " $crate "; then
+              echo "$crate is in the host-less build"
+              exit 1
+            fi
+          done
+      - name: build (sdk without host)
+        run: cargo build -p bubblepaw-sdk --no-default-features --locked
+      - name: a host-less client pairs with and opens an in-process host
+        run: |
+          if cargo tree -p bubblepaw-client-check -e features -i bubblepaw-sdk --locked | grep -q 'feature "host"'; then
+            echo "the client side of this test must not have the sdk's host feature"
+            exit 1
+          fi
+          cargo test -p bubblepaw-client-check --locked
+      - name: check for aarch64-linux-android
+        run: |
+          ndk="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$ndk/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$ndk/llvm-ar"
+          cargo check -p bubblepaw-sdk --no-default-features --target aarch64-linux-android --locked
+
   windows:
     name: windows
     runs-on: windows-latest
@@ -111,6 +159,11 @@ jobs:
       - name: runner tests (web, bench)
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
+      - name: host-less client
+        if: ${{ !cancelled() }}
+        run: |
+          cargo build -p bubblepaw-sdk --no-default-features --locked
+          cargo test -p bubblepaw-client-check --locked
 
   claude-code-extension:
     name: claude-code extension

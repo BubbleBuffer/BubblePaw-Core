@@ -2,19 +2,32 @@
 //! the event forwarder and the request loop. Stdio and the host control
 //! endpoint both run this loop; neither adds methods of its own, and every
 //! request is answered by the shared table through `rpc::handle_bytes`.
-use crate::host_api::{HostCtx, Profile, events, rpc};
-use anyhow::{Context, Result, ensure};
+#[cfg(feature = "host")]
+use crate::host_api::{HostCtx, events, rpc};
+#[cfg(feature = "host")]
+use crate::profile::Profile;
+#[cfg(feature = "host")]
+use anyhow::Context;
+use anyhow::{Result, ensure};
+#[cfg(feature = "host")]
 use bubblepaw_core::{CancellationToken, HarnessEvent};
+#[cfg(feature = "host")]
 use serde_json::{Value, json};
+#[cfg(feature = "host")]
 use std::future::Future;
+#[cfg(feature = "host")]
 use std::time::Duration;
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
+#[cfg(feature = "host")]
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+#[cfg(feature = "host")]
 use tokio::sync::mpsc;
 
 /// The largest frame either side accepts, newline included.
 pub const RECORD_LIMIT: usize = 1024 * 1024;
 
 /// How long the endpoint writer may wait for a client to take one frame.
+#[cfg(feature = "host")]
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// One framed input: a record, the end of input, or a framing error.
@@ -25,6 +38,7 @@ pub type Incoming = Result<Option<Vec<u8>>>;
 ///
 /// Records arrive on `incoming`; replies and notifications (`event`, and
 /// `events.gap` when the forwarder lags) leave on `output`.
+#[cfg(feature = "host")]
 pub async fn serve<F, Fut>(
     ctx: &HostCtx,
     profile: Profile,
@@ -72,6 +86,7 @@ where
 /// Run one session over an async byte stream, such as an endpoint connection.
 /// `reader` must be the reader that any earlier frames were read through, so
 /// bytes it already buffered are not lost.
+#[cfg(feature = "host")]
 pub async fn serve_stream<R, W>(
     ctx: &HostCtx,
     profile: Profile,
@@ -128,6 +143,7 @@ where
 /// Forward visible harness events as `event` notifications. A full output queue
 /// drops events and reports them once with `events.gap`, naming the last durable
 /// sequence forwarded, so the client recovers with `events.after`.
+#[cfg(feature = "host")]
 fn forward_events(
     ctx: &HostCtx,
     notifications: mpsc::Sender<Value>,
@@ -191,6 +207,7 @@ fn forward_events(
 
 /// The next MCP server status change: `Err` after a lag, `None` once the host
 /// is gone. Without an MCP host this never resolves.
+#[cfg(feature = "host")]
 async fn mcp_status(
     statuses: &mut Option<tokio::sync::broadcast::Receiver<bubblepaw_mcp::McpServerStatus>>,
 ) -> Option<Result<bubblepaw_mcp::McpServerStatus, ()>> {
@@ -206,6 +223,7 @@ async fn mcp_status(
 
 /// A valid request naming `shutdown` ends the loop once its reply is written.
 /// The envelope checks match `rpc::handle`, so an invalid record never quits.
+#[cfg(feature = "host")]
 fn is_shutdown(record: &[u8]) -> bool {
     let Ok(request) = serde_json::from_slice::<Value>(record) else {
         return false;
@@ -269,8 +287,11 @@ pub async fn read_record_async(
 
 #[cfg(test)]
 mod tests {
-    use super::{RECORD_LIMIT, is_shutdown, read_record, read_record_async};
+    #[cfg(feature = "host")]
+    use super::is_shutdown;
+    use super::{RECORD_LIMIT, read_record, read_record_async};
 
+    #[cfg(feature = "host")]
     #[test]
     fn shutdown_quits_only_for_a_valid_request_envelope() {
         assert!(is_shutdown(

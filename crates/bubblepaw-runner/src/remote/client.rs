@@ -155,7 +155,7 @@ pub struct PairedHostInfo {
     /// Where the host was reached while pairing; pass it to [`RemoteConnect`].
     pub address: RemoteAddress,
     /// The profile the host granted this device.
-    pub profile: Option<crate::host_api::Profile>,
+    pub profile: Option<crate::profile::Profile>,
     /// Whether the host lets this device send its model traffic through it.
     pub egress: bool,
 }

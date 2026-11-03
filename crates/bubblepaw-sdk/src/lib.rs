@@ -41,19 +41,31 @@
 //!     serde_json::json!({"session_id":session.id})).await?;
 //! ```
 
+#[cfg(feature = "host")]
 pub mod approvals;
+#[cfg(feature = "host")]
 pub mod claude_code;
 mod client;
+#[cfg(feature = "host")]
 pub mod context;
+#[cfg(feature = "host")]
 pub mod events;
+#[cfg(feature = "host")]
 pub mod harness;
+#[cfg(feature = "host")]
 mod host;
+#[cfg(feature = "host")]
 pub mod net;
+#[cfg(feature = "host")]
 pub mod providers;
+#[cfg(feature = "host")]
 pub mod questions;
 pub mod remote;
+#[cfg(feature = "host")]
 pub mod store;
+#[cfg(feature = "host")]
 pub mod todo;
+#[cfg(feature = "host")]
 pub mod tools;
 #[cfg(feature = "web")]
 pub mod web;
@@ -65,14 +77,21 @@ pub use bubblepaw_core as core;
 pub use bubblepaw_runner as runner;
 
 /// The same typed host method table used by stdio, HTTP and the CLI.
+#[cfg(feature = "host")]
 pub use bubblepaw_runner::host_api;
-pub use host_api::{HostCtx, HostError, Method, Profile, ReadScope, dispatch};
+#[cfg(feature = "host")]
+pub use bubblepaw_runner::host_api::{HostCtx, HostError, Method, ReadScope, dispatch};
+/// The host-API profile a device holds.
+pub use bubblepaw_runner::profile::Profile;
 
+#[cfg(feature = "host")]
 /// The CLI host's configuration, for [`Client::open_configured`].
 pub use bubblepaw_runner::host_config::{ConfigError, ConfigOptions, HostConfig};
 pub use client::{Client, ClientError, Notifications};
+#[cfg(feature = "host")]
 pub use host::{Host, HostBuilder};
 
+#[cfg(feature = "host")]
 /// The items nearly every embedder needs.
 pub mod prelude {
     pub use crate::approvals::{Approval, ApprovalPolicy};

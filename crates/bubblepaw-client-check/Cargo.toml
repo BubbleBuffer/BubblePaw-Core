@@ -1,0 +1,26 @@
+[package]
+name = "bubblepaw-client-check"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Tests the host-less SDK client against an in-process host"
+publish.workspace = true
+
+# Test-only crate. The client side is the SDK without its `host` feature; the
+# host side is the runner built with its defaults. Run it on its own
+# (`cargo test -p bubblepaw-client-check`) so the SDK stays without `host`: a
+# workspace-wide build unifies the feature back on.
+[dependencies]
+bubblepaw-sdk = { path = "../bubblepaw-sdk", default-features = false }
+
+[dev-dependencies]
+bubblepaw-runner = { path = "../bubblepaw-runner" }
+bubblepaw-remote = { path = "../bubblepaw-remote" }
+anyhow.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
