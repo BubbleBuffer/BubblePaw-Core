@@ -157,7 +157,7 @@ async fn pending_approval_sets_needs_you() -> Result<()> {
         registry,
         Default::default(),
     ));
-    let ctx = HostCtx::new(harness, store, root.path());
+    let ctx = HostCtx::new(harness, store.clone(), root.path());
     let mut events = events::subscribe(&ctx, None, Some(&session.id))?.receiver;
     dispatch(
         &ctx,
