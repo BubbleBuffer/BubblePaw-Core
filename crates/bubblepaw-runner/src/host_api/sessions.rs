@@ -58,6 +58,16 @@ pub struct SessionWithUsage {
     #[serde(flatten)]
     pub session: bubblepaw_core::Session,
     pub usage: Value,
+    /// Absolute directory the session runs in as this host sees it (its
+    /// worktree, else the root chat's workspace); null when it has none.
+    #[serde(default)]
+    pub workspace: Option<PathBuf>,
+    /// A pending approval or a pending question waits for a person.
+    #[serde(default)]
+    pub needs_you: bool,
+    /// A turn of this session is running.
+    #[serde(default)]
+    pub running: bool,
 }
 #[derive(Serialize, Deserialize)]
 pub struct SessionPage {
@@ -92,18 +102,41 @@ fn with_usage(
     ctx: &HostCtx,
     session: &bubblepaw_core::Session,
 ) -> anyhow::Result<SessionWithUsage> {
-    let usage = if ctx.store.active_session_metadata(&session.id)?.is_some() {
-        serde_json::to_value(crate::usage::session_usage(
+    // Archived chats stay cold: they have no usage, approvals, question or run.
+    let active = ctx.store.active_session_metadata(&session.id)?.is_some();
+    let (usage, workspace, needs_you, running) = if active {
+        let usage = serde_json::to_value(crate::usage::session_usage(
             &ctx.store,
             &session.id,
             &ctx.usage_settings(),
-        )?)?
+        )?)?;
+        let host = ctx.store.session_workspace(&session.id)?;
+        // A missing worktree still reports the workspace the chat belongs to.
+        let workspace = host.as_ref().map(|host| {
+            crate::worktrees::workspace(&ctx.store, &session.id, host)
+                .unwrap_or_else(|_| host.clone())
+        });
+        let needs_you = ctx
+            .store
+            .host_state(&session.id, "question")?
+            .is_some_and(|question| question["status"] == "pending")
+            || !ctx.harness.pending_approvals(&session.id)?.is_empty();
+        let running = ctx.store.has_running_run(&session.id)?;
+        (usage, workspace, needs_you, running)
     } else {
-        Value::Null
+        (
+            Value::Null,
+            ctx.store.session_workspace(&session.id)?,
+            false,
+            false,
+        )
     };
     Ok(SessionWithUsage {
         session: session.clone(),
         usage,
+        workspace,
+        needs_you,
+        running,
     })
 }
 

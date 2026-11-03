@@ -243,7 +243,7 @@ shared status to its existing REST error envelope.
   host startup remain CLI responsibilities. Delete suppresses completion wakes
   and cancels owned processes. Cancellation resolves pending questions and
   cancels child work through the same control as the other front ends. Session
-  listing includes usage. Catalog, quota, export, usage and serving maintenance
+  listing includes usage, the session's `workspace` path (null when none) and the `needs_you` (pending approval or question) and `running` (turn running) flags, additively, in both the array and paged forms, under the caller's read scope. Catalog, quota, export, usage and serving maintenance
   retain their separate command entry points.
 - **Remote:** `bubblepaw remote serve` serves paired devices through a relay or a Cloudflare Tunnel over
   an end-to-end encrypted tunnel. Each tunnel is a stdio-shaped session with the

@@ -34,6 +34,8 @@ pub mod runs;
 mod runtime;
 mod services;
 mod session_ops;
+#[cfg(test)]
+mod session_row_tests;
 pub mod sessions;
 #[cfg(test)]
 mod storage_tests;
