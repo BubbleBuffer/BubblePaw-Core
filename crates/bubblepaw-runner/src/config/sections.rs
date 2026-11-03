@@ -314,6 +314,9 @@ config_section! {
         pub base_url: Option<String> => LIVE,
         pub key_env: Option<String> => LIVE,
         pub auth_file: Option<PathBuf> => LIVE,
+        /// Device ID of a saved host (a paired device) that carries this provider's
+        /// traffic; unset connects directly. See `docs/remote.md`.
+        pub via: Option<String> => LIVE,
         #[serde(default)]
         pub reasoning: BTreeMap<String, Value> => REASONING,
         /// Per-model settings. Model IDs may contain dots, so they are values here,
@@ -410,6 +413,7 @@ impl ProviderSettings {
                 "Invalid config value: providers.{name}.reasoning.thinking; thinking must remain enabled"
             );
         }
+        self.validate_via(name, kind)?;
         let mut ids = BTreeSet::new();
         for model in &self.models {
             ensure!(

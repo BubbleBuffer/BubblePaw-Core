@@ -138,6 +138,7 @@ fn json_stores_authorize_exact_id_and_key_using_the_saved_profile() {
             paired_at: None,
             kind: bubblepaw_remote::store::DeviceKind::Other,
             last_seen: None,
+            egress: false,
         })
         .unwrap();
     let mut loaded = PairStore::<PairedClient>::open(path).unwrap();
@@ -159,6 +160,7 @@ fn json_stores_authorize_exact_id_and_key_using_the_saved_profile() {
             profile: None,
             paired_at: None,
             last_connected: None,
+            egress: false,
         })
         .unwrap();
     assert_eq!(
@@ -208,6 +210,7 @@ async fn json_policy_is_used_by_the_tunnel_and_exposes_its_grant() {
             paired_at: None,
             kind: bubblepaw_remote::store::DeviceKind::Other,
             last_seen: None,
+            egress: false,
         })
         .unwrap();
     let alice_trust = [bob.public_key()];

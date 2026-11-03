@@ -425,3 +425,34 @@ async fn the_device_key_exports_imports_and_regenerates() -> Result<()> {
     fixture.host.close().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn egress_grant_is_separate_from_the_profile_and_reachable() -> Result<()> {
+    let fixture = fixture().await?;
+    let device = fixture.device_dir("forwarder-user");
+    let mut offer = fixture.server.pair_with_egress(Profile::Read, true).await?;
+    let pairing = remote::pair(fixture.pair_options(&device, offer.code().to_owned()));
+    let (pending, request) = tokio::join!(pairing, offer.next());
+    let (pending, request) = (pending?, request.expect("a pairing request"));
+    let (paired, stored) = tokio::join!(pending.finish(), request.approve(None));
+    let (paired, stored) = (paired?, stored?);
+    assert_eq!(stored.profile, Profile::Read);
+    assert!(stored.egress && paired.egress);
+    let saved: Vec<SavedHost> = list_hosts(&device.join("hosts.json"))?;
+    assert!(saved[0].egress);
+    // The route a provider's `via` makes is buildable from the SDK.
+    let paths = remote::RemotePaths::in_data_dir(&device);
+    let route = remote::egress::EgressRoute::for_provider(
+        &paths,
+        &fixture.server.host_id(),
+        "https://api.example.com/v1",
+    )?;
+    assert_eq!(route.declared, vec!["api.example.com".to_owned()]);
+    assert!(remote::egress::check_host("127.0.0.1").is_err());
+    // A device paired without the flag has no grant.
+    let (_, plain) = fixture.pair("plain", Profile::Read).await?;
+    assert!(!plain.egress);
+    fixture.server.shutdown().await;
+    fixture.host.close().await?;
+    Ok(())
+}

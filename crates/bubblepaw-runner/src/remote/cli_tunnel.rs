@@ -114,19 +114,20 @@ pub(super) async fn tunnel(
 pub(super) trait PairingUi {
     fn offer(&self, payload: &str, code: &str, expires_in: u64) -> Result<()>;
     async fn confirm(&self, device_name: &str, device_id: &str, comparison: &str) -> bool;
-    fn paired(&self, id: &str, label: &str, profile: &str) -> Result<()>;
+    fn paired(&self, id: &str, label: &str, profile: &str, egress: bool) -> Result<()>;
 }
 
 /// Pair through a running `remote serve`. `None` when none is running.
 pub(super) async fn pair_through_server(
     paths: &RemotePaths,
     profile: super::cli::ProfileArg,
+    egress: bool,
     ui: &impl PairingUi,
 ) -> Result<Option<()>> {
     let Some(mut channel) = Channel::connect(&paths.control).await? else {
         return Ok(None);
     };
-    channel.write(&Request::Pair { profile }).await?;
+    channel.write(&Request::Pair { profile, egress }).await?;
     loop {
         let event = tokio::select! {
             event = channel.read::<Event>() => event?,
@@ -150,8 +151,13 @@ pub(super) async fn pair_through_server(
                 };
                 channel.write(&answer).await?;
             }
-            Event::Paired { id, label, profile } => {
-                ui.paired(&id, &label, &profile)?;
+            Event::Paired {
+                id,
+                label,
+                profile,
+                egress,
+            } => {
+                ui.paired(&id, &label, &profile, egress)?;
                 return Ok(Some(()));
             }
             Event::Declined => bail!("pairing declined; nothing was stored"),

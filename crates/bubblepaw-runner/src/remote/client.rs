@@ -156,6 +156,8 @@ pub struct PairedHostInfo {
     pub address: RemoteAddress,
     /// The profile the host granted this device.
     pub profile: Option<crate::host_api::Profile>,
+    /// Whether the host lets this device send its model traffic through it.
+    pub egress: bool,
 }
 
 fn host_id(text: &str) -> Result<DeviceId, RemoteError> {
@@ -169,7 +171,7 @@ pub(super) fn device_key(path: &Path, label: &str) -> Result<DeviceKey, RemoteEr
 /// How long dialing a direct address may take.
 const DIAL_WAIT: Duration = Duration::from_secs(30);
 
-async fn open_session(
+pub(super) async fn open_session(
     address: &RemoteAddress,
     key: &DeviceKey,
     target: &DeviceId,
@@ -255,15 +257,17 @@ impl PendingPairing {
         let mut store = PairStore::<PairedHost>::open(&self.hosts)
             .map_err(|error| other("could not read the paired-host store", error))?;
         self.pending.finish(&mut store).await?;
-        let profile = store
-            .get(&host_id(&host.id)?)
+        let saved = store.get(&host_id(&host.id)?);
+        let profile = saved
             .and_then(|saved| saved.profile)
             .map(super::api_profile);
+        let egress = saved.is_some_and(|saved| saved.egress);
         Ok(PairedHostInfo {
             id: host.id,
             name: host.name,
             address: self.address,
             profile,
+            egress,
         })
     }
 }

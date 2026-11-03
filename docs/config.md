@@ -507,6 +507,7 @@ base_url = "https://opencode.ai/zen/go/v1"
 key_env = "OPENCODE_API_KEY"
 # account = "opencode"               # quota identity; omitted: the entry name
 # auth_file = "~/.codex/auth.json"   # codex kind: credential file instead of key_env
+# via = "<device id>"                # carry this provider's traffic through a paired device (docs/remote.md)
 reasoning = { thinking = "enabled", reasoning_effort = "low" }
 
 [[providers.opencode.models]]          # exact per-model settings

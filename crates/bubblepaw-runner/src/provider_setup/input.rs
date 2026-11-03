@@ -124,6 +124,7 @@ impl ProviderInput {
             auth_file,
             reasoning,
             models: self.models,
+            via: None,
         };
         Ok(settings)
     }
@@ -159,6 +160,9 @@ pub(super) fn provider_table(
     }
     if let Some(path) = &provider.auth_file {
         table.insert("auth_file", value(path.to_string_lossy().into_owned()));
+    }
+    if let Some(via) = &provider.via {
+        table.insert("via", value(via));
     }
     let fields = json!({
         "reasoning": provider.reasoning,

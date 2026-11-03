@@ -38,10 +38,8 @@ impl ChatCompletionsProvider {
                 )
             })?
             .map_err(|_| {
-                classify(
-                    ProviderErrorKind::Transient,
-                    anyhow!("Chat completions transport failed"),
-                )
+                self.client
+                    .transport_failed("Chat completions transport failed".into())
             })?;
         if let Some(dump) = dump {
             dump.attach(&mut response);

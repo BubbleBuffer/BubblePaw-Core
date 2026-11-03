@@ -20,7 +20,7 @@ const UNSIGNED_CUT: &str = "unsigned_cut";
 mod cache;
 
 pub struct MessagesProvider {
-    client: reqwest::Client,
+    pub(in crate::provider) client: stream::Client,
     key: String,
     base: String,
     opencode_route: bool,

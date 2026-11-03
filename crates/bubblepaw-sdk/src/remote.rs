@@ -23,3 +23,14 @@ pub use bubblepaw_runner::remote::{
     load_or_create_key, pair, probe_host, regenerate_device_key, revoke_device, serve_status,
     store_cloudflare_token, tunnel_login, update_cloudflared,
 };
+
+/// Sending a provider's model traffic through a paired device (config
+/// `providers.<name>.via`; the host user grants it with
+/// [`RemoteServer::pair_with_egress`] or `remote pair --egress`, and
+/// [`PairedDevice::egress`] / [`SavedHost::egress`] show it). See
+/// `docs/remote.md`, "Model traffic through a paired device".
+pub mod egress {
+    pub use bubblepaw_runner::remote::egress::{
+        EgressError, EgressErrorKind, EgressHandle, EgressProxy, EgressRoute, check_host,
+    };
+}

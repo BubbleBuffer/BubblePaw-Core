@@ -39,7 +39,12 @@ struct Identity {
 #[derive(Deserialize, Serialize)]
 #[serde(tag = "decision", rename_all = "snake_case", deny_unknown_fields)]
 enum Decision {
-    Approved { profile: Profile },
+    Approved {
+        profile: Profile,
+        /// Sent only when the host granted model-traffic forwarding.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        egress: bool,
+    },
     Declined,
     Expired,
     StorageFailed,
@@ -193,6 +198,7 @@ async fn connect_inner<T: FrameIo>(
         profile: None,
         paired_at: None,
         last_connected: None,
+        egress: false,
     };
     host.validate()?;
     send_identity(&mut tunnel, key, &options.client_name, options.client_kind).await?;
@@ -277,9 +283,22 @@ impl<T: FrameIo> PendingHost<T> {
     /// Call only after the host user confirms the number on both devices.
     /// The host chooses the saved name and permission profile.
     pub async fn approve(
+        self,
+        name: String,
+        profile: Profile,
+        store: &mut PairStore<PairedClient>,
+    ) -> Result<Tunnel<T>> {
+        self.approve_with_egress(name, profile, false, store).await
+    }
+
+    /// Like [`Self::approve`], and also grants (or withholds) forwarding of the
+    /// device's model traffic through this host, a grant of its own that no
+    /// profile implies.
+    pub async fn approve_with_egress(
         mut self,
         name: String,
         profile: Profile,
+        egress: bool,
         store: &mut PairStore<PairedClient>,
     ) -> Result<Tunnel<T>> {
         if Instant::now() >= self.deadline {
@@ -293,6 +312,7 @@ impl<T: FrameIo> PendingHost<T> {
             paired_at: unix_now(),
             kind: self.client.kind.unwrap_or_default(),
             last_seen: None,
+            egress,
         };
         if let Err(error) = store.insert(peer) {
             let _ = send_decision(&mut self.tunnel, &Decision::StorageFailed).await;
@@ -303,7 +323,7 @@ impl<T: FrameIo> PendingHost<T> {
             public_key: self.client.public_key,
             profile,
         });
-        send_decision(&mut self.tunnel, &Decision::Approved { profile }).await?;
+        send_decision(&mut self.tunnel, &Decision::Approved { profile, egress }).await?;
         Ok(self.tunnel)
     }
 
@@ -330,9 +350,10 @@ impl<T: FrameIo> PendingClient<T> {
             return Err(Error::Protocol("pairing decision is oversized"));
         }
         match serde_json::from_slice::<Decision>(&bytes)? {
-            Decision::Approved { profile } => {
+            Decision::Approved { profile, egress } => {
                 let mut host = self.host;
                 host.profile = Some(profile);
+                host.egress = egress;
                 host.paired_at = unix_now();
                 let authorized = AuthorizedPeer {
                     id: host.id(),

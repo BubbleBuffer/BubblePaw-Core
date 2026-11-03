@@ -341,7 +341,9 @@ tunnel. Core never switches to `quick` on its own. Embedders use
   that host's control endpoint with `attach.session {profile}` (see
   [host attach](host-attach.md)) and exits when that host stops. Otherwise it
   opens the store itself.
-- `bubblepaw remote pair [--profile read|edit|full]` (default `read`) prints a
+- `bubblepaw remote pair [--profile read|edit|full] [--egress]` (default `read`;
+  `--egress` also lets the device send model traffic through this host, see
+  [model traffic](#model-traffic-through-a-paired-device)) prints a
   terminal QR code and the ten-character code, valid five minutes. The QR holds
   the `PairingPayload` JSON: `{"v":1,"relay":...,"host":...,"code":...}` for a
   relay host, `{"v":1,"direct":"wss://...","host":...,"code":...}` for a tunnel
@@ -352,7 +354,7 @@ tunnel. Core never switches to `quick` on its own. Embedders use
   it prints JSON lines instead (`offer` with `payload`, `code`, `expires_in`;
   `request` with `device_name`, `device_id`, `comparison`, answered by a `y`
   line on stdin; `paired`).
-- `bubblepaw remote devices` lists ID, profile, paired date and label
+- `bubblepaw remote devices` lists ID, profile, egress grant, paired date and label
   (`--json` prints `PairedDevice` records). `bubblepaw remote devices revoke <id>`
   removes the device and closes its live tunnels at once; the device's next
   handshake is refused.
@@ -479,6 +481,81 @@ Everything is in `bubblepaw_sdk::remote`; none of it is a host method (see
   path (reading the token from cert.pem) is unverified against real Cloudflare.
 - `RemoteMode` and `RemoteSettings` are re-exported from the runner config. Core
   has no default relay URL.
+
+## Model traffic through a paired device
+
+Built 2026-11-03 (core v0.11.0). A host whose network blocks its model provider
+can send only its model traffic through another paired PC. The agent loop, tools,
+files and API key stay on the host; this is byte forwarding, not remote
+inference.
+
+```toml
+[providers.openai]
+kind = "responses"
+base_url = "https://api.openai.com/v1"
+key_env = "OPENAI_API_KEY"
+via = "<device id of a saved host>"   # unset: connect directly
+```
+
+How it works:
+
+- The model HTTP client is pointed at a local HTTP CONNECT proxy on
+  `127.0.0.1`, a random port, started on the first request and stopped with the
+  provider. Nothing provider-specific changes: the adapter opens its normal TLS
+  connection to the provider, but through the proxy.
+- Each CONNECT becomes one egress session to the forwarding device: the cleartext
+  selector `bubblepaw-remote/egress/v1`, then the usual Noise tunnel, then a
+  JSON hello `{v:1, target, hosts}` (the target host and the provider hostnames
+  declared from the provider config) and a JSON reply `{ok, code, reason}`. After
+  an accepted reply both sides copy bytes: tunnel messages tagged `1` carry up to
+  16 KiB of data, `2` ends the stream, an empty message is a keepalive (sent
+  every 20 seconds). The forwarding device opens TCP to `host:443` and copies
+  bytes. TLS starts and ends on the requesting host, so the forwarding device
+  sees only ciphertext, never a prompt, a reply or the key.
+- The forwarding device must be sharing (`bubblepaw remote serve` or
+  `serve_remote`); the requesting host must have paired with it. `via` accepts
+  the device ID shown by `remote devices` on the requesting side.
+
+Grant. Forwarding is its own pairing grant, separate from the read, edit and full
+profiles. The host user gives it when pairing (`bubblepaw remote pair --egress`,
+or `RemoteServer::pair_with_egress(profile, true)`); it is stored as
+`egress = true` on the paired device and shown in the `egress` column of
+`remote devices` (`PairedDevice::egress`). The device learns the grant in the
+pairing answer and keeps it as `SavedHost::egress`. A device without the grant is
+refused with `not_granted`. Existing pairings have the grant off. Revoking the
+device, or a pair-store edit that removes the grant, ends its forwarding sessions
+within a second. A host forwards at most 64 sessions at once (`busy` beyond that).
+
+Allowlist. The forwarder connects only to the provider hostnames the requester
+declared from its provider config, only on port 443, and the caller cannot widen
+that: the forwarder has no setting that adds hosts, and the declared list is the
+only input. A hostname must be public DNS: IP literals in any notation,
+`localhost`, single labels, `.local`, `.internal`, `.lan` and similar names are
+refused, at most 16 names are accepted, and after resolution every address must
+be public (loopback, private, link-local, carrier-grade NAT such as Tailscale's
+100.64.0.0/10, documentation, benchmark and reserved ranges, and IPv4 addresses
+embedded in IPv4-mapped, NAT64 and 6to4 IPv6 addresses are refused). The local
+proxy applies the same check before it opens a session and serves nothing but
+`CONNECT <declared host>:443`. It is not an open proxy on either side.
+
+Errors. A failure names the device and the reason, for example `model traffic
+through "Office PC" (<id>) was refused: this host has not allowed this device to
+send model traffic through it`, or `... failed: it is offline, not sharing or
+unreachable (...)`. Refusal codes: `not_granted`, `not_allowed`, `unreachable`,
+`busy`, `protocol`, `unpaired`. Refusals other than `unreachable` and `busy` are
+fatal for the provider call (nothing retries them away); an offline device is
+transient. There is never a silent fallback to a direct connection: if the proxy
+cannot start, the client points at a closed port. `EgressError` and
+`EgressErrorKind` carry the same data (`NotPaired`, `Offline`, `Refused`,
+`Local`).
+
+`via` applies to `codex`, `responses`, `chat-completions` and `anthropic-messages`
+providers with an `https://` base URL on port 443; decision providers and other
+kinds reject it at validation. `providers.<name>.via` is live (read at the next
+registration). No Desktop UI exists for it yet. Tests
+(`crates/bubblepaw-runner/tests/remote_egress.rs`) use a fake HTTPS provider on
+loopback, an in-process relay and a forwarding host with a test dial; no network.
+Live model acceptance has not run for this change.
 
 ## Threat notes and verification
 

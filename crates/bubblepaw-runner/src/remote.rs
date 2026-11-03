@@ -27,6 +27,7 @@ mod cloudflared;
 mod control;
 mod device_key;
 mod domain;
+pub mod egress;
 mod hosts;
 pub mod install;
 mod keys;
@@ -68,6 +69,9 @@ pub fn find_cloudflared(configured: Option<&Path>, paths: &RemotePaths) -> Resul
 pub(crate) const SELECT_SESSION: &[u8] = b"bubblepaw-remote/host-api/v1";
 /// Selects a pairing attempt.
 pub(crate) const SELECT_PAIR: &[u8] = b"bubblepaw-remote/pair/v1";
+/// Selects one egress session: model traffic forwarded through this device
+/// (see [`egress`]).
+pub(crate) const SELECT_EGRESS: &[u8] = b"bubblepaw-remote/egress/v1";
 /// An empty tunnel message is a keepalive; both ends send one this often so a
 /// quiet session outlives the relay session's idle timeout.
 pub(crate) const KEEPALIVE: Duration = Duration::from_secs(20);
@@ -291,6 +295,9 @@ pub struct PairedDevice {
     /// Unix seconds of its last accepted tunnel (written at most once a
     /// minute); `None` if it never connected.
     pub last_seen: Option<u64>,
+    /// Whether this device may send its model traffic through this host (a
+    /// grant of its own, given at pairing; see [`egress`]).
+    pub egress: bool,
 }
 
 /// The devices in a host's paired-device store, sorted by ID.
@@ -307,6 +314,7 @@ pub fn list_devices(clients: &Path) -> Result<Vec<PairedDevice>> {
             paired_at: client.paired_at,
             kind: client.kind,
             last_seen: client.last_seen,
+            egress: client.egress,
         })
         .collect())
 }

@@ -33,7 +33,7 @@ pub(crate) fn is_loopback_url(base: &str) -> bool {
 }
 
 pub struct ChatCompletionsProvider {
-    client: reqwest::Client,
+    pub(in crate::provider) client: stream::Client,
     key: String,
     base: String,
     reasoning_fields: Value,

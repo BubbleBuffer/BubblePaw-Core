@@ -24,10 +24,17 @@ const CONNECT_WAIT: Duration = Duration::from_secs(2);
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "lowercase")]
 pub(super) enum Request {
-    Pair { profile: ProfileArg },
+    Pair {
+        profile: ProfileArg,
+        /// Also grant the device model-traffic forwarding through this host.
+        #[serde(default)]
+        egress: bool,
+    },
     Approve,
     Decline,
-    Revoke { id: String },
+    Revoke {
+        id: String,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,6 +58,8 @@ pub(super) enum Event {
         id: String,
         label: String,
         profile: String,
+        #[serde(default)]
+        egress: bool,
     },
     Declined,
     Revoked {
@@ -92,7 +101,7 @@ async fn client(inner: Arc<Inner>, connection: Connection) -> Result<()> {
     let mut channel = Channel::new(connection);
     let request = channel.read::<Request>().await?.context("no request")?;
     match request {
-        Request::Pair { profile } => pair(&inner, &mut channel, profile).await,
+        Request::Pair { profile, egress } => pair(&inner, &mut channel, profile, egress).await,
         Request::Revoke { id } => {
             let event = match inner.revoke(&id).await {
                 Ok(removed) => Event::Revoked { removed },
@@ -116,8 +125,13 @@ fn error_event(error: anyhow::Error) -> Event {
     }
 }
 
-async fn pair(inner: &Inner, channel: &mut Channel, profile: ProfileArg) -> Result<()> {
-    let mut offer = match inner.pair(profile.into()).await {
+async fn pair(
+    inner: &Inner,
+    channel: &mut Channel,
+    profile: ProfileArg,
+    egress: bool,
+) -> Result<()> {
+    let mut offer = match inner.pair(profile.into(), egress).await {
         Ok(offer) => offer,
         Err(error) => return channel.write(&error_event(error)).await,
     };
@@ -159,6 +173,7 @@ async fn pair(inner: &Inner, channel: &mut Channel, profile: ProfileArg) -> Resu
                         .as_str()
                         .unwrap_or_default()
                         .to_owned(),
+                    egress: device.egress,
                 },
                 Err(error) => error_event(error),
             };
