@@ -23,12 +23,38 @@ const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 /// HTTP client for streamed calls. Only the connect time is bounded here; idle
 /// time is bounded per read by `IDLE_TIMEOUT`.
-pub(super) fn client() -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder()
+pub(super) fn client() -> Result<Client> {
+    Ok(Client {
+        inner: builder().build()?,
+        egress: None,
+    })
+}
+
+fn builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
-        .build()?)
 }
+
+/// The HTTP client of a model adapter. It is a `reqwest::Client`, and when the
+/// provider's `via` names a paired device it also remembers the local proxy
+/// route its connections take, so a failed request can say why.
+#[derive(Clone)]
+pub(super) struct Client {
+    pub(super) inner: reqwest::Client,
+    pub(super) egress: Option<std::sync::Arc<crate::remote::egress::EgressHandle>>,
+}
+
+impl std::ops::Deref for Client {
+    type Target = reqwest::Client;
+
+    fn deref(&self) -> &reqwest::Client {
+        &self.inner
+    }
+}
+
+#[path = "stream/egress.rs"]
+mod egress;
 
 /// Why a stream stopped before its terminal event.
 pub(super) enum StreamError {

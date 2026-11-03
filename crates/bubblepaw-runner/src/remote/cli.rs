@@ -35,6 +35,11 @@ pub enum RemoteCommand {
         /// What the device may do.
         #[arg(long, value_enum, default_value_t = ProfileArg::Read)]
         profile: ProfileArg,
+        /// Also let the device send its model traffic through this host, for a
+        /// device whose own network blocks its model provider. A grant of its
+        /// own; no profile implies it.
+        #[arg(long)]
+        egress: bool,
     },
     /// List paired devices.
     Devices {
@@ -95,7 +100,9 @@ pub async fn early(cli: &Cli, settings: &Settings, data_dir: &Path) -> Option<Re
         RemoteCommand::Devices {
             command: Some(DevicesCommand::Revoke { id }),
         } => Some(revoke(&paths, id).await),
-        RemoteCommand::Pair { profile } => Some(pair(settings, data_dir, *profile, &ui).await),
+        RemoteCommand::Pair { profile, egress } => {
+            Some(pair(settings, data_dir, *profile, *egress, &ui).await)
+        }
         RemoteCommand::Tunnel { command } => {
             Some(cli_tunnel::tunnel(command, settings, &paths).await)
         }
@@ -145,8 +152,12 @@ fn devices(paths: &RemotePaths, json: bool) -> Result<()> {
         let profile = profile.as_str().unwrap_or_default();
         writeln!(
             out,
-            "{}  {:<5} {}  {}",
-            device.id, profile, paired, device.label
+            "{}  {:<5} {}  {:<6} {}",
+            device.id,
+            profile,
+            paired,
+            if device.egress { "egress" } else { "-" },
+            device.label
         )?;
     }
     Ok(())
@@ -225,11 +236,18 @@ impl PairingUi for Ui {
         .unwrap_or(false)
     }
 
-    fn paired(&self, id: &str, label: &str, profile: &str) -> Result<()> {
+    fn paired(&self, id: &str, label: &str, profile: &str, egress: bool) -> Result<()> {
         match self.json {
             true => println!(
                 "{}",
-                serde_json::json!({"event": "paired", "id": id, "label": label, "profile": profile})
+                serde_json::json!({
+                    "event": "paired", "id": id, "label": label, "profile": profile,
+                    "egress": egress,
+                })
+            ),
+            false if egress => println!(
+                "Paired {label} ({id}) with the {profile} profile; it may send its model \
+                 traffic through this host."
             ),
             false => println!("Paired {label} ({id}) with the {profile} profile."),
         }
@@ -237,9 +255,15 @@ impl PairingUi for Ui {
     }
 }
 
-async fn pair(settings: &Settings, data_dir: &Path, profile: ProfileArg, ui: &Ui) -> Result<()> {
+async fn pair(
+    settings: &Settings,
+    data_dir: &Path,
+    profile: ProfileArg,
+    egress: bool,
+    ui: &Ui,
+) -> Result<()> {
     let paths = RemotePaths::in_data_dir(data_dir);
-    if cli_tunnel::pair_through_server(&paths, profile, ui)
+    if cli_tunnel::pair_through_server(&paths, profile, egress, ui)
         .await?
         .is_some()
     {
@@ -256,7 +280,7 @@ async fn pair(settings: &Settings, data_dir: &Path, profile: ProfileArg, ui: &Ui
     options.process = ProcessKind::Cli;
     let server = RemoteServer::start(options, None)?;
     server.wait_online(ONLINE_WAIT).await?;
-    let mut offer = server.pair(profile.into()).await?;
+    let mut offer = server.pair_with_egress(profile.into(), egress).await?;
     ui.offer(
         &offer.qr_payload().encode(),
         offer.code(),
@@ -284,6 +308,7 @@ async fn pair(settings: &Settings, data_dir: &Path, profile: ProfileArg, ui: &Ui
             &device.id,
             &device.label,
             profile.as_str().unwrap_or_default(),
+            device.egress,
         )
     } else {
         request.decline();

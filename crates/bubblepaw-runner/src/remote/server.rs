@@ -1,13 +1,14 @@
 //! The host side: reachable through a relay or its own endpoint, it admits
 //! paired devices into tunnels and serves each through the host API with the
 //! device's profile.
+use super::egress::{EgressDial, SystemDial};
 use super::offer::{self, OfferSlot, PairingOffer};
 use super::reach::{self, RemoteReach};
 use super::serve_lock::ServeLock;
 pub use super::server_options::{RemoteServeOptions, RemoteStatus, SessionBackend};
 use super::{
-    PairedDevice, RemoteAddress, SELECT_PAIR, SELECT_SESSION, adapter, api_profile, cloudflared,
-    control, list_devices, load_or_create_key, revoke_device,
+    PairedDevice, RemoteAddress, SELECT_EGRESS, SELECT_PAIR, SELECT_SESSION, adapter, api_profile,
+    cloudflared, control, list_devices, load_or_create_key, revoke_device,
 };
 use crate::host_api::Profile;
 use anyhow::{Context, Result, anyhow};
@@ -18,7 +19,7 @@ use bubblepaw_remote::relay;
 use bubblepaw_remote::store::{PairStore, PairedClient};
 use bubblepaw_remote::trust::DeviceListAuthorizer;
 use bubblepaw_remote::tunnel;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -27,6 +28,9 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 /// How long a new session may take to say what it wants.
+#[path = "server_sessions.rs"]
+mod sessions;
+
 const SELECT_WAIT: Duration = Duration::from_secs(10);
 /// How long tunnel admission may take.
 const ADMIT_WAIT: Duration = Duration::from_secs(30);
@@ -34,12 +38,19 @@ const ADMIT_WAIT: Duration = Duration::from_secs(30);
 const SEEN_EVERY: Duration = Duration::from_secs(60);
 /// How often the paired-device store is checked for changes by other processes.
 const STORE_POLL: Duration = Duration::from_secs(1);
+/// Egress sessions served at once; more are refused as busy.
+const EGRESS_MAX: usize = 64;
 pub(super) const BACKOFF_MIN: Duration = Duration::from_secs(1);
 pub(super) const BACKOFF_MAX: Duration = Duration::from_secs(60);
 
 struct Live {
     device: String,
     profile: Profile,
+    /// A forwarding session that holds the egress grant: it ends when the
+    /// device loses the grant, whatever its profile does. Other sessions (a
+    /// host-API tunnel, or an egress request about to be refused) end when the
+    /// device is revoked or its profile changes.
+    egress: bool,
     stop: CancellationToken,
 }
 
@@ -50,6 +61,10 @@ pub(super) struct Inner {
     authorizer: DeviceListAuthorizer,
     stamp: Mutex<Option<(SystemTime, u64)>>,
     tunnels: Mutex<HashMap<u64, Live>>,
+    /// Devices holding the egress grant, as of the last store read.
+    egress_ids: Mutex<HashSet<String>>,
+    egress_dial: Arc<dyn EgressDial>,
+    egress_slots: Arc<tokio::sync::Semaphore>,
     next: AtomicU64,
     offer: OfferSlot,
     store_writes: tokio::sync::Mutex<()>,
@@ -73,6 +88,18 @@ impl RemoteServer {
     /// the host reachable. With no backend, the server only pairs and refuses
     /// tunnels. Call from within a Tokio runtime.
     pub fn start(options: RemoteServeOptions, backend: Option<SessionBackend>) -> Result<Self> {
+        Self::start_with_dial(options, backend, Arc::new(SystemDial))
+    }
+
+    /// [`Self::start`] with a custom way to reach provider hosts for devices
+    /// granted egress. The default ([`SystemDial`]) resolves public names only;
+    /// this exists so tests can reach a local fake provider.
+    #[doc(hidden)]
+    pub fn start_with_dial(
+        options: RemoteServeOptions,
+        backend: Option<SessionBackend>,
+        egress_dial: Arc<dyn EgressDial>,
+    ) -> Result<Self> {
         let key = load_or_create_key(&options.key_file, &options.host_name)?;
         let lock = match &options.lock {
             Some(path) => Some(ServeLock::acquire(
@@ -90,6 +117,9 @@ impl RemoteServer {
             backend,
             stamp: Mutex::new(None),
             tunnels: Mutex::new(HashMap::new()),
+            egress_ids: Mutex::new(HashSet::new()),
+            egress_dial,
+            egress_slots: Arc::new(tokio::sync::Semaphore::new(EGRESS_MAX)),
             next: AtomicU64::new(1),
             offer: OfferSlot::default(),
             store_writes: tokio::sync::Mutex::new(()),
@@ -195,7 +225,14 @@ impl RemoteServer {
     /// earlier offer. The offer carries the current address, so the host must
     /// have one (see [`Self::wait_online`]).
     pub async fn pair(&self, profile: Profile) -> Result<PairingOffer> {
-        self.inner.pair(profile).await
+        self.inner.pair(profile, false).await
+    }
+
+    /// Like [`Self::pair`], and `egress` also lets the device send its model
+    /// traffic through this host (see [`egress`]). The grant is separate from
+    /// the profile: a `read` device can hold it, a `full` device need not.
+    pub async fn pair_with_egress(&self, profile: Profile, egress: bool) -> Result<PairingOffer> {
+        self.inner.pair(profile, egress).await
     }
 
     pub fn devices(&self) -> Result<Vec<PairedDevice>> {
@@ -245,14 +282,14 @@ impl Drop for RemoteServer {
 }
 
 impl Inner {
-    pub(super) async fn pair(&self, profile: Profile) -> Result<PairingOffer> {
+    pub(super) async fn pair(&self, profile: Profile, egress: bool) -> Result<PairingOffer> {
         let address = self
             .address
             .borrow()
             .clone()
             .context("the host has no public address yet; wait until it is online")?;
         let id = self.next.fetch_add(1, Ordering::Relaxed);
-        PairingOffer::install(&self.offer, id, &address, &self.key.id(), profile).await
+        PairingOffer::install(&self.offer, id, &address, &self.key.id(), profile, egress).await
     }
 
     pub(super) async fn revoke(&self, id: &str) -> Result<bool> {
@@ -319,6 +356,12 @@ impl Inner {
             .devices()
             .map(|(id, client)| (id.to_owned(), api_profile(client.profile)))
             .collect();
+        let egress_ids: HashSet<String> = store
+            .devices()
+            .filter(|(_, client)| client.egress)
+            .map(|(id, _)| id.to_owned())
+            .collect();
+        *self.egress_ids.lock().unwrap() = egress_ids.clone();
         self.authorizer
             .replace(store.devices().map(|(_, client)| {
                 (
@@ -329,7 +372,12 @@ impl Inner {
             }))
             .map_err(|error| anyhow!("invalid paired-device store: {error}"))?;
         for live in self.tunnels.lock().unwrap().values() {
-            if devices.get(&live.device) != Some(&live.profile) {
+            let current = if live.egress {
+                egress_ids.contains(&live.device)
+            } else {
+                devices.get(&live.device) == Some(&live.profile)
+            };
+            if !current {
                 live.stop.cancel();
             }
         }
@@ -404,7 +452,12 @@ pub(super) async fn handle<T: SplitFrames + 'static>(inner: Arc<Inner>, mut sess
         selector = tokio::time::timeout(SELECT_WAIT, session.recv_frame()) => selector,
     };
     let result = match selector {
-        Ok(Ok(selector)) if selector == SELECT_SESSION => serve_tunnel(&inner, session).await,
+        Ok(Ok(selector)) if selector == SELECT_SESSION => {
+            sessions::serve_tunnel(&inner, session).await
+        }
+        Ok(Ok(selector)) if selector == SELECT_EGRESS => {
+            sessions::serve_egress(&inner, session).await
+        }
         Ok(Ok(selector)) if selector == SELECT_PAIR => {
             tokio::select! {
                 _ = inner.stop.cancelled() => Ok(()),
@@ -423,55 +476,4 @@ pub(super) async fn handle<T: SplitFrames + 'static>(inner: Arc<Inner>, mut sess
     if let Err(error) = result {
         tracing::debug!("remote session ended: {error:#}");
     }
-}
-
-async fn serve_tunnel<T: SplitFrames + 'static>(inner: &Arc<Inner>, session: T) -> Result<()> {
-    // Admit against the store as it is now, not as of the last poll.
-    inner.refresh(false)?;
-    let tunnel = tokio::time::timeout(
-        ADMIT_WAIT,
-        tunnel::accept(session, &inner.key, &inner.authorizer),
-    )
-    .await
-    .context("tunnel admission timed out")?
-    .map_err(|error| anyhow!("tunnel refused: {error}"))?;
-    let peer = tunnel
-        .authorization()
-        .cloned()
-        .context("tunnel admitted without a grant")?;
-    inner.touch_last_seen(&peer.id).await;
-    let Some(backend) = inner.backend.clone() else {
-        return Ok(());
-    };
-    let profile = api_profile(peer.profile);
-    let stop = CancellationToken::new();
-    let id = inner.next.fetch_add(1, Ordering::Relaxed);
-    inner.tunnels.lock().unwrap().insert(
-        id,
-        Live {
-            device: peer.id.to_string(),
-            profile,
-            stop: stop.clone(),
-        },
-    );
-    // A revoke or shutdown between admission and registration is caught here.
-    inner.refresh(true).ok();
-    if inner.stop.is_cancelled() {
-        stop.cancel();
-    }
-    let result = async {
-        let (reader, writer) = tunnel.split().map_err(|error| anyhow!("{error}"))?;
-        match &backend {
-            SessionBackend::Context(ctx) => {
-                adapter::serve_in_process(ctx, profile, reader, writer, stop.clone()).await
-            }
-            SessionBackend::Attach(data_dir) => {
-                adapter::serve_attached(data_dir, profile, reader, writer, stop.clone()).await
-            }
-        }
-    }
-    .await;
-    stop.cancel();
-    inner.tunnels.lock().unwrap().remove(&id);
-    result
 }

@@ -18,7 +18,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
 /// How long a stalled peer may hold one outgoing message.
-const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+pub(super) const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long an attached session may take to open on the local host.
 const ATTACH_WAIT: Duration = Duration::from_secs(5);
 
@@ -30,7 +30,7 @@ fn keepalive() -> tokio::time::Interval {
 
 /// Send each queued message, and a keepalive when the tunnel has been quiet.
 /// Ends when the queue closes, `stop` fires, or a send fails.
-async fn write_loop<W: FrameWriter>(
+pub(super) async fn write_loop<W: FrameWriter>(
     mut writer: TunnelWriter<W>,
     mut queue: mpsc::Receiver<Vec<u8>>,
     stop: CancellationToken,
@@ -50,7 +50,7 @@ async fn write_loop<W: FrameWriter>(
 }
 
 /// The next non-keepalive message, `None` at the end of the tunnel.
-async fn next_message<R: FrameReader>(reader: &mut TunnelReader<R>) -> Option<Vec<u8>> {
+pub(super) async fn next_message<R: FrameReader>(reader: &mut TunnelReader<R>) -> Option<Vec<u8>> {
     loop {
         match reader.recv().await {
             Ok(message) if message.is_empty() => continue,

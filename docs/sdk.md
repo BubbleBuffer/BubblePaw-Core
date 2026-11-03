@@ -260,16 +260,22 @@ remote_client.call("session.list", json!({})).await?;
   (`Option<RemoteAddress>`; a quick tunnel's changes on restart), `local_port()`,
   `last_error()`, `open_control(dir)` (lets `bubblepaw remote pair` and `revoke`
   in other processes reach this server), `pair(Profile) -> PairingOffer`,
-  `devices() -> Vec<PairedDevice>`, `revoke(id) -> bool` (closes that device's
+  `pair_with_egress(Profile, egress) -> PairingOffer` (the extra model-traffic
+  grant), `devices() -> Vec<PairedDevice>`, `revoke(id) -> bool` (closes that device's
   live tunnels), `tunnel_count()`, `shutdown()`. It reconnects with backoff and
   stops on drop. One `PairingOffer` is open at a time; dropping it closes it.
 - `PairingOffer`: `code()`, `qr_payload() -> &PairingPayload`, `expires_in()`,
   `next() -> Option<PairingRequest>`. A wrong code keeps the offer open.
   `PairingRequest`: `comparison()`, `device_name()`, `device_id()`,
   `approve(name) -> PairedDevice`, `decline()`.
-- `PairedDevice {id, label, profile, paired_at}` (Serialize); also from
+- `PairedDevice {id, label, profile, egress, paired_at}` (Serialize); also from
   `remote::list_devices(path)`, and `remote::revoke_device(path, id)` edits the
   store from another process (a running server notices within a second).
+- `remote::egress` re-exports `EgressRoute`, `EgressHandle`, `EgressProxy`,
+  `EgressError`, `EgressErrorKind` and `check_host`; `SavedHost::egress` and
+  `PairedHostInfo::egress` show the grant, and the config key
+  `providers.<name>.via` (through the usual config calls) sends that provider's
+  model traffic through a paired device ([remote](remote.md#model-traffic-through-a-paired-device)).
 - `remote::pair(RemotePair) -> Result<PendingPairing, RemoteError>`;
   `PendingPairing`: `comparison()`, `host_name()`, `host_id()`,
   `finish() -> PairedHostInfo {id, name, relay}`. The device key is created at

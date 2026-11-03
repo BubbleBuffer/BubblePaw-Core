@@ -89,6 +89,9 @@ axum = { version = "0.8", optional = true }
 
 [dev-dependencies]
 axum = "0.8"
+# The fake HTTPS provider of the model-egress tests (a certificate made per run).
+rcgen = { version = "0.13", default-features = false, features = ["pem", "ring"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"] }
 # Enables the fixture binaries for this crate's own tests.
 bubblepaw-runner = { path = ".", features = ["test-fixtures"] }
 

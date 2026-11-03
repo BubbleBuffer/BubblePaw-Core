@@ -62,7 +62,7 @@ enum Credentials {
     CodexAuth(PathBuf),
 }
 pub struct ResponsesProvider {
-    client: reqwest::Client,
+    pub(in crate::provider) client: stream::Client,
     credentials: Credentials,
     base_url: String,
     models: Vec<String>,
@@ -157,7 +157,7 @@ impl ResponsesProvider {
             let mut response = sent
                 .map_err(|_| transient(anyhow!("provider response was idle too long")))?
                 .map_err(|error| {
-                    transient(anyhow!(
+                    self.client.transport_failed(format!(
                         "provider transport failed ({})",
                         if error.is_timeout() {
                             "timeout"

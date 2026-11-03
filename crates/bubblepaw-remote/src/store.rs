@@ -65,6 +65,12 @@ pub struct PairedClient {
     /// once a minute per device.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_seen: Option<u64>,
+    /// Whether the host user let this device send its model traffic through
+    /// this host (see `docs/remote.md`, "Model traffic through a paired
+    /// device"). A grant of its own, separate from `profile`; older files and
+    /// older pairings read as `false`.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub egress: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -83,6 +89,14 @@ pub struct PairedHost {
     /// Unix seconds of the last tunnel this device opened to the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_connected: Option<u64>,
+    /// Whether the host granted this device model-traffic forwarding when it
+    /// approved the pairing.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub egress: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub trait PeerRecord: Clone + Serialize + DeserializeOwned {
@@ -343,6 +357,7 @@ mod tests {
                 paired_at: None,
                 kind: DeviceKind::Other,
                 last_seen: None,
+                egress: false,
             })
             .unwrap();
         let result = store.persist_with_sync(BTreeMap::new(), |_| {

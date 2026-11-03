@@ -28,6 +28,8 @@ pub struct SavedHost {
     /// The profile the host granted this device; `None` for hosts saved before
     /// the grant was kept.
     pub profile: Option<crate::host_api::Profile>,
+    /// Whether the host lets this device send model traffic through it.
+    pub egress: bool,
     /// Unix seconds when the host approved the pairing.
     pub paired_at: Option<u64>,
     /// Unix seconds of the last successful `connect_remote`.
@@ -49,6 +51,7 @@ impl From<&PairedHost> for SavedHost {
             label: host.name.clone(),
             address: RemoteAddress::from_reach(&host.reach_address),
             profile: host.profile.map(api_profile),
+            egress: host.egress,
             paired_at: host.paired_at,
             last_connected: host.last_connected,
         }

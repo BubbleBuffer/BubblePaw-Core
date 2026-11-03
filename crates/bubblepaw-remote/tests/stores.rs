@@ -17,6 +17,7 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
             paired_at: None,
             kind: bubblepaw_remote::store::DeviceKind::Other,
             last_seen: None,
+            egress: false,
         })
         .unwrap();
     store
@@ -27,6 +28,7 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
             paired_at: None,
             kind: bubblepaw_remote::store::DeviceKind::Other,
             last_seen: None,
+            egress: false,
         })
         .unwrap();
     assert_eq!(store.devices().count(), 1);
@@ -40,6 +42,7 @@ fn stores_validate_and_revoke_with_atomic_replacement() {
                 paired_at: None,
                 kind: bubblepaw_remote::store::DeviceKind::Other,
                 last_seen: None,
+                egress: false,
             })
             .is_err()
     );
@@ -85,6 +88,7 @@ fn corrupt_or_misidentified_stores_are_errors() {
         profile: None,
         paired_at: None,
         last_connected: None,
+        egress: false,
     };
     let value = serde_json::json!({"version":1,"devices":{"0000-0000-0000-0000":host}});
     std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
@@ -107,6 +111,7 @@ fn failed_persistence_preserves_memory() {
                 paired_at: None,
                 kind: bubblepaw_remote::store::DeviceKind::Other,
                 last_seen: None,
+                egress: false,
             })
             .is_err()
     );
@@ -130,6 +135,7 @@ fn kind_and_last_seen_round_trip_and_old_entries_read_as_other() {
             paired_at: Some(10),
             kind: DeviceKind::Phone,
             last_seen: None,
+            egress: false,
         })
         .unwrap();
     assert!(
@@ -173,6 +179,7 @@ fn clear_removes_every_entry() {
                 paired_at: None,
                 kind: DeviceKind::Other,
                 last_seen: None,
+                egress: false,
             })
             .unwrap();
     }

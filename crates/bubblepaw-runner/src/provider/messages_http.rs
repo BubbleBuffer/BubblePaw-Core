@@ -37,10 +37,8 @@ impl MessagesProvider {
                 )
             })?
             .map_err(|_| {
-                classify(
-                    ProviderErrorKind::Transient,
-                    anyhow!("Messages transport failed"),
-                )
+                self.client
+                    .transport_failed("Messages transport failed".into())
             })?;
         if let Some(dump) = dump {
             dump.attach(&mut response);

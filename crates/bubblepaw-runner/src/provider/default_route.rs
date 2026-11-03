@@ -67,6 +67,7 @@ pub(super) fn default_route(
         format!("model.provider selects {default}, which has no providers.{default} table")
     })?;
     let base = transport.base_url.clone();
+    let egress = settings.egress_for(default)?;
     let kind = transport.kind.as_deref().unwrap_or("chat-completions");
     if kind != "scripted" && base.as_deref().is_none_or(|base| base.trim().is_empty()) {
         return missing(format!(
@@ -93,6 +94,9 @@ pub(super) fn default_route(
             let base = base.context("Codex provider needs base_url")?;
             match ResponsesProvider::codex_auth(&auth, base) {
                 Ok(mut provider) => {
+                    if let Some(egress) = &egress {
+                        provider = provider.with_egress(egress.clone())?;
+                    }
                     if let Some(effort) = transport
                         .reasoning
                         .get("reasoning_effort")
@@ -128,6 +132,9 @@ pub(super) fn default_route(
             let base = base.context("Provider needs base_url")?;
             if kind == "responses" {
                 let mut provider = ResponsesProvider::api_key(key, base)?;
+                if let Some(egress) = &egress {
+                    provider = provider.with_egress(egress.clone())?;
+                }
                 if is_opencode_route(default) {
                     provider = provider.with_opencode_route();
                 }
@@ -141,6 +148,9 @@ pub(super) fn default_route(
                 Arc::new(provider)
             } else if kind == "anthropic-messages" {
                 let mut provider = MessagesProvider::api_key(key, base)?;
+                if let Some(egress) = &egress {
+                    provider = provider.with_egress(egress.clone())?;
+                }
                 if is_opencode_route(default) {
                     provider = provider.with_opencode_route();
                 }
@@ -149,6 +159,9 @@ pub(super) fn default_route(
                 let mut provider = ChatCompletionsProvider::api_key(key, base)?
                     .with_reasoning_fields(serde_json::to_value(&transport.reasoning)?)?
                     .with_reasoning_replay(transport.reasoning_replay())?;
+                if let Some(egress) = &egress {
+                    provider = provider.with_egress(egress.clone())?;
+                }
                 if is_opencode_route(default) {
                     provider = provider.with_opencode_route();
                 }

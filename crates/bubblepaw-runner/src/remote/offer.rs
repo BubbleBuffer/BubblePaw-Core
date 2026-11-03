@@ -24,6 +24,7 @@ pub(super) struct ActiveOffer {
     id: u64,
     code: PairingCode,
     profile: Profile,
+    egress: bool,
     requests: mpsc::Sender<PairingRequest>,
 }
 
@@ -54,6 +55,7 @@ impl PairingOffer {
         address: &RemoteAddress,
         host: &DeviceId,
         profile: Profile,
+        egress: bool,
     ) -> Result<Self> {
         let code = PairingCode::generate().map_err(|error| anyhow!("{error}"))?;
         let payload = PairingPayload::new(address, host.to_string(), code.code().to_owned());
@@ -63,6 +65,7 @@ impl PairingOffer {
             id,
             code,
             profile,
+            egress,
             requests,
         });
         Ok(Self {
@@ -157,7 +160,7 @@ impl PairingRequest {
         self.device_kind
     }
 
-    /// Store the device with the offer's profile, under `name` or the name it
+    /// Store the device with the offer's profile and egress grant, under `name` or the name it
     /// suggested, and tell it the pairing succeeded.
     pub async fn approve(self, name: Option<String>) -> Result<PairedDevice> {
         let (done, result) = oneshot::channel();
@@ -229,15 +232,17 @@ pub(super) async fn attempt<T: FrameIo>(
     };
     // The code is used now; later attempts see it as expired.
     let profile = offer.profile;
+    let egress = offer.egress;
     let requests = offer.requests.clone();
     *guard = None;
     drop(guard);
-    decide(pending, profile, requests, clients, store).await
+    decide(pending, profile, egress, requests, clients, store).await
 }
 
 async fn decide<T: FrameIo>(
     pending: PendingHost<T>,
     profile: Profile,
+    egress: bool,
     requests: mpsc::Sender<PairingRequest>,
     clients: &Path,
     store: &Mutex<()>,
@@ -265,7 +270,12 @@ async fn decide<T: FrameIo>(
         let mut clients_store = PairStore::<PairedClient>::open(clients)
             .map_err(|error| anyhow!("could not read the paired-device store: {error}"))?;
         pending
-            .approve(name.clone(), paired_profile(profile), &mut clients_store)
+            .approve_with_egress(
+                name.clone(),
+                paired_profile(profile),
+                egress,
+                &mut clients_store,
+            )
             .await
             .map_err(|error| anyhow!("pairing failed: {error}"))?;
         let id = DeviceId::from_public_key(&public_key);
@@ -277,6 +287,7 @@ async fn decide<T: FrameIo>(
             paired_at: stored.and_then(|client| client.paired_at),
             kind: stored.map(|client| client.kind).unwrap_or_default(),
             last_seen: None,
+            egress,
         })
     }
     .await;
