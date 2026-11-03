@@ -75,6 +75,7 @@ where
 {
     let mut ctx = ctx.clone();
     ctx.read_scope = ReadScope::Host;
+    ctx.known_workspaces_only = true;
     let (input, incoming) = mpsc::channel::<Incoming>(16);
     let (output, mut replies) = mpsc::channel::<Value>(128);
     let (queue, queued) = mpsc::channel::<Vec<u8>>(16);

@@ -39,6 +39,20 @@ impl HostError {
             source: None,
         }
     }
+    /// A tunnel caller named a workspace this host does not know: `-32003`,
+    /// HTTP 403, with `data = {"workspace": "<path as given>"}`.
+    pub fn unknown_workspace(path: &std::path::Path) -> Self {
+        Self {
+            message: format!(
+                "the host does not know the workspace {}; a remote caller may open only a workspace an existing session uses or the host's default",
+                path.display()
+            ),
+            status: 403,
+            code: -32003,
+            data: Some(json!({"workspace": path.display().to_string()})),
+            source: None,
+        }
+    }
     /// The main model route has no usable provider: `-32004` and HTTP 409, with
     /// the message naming the config keys and host methods that fix it.
     pub fn no_provider(error: crate::no_provider::NoProviderConfigured) -> Self {

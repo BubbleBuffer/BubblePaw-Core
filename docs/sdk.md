@@ -33,7 +33,7 @@ as stdio, HTTP RPC and CLI. `Host::api()` retains the builder's workspace, harne
 and optional question/code-mode services. Existing todo and question helpers use
 the shared capability implementation. See [host API](host-api.md) for profiles,
 method names and adapter responsibilities. The builder defaults to workspace-scoped
-reads. `session.list` rows (`host_api::sessions::SessionWithUsage`) carry `workspace`, `needs_you` and `running` next to `usage`. For host-wide browsing, clone `host.api()` and set its `read_scope` to
+reads. `session.list` rows (`host_api::sessions::SessionWithUsage`) carry `workspace`, `needs_you`, `waiting_for` (`WaitingFor::Approval`, `WaitingFor::Question` or `None`) and `running` next to `usage`. `session.open` takes an optional `workspace` (`OpenParams.workspace`): a client over a tunnel gets `ClientError::Rpc` with code -32003 for a workspace the host does not know; see the [session API](session-api.md). For host-wide browsing, clone `host.api()` and set its `read_scope` to
 `ReadScope::Host`; the mutation workspace stays unchanged.
 
 ## Modules

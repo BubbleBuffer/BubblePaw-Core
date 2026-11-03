@@ -33,6 +33,8 @@ mod rpc_tests;
 pub mod runs;
 mod runtime;
 mod services;
+#[cfg(test)]
+mod session_open_tests;
 mod session_ops;
 #[cfg(test)]
 mod session_row_tests;
@@ -74,6 +76,8 @@ pub struct HostCtx {
     pub storage_policy: Option<RootStoragePolicy>,
     /// One-shot CLI requests keep the root leased through their cleanup.
     pub hold_admission: bool,
+    /// Tunnel callers: `session.open` accepts only a workspace the host knows.
+    pub known_workspaces_only: bool,
     pub input_limits: crate::input_files::InputLimits,
     pub usage: crate::usage::UsageSettings,
     /// The adapter supplies its resolved launch metadata, never credentials.
@@ -114,6 +118,7 @@ impl HostCtx {
             context_strategy: ContextStrategy::default(),
             storage_policy: None,
             hold_admission: false,
+            known_workspaces_only: false,
             input_limits: Default::default(),
             usage: Default::default(),
             config: json!({}),

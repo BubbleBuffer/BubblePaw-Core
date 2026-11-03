@@ -26,7 +26,7 @@ the optional web feature.
 |---|---|---|
 | `providers.list` | None | The same redacted setup snapshot as `GET /api/providers`: configured providers/models, provenance and target file, `main`, `active_main`, `launched_main`, `reload_needed` and `restart_needed`. Credential values are omitted; `key_present` reports availability. |
 | `roles.set_main` | `model: "provider/model"` | The updated provider setup snapshot, using the same validation, configuration layering, atomic file replacement and live apply as `PUT /api/roles/main`. The provider must exist. Later-layer overrides reject the write. No model request or session is created. |
-| `session.list` | Optional `limit`, `cursor` | Without either parameter, the existing session array and ordering. With either parameter, `{sessions, next_cursor}`; the last page has `next_cursor: null`. Hidden sessions are excluded and each entry retains its `usage` field. Since 0.10.1 every row, in both forms, also carries `workspace` (absolute directory the session runs in as the host sees it: its worktree, else the root chat's workspace; `null` when none), `needs_you` (pending approval or pending question) and `running` (a turn is running). Archived chats stay cold: `needs_you` and `running` are `false` for them. Costs one indexed read per flag per row. |
+| `session.list` | Optional `limit`, `cursor` | Without either parameter, the existing session array and ordering. With either parameter, `{sessions, next_cursor}`; the last page has `next_cursor: null`. Hidden sessions are excluded and each entry retains its `usage` field. Since 0.10.1 every row, in both forms, also carries `workspace` (absolute directory the session runs in as the host sees it: its worktree, else the root chat's workspace; `null` when none), `needs_you` (pending approval or pending question) and `running` (a turn is running). Since 0.10.2 rows also carry `waiting_for` (`"approval"`, `"question"` or `null`) says what `needs_you` waits for: it is non-null exactly when `needs_you` is true, and a pending approval wins over a pending question when both wait. Archived chats stay cold: `needs_you` and `running` are `false` for them. Costs one indexed read per flag per row. |
 | `child.cancel` | `parent`, `child` (session IDs) | The ordinary child cancellation result (`sessionId`, `handle`, `status`, and available result fields). Cancels the addressed child and its subtree and awaits cleanup through the existing child runtime. Both IDs must belong to this workspace, and `parent` must be the direct parent. |
 
 Paged lists accept an integer `limit` from 1 through 1000 (default 100 when
@@ -541,10 +541,12 @@ result shown; errors are JSON-RPC errors. Host commands typed as the text of
   advertises durable run/question projections on the direct parent's stream.
 - `shutdown` returns `{stopped: true}` and ends the loop after the reply.
 - `config.reload {server?}`: the reload diff.
-- `session.open {title? | name?, session_id?, parent_session_id? | parent_id?}`: a
+- `session.open {title? | name?, session_id?, parent_session_id? | parent_id?, workspace?}`: a
   session. With `session_id` it loads that session; otherwise it creates one, with
   the title defaulting to `New session`.
-- `session.list`: sessions, each with its `usage` projection, `workspace`, `needs_you` and `running`.
+  Since 0.10.2 `session.open` also takes an optional `workspace` path (a new root session only; ignored with `session_id` or a parent, which already have one). A local caller (stdio, CLI, local HTTP) may name any existing directory, and an absent `workspace` keeps the host's workspace. A tunnel (remote) caller may name only a workspace the host already knows, compared as canonical paths (symlinks, `..` and Windows case resolve first): the host's default workspace or the workspace (root or worktree, as the `session.list` row reports it) of any existing session. Anything else, including a path that does not exist, is refused with JSON-RPC code `-32003` (HTTP 403), `error.data = {"workspace": "<path as given>"}` and a message naming the path and saying the host does not know it.
+- `session.list`: sessions, each with its `usage` projection, `workspace`, `needs_you`, `waiting_for` and `running`.
+  `waiting_for` (`"approval"`, `"question"` or `null`) says what `needs_you` waits for: it is non-null exactly when `needs_you` is true, and a pending approval wins over a pending question when both wait.
 - `session.rename {session_id, title}`: the session.
 - `session.rewind {session_id, message_id}`: the rewind result.
 - `session.compact {session_id, focus?}`: `{notice}`.
