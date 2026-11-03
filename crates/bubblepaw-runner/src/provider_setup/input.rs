@@ -161,8 +161,12 @@ pub(super) fn provider_table(
     if let Some(path) = &provider.auth_file {
         table.insert("auth_file", value(path.to_string_lossy().into_owned()));
     }
+    // `via` is not an editor field: an edit keeps what the file already says.
+    let kept = previous.and_then(|previous| previous.get("via")).cloned();
     if let Some(via) = &provider.via {
         table.insert("via", value(via));
+    } else if let Some(kept) = kept {
+        table.insert("via", kept);
     }
     let fields = json!({
         "reasoning": provider.reasoning,

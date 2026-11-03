@@ -551,7 +551,7 @@ cannot start, the client points at a closed port. `EgressError` and
 
 `via` applies to `codex`, `responses`, `chat-completions` and `anthropic-messages`
 providers with an `https://` base URL on port 443; decision providers and other
-kinds reject it at validation. `providers.<name>.via` is live (read at the next
+kinds reject it at validation. The provider-setup editor does not edit `via`; saving a provider there keeps the `via` its file already holds. `providers.<name>.via` is live (read at the next
 registration). No Desktop UI exists for it yet. Tests
 (`crates/bubblepaw-runner/tests/remote_egress.rs`) use a fake HTTPS provider on
 loopback, an in-process relay and a forwarding host with a test dial; no network.
