@@ -105,6 +105,12 @@ async fn a_missing_trycloudflare_address_leaves_the_host_offline() {
     assert!(server.address().is_none());
     let error = server.last_error().unwrap();
     assert!(error.contains("cloudflared exited"), "{error}");
+    let state = server.share_state();
+    assert_eq!(state.last_error.as_deref(), Some(error.as_str()));
+    let failure = state.failure.unwrap();
+    assert_eq!(failure.transport, "cloudflared");
+    assert_eq!(failure.exit_code, Some(1));
+    assert_eq!(failure.retry_after_secs, 1);
     assert!(server.pair(Profile::Read).await.is_err());
     server.shutdown().await;
 }

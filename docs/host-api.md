@@ -65,6 +65,9 @@ device's profile without introducing another host implementation.
 | `config.set` | Full |
 | `config.reload` | Full |
 | `providers.list` | Read |
+| `providers.key.get` | Read |
+| `providers.key.set` | Full |
+| `providers.key.remove` | Full |
 | `providers.save` | Full |
 | `providers.remove` | Full |
 | `providers.test` | Full |
@@ -75,6 +78,10 @@ device's profile without introducing another host implementation.
 | `mcp.auth.complete` | Full |
 | `mcp.auth.sign_out` | Full |
 | `mcp.headers.set` | Full |
+| `remote.cloudflare.sign_out` | Full |
+| `remote.cloudflared.info` | Read |
+| `remote.cloudflared.set` | Full; local callers only |
+| `remote.share.state` | Read |
 | `session.open` | Edit |
 | `session.list` | Read |
 | `session.view` | Read |
@@ -146,6 +153,82 @@ leaf, the error's `data` is `{"key": "<full dotted key>"}`, such as
 omitted. Details and the validation
 steps: [config](config.md#reading-and-changing-settings-over-the-host-api-2026-10-31).
 
+
+### Provider keys (v0.13.0)
+
+`providers.key.get {name}` (`Read`) returns `{is_set, source}`, where `source` is
+`stored`, `environment`, or `none`. `providers.key.set {name, value}` and
+`providers.key.remove {name}` require `Full`, including over a remote tunnel;
+`Read` and `Edit` are refused before decoding a key. Writes return the same
+status plus `applied` and `restart_needed`. A configured host rebuilds its live
+provider generation, so the next request uses the new key and in-flight requests
+retain their old generation. A setup without a live provider binding reports
+`applied: false, restart_needed: true`.
+
+The stored key overrides `key_env`; removing it restores the environment
+fallback. Files are `<data_dir>/secrets/provider-<hex-encoded-provider-name>.key`,
+with validated provider names and atomic writes. Like the Cloudflare token,
+these are plain text protected by file permissions (`0600` on Unix, inherited
+directory ACLs on Windows), not encryption or an OS keyring. No read returns
+the value, and key-operation errors do not echo submitted values. Keys are not
+stored in config, events or transcripts. See [configuration](config.md).
+
+### Chat title search (v0.13.0)
+
+`session.list` accepts optional `query`, a case-insensitive literal substring
+of the chat title. Filtering precedes creation-order pagination and keeps the
+existing hidden-session, archive and read-scope rules. Host-scoped callers search
+all projects; a workspace-scoped caller remains limited to that workspace.
+`query` alone enables the paged result (`sessions`, `next_cursor`), with the usual
+default limit of 100 and maximum of 1000. An empty query matches all titles.
+Without query, limit or cursor, the legacy array response stays unchanged.
+`initialize.features` advertises `session.list.title_search`. The SDK's
+`Client::search_session_titles(query, limit, cursor)` first reads that capability
+on every call, then returns `sessions::SessionPage`; it rejects older hosts with
+`ClientError::Protocol` because those hosts silently ignore the query parameter.
+
+Root chats retain their separate SQLite files. Titles are read from the existing
+central catalog's session metadata, without opening every root file. Only the
+returned page is enriched with usage and runtime state; archived chats stay cold.
+Workspace-scoped reads can inspect matching roots to resolve workspace bindings
+before pagination; the host-wide title scan does not require that step. Reading
+an archived result's workspace may temporarily decompress its archive without
+restoring the canonical chat file. No search index was added.
+
+Measured 2026-11-04 on linux01 with an unoptimized Rust test build: a synthetic
+10,000-row on-disk catalog, two real roots (one active, one archived), and 9,998
+unmatched roots whose files deliberately do not exist. The title scan uses
+`SELECT data,last_activity FROM sessions` (`EXPLAIN QUERY PLAN`: `SCAN sessions`),
+then Rust lowercase substring matching; pending catalog metadata overlays remain
+visible. First matching page: 64.943 ms. Across 20 warm repetitions, matching
+page p50/p95: 72.010/72.835 ms; no-match p50/p95: 58.902/59.284 ms. Both matching
+pages were returned, and the archived canonical file remained absent. Success
+with the unmatched files absent verifies that the scan does not open those
+9,998 roots. This measures catalog scale and two result projections, not 10,000
+populated root databases, arbitrary result enrichment, or model/network latency.
+Reproduce with `cargo test -p bubblepaw-runner --lib
+title_search_10k_catalog_measurement -- --ignored --nocapture` on Linux.
+
+### Sharing settings (v0.13.0)
+
+- `remote.cloudflare.sign_out {}` (`Full`) returns `{changed}` and removes only
+  the browser-login `cert.pem` resolved by the existing Cloudflare login rules.
+  It leaves the API token, named tunnel credentials and tunnel state intact.
+- `remote.cloudflared.info {}` (`Read`) returns `{info}` (null when discovery finds
+  no program). Info retains `path`, `version`, `pinned`, `update_available` and
+  `managed`, and adds `chosen` for an explicit executable selection.
+- `remote.cloudflared.set {path}` (`Full`, local only) stores a chosen path in
+  `remote.cloudflared`; null clears it and restores managed-copy/PATH discovery.
+  The host runs `--version` with a short timeout before accepting a path, refuses
+  missing, non-executable or wrong programs, and leaves the executable in place.
+  Restart sharing to run the newly selected executable. Remote devices, including
+  `Full`, are refused with `-32003`, through both direct and attached sessions;
+  `config.set` cannot bypass the restriction.
+- `remote.share.state {}` (`Read`) returns `status`, `address`, `lastError` and
+  optional `failure: {transport, exit_code, retry_after_secs}`. An exit code is
+  supplied when cloudflared exits with one. Retry seconds describe the actual
+  next scheduled delay, including relay backoff, rather than a fixed 30-second
+  promise. No active server gives null status/address/error/failure.
 
 ### Tool and skill catalogs
 
@@ -280,9 +363,10 @@ wire contracts.
 
 ## Remote device management is outside the method table
 
-The Remote access settings (paired devices, device key, saved hosts, Cloudflare
-domain mode, the serve lock) add no host methods. A remote client cannot do any of
-them to the host it is talking to: they act on the local machine's files and
+Apart from the sharing settings methods above, Remote access settings (paired
+devices, device key, saved hosts, Cloudflare domain setup, the serve lock) remain
+outside the host method table. A remote client cannot do those operations to the
+host it is talking to: they act on the local machine's files and
 processes, or on the device's own key and host list, and the control endpoint
 and the SDK are their only doors. They are listed here as exclusions from the
 parity rule:

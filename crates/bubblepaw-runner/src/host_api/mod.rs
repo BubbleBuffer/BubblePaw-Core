@@ -27,6 +27,7 @@ pub mod questions;
 mod read_scope_event_tests;
 #[cfg(test)]
 mod read_scope_tests;
+pub mod remote_settings;
 pub mod rpc;
 #[cfg(test)]
 mod rpc_tests;
@@ -70,6 +71,10 @@ pub struct HostCtx {
     pub hold_admission: bool,
     /// Tunnel callers: `session.open` accepts only a workspace the host knows.
     pub known_workspaces_only: bool,
+    /// An admitted remote device, including one forwarded through local attach.
+    pub remote_caller: bool,
+    /// Live sharing state registered by this host's remote server.
+    pub remote_share: Arc<std::sync::Mutex<Option<crate::remote::ShareStateHandle>>>,
     pub input_limits: crate::input_files::InputLimits,
     pub usage: crate::usage::UsageSettings,
     /// The adapter supplies its resolved launch metadata, never credentials.
@@ -111,6 +116,8 @@ impl HostCtx {
             storage_policy: None,
             hold_admission: false,
             known_workspaces_only: false,
+            remote_caller: false,
+            remote_share: Arc::new(std::sync::Mutex::new(None)),
             input_limits: Default::default(),
             usage: Default::default(),
             config: json!({}),
@@ -206,6 +213,7 @@ enum Group {
     Events,
     Views,
     Mcp,
+    RemoteSettings,
 }
 pub type Handler = for<'a> fn(
     &'a HostCtx,
@@ -226,6 +234,9 @@ methods! {
     ConfigSet => ("config.set", Full, Services, None),
     ConfigReload => ("config.reload", Full, Services, Some("config_reload")),
     ProvidersList => ("providers.list", Read, Services, Some("providers.list")),
+    ProvidersKeyGet => ("providers.key.get", Read, Services, None),
+    ProvidersKeySet => ("providers.key.set", Full, Services, None),
+    ProvidersKeyRemove => ("providers.key.remove", Full, Services, None),
     ProvidersSave => ("providers.save", Full, Services, None),
     ProvidersRemove => ("providers.remove", Full, Services, None),
     ProvidersTest => ("providers.test", Full, Services, None),
@@ -236,6 +247,10 @@ methods! {
     McpAuthComplete => ("mcp.auth.complete", Full, Mcp, None),
     McpAuthSignOut => ("mcp.auth.sign_out", Full, Mcp, None),
     McpHeadersSet => ("mcp.headers.set", Full, Mcp, None),
+    RemoteCloudflareSignOut => ("remote.cloudflare.sign_out", Full, RemoteSettings, None),
+    RemoteCloudflaredInfo => ("remote.cloudflared.info", Read, RemoteSettings, None),
+    RemoteCloudflaredSet => ("remote.cloudflared.set", Full, RemoteSettings, None),
+    RemoteShareState => ("remote.share.state", Read, RemoteSettings, None),
     SessionOpen => ("session.open", Edit, Sessions, Some("sessions")),
     SessionList => ("session.list", Read, Sessions, Some("session.list.pagination")),
     SessionView => ("session.view", Read, Views, None),
@@ -316,6 +331,7 @@ async fn invoke(
         Group::Runtime => runtime::command(ctx, profile, method, params).await,
         Group::Services => services::command(ctx, method, params).await,
         Group::Mcp => mcp::command(ctx, method, params).await,
+        Group::RemoteSettings => remote_settings::command(ctx, method, params).await,
         Group::Sessions => {
             let ctx = ctx.clone();
             tokio::task::spawn_blocking(move || sessions::command(&ctx, method, params))

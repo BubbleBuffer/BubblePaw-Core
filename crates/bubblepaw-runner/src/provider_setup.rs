@@ -13,6 +13,7 @@ use std::{
 use toml_edit::{DocumentMut, Item, Table, value};
 
 mod input;
+mod keys;
 mod probe;
 mod save;
 #[cfg(all(test, feature = "web"))]
@@ -262,11 +263,10 @@ impl SetupState {
                 let mut entry = provider_json(provider);
                 entry["name"] = json!(name);
                 entry["key_present"] = json!(
-                    provider
-                        .key_env
-                        .as_ref()
-                        .and_then(|name| config.environment(name))
-                        .is_some_and(|value| !value.is_empty())
+                    settings
+                        .provider_key(name, &|name| config.environment(name))
+                        .map_err(|_| io_error())?
+                        .is_some()
                 );
                 // File provenance can differ by field in a merged provider table.
                 entry["source"] = json!(provider_source(config, name));
@@ -279,9 +279,9 @@ impl SetupState {
                 );
                 entry["editable"] = json!(true);
                 entry["deletable"] = json!(target_provider(doc, name));
-                entry
+                Ok(entry)
             })
-            .collect::<Vec<_>>();
+            .collect::<ApiResult<Vec<_>>>()?;
         let active = self.live.as_ref().map(|live| live.snapshot());
         let active_config = active.as_ref().map(|generation| &generation.effective);
         let reload_needed = !(applying && self.live.is_some())

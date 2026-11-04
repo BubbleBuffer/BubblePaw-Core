@@ -141,11 +141,19 @@ pub async fn serve_embedded(
 pub(super) async fn session_request(
     id: Value,
     profile: Option<Value>,
+    remote: Option<Value>,
     reader: BufReader<tokio::io::ReadHalf<Connection>>,
     mut write: tokio::io::WriteHalf<Connection>,
     sessions: SessionSource,
     host_stop: CancellationToken,
 ) -> Result<()> {
+    let remote = match remote {
+        None => false,
+        Some(Value::Bool(remote)) => remote,
+        Some(_) => {
+            return write_json(&mut write, &json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"remote must be a boolean"}})).await;
+        }
+    };
     if !(id.is_string() || id.is_number()) {
         let error = json!({"code":-32602,"message":"a session needs an id"});
         return write_json(
@@ -174,9 +182,11 @@ pub(super) async fn session_request(
         }
     };
     ctx.read_scope = ReadScope::Host;
+    ctx.remote_caller = remote;
+    ctx.known_workspaces_only = remote;
     write_json(
         &mut write,
-        &json!({"jsonrpc":"2.0","id":id,"result":{"protocol_version":HOST_PROTOCOL_VERSION}}),
+        &json!({"jsonrpc":"2.0","id":id,"result":{"protocol_version":HOST_PROTOCOL_VERSION,"remote":remote}}),
     )
     .await?;
     rpc_session::serve_stream(&ctx, profile, reader, write, &host_stop).await

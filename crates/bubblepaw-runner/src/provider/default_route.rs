@@ -115,14 +115,9 @@ pub(super) fn default_route(
             }
         }
         "responses" | "chat-completions" | "anthropic-messages" => {
-            let Some(key_env) = transport.key_env.as_ref() else {
+            let Some(key) = settings.provider_key(default, environment)? else {
                 return missing(format!(
-                    "providers.{default}.key_env does not name a key variable"
-                ));
-            };
-            let Some(key) = environment(key_env) else {
-                return missing(format!(
-                    "the variable {key_env} named by providers.{default}.key_env is not set"
+                    "providers.{default} has no stored key or usable key_env; set a key with providers.key.set"
                 ));
             };
             anyhow::ensure!(

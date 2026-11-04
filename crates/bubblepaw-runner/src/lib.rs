@@ -117,6 +117,8 @@ pub mod profiles;
 #[cfg(feature = "host")]
 pub mod provider;
 #[cfg(feature = "host")]
+mod provider_keys;
+#[cfg(feature = "host")]
 pub mod provider_setup;
 #[cfg(feature = "host")]
 pub mod question;

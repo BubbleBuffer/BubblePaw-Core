@@ -16,8 +16,8 @@ use base64::Engine;
 use bubblepaw_runner::remote::install::{self, InstallSource};
 use bubblepaw_runner::remote::{
     CLOUDFLARED_VERSION, RemotePaths, TokenSource, cloudflare_account, cloudflare_login_state,
-    cloudflared_info, forget_cloudflare_token, store_cloudflare_token, tunnel_login,
-    update_cloudflared,
+    cloudflared_info, forget_cloudflare_login, forget_cloudflare_token, store_cloudflare_token,
+    tunnel_login, update_cloudflared,
 };
 use fake_api::{FakeApi, TOKEN};
 use sha2::{Digest, Sha256};
@@ -48,6 +48,77 @@ fn cert_pem() -> String {
 /// These tests need `BUBBLEPAW_CLOUDFLARE_TOKEN` unset.
 fn paths(root: &Path) -> RemotePaths {
     RemotePaths::in_data_dir(&root.join("data"))
+}
+
+#[test]
+fn signing_out_removes_only_the_browser_certificate() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = paths(root.path());
+    std::fs::create_dir_all(&paths.cloudflare).unwrap();
+    let cert = paths.cloudflare.join("cert.pem");
+    std::fs::write(&cert, cert_pem()).unwrap();
+    for name in ["tunnel.json", "state.json", "api-token"] {
+        std::fs::write(paths.cloudflare.join(name), format!("preserve-{name}")).unwrap();
+    }
+    assert!(forget_cloudflare_login(Some(&cert)).unwrap());
+    assert!(!forget_cloudflare_login(Some(&cert)).unwrap());
+    for name in ["tunnel.json", "state.json", "api-token"] {
+        assert_eq!(
+            std::fs::read_to_string(paths.cloudflare.join(name)).unwrap(),
+            format!("preserve-{name}")
+        );
+    }
+}
+
+#[tokio::test]
+async fn executable_validation_rejects_missing_non_program_non_cloudflared_and_timeout() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = paths(root.path());
+    assert!(
+        cloudflared_info(&root.path().join("missing"), &paths)
+            .await
+            .is_err()
+    );
+    assert!(cloudflared_info(root.path(), &paths).await.is_err());
+    let text = root.path().join("plain-file");
+    std::fs::write(&text, "not a program").unwrap();
+    assert!(cloudflared_info(&text, &paths).await.is_err());
+    let fake = fake::install(&root.path().join("bin"), &[], None);
+    script(
+        fake.program.parent().unwrap(),
+        serde_json::json!({"version_text":"another program version 2026.9.0"}),
+    );
+    assert!(
+        cloudflared_info(&fake.program, &paths)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("identify")
+    );
+    script(
+        fake.program.parent().unwrap(),
+        serde_json::json!({"version_text":"cloudflared version 2026.9.0", "version_exit_code":2}),
+    );
+    assert!(
+        cloudflared_info(&fake.program, &paths)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("failed")
+    );
+    script(
+        fake.program.parent().unwrap(),
+        serde_json::json!({"version_exit_code":0,"version_delay_ms":10000}),
+    );
+    let started = std::time::Instant::now();
+    assert!(
+        cloudflared_info(&fake.program, &paths)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("in time")
+    );
+    assert!(started.elapsed() < Duration::from_secs(8));
 }
 
 #[tokio::test]

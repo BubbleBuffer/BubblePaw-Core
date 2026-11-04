@@ -136,6 +136,9 @@ fn wrong(code: &str) -> String {
     format!("{first}{}", &code[1..])
 }
 
+#[path = "remote/provider_keys.rs"]
+mod provider_keys;
+
 #[tokio::test]
 async fn paired_device_lists_sessions_and_runs_a_turn() -> Result<()> {
     lists_sessions_and_runs_a_turn(fixture().await?).await
@@ -151,6 +154,9 @@ async fn direct_endpoint_pairs_and_runs_a_turn() -> Result<()> {
     assert!(fixture.server.local_port().is_some());
     lists_sessions_and_runs_a_turn(fixture).await
 }
+
+#[path = "remote/settings.rs"]
+mod settings;
 
 async fn lists_sessions_and_runs_a_turn(fixture: Fixture) -> Result<()> {
     let (connect, device) = fixture.pair("phone", Profile::Full).await?;

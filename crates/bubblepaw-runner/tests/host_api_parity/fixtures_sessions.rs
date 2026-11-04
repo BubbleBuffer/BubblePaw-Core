@@ -18,6 +18,12 @@ pub fn all() -> Vec<Fixture> {
                 open("list", "s"),
                 ok("session.list", json!({})).sessions(),
                 ok("session.list", json!({"limit": 1000})).sessions(),
+                ok(
+                    "session.list",
+                    json!({"query": "PARITY-$role-LIST", "limit": 1000}),
+                )
+                .sessions(),
+                ok("session.list", json!({"query": "no-matching-parity-title"})),
             ],
         ),
         fixture(

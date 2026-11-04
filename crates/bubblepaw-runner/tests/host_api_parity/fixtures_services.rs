@@ -32,6 +32,58 @@ pub fn all() -> Vec<Fixture> {
         fixture("config.reload", vec![ok("config.reload", json!({}))]),
         fixture("providers.list", vec![ok("providers.list", json!({}))]),
         fixture(
+            "providers.key.get",
+            vec![
+                ok("providers.save", key_provider()),
+                ok("providers.key.get", json!({"name":"parity-key"})),
+                ok("providers.remove", json!({"name":"parity-key"})),
+            ],
+        ),
+        fixture(
+            "providers.key.set",
+            vec![
+                ok("providers.save", key_provider()),
+                ok(
+                    "providers.key.set",
+                    json!({"name":"parity-key","value":"synthetic-parity-marker"}),
+                ),
+                ok("providers.key.get", json!({"name":"parity-key"})),
+                ok("providers.key.remove", json!({"name":"parity-key"})),
+                ok("providers.remove", json!({"name":"parity-key"})),
+            ],
+        ),
+        fixture(
+            "providers.key.remove",
+            vec![
+                ok("providers.save", key_provider()),
+                ok(
+                    "providers.key.set",
+                    json!({"name":"parity-key","value":"synthetic-parity-marker"}),
+                ),
+                ok("providers.key.remove", json!({"name":"parity-key"})),
+                ok("providers.key.get", json!({"name":"parity-key"})),
+                ok("providers.remove", json!({"name":"parity-key"})),
+            ],
+        ),
+        // Malformed no-argument requests prove adapter validation without
+        // touching the test machine's real Cloudflare login or PATH program.
+        fixture(
+            "remote.cloudflare.sign_out",
+            vec![any_err("remote.cloudflare.sign_out", json!(false))],
+        ),
+        fixture(
+            "remote.cloudflared.info",
+            vec![any_err("remote.cloudflared.info", json!(false))],
+        ),
+        fixture(
+            "remote.cloudflared.set",
+            vec![any_err("remote.cloudflared.set", json!(false)).local_only()],
+        ),
+        fixture(
+            "remote.share.state",
+            vec![ok("remote.share.state", json!({})).share_state()],
+        ),
+        fixture(
             "providers.save",
             vec![
                 ok("providers.save", scratch_provider("parity-$role")),
@@ -222,4 +274,11 @@ pub fn all() -> Vec<Fixture> {
             )],
         ),
     ]
+}
+
+fn key_provider() -> serde_json::Value {
+    json!({"name":"parity-key","input":{
+        "kind":"responses","base_url":"https://provider.example.invalid/v1",
+        "key_env":"SYNTHETIC_PARITY_KEY","models":[{"id":"first"}]
+    }})
 }

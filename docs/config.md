@@ -31,8 +31,19 @@ Later layers win:
 - `bubblepaw config` prints the effective merged config, naming the layer each
   value came from.
 
-Credentials never appear in the file. A provider names the environment variable
-that holds its key (`key_env`).
+Provider API keys never appear in the TOML file. A provider can name the
+environment variable that holds its key (`key_env`), or have a host-owned stored
+key written through `providers.key.set`. Stored keys take precedence; removing
+one with `providers.key.remove` falls back to `key_env`.
+
+Stored keys live at `<data_dir>/secrets/provider-<hex-encoded-provider-name>.key`.
+Names are validated before encoding; hex keeps differently cased provider names
+distinct on Windows. These are **plain-text files protected by file permissions**,
+like the Cloudflare token: atomic replacement, mode `0600` on Unix and inherited
+directory ACLs on Windows. They are not encrypted and do not use an OS keyring.
+`providers.key.get` returns only `is_set` and `source` (`stored`, `environment`,
+or `none`). Only `Full` callers may set or remove keys; `Read` and `Edit` cannot.
+See [host API](host-api.md) and [SDK](sdk.md) for the write and reload results.
 
 A host starts without a usable main provider (no key variable set, no readable
 Codex auth file, or an empty `base_url` on the selected route). Configure one with

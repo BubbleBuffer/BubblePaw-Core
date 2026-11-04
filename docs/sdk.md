@@ -23,6 +23,43 @@ development repo's `release` branch, `scripts/publish-public.sh --push` (run fro
 revision or tag, such as Scratch, then bump that pin. The 2026-10-25 todo SDK
 module and the redacted fatal error text reach consumers this way.
 
+## Desktop settings APIs (v0.13.0)
+
+These `Client` methods all call the host API, for embedded, attached and remote
+clients. They are also available with `default-features = false`:
+
+| SDK method | Host method / result |
+| --- | --- |
+| `Client::provider_key_status(name)` | `providers.key.get`; `provider_keys::ProviderKeyStatus` |
+| `Client::set_provider_key(name, value)` | `providers.key.set`; `provider_keys::ProviderKeyUpdate` |
+| `Client::remove_provider_key(name)` | `providers.key.remove`; `provider_keys::ProviderKeyUpdate` |
+| `Client::cloudflare_sign_out()` | `remote.cloudflare.sign_out`; `tunnel_settings::SignOutResult` |
+| `Client::cloudflared_info()` | `remote.cloudflared.info`; `tunnel_settings::CloudflaredResult` |
+| `Client::set_cloudflared(Some(path))` / `Client::set_cloudflared(None)` | `remote.cloudflared.set`; choose / clear (local only) |
+| `Client::share_state()` | `remote.share.state`; `tunnel_settings::ShareState` |
+| `Client::search_session_titles(query, limit, cursor)` | `session.list`; `sessions::SessionPage` |
+
+Provider-key reads expose only `is_set` and `ProviderKeySource::{Stored,
+Environment, None}`. Stored keys win over `key_env`; removal falls back to it.
+They live at `<data_dir>/secrets/provider-<hex-encoded-provider-name>.key` as
+plain text protected by file permissions, like the Cloudflare token (atomic
+writes, Unix `0600`, inherited Windows directory ACLs). No values enter config,
+responses, events or transcripts. Set/remove require `Full`; `Read` and `Edit`
+are refused. Updates report `applied` and `restart_needed`; configured hosts use
+the new key on their next request, while in-flight requests keep their generation.
+
+Cloudflare sign-out forgets only the browser certificate. Executable selection
+is validated with bounded `--version` execution and never copied; it takes effect
+when sharing restarts, and remote callers are refused even with `Full`.
+`ShareState.failure` supplies `exit_code` and the actual `retry_after_secs` beside
+`last_error` (wire `lastError`). Title search is a case-insensitive substring
+across the caller's projects, filtered before pagination, including archived
+chats under the same rules as ordinary listing. See [host API](host-api.md).
+Each title-search helper call first reads `initialize.features` and requires
+`session.list.title_search`; the helper returns `ClientError::Protocol` for older
+hosts instead of silently returning unrelated titles. The query, limit and
+cursor then go through `session.list` unchanged.
+
 ## Features
 
 - `host` (default): the embedded host. `Host`, `HostBuilder`, the embedded

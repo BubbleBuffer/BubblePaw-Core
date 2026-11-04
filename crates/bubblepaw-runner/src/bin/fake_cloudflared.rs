@@ -72,8 +72,16 @@ fn main() {
             return;
         }
         ["--version"] => {
-            if let Some(version) = config["version"].as_str() {
+            if let Some(ms) = config["version_delay_ms"].as_u64() {
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+            }
+            if let Some(text) = config["version_text"].as_str() {
+                println!("{text}");
+            } else if let Some(version) = config["version"].as_str() {
                 println!("cloudflared version {version} (built 2026-01-01T00:00:00Z)");
+            }
+            if let Some(code) = config["version_exit_code"].as_i64() {
+                std::process::exit(code as i32);
             }
             return;
         }

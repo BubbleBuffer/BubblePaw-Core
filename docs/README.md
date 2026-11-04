@@ -27,7 +27,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 ## Runtime and API
 
-- [host-api](host-api.md) — One method table, caller read scopes, profiles and stdio/HTTP/CLI/SDK adapters.
+- [host-api](host-api.md) — One method table, caller read scopes, profiles and stdio/HTTP/CLI/SDK adapters; v0.13.0 provider key writes, sharing settings and chat title search.
 - [remote](remote.md) — Device keys, encrypted Noise streams, explicit pairing, JSON peer stores and a multiplexed metadata-only WebSocket relay; built 2026-11-02: `bubblepaw remote serve | pair | devices`, the `[remote]` settings, profile-enforced host-API tunnels and the SDK remote client (`Client::connect_remote`, `serve_remote`). Also 2026-11-02: Cloudflare Tunnel reach (`remote.mode` relay | quick | domain, the host's own WebSocket endpoint, `remote tunnel install | login | token`), pairing and revoking while `remote serve` runs, the autostart rule, flow control, and the relay binary in releases. 2026-11-03: model traffic through a paired device (`providers.<name>.via`, `remote pair --egress`).
 - [host-context](host-context.md) — Built 2026-10-21: the host preparation hook and `ContextWriter`, where static, derived and live host context goes, and how frozen-tier edits and resolver changes are classified.
 - [host-attach](host-attach.md) — 2026-10-21 (protocol 4 with `attach.session` profiles, 2026-11-02): local run/delegate attachment to the central store's host, per-chat workspaces, request config and host lifetime; verification status and Windows smoke commands.

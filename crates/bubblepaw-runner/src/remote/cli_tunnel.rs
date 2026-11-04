@@ -163,7 +163,9 @@ pub(super) async fn pair_through_server(
             Event::Declined => bail!("pairing declined; nothing was stored"),
             Event::Expired => bail!("no device paired before the code expired"),
             Event::Error { message } => bail!("{message}"),
-            Event::Revoked { .. } => bail!("unexpected reply from `remote serve`"),
+            Event::Revoked { .. } | Event::State { .. } => {
+                bail!("unexpected reply from `remote serve`")
+            }
         }
     }
 }

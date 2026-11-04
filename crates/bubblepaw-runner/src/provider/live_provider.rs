@@ -22,6 +22,8 @@ use std::{
 
 #[path = "live_context.rs"]
 mod context_binding;
+#[path = "live_credentials.rs"]
+mod credentials;
 #[path = "default_route.rs"]
 mod default_route;
 use default_route::default_route;
@@ -141,7 +143,11 @@ impl LiveProviderConfig {
             .lock()
             .map_err(|_| anyhow::anyhow!("provider configuration update lock poisoned"))
     }
-    pub fn prepare(&self, effective: EffectiveConfig) -> Result<PreparedProviderConfig> {
+    fn prepare_inner(
+        &self,
+        effective: EffectiveConfig,
+        credentials_changed: bool,
+    ) -> Result<PreparedProviderConfig> {
         let candidate = effective.settings()?;
         // Validate disk settings even when the host keeps a nonlive startup field.
         candidate.validate_provider_setup()?;
@@ -186,6 +192,7 @@ impl LiveProviderConfig {
         // (such as saving a provider) that still leaves the main route open.
         if let Some(unavailable) = &unavailable
             && previous.unavailable.is_none()
+            && !credentials_changed
         {
             return Err(anyhow::Error::new(unavailable.clone()));
         }
@@ -229,15 +236,6 @@ impl LiveProviderConfig {
         self.hub.publish(&generation.settings);
         self.active.send_replace(generation.clone());
         generation
-    }
-    pub fn reload(&self) -> Result<Arc<ProviderGeneration>> {
-        let _update = self.lock_update()?;
-        let effective = self.startup.reload()?;
-        let candidate = self.prepare(effective)?;
-        Ok(self.apply_prepared(candidate))
-    }
-    pub fn main_model(&self) -> String {
-        self.snapshot().settings.main_model.clone()
     }
     pub fn load_options(&self) -> LoadOptions {
         self.startup.load_options()

@@ -223,7 +223,8 @@ async fn connection_request(
     let id = incoming.get("id").cloned().unwrap_or(Value::Null);
     if incoming["jsonrpc"] == "2.0" && incoming["method"] == "attach.session" {
         let profile = incoming["params"].get("profile").cloned();
-        return session_request(id, profile, reader, write, sessions, host_stop).await;
+        let remote = incoming["params"].get("remote").cloned();
+        return session_request(id, profile, remote, reader, write, sessions, host_stop).await;
     }
     let parsed = (|| -> Result<PreparedRequest> {
         ensure!(
