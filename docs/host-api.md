@@ -195,19 +195,35 @@ before pagination; the host-wide title scan does not require that step. Reading
 an archived result's workspace may temporarily decompress its archive without
 restoring the canonical chat file. No search index was added.
 
-Measured 2026-11-04 on linux01 with an unoptimized Rust test build: a synthetic
-10,000-row on-disk catalog, two real roots (one active, one archived), and 9,998
-unmatched roots whose files deliberately do not exist. The title scan uses
+Measured 2026-11-04 on linux01 with an unoptimized Rust test build: **10,000 real
+active root SQLite chat files**, created through the normal store API, with
+10,000 catalog rows. The verified root files total 3,358,720,000 bytes (3.36 GB).
+These are empty chats with saved titles, without message histories. Fixture
+creation (161.840 s), closing the initial store (21.977 s), and opening a fresh
+host (33.299 s) are excluded from query timings. Host startup opens the active
+root databases; its 33-second cost remains a preexisting scaling limitation.
+The first query follows startup and file verification, so it is not a cold-disk
+measurement.
+
+Each host-wide title query reads the central catalog through
 `SELECT data,last_activity FROM sessions` (`EXPLAIN QUERY PLAN`: `SCAN sessions`),
-then Rust lowercase substring matching; pending catalog metadata overlays remain
-visible. First matching page: 64.943 ms. Across 20 warm repetitions, matching
-page p50/p95: 72.010/72.835 ms; no-match p50/p95: 58.902/59.284 ms. Both matching
-pages were returned, and the archived canonical file remained absent. Success
-with the unmatched files absent verifies that the scan does not open those
-9,998 roots. This measures catalog scale and two result projections, not 10,000
-populated root databases, arbitrary result enrichment, or model/network latency.
-Reproduce with `cargo test -p bubblepaw-runner --lib
-title_search_10k_catalog_measurement -- --ignored --nocapture` on Linux.
+then performs Rust lowercase substring matching, with pending metadata overlays.
+Returned rows retain ordinary usage/runtime enrichment. First hit: **124.583 ms**;
+first miss: 58.115 ms. Across 20 warm repetitions, hit p50/p95:
+**114.920/125.898 ms**; miss p50/p95: 57.997/62.009 ms. Both matching pages were
+verified. The measured warm p95 under 126 ms does not justify a new title index;
+the separate host-startup cost is outside this change. These timings exclude
+SDK capability preflight, transport/model latency and populated-history result
+enrichment.
+
+The invocation raises only its own file-descriptor limit to 65,536: the ordinary
+SSH process limit of 1,024 cannot cover the host's cached connections to 10,000
+active roots. No system limit or configuration was changed. The fixture uses
+automatic temporary-directory cleanup. Reproduce on Linux:
+
+```sh
+(ulimit -n 65536 && CARGO_BUILD_JOBS=2 timeout 900 cargo test -p bubblepaw-runner --lib title_search_10k_catalog_measurement -- --ignored --nocapture)
+```
 
 ### Sharing settings (v0.13.0)
 

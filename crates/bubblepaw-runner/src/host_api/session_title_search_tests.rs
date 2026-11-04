@@ -146,37 +146,70 @@ async fn title_search_filters_before_creation_order_paging() -> Result<()> {
     Ok(())
 }
 
-/// Synthetic scale check: 10,000 catalog entries, with two real root records.
-/// The other 9,998 deliberately have no chat files. Success therefore also
-/// verifies that searching unmatched titles never opens their root records.
+/// Explicit IO-scale check using 10,000 actual root SQLite databases created
+/// through the normal store API. Run with a process file-descriptor limit of
+/// at least 65,536: the host caches active root connections during startup.
 #[tokio::test]
-#[ignore = "explicit 10k catalog title-search measurement"]
+#[ignore = "explicit 10k real-root title-search measurement; requires 65536 file descriptors"]
 async fn title_search_10k_catalog_measurement() -> Result<()> {
     use std::time::Instant;
     let root = tempfile::tempdir()?;
     let data = root.path().join("data");
+    let create_start = Instant::now();
     let store = Store::open_data_dir(&data)?;
-    let active = store.create_session_with_workspace("Needle active", root.path())?;
-    let archived = store.create_session_with_workspace("Needle archived", root.path())?;
-    let archived_path = store.chat_path(&archived.id)?.unwrap();
-    assert!(store.archive_chat(&archived.id)?);
-    let mut catalog = rusqlite::Connection::open(data.join("catalog.db"))?;
-    let tx = catalog.transaction()?;
-    for index in 0..9_998 {
-        let mut session = active.clone();
-        session.id = format!("synthetic-{index:05}");
-        session.title = format!("Other catalog title {index:05}");
-        tx.execute(
-            "INSERT INTO sessions(id,parent_id,root_id,title,last_activity,created_at,file,storage_state,data) VALUES(?1,NULL,?1,?2,?3,?3,?4,'active',?5)",
-            rusqlite::params![session.id, session.title, session.created_at, format!("chats/{}.db",session.id), serde_json::to_string(&session)?],
-        )?;
+    let first_match = store.create_session_with_workspace("Needle one", root.path())?;
+    let second_match = store.create_session_with_workspace("Needle two", root.path())?;
+    for index in 2..10_000 {
+        store.create_session_with_workspace(format!("Other chat title {index:05}"), root.path())?;
+        if (index + 1) % 1_000 == 0 {
+            println!(
+                "title_search_10k_setup: real_roots_created={} elapsed_seconds={:.3}",
+                index + 1,
+                create_start.elapsed().as_secs_f64()
+            );
+        }
     }
-    tx.commit()?;
+    let create_seconds = create_start.elapsed().as_secs_f64();
+    // Closing and reopening is fixture setup, excluded from every query timing.
+    // Opening the host scans active roots and may warm their filesystem pages.
+    let close_start = Instant::now();
+    drop(store);
+    let close_seconds = close_start.elapsed().as_secs_f64();
+    let open_start = Instant::now();
+    let store = Store::open_data_dir(&data)?;
+    let host_open_seconds = open_start.elapsed().as_secs_f64();
+    let catalog = rusqlite::Connection::open(data.join("catalog.db"))?;
     assert_eq!(
-        catalog.query_row("SELECT count(*) FROM sessions", [], |row| row
+        catalog.query_row("SELECT count(*) FROM sessions WHERE parent_id IS NULL AND root_id=id AND storage_state='active'", [], |row| row
             .get::<_, i64>(0))?,
         10_000
     );
+    let root_files = catalog
+        .prepare("SELECT file FROM sessions WHERE root_id=id")?
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    assert_eq!(root_files.len(), 10_000);
+    let mut root_sqlite_bytes = 0;
+    for file in root_files {
+        let path = data.join(file);
+        assert!(
+            path.is_file(),
+            "missing real root database {}",
+            path.display()
+        );
+        root_sqlite_bytes += std::fs::metadata(path)?.len();
+    }
+    let physical_root_sqlite_files = std::fs::read_dir(data.join("chats"))?
+        .collect::<std::io::Result<Vec<_>>>()?
+        .into_iter()
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "db")
+        })
+        .count();
+    assert_eq!(physical_root_sqlite_files, 10_000);
     let plan: String = catalog.query_row(
         "EXPLAIN QUERY PLAN SELECT data,last_activity FROM sessions",
         [],
@@ -189,6 +222,10 @@ async fn title_search_10k_catalog_measurement() -> Result<()> {
     let first = search(&ctx, json!({"query":"needle","limit":1})).await?;
     let first_ms = first_start.elapsed().as_secs_f64() * 1000.0;
     assert_eq!(first["sessions"].as_array().unwrap().len(), 1);
+    let first_miss_start = Instant::now();
+    let first_miss = search(&ctx, json!({"query":"absent","limit":100})).await?;
+    let first_miss_ms = first_miss_start.elapsed().as_secs_f64() * 1000.0;
+    assert_eq!(first_miss["sessions"], json!([]));
     let second = search(
         &ctx,
         json!({"query":"needle","limit":1,"cursor":first["next_cursor"]}),
@@ -197,6 +234,11 @@ async fn title_search_10k_catalog_measurement() -> Result<()> {
     assert_eq!(second["sessions"].as_array().unwrap().len(), 1);
     assert!(second["next_cursor"].is_null());
     assert_ne!(first["sessions"][0]["id"], second["sessions"][0]["id"]);
+    for session in [&first_match, &second_match] {
+        assert!(
+            first["sessions"][0]["id"] == session.id || second["sessions"][0]["id"] == session.id
+        );
+    }
     let mut hit_ms = Vec::new();
     let mut miss_ms = Vec::new();
     for _ in 0..20 {
@@ -211,13 +253,12 @@ async fn title_search_10k_catalog_measurement() -> Result<()> {
     hit_ms.sort_by(f64::total_cmp);
     miss_ms.sort_by(f64::total_cmp);
     println!(
-        "title_search_10k: catalog_rows=10000 real_root_records=2 missing_unmatched_root_records=9998 plan={plan:?} first_hit_ms={first_ms:.3} warm_repeats=20 hit_p50_ms={:.3} hit_p95_ms={:.3} miss_p50_ms={:.3} miss_p95_ms={:.3} scoped_catalog_lookups={}",
+        "title_search_10k: catalog_rows=10000 real_active_root_sqlite_files={physical_root_sqlite_files} root_sqlite_bytes={root_sqlite_bytes} setup_create_seconds={create_seconds:.3} setup_close_seconds={close_seconds:.3} host_open_seconds={host_open_seconds:.3} plan={plan:?} first_hit_ms={first_ms:.3} first_miss_ms={first_miss_ms:.3} warm_repeats=20 hit_p50_ms={:.3} hit_p95_ms={:.3} miss_p50_ms={:.3} miss_p95_ms={:.3} scoped_catalog_lookups={}",
         hit_ms[9],
         hit_ms[18],
         miss_ms[9],
         miss_ms[18],
         ctx.store.catalog_lookups() - lookups_before
     );
-    assert!(!archived_path.exists());
     Ok(())
 }
