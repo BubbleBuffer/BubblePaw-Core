@@ -32,16 +32,22 @@ reasoning = {}
         cli: vec![],
     })
     .unwrap();
-    let settings = config.settings().unwrap();
+    let mut settings = config.settings().unwrap();
+    settings.storage.data_dir = root.path().join("data");
+    let remote: ProviderSettings =
+        toml::from_str("kind='chat-completions'\nbase_url='https://example.com/v1'").unwrap();
+    remote.validate("remote").unwrap();
+    settings.providers.insert("remote".into(), remote);
     settings.validate_provider_setup().unwrap();
     assert!(settings.providers["llama"].key_env.is_none());
     let mut registry = ProviderRegistry::new("demo", Arc::new(ScriptedProvider::demo(false)));
-    settings.register_providers(&mut registry).unwrap();
+    settings
+        .register_providers_with_env(&mut registry, &|_| None)
+        .unwrap();
     assert!(registry.get("llama").is_some());
-
-    let remote: ProviderSettings =
-        toml::from_str("kind='chat-completions'\nbase_url='https://example.com/v1'").unwrap();
-    assert!(remote.validate("remote").is_err());
+    // HTTPS configuration may precede its stored key, but must never opt into
+    // the unauthenticated transport reserved for loopback servers.
+    assert!(registry.get("remote").is_none());
 }
 
 #[tokio::test]

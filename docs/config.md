@@ -301,10 +301,12 @@ base_url = "http://127.0.0.1:8080/v1"
 reasoning = {}
 ```
 
-Omit `key_env` for a server without authentication; the adapter sends no
-Authorization header. Keyless configuration is accepted only for loopback chat
-endpoints. When the server requires a key, set `key_env` to its environment
-variable as for other chat providers. The model suffix must match the server's
+With neither a stored key nor `key_env`, only loopback chat endpoints use the
+adapter without an Authorization header. HTTPS providers may be configured before
+their key, but their route remains unavailable until a credential is supplied.
+For authenticated servers, store a key with `providers.key.set` or set `key_env`
+to its environment variable. `key_env` is optional when a stored key is used.
+The model suffix must match the server's
 alias. No new provider kind or model-facing tool is involved. Scripted config
 and local HTTP fixture tests cover this path; no live llama-server run is claimed.
 
