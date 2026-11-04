@@ -88,36 +88,21 @@ async fn executable_validation_rejects_missing_non_program_non_cloudflared_and_t
         fake.program.parent().unwrap(),
         serde_json::json!({"version_text":"another program version 2026.9.0"}),
     );
-    assert!(
-        cloudflared_info(&fake.program, &paths)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("identify")
-    );
+    let error = cloudflared_info(&fake.program, &paths).await.unwrap_err();
+    assert!(error.to_string().contains("identify"), "{error:#}");
     script(
         fake.program.parent().unwrap(),
         serde_json::json!({"version_text":"cloudflared version 2026.9.0", "version_exit_code":2}),
     );
-    assert!(
-        cloudflared_info(&fake.program, &paths)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("failed")
-    );
+    let error = cloudflared_info(&fake.program, &paths).await.unwrap_err();
+    assert!(error.to_string().contains("failed"), "{error:#}");
     script(
         fake.program.parent().unwrap(),
         serde_json::json!({"version_exit_code":0,"version_delay_ms":10000}),
     );
     let started = std::time::Instant::now();
-    assert!(
-        cloudflared_info(&fake.program, &paths)
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("in time")
-    );
+    let error = cloudflared_info(&fake.program, &paths).await.unwrap_err();
+    assert!(error.to_string().contains("in time"), "{error:#}");
     assert!(started.elapsed() < Duration::from_secs(8));
 }
 
