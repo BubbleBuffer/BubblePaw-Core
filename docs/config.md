@@ -15,10 +15,12 @@ Later layers win:
 4. Environment variables.
 5. CLI arguments.
 
-Workspace files cannot choose `remote.cloudflared`: that key is ignored with a
-warning before merging. The user's own config, an explicitly selected config
-file, environment/CLI overrides and the local executable setter retain that
-ability. The other existing remote keys (`enabled`, `mode`, `relay`, `port`,
+Workspace files cannot choose `remote.cloudflared` or `storage.data_dir`: both
+keys are ignored with warnings before merging, without echoing their values.
+The user's own config, an explicitly selected config file and environment/CLI
+overrides remain trusted; the local executable setter remains available.
+This also keeps managed executable discovery and stored provider keys out of a
+repository-selected data directory. The other remote keys (`enabled`, `mode`, `relay`, `port`,
 `hostname`) retain their workspace-layer behavior; they affect sharing and its
 address, not the executable path. There is no remote certificate/data-path key.
 
@@ -765,8 +767,9 @@ Use `--set agents.worker_keep_all=true`,
 
 `--data-dir <directory>` is an alias for `storage.data_dir`. The directory holds
 `catalog.db`, disposable `serving.db`, and `chats/<root-session-id>.db`. A root
-chat and every child it creates share one chat file. A file-defined `data_dir`
-resolves relative to its config file; env and CLI paths resolve
+chat and every child it creates share one chat file. A `data_dir` defined in a
+user or explicitly selected config file resolves relative to that file;
+workspace `.bubblepaw/config.toml` values are ignored with a warning. Env and CLI paths resolve
 relative to the invocation directory. An empty `data_dir` selects the central
 store `<local data home>/BubblePaw-Core/store`, where the local data home is
 `LOCALAPPDATA`, then `XDG_DATA_HOME`, then `HOME/.local/share` (`HOME/Library/Application Support` on macOS). Every workspace

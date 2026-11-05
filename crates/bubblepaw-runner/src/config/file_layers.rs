@@ -26,7 +26,7 @@ impl EffectiveConfig {
         let mut value: Value = toml::from_str(&text)
             .map_err(|_| anyhow::anyhow!("invalid TOML in {layer} config {}", path.display()))?;
         if layer == "project" {
-            ignore_workspace_executable(&mut value);
+            ignore_workspace_host_paths(&mut value);
         }
         let source = format!("{layer}: {}", path.display());
         self.apply(
@@ -41,13 +41,22 @@ impl EffectiveConfig {
     }
 }
 
-fn ignore_workspace_executable(value: &mut Value) {
-    let Some(remote) = value.get_mut("remote").and_then(Value::as_table_mut) else {
-        return;
-    };
-    if remote.remove("cloudflared").is_some() {
+fn ignore_workspace_host_paths(value: &mut Value) {
+    if remove_setting(value, "remote", "cloudflared") {
         tracing::warn!(
             "Ignoring remote.cloudflared in workspace .bubblepaw/config.toml; executable selection requires user configuration, BUBBLEPAW_CONFIG/--config, or the local remote.cloudflared.set method"
         );
     }
+    if remove_setting(value, "storage", "data_dir") {
+        tracing::warn!(
+            "Ignoring storage.data_dir in workspace .bubblepaw/config.toml; host data directory selection requires user configuration, BUBBLEPAW_CONFIG/--config, or --data-dir"
+        );
+    }
+}
+
+fn remove_setting(value: &mut Value, section: &str, key: &str) -> bool {
+    value
+        .get_mut(section)
+        .and_then(Value::as_table_mut)
+        .is_some_and(|table| table.remove(key).is_some())
 }

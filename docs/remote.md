@@ -578,9 +578,11 @@ The forwarding server requires an explicit `remote: true` acknowledgment from
 the local host before it forwards requests; an older host must be restarted
 with the new binary so it cannot silently ignore the restriction.
 
-Workspace `.bubblepaw/config.toml` cannot select `remote.cloudflared`: the loader
-ignores that key with a warning. User configuration and explicitly selected
-configuration files remain trusted. Before tunnel setup or launch, the host uses
+Workspace `.bubblepaw/config.toml` cannot select `remote.cloudflared` or
+`storage.data_dir`: the loader ignores both with value-redacted warnings. This
+prevents a repository from redirecting managed executable discovery or stored
+provider keys through the data directory. User configuration and explicitly
+selected configuration files remain trusted. Before tunnel setup or launch, the host uses
 the same bounded version validation as the setter; rejected programs produce a
 sharing failure naming the reason. Validation results are reused only for matching
 executable contents and permissions. Remote info reads never execute a program:

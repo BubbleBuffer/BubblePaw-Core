@@ -243,8 +243,10 @@ automatic temporary-directory cleanup. Reproduce on Linux:
   Restart sharing to run the newly selected executable. Remote devices, including
   `Full`, are refused with `-32003`, through both direct and attached sessions;
   `config.set` cannot bypass the restriction.
-  Workspace `.bubblepaw/config.toml` cannot choose `remote.cloudflared`; its
-  value is ignored with a warning. Before tunnel setup or launch, sharing uses
+  Workspace `.bubblepaw/config.toml` cannot choose `remote.cloudflared` or
+  `storage.data_dir`; both values are ignored with warnings, also preventing
+  indirect redirection of managed binaries and stored provider keys.
+  Before tunnel setup or launch, sharing uses
   the same validation, reusing results for matching executable contents and
   permissions. A rejection appears in sharing failure state with its reason.
 - `remote.share.state {}` (`Read`) returns `status`, `address`, `lastError` and

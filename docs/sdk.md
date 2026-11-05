@@ -56,7 +56,8 @@ never start a process and return `{info: null, checked: false}` until this host
 has validated the current executable. Local info reads validate it. Successful
 and failed checks are cached for unchanged executable contents and permissions;
 sharing validates before any tunnel setup or launch and reports failures through
-`ShareState`. Workspace configuration cannot select `remote.cloudflared`.
+`ShareState`. Workspace configuration cannot select `remote.cloudflared` or
+`storage.data_dir`, protecting managed executable discovery and stored keys.
 `ShareState.failure` supplies `exit_code` and the actual `retry_after_secs` beside
 `last_error` (wire `lastError`). Title search is a case-insensitive substring
 across the caller's projects, filtered before pagination, including archived
