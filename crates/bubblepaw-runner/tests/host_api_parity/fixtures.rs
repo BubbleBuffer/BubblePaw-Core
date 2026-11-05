@@ -21,6 +21,8 @@ pub struct Step {
     pub view: View,
     /// Substrings the raw reply must contain (e.g. user text that must survive).
     pub contains: Vec<&'static str>,
+    /// This method deliberately refuses every remote profile.
+    pub local_only: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -49,6 +51,8 @@ pub enum View {
     Sessions,
     /// Structure only, for store-wide counters.
     Shape,
+    /// Sharing may be active only for the remote phase; compare healthy detail.
+    ShareState,
 }
 
 pub fn fixture(method: &'static str, steps: Vec<Step>) -> Fixture {
@@ -64,6 +68,7 @@ pub fn ok(method: &'static str, params: Value) -> Step {
         settle: Settle::None,
         view: View::Full,
         contains: Vec::new(),
+        local_only: false,
     }
 }
 
@@ -82,6 +87,14 @@ pub fn any_err(method: &'static str, params: Value) -> Step {
 }
 
 impl Step {
+    pub fn local_only(mut self) -> Self {
+        self.local_only = true;
+        self
+    }
+    pub fn share_state(mut self) -> Self {
+        self.view = View::ShareState;
+        self
+    }
     pub fn bind(mut self, name: &'static str, pointer: &'static str) -> Self {
         self.bind = Some((name, pointer));
         self

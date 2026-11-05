@@ -30,7 +30,11 @@ mod cloudflare_status;
 #[cfg(feature = "host")]
 mod cloudflared;
 #[cfg(feature = "host")]
+mod cloudflared_validation;
+#[cfg(feature = "host")]
 mod control;
+#[cfg(feature = "host")]
+pub(crate) use control::share_state as running_share_state;
 mod device_key;
 #[cfg(feature = "host")]
 mod domain;
@@ -49,14 +53,16 @@ mod serve_lock;
 mod server;
 #[cfg(feature = "host")]
 mod server_options;
+mod share_state;
 
 pub use bubblepaw_remote::relay::Limits;
 pub use client::{PairedHostInfo, PendingPairing, RemoteConnect, RemoteError, RemotePair};
 #[cfg(feature = "host")]
 pub use cloudflare_status::{
     CloudflareAccount, CloudflareLogin, CloudflareZone, CloudflaredInfo, TokenSource, TunnelLogin,
-    cloudflare_account, cloudflare_login_state, cloudflared_info, forget_cloudflare_token,
-    store_cloudflare_token, tunnel_login, update_cloudflared,
+    cached_cloudflared_info, cloudflare_account, cloudflare_login_state, cloudflared_info,
+    forget_cloudflare_login, forget_cloudflare_token, store_cloudflare_token, tunnel_login,
+    update_cloudflared,
 };
 pub use device_key::{
     DeviceKeyChange, DeviceKeyInfo, DeviceKeyPaths, device_key_info, export_device_key,
@@ -70,7 +76,10 @@ pub use offer::{PairingOffer, PairingRequest};
 pub use reach::{CloudflareApi, CloudflareTunnel, RemoteReach, TunnelMode};
 pub use serve_lock::{ProcessKind, ServeStatus, serve_status};
 #[cfg(feature = "host")]
-pub use server::{RemoteServeOptions, RemoteServer, RemoteStatus, SessionBackend};
+pub use server::{RemoteServeOptions, RemoteServer, SessionBackend};
+#[cfg(feature = "host")]
+pub use share_state::ShareStateHandle;
+pub use share_state::{RemoteStatus, ShareFailure, ShareState};
 
 pub use client::{connect, pair};
 #[cfg(feature = "host")]

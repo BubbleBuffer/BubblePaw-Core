@@ -88,6 +88,7 @@ where
     let mut ctx = ctx.clone();
     ctx.read_scope = ReadScope::Host;
     ctx.known_workspaces_only = true;
+    ctx.remote_caller = true;
     let (input, incoming) = mpsc::channel::<Incoming>(16);
     let (output, mut replies) = mpsc::channel::<Value>(128);
     let (queue, queued) = mpsc::channel::<Vec<u8>>(16);
@@ -158,8 +159,7 @@ where
         .context("the host for this data directory is not reachable")?;
     let (read, mut write) = tokio::io::split(connection);
     let mut lines = BufReader::new(read);
-    let open =
-        json!({"jsonrpc":"2.0","id":0,"method":"attach.session","params":{"profile":profile}});
+    let open = json!({"jsonrpc":"2.0","id":0,"method":"attach.session","params":{"profile":profile,"remote":true}});
     let mut frame = serde_json::to_vec(&open)?;
     frame.push(b'\n');
     write.write_all(&frame).await?;
@@ -168,15 +168,7 @@ where
         .await?
         .context("the host closed before the session opened")?;
     let opened: Value = serde_json::from_slice(&opened).context("unreadable session reply")?;
-    if let Some(error) = opened.get("error") {
-        bail!("the host refused the session: {}", error["message"]);
-    }
-    if opened["result"]["protocol_version"] != HOST_PROTOCOL_VERSION {
-        bail!(
-            "the host speaks protocol version {}, this one {HOST_PROTOCOL_VERSION}; restart the older one",
-            opened["result"]["protocol_version"]
-        );
-    }
+    require_remote_attach(&opened)?;
     let (queue, queued) = mpsc::channel::<Vec<u8>>(16);
     let write_task = tokio::spawn(write_loop(writer, queued, stop.clone()));
     let to_host = tokio::spawn(async move {
@@ -222,6 +214,25 @@ where
         .is_err()
     {
         stop.cancel();
+    }
+    Ok(())
+}
+
+#[cfg(feature = "host")]
+fn require_remote_attach(opened: &Value) -> Result<()> {
+    if let Some(error) = opened.get("error") {
+        bail!("the host refused the session: {}", error["message"]);
+    }
+    if opened["result"]["protocol_version"] != HOST_PROTOCOL_VERSION {
+        bail!(
+            "the host speaks protocol version {}, this one {HOST_PROTOCOL_VERSION}; restart the older one",
+            opened["result"]["protocol_version"]
+        );
+    }
+    if opened["result"]["remote"] != true {
+        bail!(
+            "the host did not acknowledge remote caller restrictions; restart the older host before sharing it remotely"
+        );
     }
     Ok(())
 }
@@ -274,4 +285,34 @@ where
         });
         vec![encode, write, read]
     })
+}
+
+#[cfg(all(test, feature = "host"))]
+mod attach_tests {
+    use super::*;
+
+    #[test]
+    fn an_older_host_must_acknowledge_remote_restrictions_before_frames_are_forwarded() {
+        let legacy = json!({"result":{"protocol_version":HOST_PROTOCOL_VERSION}});
+        assert!(
+            require_remote_attach(&legacy)
+                .unwrap_err()
+                .to_string()
+                .contains("restart")
+        );
+        for remote in [json!(false), json!(null), json!("true")] {
+            assert!(
+                require_remote_attach(
+                    &json!({"result":{"protocol_version":HOST_PROTOCOL_VERSION,"remote":remote}})
+                )
+                .is_err()
+            );
+        }
+        assert!(
+            require_remote_attach(
+                &json!({"result":{"protocol_version":HOST_PROTOCOL_VERSION,"remote":true}})
+            )
+            .is_ok()
+        );
+    }
 }

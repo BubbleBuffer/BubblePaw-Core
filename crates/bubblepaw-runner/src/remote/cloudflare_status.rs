@@ -7,6 +7,7 @@
 use super::RemotePaths;
 use super::cloudflare_api::{ApiClient, ZoneInfo};
 use super::cloudflared::program_name;
+use super::cloudflared_validation::numbers;
 use super::domain::{TOKEN_ENV, TOKEN_FILE};
 use super::install::{self, CLOUDFLARED_VERSION, InstallSource};
 use super::keys::write_private;
@@ -24,8 +25,6 @@ use zeroize::Zeroizing;
 
 /// How long `cloudflared tunnel login` may take to print its URL.
 const URL_WAIT: Duration = Duration::from_secs(30);
-/// How long `cloudflared --version` may take.
-const VERSION_WAIT: Duration = Duration::from_secs(10);
 /// A certificate larger than this is not one.
 const MAX_CERT: u64 = 64 * 1024;
 /// The environment variable `cloudflared` reads for its certificate path.
@@ -108,6 +107,19 @@ pub fn forget_cloudflare_token(paths: &RemotePaths) -> Result<bool> {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
         Err(error) => Err(error).context("could not remove the stored API token"),
+    }
+}
+
+/// Forget only the browser sign-in certificate. Tunnel credentials, DNS,
+/// named-tunnel state and API tokens remain available.
+pub fn forget_cloudflare_login(cert: Option<&Path>) -> Result<bool> {
+    let Some(path) = cert_path(cert) else {
+        return Ok(false);
+    };
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).context("could not remove the Cloudflare login certificate"),
     }
 }
 
@@ -347,53 +359,48 @@ pub struct CloudflaredInfo {
     /// The copy lives in this data directory's `bin/`, installed by BubblePaw
     /// (only that copy can be updated through [`update_cloudflared`]).
     pub managed: bool,
+    /// Explicitly selected by the host user, rather than found by default.
+    pub chosen: bool,
 }
 
-fn numbers(version: &str) -> Vec<u64> {
-    version
-        .split('.')
-        .map_while(|part| part.parse().ok())
-        .collect()
-}
-
-/// The version `cloudflared --version` prints: "cloudflared version X (built …)".
-fn parse_version(output: &str) -> Option<String> {
-    let rest = output.split("version").nth(1)?;
-    let version = rest.split_whitespace().next()?;
-    let valid = version.chars().all(|c| c.is_ascii_digit() || c == '.')
-        && version.chars().next().is_some_and(|c| c.is_ascii_digit());
-    valid.then(|| version.to_owned())
-}
-
-/// Version information for the `cloudflared` at `program`.
+/// Validate locally, reusing the result while the executable fingerprint is unchanged.
 pub async fn cloudflared_info(program: &Path, paths: &RemotePaths) -> Result<CloudflaredInfo> {
-    let output = tokio::time::timeout(
-        VERSION_WAIT,
-        Command::new(program)
-            .arg("--version")
-            .stdin(Stdio::null())
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .map_err(|_| anyhow::anyhow!("cloudflared --version did not answer in time"))?
-    .with_context(|| format!("could not run {}", program.display()))?;
-    let text = format!(
-        "{}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let version = parse_version(&text);
+    let version = super::cloudflared_validation::version(program).await?;
+    Ok(info(program, paths, version))
+}
+
+/// Read a matching validation result without starting any process.
+pub fn cached_cloudflared_info(
+    program: &Path,
+    paths: &RemotePaths,
+) -> Result<Option<CloudflaredInfo>> {
+    Ok(super::cloudflared_validation::cached_version(program)?
+        .map(|version| info(program, paths, version)))
+}
+
+fn info(program: &Path, paths: &RemotePaths, version: String) -> CloudflaredInfo {
+    let version = Some(version);
     let update_available = version
         .as_deref()
         .is_some_and(|version| numbers(version) < numbers(CLOUDFLARED_VERSION));
-    Ok(CloudflaredInfo {
+    CloudflaredInfo {
         path: program.to_owned(),
         version,
         pinned: CLOUDFLARED_VERSION.to_owned(),
         update_available,
-        managed: program.starts_with(paths.cloudflare_bin()),
-    })
+        managed: program
+            .canonicalize()
+            .ok()
+            .zip(
+                paths
+                    .cloudflare_bin()
+                    .join(program_name())
+                    .canonicalize()
+                    .ok(),
+            )
+            .is_some_and(|(program, managed)| program == managed),
+        chosen: false,
+    }
 }
 
 /// Install (or update to) the pinned `cloudflared` in this data directory's
@@ -407,21 +414,4 @@ pub async fn update_cloudflared(
     let installed = install::install(&paths.cloudflare_bin(), source).await?;
     debug_assert!(installed.ends_with(program_name()));
     cloudflared_info(&installed, paths).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn versions_parse_and_compare_numerically() {
-        assert_eq!(
-            parse_version("cloudflared version 2026.9.0 (built 2026-09-01T00:00:00Z)"),
-            Some("2026.9.0".to_owned())
-        );
-        assert_eq!(parse_version("nonsense"), None);
-        assert!(numbers("2026.9.0") < numbers("2026.10.1"));
-        assert!(numbers("2026.10.1") >= numbers("2026.10.1"));
-        assert!(numbers("2027.1.0") > numbers("2026.10.1"));
-    }
 }

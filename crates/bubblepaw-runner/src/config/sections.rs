@@ -438,16 +438,7 @@ impl ProviderSettings {
             "providers.{name}.reasoning is not configurable for anthropic-messages; set roles.<role>.reasoning_effort"
         );
         if !matches!(kind, "codex" | "scripted") {
-            ensure!(
-                self.base_url.is_some()
-                    && (self.key_env.is_some()
-                        || (kind == "chat-completions"
-                            && self
-                                .base_url
-                                .as_deref()
-                                .is_some_and(crate::provider::is_loopback_url))),
-                "providers.{name} needs base_url and key_env"
-            );
+            ensure!(self.base_url.is_some(), "providers.{name} needs base_url");
         }
         Ok(())
     }

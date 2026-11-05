@@ -10,7 +10,8 @@
 //!
 //! Everything reachable through the named modules ([`store`], [`harness`],
 //! [`events`], [`approvals`], [`tools`], [`providers`], [`context`],
-//! [`todo`], [`questions`], [`net`], [`web`], [`claude_code`]), plus [`Host`], [`HostBuilder`]
+//! [`todo`], [`questions`], [`net`], [`web`], [`claude_code`], [`provider_keys`],
+//! [`sessions`], [`tunnel_settings`]), plus [`Host`], [`HostBuilder`]
 //! and [`Client`] with [`ClientError`] and [`Notifications`] (and, from
 //! 0.5.0, [`HostConfig`] with [`ConfigOptions`] and [`ConfigError`]),
 //! follows semantic versioning from 0.2.0: those paths keep working within a
@@ -56,17 +57,20 @@ pub mod harness;
 mod host;
 #[cfg(feature = "host")]
 pub mod net;
+pub mod provider_keys;
 #[cfg(feature = "host")]
 pub mod providers;
 #[cfg(feature = "host")]
 pub mod questions;
 pub mod remote;
+pub mod sessions;
 #[cfg(feature = "host")]
 pub mod store;
 #[cfg(feature = "host")]
 pub mod todo;
 #[cfg(feature = "host")]
 pub mod tools;
+pub mod tunnel_settings;
 #[cfg(feature = "web")]
 pub mod web;
 

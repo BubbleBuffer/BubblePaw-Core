@@ -136,7 +136,24 @@ impl ProviderSetup {
             doc.set_trailing(trailing);
         }
         let candidate = self.0.candidate(&doc)?;
-        self.0.write_apply(&doc, candidate)
+        let data_dir = self
+            .0
+            .live
+            .as_ref()
+            .map(|live| live.snapshot().settings.storage.data_dir.clone())
+            .unwrap_or(candidate.settings().map_err(|_| bad())?.storage.data_dir);
+        let previous = crate::provider_keys::read(&data_dir, name).map_err(|_| io_error())?;
+        crate::provider_keys::remove(&data_dir, name).map_err(|_| io_error())?;
+        match self.0.write_apply(&doc, candidate) {
+            Ok(reply) => Ok(reply),
+            Err(error) => {
+                if let Some(previous) = previous {
+                    crate::provider_keys::write(&data_dir, name, &previous)
+                        .map_err(|_| io_error())?;
+                }
+                Err(error)
+            }
+        }
     }
     async fn reload_inner(&self) -> ApiResult<Value> {
         if let Some(host) = &self.0.host_config {

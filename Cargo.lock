@@ -488,6 +488,7 @@ dependencies = [
  "bubblepaw-core",
  "bubblepaw-remote",
  "bubblepaw-runner",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

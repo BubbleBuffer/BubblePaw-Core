@@ -24,6 +24,7 @@ const CONNECT_WAIT: Duration = Duration::from_secs(2);
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "lowercase")]
 pub(super) enum Request {
+    State,
     Pair {
         profile: ProfileArg,
         /// Also grant the device model-traffic forwarding through this host.
@@ -40,6 +41,9 @@ pub(super) enum Request {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "lowercase")]
 pub(super) enum Event {
+    State {
+        state: super::ShareState,
+    },
     /// The offer to show: the QR payload, its code and its lifetime in seconds.
     Offer {
         payload: String,
@@ -101,6 +105,13 @@ async fn client(inner: Arc<Inner>, connection: Connection) -> Result<()> {
     let mut channel = Channel::new(connection);
     let request = channel.read::<Request>().await?.context("no request")?;
     match request {
+        Request::State => {
+            channel
+                .write(&Event::State {
+                    state: inner.share_state(),
+                })
+                .await
+        }
         Request::Pair { profile, egress } => pair(&inner, &mut channel, profile, egress).await,
         Request::Revoke { id } => {
             let event = match inner.revoke(&id).await {
@@ -117,6 +128,21 @@ async fn client(inner: Arc<Inner>, connection: Connection) -> Result<()> {
                 .await
         }
     }
+}
+
+pub(crate) async fn share_state(paths: &super::RemotePaths) -> Result<Option<super::ShareState>> {
+    let Some(mut channel) = Channel::connect(&paths.control).await? else {
+        return Ok(None);
+    };
+    tokio::time::timeout(CONNECT_WAIT, async {
+        channel.write(&Request::State).await?;
+        match channel.read::<Event>().await? {
+            Some(Event::State { state }) => Ok(Some(state)),
+            _ => bail!("unexpected remote share state reply"),
+        }
+    })
+    .await
+    .context("remote share state timed out")?
 }
 
 fn error_event(error: anyhow::Error) -> Event {

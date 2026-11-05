@@ -50,6 +50,9 @@ pub fn initialize(ctx: &HostCtx, _input: EmptyParams) -> InitializeResult {
             features.push(method.name);
         }
     }
+    // An older session.list silently ignores query, so clients must be able to
+    // distinguish actual title filtering from ordinary paged listing.
+    features.push("session.list.title_search");
     InitializeResult {
         protocol_version: "0.1".into(),
         features: features.into_iter().map(str::to_owned).collect(),
@@ -148,6 +151,29 @@ fn settings_list(ctx: &HostCtx, key: Option<&str>) -> Result<Option<Value>, Host
     )))
 }
 pub async fn set(ctx: &HostCtx, input: ConfigSetParams) -> Result<Value, HostError> {
+    if input.key == "remote" || input.key == "remote.cloudflared" {
+        if ctx.remote_caller {
+            return Err(HostError::denied(
+                "config.set remote.cloudflared (local callers only)",
+            ));
+        }
+        if input.key == "remote.cloudflared" && !input.value.is_null() {
+            let path =
+                PathBuf::from(input.value.as_str().ok_or_else(|| {
+                    HostError::invalid("remote.cloudflared must be a path or null")
+                })?);
+            let paths = ctx
+                .store
+                .data_dir()
+                .map(crate::remote::RemotePaths::in_data_dir)
+                .ok_or_else(|| {
+                    HostError::unavailable("Remote settings need a persistent data directory")
+                })?;
+            crate::remote::cloudflared_info(&path, &paths)
+                .await
+                .map_err(|error| HostError::invalid(error.to_string()))?;
+        }
+    }
     let setup = ctx
         .providers
         .as_ref()

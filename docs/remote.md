@@ -557,6 +557,57 @@ registration). No Desktop UI exists for it yet. Tests
 loopback, an in-process relay and a forwarding host with a test dial; no network.
 Live model acceptance has not run for this change.
 
+## Host settings APIs (v0.13.0)
+
+Desktop can call `remote.cloudflare.sign_out`, `remote.cloudflared.info`,
+`remote.cloudflared.set` and `remote.share.state` through the same host API
+locally and remotely; the executable setter is explicitly local-only.
+The [SDK settings methods](sdk.md#desktop-settings-apis-v0130) also work on a
+host-less remote client.
+
+`Client::cloudflare_sign_out()` removes only the resolved `cert.pem` and reports
+`changed`. The token, named tunnel credentials and other tunnel state remain.
+The existing `remote::forget_cloudflare_token` remains independent.
+`Client::set_cloudflared(Some(path))` validates `--version` under a short timeout,
+stores the selection in `remote.cloudflared` and does not move or copy the file;
+`None` clears it. Info reports `chosen` and `managed`. Restart sharing for a
+changed selection to run. Every remote profile is refused, including when the
+remote server forwards calls through a locally attached host, and generic
+`config.set` cannot bypass this boundary.
+The forwarding server requires an explicit `remote: true` acknowledgment from
+the local host before it forwards requests; an older host must be restarted
+with the new binary so it cannot silently ignore the restriction.
+
+Workspace `.bubblepaw/config.toml` cannot select `remote.cloudflared` or
+`storage.data_dir`: the loader ignores both with value-redacted warnings. This
+prevents a repository from redirecting managed executable discovery or stored
+provider keys through the data directory. User configuration and explicitly
+selected configuration files remain trusted. Before tunnel setup or launch, the host uses
+the same bounded version validation as the setter; rejected programs produce a
+sharing failure naming the reason. Validation results are reused only for matching
+executable contents and permissions. Remote info reads never execute a program:
+they return cached information with `checked: true`, or `info: null` and
+`checked: false` if this host has not checked the current file. Local info reads
+retain validation behavior.
+
+These RPC restrictions are not an agent-tool sandbox. Both `Edit` and `Full`
+may start runs using the host's enabled tools. File tools enforce their workspace
+and scratch roots, but can edit user/custom configuration inside those roots;
+enabled `exec` can reach files outside them under the host account's OS rights.
+Host read-only settings and deny rules still apply. This preexisting tool-policy
+boundary is unchanged by the settings APIs.
+
+`Client::share_state()` reads embedded or separately running sharing state.
+Beside `lastError`, `failure` provides the transport, optional child exit code
+and actual scheduled retry delay in seconds. Both Cloudflare and relay retries
+use the existing exponential backoff (1 to 60 seconds); clients must display
+the returned delay, not assume a constant 30 seconds. A recovered connection
+clears its failure detail.
+
+Provider key changes require `Full`; `Read` and `Edit` may read source/presence
+but cannot set or remove keys. Stored keys are host-owned plaintext files with
+the same permission policy as the Cloudflare token; see [configuration](config.md).
+
 ## Threat notes and verification
 
 The relay sees metadata only: device IDs/public keys, who talks to whom and when,

@@ -17,9 +17,9 @@ pub use bubblepaw_runner::remote::{
     CloudflareTunnel, CloudflareZone, CloudflaredInfo, InstallSource, PairedDevice, PairingOffer,
     PairingRequest, RemoteReach, RemoteServeOptions, RemoteServer, RemoteStatus, SessionBackend,
     TokenSource, TunnelLogin, TunnelMode, check_hostname, cloudflare_account,
-    cloudflare_login_state, cloudflared_info, find_cloudflared, forget_cloudflare_token,
-    install::install as install_cloudflared, list_devices, revoke_device, store_cloudflare_token,
-    tunnel_login, update_cloudflared,
+    cloudflare_login_state, cloudflared_info, find_cloudflared, forget_cloudflare_login,
+    forget_cloudflare_token, install::install as install_cloudflared, list_devices, revoke_device,
+    store_cloudflare_token, tunnel_login, update_cloudflared,
 };
 pub use bubblepaw_runner::remote::{
     DeviceKeyChange, DeviceKeyInfo, DeviceKeyPaths, DeviceKind, HostPresence, Limits,

@@ -16,6 +16,15 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc;
 
+#[derive(Debug)]
+struct Exited(std::process::ExitStatus);
+impl std::fmt::Display for Exited {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "cloudflared exited ({})", self.0)
+    }
+}
+impl std::error::Error for Exited {}
+
 /// How long `cloudflared` may take to publish the endpoint.
 const PUBLISH_WAIT: Duration = Duration::from_secs(90);
 /// A run that lasted this long resets the restart backoff.
@@ -96,14 +105,24 @@ pub(super) async fn supervise(inner: Arc<Inner>, tunnel: CloudflareTunnel, port:
             // The next start gets a new address; the old one is gone.
             inner.address.send_replace(None);
         }
+        let exit_code = result
+            .as_ref()
+            .err()
+            .and_then(|error| error.downcast_ref::<Exited>())
+            .and_then(|error| error.0.code());
         let error = match result {
             Ok(()) => "cloudflared exited".to_owned(),
             Err(error) => format!("{error:#}"),
         };
-        inner.set_offline(Some(format!("{error}; restarting in {backoff:?}")));
         if started.elapsed() >= STABLE_RUN {
             backoff = BACKOFF_MIN;
         }
+        *inner.failure.lock().unwrap() = Some(super::ShareFailure {
+            transport: "cloudflared".into(),
+            exit_code,
+            retry_after_secs: backoff.as_secs(),
+        });
+        inner.set_offline(Some(format!("{error}; restarting in {backoff:?}")));
         tokio::select! {
             _ = inner.stop.cancelled() => return,
             _ = tokio::time::sleep(backoff) => {}
@@ -143,6 +162,12 @@ async fn prepare(
 }
 
 async fn run_once(inner: &Inner, tunnel: &CloudflareTunnel, port: u16) -> Result<()> {
+    tokio::select! {
+        _ = inner.stop.cancelled() => return Ok(()),
+        checked = super::cloudflared_validation::version(&tunnel.cloudflared) => {
+            checked.context("cloudflared executable validation failed")?;
+        }
+    }
     let (args, fixed) = tokio::select! {
         _ = inner.stop.cancelled() => return Ok(()),
         prepared = prepare(tunnel, port) => prepared?,
@@ -181,7 +206,7 @@ async fn run_once(inner: &Inner, tunnel: &CloudflareTunnel, port: u16) -> Result
             _ = inner.stop.cancelled() => break Ok(()),
             status = child.wait() => {
                 break match status {
-                    Ok(status) => Err(anyhow::anyhow!("cloudflared exited ({status})")),
+                    Ok(status) => Err(Exited(status).into()),
                     Err(error) => Err(anyhow::anyhow!("cloudflared failed: {error}")),
                 };
             }
@@ -206,6 +231,7 @@ async fn run_once(inner: &Inner, tunnel: &CloudflareTunnel, port: u16) -> Result
                 if let Some(address) = address {
                     published = true;
                     *inner.last_error.lock().unwrap() = None;
+                    *inner.failure.lock().unwrap() = None;
                     inner.address.send_replace(Some(address));
                     inner.status.send_replace(RemoteStatus::Online);
                 }

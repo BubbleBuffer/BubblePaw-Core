@@ -188,19 +188,25 @@ async fn probe(name: &str, provider: &ProviderSettings, config: &EffectiveConfig
     let key = if kind == "codex" {
         None
     } else {
-        provider
-            .key_env
-            .as_ref()
-            .and_then(|name| config.environment(name))
-            .filter(|key| !key.is_empty())
+        let stored =
+            match config.settings().ok().and_then(|settings| {
+                crate::provider_keys::read(&settings.storage.data_dir, name).ok()
+            }) {
+                Some(stored) => stored,
+                None => return ProbeResult::invalid("Cannot read stored provider key"),
+            };
+        stored.map(|value| value.to_string()).or_else(|| {
+            provider
+                .key_env
+                .as_ref()
+                .and_then(|name| config.environment(name))
+                .filter(|key| !key.is_empty())
+        })
     };
     if kind != "codex" && key.is_none() {
         result.config = ConfigCheck {
             ok: false,
-            error: Some(format!(
-                "{} is not set in the invoking environment",
-                provider.key_env.as_deref().unwrap_or("key_env")
-            )),
+            error: Some("No stored provider key; key_env is missing or not set".into()),
         };
     }
     if kind == "codex" {

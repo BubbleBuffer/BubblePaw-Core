@@ -24,6 +24,8 @@ use std::{
 };
 use toml::Value;
 
+#[path = "config/file_layers.rs"]
+mod file_layers;
 #[path = "config/live_settings.rs"]
 mod live_settings;
 #[path = "config/mcp_validate.rs"]
@@ -459,40 +461,6 @@ impl EffectiveConfig {
             result.apply(entry, "CLI")?;
         }
         Ok(result)
-    }
-    fn file(
-        &mut self,
-        path: &Path,
-        layer: &str,
-        required: bool,
-        replacement: Option<(&Path, &str)>,
-    ) -> Result<()> {
-        let text = match replacement.filter(|(target, _)| *target == path) {
-            Some((_, text)) => text.to_owned(),
-            None => match std::fs::read_to_string(path) {
-                Ok(text) => text,
-                Err(error) if !required && error.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(());
-                }
-                Err(error) => {
-                    return Err(error)
-                        .with_context(|| format!("cannot read {layer} config {}", path.display()));
-                }
-            },
-        };
-        // Do not echo a parser diagnostic's source snippet; it can contain an accidentally supplied credential.
-        let value: Value = toml::from_str(&text)
-            .map_err(|_| anyhow::anyhow!("invalid TOML in {layer} config {}", path.display()))?;
-        let source = format!("{layer}: {}", path.display());
-        self.apply(
-            Override {
-                path: String::new(),
-                value,
-                base: path.parent().map(Path::to_path_buf),
-                replace: false,
-            },
-            &source,
-        )
     }
     fn apply(&mut self, mut entry: Override, source: &str) -> Result<()> {
         validate_keys(&entry.value, &entry.path)?;
