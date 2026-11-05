@@ -104,6 +104,18 @@ fn workspace_host_paths_are_ignored_but_explicit_host_configuration_is_accepted(
         trusted_user.reload()?.settings()?.storage.data_dir,
         trusted_user.settings()?.storage.data_dir
     );
+    for only_forbidden in [
+        format!("[remote]\ncloudflared='{UNTRUSTED}'\n"),
+        format!("[storage]\ndata_dir='{UNTRUSTED}'\n"),
+    ] {
+        let filtered =
+            EffectiveConfig::load_with_file(opts.clone(), &project_file, &only_forbidden)?;
+        assert_eq!(selected(&filtered)?.as_deref(), Some(USER));
+        assert_eq!(
+            filtered.settings()?.storage.data_dir,
+            trusted_user.settings()?.storage.data_dir
+        );
+    }
 
     // Replacement candidates (used by settings writes) retain the file layer's trust.
     let replacement = format!(

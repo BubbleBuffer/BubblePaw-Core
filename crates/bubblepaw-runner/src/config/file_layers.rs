@@ -55,8 +55,17 @@ fn ignore_workspace_host_paths(value: &mut Value) {
 }
 
 fn remove_setting(value: &mut Value, section: &str, key: &str) -> bool {
-    value
-        .get_mut(section)
-        .and_then(Value::as_table_mut)
-        .is_some_and(|table| table.remove(key).is_some())
+    let Some(root) = value.as_table_mut() else {
+        return false;
+    };
+    let Some(table) = root.get_mut(section).and_then(Value::as_table_mut) else {
+        return false;
+    };
+    let removed = table.remove(key).is_some();
+    if removed && table.is_empty() {
+        // Empty tables replace whole sections in merge_at. Filtering the sole
+        // forbidden key must leave the trusted section intact, not erase it.
+        root.remove(section);
+    }
+    removed
 }
