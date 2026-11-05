@@ -35,6 +35,12 @@ fn fingerprint(program: &Path) -> Result<(PathBuf, Fingerprint)> {
     let path = program
         .canonicalize()
         .context("cloudflared program does not exist")?;
+    // Opening a FIFO can block indefinitely, before the version timeout even
+    // starts. Reject non-regular paths before opening, then check the opened
+    // file as well in case the path was replaced between these operations.
+    if !std::fs::metadata(&path)?.is_file() {
+        bail!("cloudflared program must be a file");
+    }
     let mut file = std::fs::File::open(&path).context("could not open cloudflared program")?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
@@ -189,5 +195,40 @@ mod tests {
         );
         assert_eq!(parse_version("another program version 2026.9.0"), None);
         assert!(numbers("2026.9.0") < numbers("2026.10.1"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_is_rejected_before_opening_it() {
+        let root = tempfile::tempdir().unwrap();
+        let fifo = root.path().join("cloudflared-fifo");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&fifo)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let (send, receive) = std::sync::mpsc::channel();
+        let checked = fifo.clone();
+        let task = std::thread::spawn(move || {
+            send.send(fingerprint(&checked).map(|_| ())).unwrap();
+        });
+        let result = receive.recv_timeout(Duration::from_secs(2));
+        // If the regression returns, release the blocked reader before failing
+        // so this test cannot leave a thread hanging the test process.
+        let unblock = result.is_err().then(|| {
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&fifo)
+                .unwrap()
+        });
+        task.join().unwrap();
+        drop(unblock);
+        let error = result
+            .expect("validation blocked opening a FIFO")
+            .unwrap_err();
+        assert!(error.to_string().contains("must be a file"), "{error:#}");
     }
 }

@@ -30,6 +30,7 @@ pub fn install(dir: &Path, lines: &[&str], exit_first_after_ms: Option<u64>) -> 
 }
 
 /// Change the executable fingerprint while retaining a runnable fixture.
+#[allow(dead_code)] // Shared fixture; only validation tests replace the executable.
 pub fn invalidate(program: &Path) {
     use std::io::Write;
     std::fs::OpenOptions::new()
