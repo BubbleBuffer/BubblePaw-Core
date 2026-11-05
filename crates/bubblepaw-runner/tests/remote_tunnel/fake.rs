@@ -23,9 +23,21 @@ pub fn install(dir: &Path, lines: &[&str], exit_first_after_ms: Option<u64>) -> 
         "log": log,
         "lines": lines,
         "exit_first_after_ms": exit_first_after_ms,
+        "version": bubblepaw_runner::remote::CLOUDFLARED_VERSION,
     });
     std::fs::write(dir.join("fake-cloudflared.json"), sidecar.to_string()).unwrap();
     FakeCloudflared { program, log }
+}
+
+/// Change the executable fingerprint while retaining a runnable fixture.
+pub fn invalidate(program: &Path) {
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(program)
+        .unwrap()
+        .write_all(&[0])
+        .unwrap();
 }
 
 impl FakeCloudflared {

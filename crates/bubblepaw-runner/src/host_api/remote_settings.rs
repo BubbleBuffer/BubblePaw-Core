@@ -25,6 +25,9 @@ pub struct SignOutResult {
 #[derive(Clone, Debug, Serialize)]
 pub struct CloudflaredResult {
     pub info: Option<CloudflaredInfo>,
+    /// False means no check of the current executable is cached. Remote
+    /// callers only read this cache and never launch `--version`.
+    pub checked: bool,
 }
 
 fn paths(ctx: &HostCtx) -> Result<RemotePaths, HostError> {
@@ -49,14 +52,31 @@ pub async fn cloudflared_info(ctx: &HostCtx) -> Result<CloudflaredResult, HostEr
     let chosen = selected(ctx)?;
     let program = match remote::find_cloudflared(chosen.as_deref(), &paths) {
         Ok(program) => program,
-        Err(_) if chosen.is_none() => return Ok(CloudflaredResult { info: None }),
+        Err(_) if chosen.is_none() || ctx.remote_caller => {
+            return Ok(CloudflaredResult {
+                info: None,
+                checked: false,
+            });
+        }
         Err(error) => return Err(HostError::invalid(error.to_string())),
     };
-    let mut info = remote::cloudflared_info(&program, &paths)
-        .await
-        .map_err(|error| HostError::invalid(error.to_string()))?;
+    let info = if ctx.remote_caller {
+        remote::cached_cloudflared_info(&program, &paths)
+    } else {
+        remote::cloudflared_info(&program, &paths).await.map(Some)
+    }
+    .map_err(|error| HostError::invalid(error.to_string()))?;
+    let Some(mut info) = info else {
+        return Ok(CloudflaredResult {
+            info: None,
+            checked: false,
+        });
+    };
     info.chosen = chosen.is_some();
-    Ok(CloudflaredResult { info: Some(info) })
+    Ok(CloudflaredResult {
+        info: Some(info),
+        checked: true,
+    })
 }
 
 pub async fn cloudflared_set(
@@ -94,7 +114,10 @@ pub async fn cloudflared_set(
         .config_set("remote.cloudflared", value.as_ref())
         .await?;
     match validated {
-        Some(info) => Ok(CloudflaredResult { info: Some(info) }),
+        Some(info) => Ok(CloudflaredResult {
+            info: Some(info),
+            checked: true,
+        }),
         None => cloudflared_info(ctx).await,
     }
 }

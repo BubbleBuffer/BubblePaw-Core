@@ -15,6 +15,13 @@ Later layers win:
 4. Environment variables.
 5. CLI arguments.
 
+Workspace files cannot choose `remote.cloudflared`: that key is ignored with a
+warning before merging. The user's own config, an explicitly selected config
+file, environment/CLI overrides and the local executable setter retain that
+ability. The other existing remote keys (`enabled`, `mode`, `relay`, `port`,
+`hostname`) retain their workspace-layer behavior; they affect sharing and its
+address, not the executable path. There is no remote certificate/data-path key.
+
 - **Custom file:** `--config <path>` or `BUBBLEPAW_CONFIG=<path>` replaces layers 2
   and 3, so a run (replay, tests, CI) depends on one known file.
 - **Every key can be overridden**, with no hand-written flag needed per key:

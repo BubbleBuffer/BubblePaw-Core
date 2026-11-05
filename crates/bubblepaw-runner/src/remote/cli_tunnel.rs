@@ -35,7 +35,12 @@ pub(super) fn reach(settings: &Settings, paths: &RemotePaths) -> Result<RemoteRe
         Ok(RemoteReach::Cloudflare(CloudflareTunnel {
             mode,
             port: remote.port,
-            cloudflared: super::find_cloudflared(configured, paths)?,
+            // The supervisor reports validation failures in sharing state,
+            // including a chosen executable removed since it was selected.
+            cloudflared: match configured {
+                Some(path) => path.to_owned(),
+                None => super::find_cloudflared(None, paths)?,
+            },
             dir: paths.cloudflare.clone(),
             api: None,
         }))

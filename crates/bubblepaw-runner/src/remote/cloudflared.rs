@@ -162,6 +162,12 @@ async fn prepare(
 }
 
 async fn run_once(inner: &Inner, tunnel: &CloudflareTunnel, port: u16) -> Result<()> {
+    tokio::select! {
+        _ = inner.stop.cancelled() => return Ok(()),
+        checked = super::cloudflared_validation::version(&tunnel.cloudflared) => {
+            checked.context("cloudflared executable validation failed")?;
+        }
+    }
     let (args, fixed) = tokio::select! {
         _ = inner.stop.cancelled() => return Ok(()),
         prepared = prepare(tunnel, port) => prepared?,

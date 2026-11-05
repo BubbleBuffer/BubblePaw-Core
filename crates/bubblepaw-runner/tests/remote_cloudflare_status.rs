@@ -90,12 +90,14 @@ async fn executable_validation_rejects_missing_non_program_non_cloudflared_and_t
     );
     let error = cloudflared_info(&fake.program, &paths).await.unwrap_err();
     assert!(error.to_string().contains("identify"), "{error:#}");
+    fake::invalidate(&fake.program);
     script(
         fake.program.parent().unwrap(),
         serde_json::json!({"version_text":"cloudflared version 2026.9.0", "version_exit_code":2}),
     );
     let error = cloudflared_info(&fake.program, &paths).await.unwrap_err();
     assert!(error.to_string().contains("failed"), "{error:#}");
+    fake::invalidate(&fake.program);
     script(
         fake.program.parent().unwrap(),
         serde_json::json!({"version_exit_code":0,"version_delay_ms":10000}),
@@ -104,6 +106,53 @@ async fn executable_validation_rejects_missing_non_program_non_cloudflared_and_t
     let error = cloudflared_info(&fake.program, &paths).await.unwrap_err();
     assert!(error.to_string().contains("in time"), "{error:#}");
     assert!(started.elapsed() < Duration::from_secs(8));
+}
+
+#[tokio::test]
+async fn unchanged_executables_reuse_checks_and_changed_fingerprints_invalidate_them() {
+    let root = tempfile::tempdir().unwrap();
+    let paths = paths(root.path());
+    let fake = fake::install(&root.path().join("bin"), &[], None);
+    let log = root.path().join("versions.log");
+    script(
+        fake.program.parent().unwrap(),
+        serde_json::json!({"version_log":log}),
+    );
+    assert!(
+        bubblepaw_runner::remote::cached_cloudflared_info(&fake.program, &paths)
+            .unwrap()
+            .is_none()
+    );
+    let first = cloudflared_info(&fake.program, &paths).await.unwrap();
+    assert_eq!(
+        cloudflared_info(&fake.program, &paths).await.unwrap(),
+        first
+    );
+    script(
+        fake.program.parent().unwrap(),
+        serde_json::json!({"version_text":"another program"}),
+    );
+    assert_eq!(
+        cloudflared_info(&fake.program, &paths).await.unwrap(),
+        first
+    );
+    assert_eq!(std::fs::read_to_string(&log).unwrap().lines().count(), 1);
+    fake::invalidate(&fake.program);
+    assert!(
+        bubblepaw_runner::remote::cached_cloudflared_info(&fake.program, &paths)
+            .unwrap()
+            .is_none()
+    );
+    for _ in 0..2 {
+        assert!(
+            cloudflared_info(&fake.program, &paths)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("identify")
+        );
+    }
+    assert_eq!(std::fs::read_to_string(log).unwrap().lines().count(), 2);
 }
 
 #[tokio::test]

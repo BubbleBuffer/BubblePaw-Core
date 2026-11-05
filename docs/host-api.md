@@ -230,9 +230,12 @@ automatic temporary-directory cleanup. Reproduce on Linux:
 - `remote.cloudflare.sign_out {}` (`Full`) returns `{changed}` and removes only
   the browser-login `cert.pem` resolved by the existing Cloudflare login rules.
   It leaves the API token, named tunnel credentials and tunnel state intact.
-- `remote.cloudflared.info {}` (`Read`) returns `{info}` (null when discovery finds
-  no program). Info retains `path`, `version`, `pinned`, `update_available` and
-  `managed`, and adds `chosen` for an explicit executable selection.
+- `remote.cloudflared.info {}` (`Read`) returns `{info, checked}`. Info retains
+  `path`, `version`, `pinned`, `update_available` and `managed`, and adds `chosen`
+  for an explicit executable selection. Remote callers never start a process:
+  they receive the last matching cached validation result, or
+  `{info: null, checked: false}` when the current executable has not been checked.
+  Local reads validate the executable. Cached failures retain their clear error.
 - `remote.cloudflared.set {path}` (`Full`, local only) stores a chosen path in
   `remote.cloudflared`; null clears it and restores managed-copy/PATH discovery.
   The host runs `--version` with a short timeout before accepting a path, refuses
@@ -240,6 +243,10 @@ automatic temporary-directory cleanup. Reproduce on Linux:
   Restart sharing to run the newly selected executable. Remote devices, including
   `Full`, are refused with `-32003`, through both direct and attached sessions;
   `config.set` cannot bypass the restriction.
+  Workspace `.bubblepaw/config.toml` cannot choose `remote.cloudflared`; its
+  value is ignored with a warning. Before tunnel setup or launch, sharing uses
+  the same validation, reusing results for matching executable contents and
+  permissions. A rejection appears in sharing failure state with its reason.
 - `remote.share.state {}` (`Read`) returns `status`, `address`, `lastError` and
   optional `failure: {transport, exit_code, retry_after_secs}`. An exit code is
   supplied when cloudflared exits with one. Retry seconds describe the actual

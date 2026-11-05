@@ -11,6 +11,9 @@ use bubblepaw_runner::{
 };
 use serde_json::json;
 
+#[path = "remote_settings/inspection.rs"]
+mod inspection;
+
 #[tokio::test]
 async fn a_validated_choice_is_persisted_without_copying_and_can_be_cleared() -> anyhow::Result<()>
 {

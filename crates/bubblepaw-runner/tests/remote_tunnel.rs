@@ -115,6 +115,36 @@ async fn a_missing_trycloudflare_address_leaves_the_host_offline() {
     server.shutdown().await;
 }
 
+#[tokio::test]
+async fn a_rejected_executable_never_sets_up_or_runs_a_tunnel() {
+    let root = tempfile::tempdir().unwrap();
+    let api = FakeApi::start(Vec::new()).await;
+    let fake = fake::install(&root.path().join("bin"), &[REGISTERED], None);
+    let log = root.path().join("versions.log");
+    let sidecar = fake.program.with_file_name("fake-cloudflared.json");
+    let mut script: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&sidecar).unwrap()).unwrap();
+    script["version_text"] = json!("another program");
+    script["version_log"] = json!(log);
+    std::fs::write(sidecar, script.to_string()).unwrap();
+    let server = start(root.path(), domain(root.path(), &fake.program, Some(&api)));
+    let mut status = server.watch_status();
+    tokio::time::timeout(WAIT, status.wait_for(|s| *s == RemoteStatus::Offline))
+        .await
+        .unwrap()
+        .unwrap();
+    let error = server.share_state().last_error.unwrap();
+    assert!(
+        error.contains("executable validation failed") && error.contains("identify"),
+        "{error}"
+    );
+    assert!(fake.runs().is_empty());
+    assert!(api.state.lock().unwrap().secrets.is_empty());
+    tokio::time::sleep(Duration::from_millis(1200)).await;
+    assert_eq!(std::fs::read_to_string(log).unwrap().lines().count(), 1);
+    server.shutdown().await;
+}
+
 fn domain(root: &Path, program: &Path, api: Option<&FakeApi>) -> CloudflareTunnel {
     let mode = TunnelMode::Domain {
         hostname: "paw.example.com".into(),

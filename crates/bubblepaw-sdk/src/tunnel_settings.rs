@@ -25,6 +25,10 @@ pub struct CloudflaredInfo {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct CloudflaredResult {
     pub info: Option<CloudflaredInfo>,
+    /// Whether the host has checked the current executable. Remote reads
+    /// never start a process; false asks for a check from a local caller.
+    #[serde(default)]
+    pub checked: bool,
 }
 
 impl Client {
@@ -57,4 +61,22 @@ impl Client {
 
 fn decode<T: serde::de::DeserializeOwned>(value: serde_json::Value) -> Result<T, ClientError> {
     serde_json::from_value(value).map_err(|error| ClientError::Protocol(error.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn cloudflared_check_state_is_additive_for_older_hosts() {
+        assert!(
+            !decode::<CloudflaredResult>(json!({"info":null}))
+                .unwrap()
+                .checked
+        );
+        assert!(
+            !decode::<CloudflaredResult>(json!({"info":null,"checked":false}))
+                .unwrap()
+                .checked
+        );
+    }
 }

@@ -578,6 +578,23 @@ The forwarding server requires an explicit `remote: true` acknowledgment from
 the local host before it forwards requests; an older host must be restarted
 with the new binary so it cannot silently ignore the restriction.
 
+Workspace `.bubblepaw/config.toml` cannot select `remote.cloudflared`: the loader
+ignores that key with a warning. User configuration and explicitly selected
+configuration files remain trusted. Before tunnel setup or launch, the host uses
+the same bounded version validation as the setter; rejected programs produce a
+sharing failure naming the reason. Validation results are reused only for matching
+executable contents and permissions. Remote info reads never execute a program:
+they return cached information with `checked: true`, or `info: null` and
+`checked: false` if this host has not checked the current file. Local info reads
+retain validation behavior.
+
+These RPC restrictions are not an agent-tool sandbox. Both `Edit` and `Full`
+may start runs using the host's enabled tools. File tools enforce their workspace
+and scratch roots, but can edit user/custom configuration inside those roots;
+enabled `exec` can reach files outside them under the host account's OS rights.
+Host read-only settings and deny rules still apply. This preexisting tool-policy
+boundary is unchanged by the settings APIs.
+
 `Client::share_state()` reads embedded or separately running sharing state.
 Beside `lastError`, `failure` provides the transport, optional child exit code
 and actual scheduled retry delay in seconds. Both Cloudflare and relay retries
