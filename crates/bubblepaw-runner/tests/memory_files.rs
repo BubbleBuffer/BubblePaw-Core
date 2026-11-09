@@ -61,6 +61,38 @@ fn persist_notices(store: &Store, memory: &MemoryFiles, session: &str) -> Vec<St
 }
 
 #[test]
+fn rendered_block_frames_files_as_standing_instructions() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path().join("AGENTS.md"), "RULES");
+    let store = Store::in_memory().unwrap();
+    let session = store.create_session("memory framing").unwrap().id;
+    let prompt = memory(&store, dir.path(), None)
+        .system_prompt(&session, "base")
+        .unwrap();
+    let block = &prompt[prompt.find("Repository memory files").unwrap()..];
+    let mut lines = block.lines();
+    assert_eq!(
+        lines.next(),
+        Some("Repository memory files (frozen at session start):")
+    );
+    assert_eq!(
+        lines.next(),
+        Some(
+            "These are the project's standing instructions and conventions. Follow them; where they conflict with the user's messages, the user's messages win."
+        )
+    );
+    assert!(block.contains("RULES"));
+    let empty = tempfile::tempdir().unwrap();
+    let session = store.create_session("memory none").unwrap().id;
+    assert_eq!(
+        memory(&store, empty.path(), None)
+            .system_prompt(&session, "base")
+            .unwrap(),
+        "base"
+    );
+}
+
+#[test]
 fn git_order_both_names_identical_dedup_and_no_import_expansion() {
     let root = tempfile::tempdir().unwrap();
     let repo = root.path().join("repo");

@@ -163,8 +163,9 @@ The prompt is the template in `approvals.auto_prompt`, read live at each gate
 (`bubblepaw_core::DEFAULT_AUTO_PROMPT`) asks whether the tool call stays within
 what the user asked for and is safe to run without a person looking, and lists
 the five fields. Placeholders are plain text substitution in one pass:
-`{user_request}` (the consumed run request), `{tool}`, `{description}` (the tool's
-description), `{arguments}` (bounded to 4 KiB, then marked truncated) and
+`{user_request}` (the consumed run request), `{tool}`, `{description}` (the first paragraph of the tool's
+description, up to the first blank line, cut to 300 characters with a trailing
+… when longer; custom templates get the same value), `{arguments}` (bounded to 4 KiB, then marked truncated) and
 `{working_directory}`. Any other `{...}` text is left as is. Library embedders set
 `AutoApprovalConfig.prompt`. A run cancellation interrupts the check and cancels
 the pending gate. The ordinary events are retained: `approval_requested` already

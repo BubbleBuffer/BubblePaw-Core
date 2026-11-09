@@ -69,7 +69,7 @@ impl LcmConfig {
         self.apply_target_tokens.unwrap_or(threshold).min(threshold)
     }
 }
-pub const HISTORY_RETRIEVAL_INSTRUCTION: &str = "Continue from this memory. Original messages remain available through `tools.history_search` and `tools.history_read`. Retrieve only when a needed detail is missing, ambiguous or conflicting, or original wording is required; a fact being summarized does not itself require a lookup.";
+pub const HISTORY_RETRIEVAL_INSTRUCTION: &str = "Continue from this memory. Original messages remain available through the history_search and history_read tools. Retrieve only when a needed detail is missing, ambiguous or conflicting, or original wording is required; a fact being summarized does not itself require a lookup.";
 fn id() -> String {
     uuid::Uuid::new_v4().to_string()
 }

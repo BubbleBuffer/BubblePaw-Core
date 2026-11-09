@@ -26,6 +26,32 @@ pub(super) struct PromptFields<'a> {
     pub working_directory: &'a str,
 }
 
+/// The longest `{description}` value, in characters, ellipsis included.
+const DESCRIPTION_LIMIT: usize = 300;
+
+/// The value substituted for `{description}`: the first paragraph (up to the
+/// first blank line) of the tool description, cut on a character boundary to
+/// at most [`DESCRIPTION_LIMIT`] characters with a trailing "…" when cut.
+pub(super) fn short_description(description: &str) -> String {
+    let mut paragraph = String::new();
+    for line in description.trim_start().lines() {
+        if line.trim().is_empty() {
+            break;
+        }
+        if !paragraph.is_empty() {
+            paragraph.push('\n');
+        }
+        paragraph.push_str(line);
+    }
+    let paragraph = paragraph.trim_end();
+    if paragraph.chars().count() <= DESCRIPTION_LIMIT {
+        return paragraph.to_owned();
+    }
+    let mut cut: String = paragraph.chars().take(DESCRIPTION_LIMIT - 1).collect();
+    cut.push('…');
+    cut
+}
+
 /// Replaces the known placeholders in one pass, so text inside a substituted
 /// value is never substituted again. Unknown `{...}` text is kept as is.
 pub(super) fn render(template: &str, fields: &PromptFields<'_>) -> String {
@@ -84,6 +110,35 @@ mod tests {
             text,
             "fix {tool}|write|Writes a file|{\"path\":\"a.txt\"}|/work|{other}|{|}"
         );
+    }
+
+    #[test]
+    fn short_description_keeps_a_short_one_unchanged() {
+        assert_eq!(short_description("Writes a file"), "Writes a file");
+        assert_eq!(
+            short_description("Line one\nline two"),
+            "Line one\nline two"
+        );
+    }
+
+    #[test]
+    fn short_description_keeps_only_the_first_paragraph() {
+        assert_eq!(
+            short_description("Runs a command.\nSecond line.\n\nDetails nobody needs.\n\nMore."),
+            "Runs a command.\nSecond line."
+        );
+        assert_eq!(short_description("A.\r\n\r\nB."), "A.");
+    }
+
+    #[test]
+    fn short_description_cuts_on_a_character_boundary() {
+        let long = "é世".repeat(200);
+        let cut = short_description(&long);
+        assert_eq!(cut.chars().count(), 300);
+        assert!(cut.ends_with('…'));
+        assert!(long.starts_with(&cut[..cut.len() - '…'.len_utf8()]));
+        let exact = "x".repeat(300);
+        assert_eq!(short_description(&exact), exact);
     }
 
     #[test]

@@ -18,6 +18,15 @@ its per-request context goes. The cache rules behind this are in
 | Instructions that depend on the applied view | end of the cold tier | `ContextWriter::cold_note(kind, text)` |
 | Runtime inventory | tail reminder `runtime_inventory` | written by the runner's `SummarizingContext` through `ContextWriter::remind`, and `remind_fresh` once after an LCM apply |
 
+The runner's root prompt always ends with a short runtime-notes block, even when
+`agent.system_prompt` replaces the instruction body. It tells the model that
+`<harness kind="...">` and `[host notice]` messages come from the runtime, not the
+user, and carries the attachments sentence. The native default body also names the
+optional `question`, `agent` and `todo` tools. Retrieval, budget, image-limit and
+question-answer texts are mode-neutral: they name tools (`history_search`,
+`agent_send`) rather than JS calls. Their wording moved once, so running sessions
+take one prompt-cache miss after the upgrade.
+
 `RunOptions.system_prompt` stays the static per-session prompt. Never put live
 facts into it or into the resolver's result: every change busts the whole cache.
 

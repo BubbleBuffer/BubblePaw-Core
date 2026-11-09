@@ -17,7 +17,7 @@ impl QuestionAnswer {
     pub(crate) fn continuation_reminder(&self) -> bubblepaw_core::Reminder {
         let mut reminder = self.input_reminder();
         reminder.text = format!(
-            "The pending question was answered after its original tool execution ended. Continue from this answer; do not replay the interrupted JS cell.\n{}",
+            "The pending question was answered after its original tool execution ended. Continue from this answer; do not repeat the interrupted tool call.\n{}",
             reminder.text
         );
         reminder
