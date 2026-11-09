@@ -24,7 +24,12 @@ fn main() {
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
         .unwrap_or_default();
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let run = match config["log"].as_str().map(PathBuf::from) {
+    let is_version = args == ["--version"];
+    let run = match config["log"]
+        .as_str()
+        .filter(|_| !is_version)
+        .map(PathBuf::from)
+    {
         Some(log) => {
             let previous = std::fs::read_to_string(&log)
                 .map(|text| text.lines().count())
@@ -72,8 +77,24 @@ fn main() {
             return;
         }
         ["--version"] => {
-            if let Some(version) = config["version"].as_str() {
+            if let Some(log) = config["version_log"].as_str() {
+                let mut file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(log)
+                    .expect("version log");
+                writeln!(file, "checked").expect("write version log");
+            }
+            if let Some(ms) = config["version_delay_ms"].as_u64() {
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+            }
+            if let Some(text) = config["version_text"].as_str() {
+                println!("{text}");
+            } else if let Some(version) = config["version"].as_str() {
                 println!("cloudflared version {version} (built 2026-01-01T00:00:00Z)");
+            }
+            if let Some(code) = config["version_exit_code"].as_i64() {
+                std::process::exit(code as i32);
             }
             return;
         }

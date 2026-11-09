@@ -14,6 +14,9 @@ struct Cursor {
 pub struct ListParams {
     pub limit: Option<u64>,
     pub cursor: Option<String>,
+    /// Literal, case-insensitive substring of the saved title. Supplying a query
+    /// selects the paged result, including when the query is empty.
+    pub query: Option<String>,
 }
 #[derive(Deserialize, Serialize)]
 pub struct HistoryParams {
@@ -167,19 +170,31 @@ fn list_wire(ctx: &HostCtx, params: Value) -> Result<Value, HostError> {
     if params.get("limit").is_some_and(Value::is_null) {
         return Err(HostError::invalid("limit must be a positive integer"));
     }
-    let paged = params.get("limit").is_some() || params.get("cursor").is_some();
+    let paged = params.get("limit").is_some()
+        || params.get("cursor").is_some()
+        || params.get("query").is_some_and(|value| !value.is_null());
     let input: ListParams = decode(params)?;
     encode(list_inner(ctx, input, paged)?)
 }
-/// An omitted limit and cursor request the legacy array; either option enables
-/// the creation-order page result.
+/// Omitting the limit, cursor and query requests the legacy array; any supplied
+/// option enables the creation-order page result. Title search respects the
+/// caller's read scope and includes archives just like ordinary listing.
 pub fn list(ctx: &HostCtx, input: ListParams) -> Result<ListResult, HostError> {
-    let paged = input.limit.is_some() || input.cursor.is_some();
+    let paged = input.limit.is_some() || input.cursor.is_some() || input.query.is_some();
     list_inner(ctx, input, paged)
 }
 fn list_inner(ctx: &HostCtx, input: ListParams, paged: bool) -> Result<ListResult, HostError> {
+    let query = input.query.as_ref().map(|query| query.to_lowercase());
     let mut sessions = Vec::new();
     for session in ctx.store.list_visible_sessions()? {
+        // Layout stores read titles from catalog metadata, including pending
+        // catalog updates; do not open root chat records to search titles.
+        if query
+            .as_ref()
+            .is_some_and(|query| !session.title.to_lowercase().contains(query))
+        {
+            continue;
+        }
         if ctx.read_scope.allows(&ctx.store, &session.id)? {
             sessions.push(session);
         }
@@ -253,6 +268,10 @@ fn list_inner(ctx: &HostCtx, input: ListParams, paged: bool) -> Result<ListResul
         next_cursor,
     }))
 }
+
+#[cfg(test)]
+#[path = "session_title_search_tests.rs"]
+mod title_search_tests;
 
 pub use super::session_ops::{archive, history, import, messages, open, search, state, unarchive};
 pub(super) fn command(ctx: &HostCtx, method: MethodId, params: Value) -> Result<Value, HostError> {

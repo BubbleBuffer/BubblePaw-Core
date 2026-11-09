@@ -10,6 +10,9 @@ pub(super) async fn command(
         | MethodId::ConfigSet
         | MethodId::ConfigReload => super::config::command(ctx, method, params).await,
         MethodId::ProvidersList
+        | MethodId::ProvidersKeyGet
+        | MethodId::ProvidersKeySet
+        | MethodId::ProvidersKeyRemove
         | MethodId::ProvidersSave
         | MethodId::ProvidersRemove
         | MethodId::ProvidersTest

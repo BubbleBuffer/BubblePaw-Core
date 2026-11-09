@@ -15,6 +15,15 @@ Later layers win:
 4. Environment variables.
 5. CLI arguments.
 
+Workspace files cannot choose `remote.cloudflared` or `storage.data_dir`: both
+keys are ignored with warnings before merging, without echoing their values.
+The user's own config, an explicitly selected config file and environment/CLI
+overrides remain trusted; the local executable setter remains available.
+This also keeps managed executable discovery and stored provider keys out of a
+repository-selected data directory. The other remote keys (`enabled`, `mode`, `relay`, `port`,
+`hostname`) retain their workspace-layer behavior; they affect sharing and its
+address, not the executable path. There is no remote certificate/data-path key.
+
 - **Custom file:** `--config <path>` or `BUBBLEPAW_CONFIG=<path>` replaces layers 2
   and 3, so a run (replay, tests, CI) depends on one known file.
 - **Every key can be overridden**, with no hand-written flag needed per key:
@@ -31,8 +40,19 @@ Later layers win:
 - `bubblepaw config` prints the effective merged config, naming the layer each
   value came from.
 
-Credentials never appear in the file. A provider names the environment variable
-that holds its key (`key_env`).
+Provider API keys never appear in the TOML file. A provider can name the
+environment variable that holds its key (`key_env`), or have a host-owned stored
+key written through `providers.key.set`. Stored keys take precedence; removing
+one with `providers.key.remove` falls back to `key_env`.
+
+Stored keys live at `<data_dir>/secrets/provider-<hex-encoded-provider-name>.key`.
+Names are validated before encoding; hex keeps differently cased provider names
+distinct on Windows. These are **plain-text files protected by file permissions**,
+like the Cloudflare token: atomic replacement, mode `0600` on Unix and inherited
+directory ACLs on Windows. They are not encrypted and do not use an OS keyring.
+`providers.key.get` returns only `is_set` and `source` (`stored`, `environment`,
+or `none`). Only `Full` callers may set or remove keys; `Read` and `Edit` cannot.
+See [host API](host-api.md) and [SDK](sdk.md) for the write and reload results.
 
 A host starts without a usable main provider (no key variable set, no readable
 Codex auth file, or an empty `base_url` on the selected route). Configure one with
@@ -290,10 +310,12 @@ base_url = "http://127.0.0.1:8080/v1"
 reasoning = {}
 ```
 
-Omit `key_env` for a server without authentication; the adapter sends no
-Authorization header. Keyless configuration is accepted only for loopback chat
-endpoints. When the server requires a key, set `key_env` to its environment
-variable as for other chat providers. The model suffix must match the server's
+With neither a stored key nor `key_env`, only loopback chat endpoints use the
+adapter without an Authorization header. HTTPS providers may be configured before
+their key, but their route remains unavailable until a credential is supplied.
+For authenticated servers, store a key with `providers.key.set` or set `key_env`
+to its environment variable. `key_env` is optional when a stored key is used.
+The model suffix must match the server's
 alias. No new provider kind or model-facing tool is involved. Scripted config
 and local HTTP fixture tests cover this path; no live llama-server run is claimed.
 
@@ -745,8 +767,9 @@ Use `--set agents.worker_keep_all=true`,
 
 `--data-dir <directory>` is an alias for `storage.data_dir`. The directory holds
 `catalog.db`, disposable `serving.db`, and `chats/<root-session-id>.db`. A root
-chat and every child it creates share one chat file. A file-defined `data_dir`
-resolves relative to its config file; env and CLI paths resolve
+chat and every child it creates share one chat file. A `data_dir` defined in a
+user or explicitly selected config file resolves relative to that file;
+workspace `.bubblepaw/config.toml` values are ignored with a warning. Env and CLI paths resolve
 relative to the invocation directory. An empty `data_dir` selects the central
 store `<local data home>/BubblePaw-Core/store`, where the local data home is
 `LOCALAPPDATA`, then `XDG_DATA_HOME`, then `HOME/.local/share` (`HOME/Library/Application Support` on macOS). Every workspace

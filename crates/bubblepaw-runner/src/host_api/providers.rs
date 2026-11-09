@@ -9,6 +9,25 @@ pub struct ProviderParams {
     pub name: String,
 }
 #[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeyParams {
+    pub name: String,
+}
+/// Debug deliberately omits the submitted secret.
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetKeyParams {
+    pub name: String,
+    pub value: String,
+}
+impl std::fmt::Debug for SetKeyParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SetKeyParams")
+            .field("value", &"[redacted]")
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Deserialize, Serialize)]
 pub struct SaveParams {
     pub name: String,
     pub input: Value,
@@ -56,6 +75,27 @@ pub async fn test(ctx: &HostCtx, input: TestParams) -> Result<ProviderResult, Ho
 pub async fn reload(ctx: &HostCtx, _input: EmptyParams) -> Result<ProviderResult, HostError> {
     service(ctx)?.reload().await.map_err(Into::into)
 }
+pub fn key_get(ctx: &HostCtx, input: KeyParams) -> Result<Value, HostError> {
+    service(ctx)?.key_status(&input.name).map_err(Into::into)
+}
+pub async fn key_set(ctx: &HostCtx, input: SetKeyParams) -> Result<Value, HostError> {
+    let value = zeroize::Zeroizing::new(input.value);
+    service(ctx)?
+        .set_key(&input.name, Some(&value))
+        .await
+        .map_err(Into::into)
+}
+pub async fn key_remove(ctx: &HostCtx, input: KeyParams) -> Result<Value, HostError> {
+    service(ctx)?
+        .set_key(&input.name, None)
+        .await
+        .map_err(Into::into)
+}
+fn decode_key<T: serde::de::DeserializeOwned>(params: Value) -> Result<T, HostError> {
+    // Serde diagnostics may quote an invalid string or unknown field (a secret).
+    serde_json::from_value(params)
+        .map_err(|_| HostError::invalid("Invalid provider key parameters"))
+}
 pub(super) async fn command(
     ctx: &HostCtx,
     method: MethodId,
@@ -69,6 +109,9 @@ pub(super) async fn command(
         MethodId::ProvidersRemove => remove(ctx, decode(params)?).await,
         MethodId::ProvidersTest => test(ctx, decode(params)?).await,
         MethodId::ProvidersReload => reload(ctx, decode(params)?).await,
+        MethodId::ProvidersKeyGet => key_get(ctx, decode_key(params)?),
+        MethodId::ProvidersKeySet => key_set(ctx, decode_key(params)?).await,
+        MethodId::ProvidersKeyRemove => key_remove(ctx, decode_key(params)?).await,
         _ => unreachable!("provider method table"),
     }
 }

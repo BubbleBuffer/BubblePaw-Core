@@ -246,7 +246,10 @@ chat carries its own `root_workspace:<root-id>` binding. The first process to
 take its lease hosts it, and later `run` and `delegate` processes
 [attach](host-attach.md). Shared state (`quota_history` in `catalog.db`,
 `delegations.db`, `web-cache.db`) lives in this store and is written by the host.
-`--data-dir` or `storage.data_dir` selects an isolated store.
+`--data-dir` or trusted `storage.data_dir` selects an isolated store. The user's
+config, explicitly selected config files and environment/CLI overrides are
+trusted; workspace `.bubblepaw/config.toml` cannot select the host data directory
+and its `storage.data_dir` is ignored with a warning.
 
 ### Windows: packaged parents (2026-10-21)
 

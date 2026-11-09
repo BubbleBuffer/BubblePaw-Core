@@ -34,9 +34,22 @@ pub async fn phase(
         let mut vars: HashMap<&'static str, Value> = HashMap::new();
         for (index, step) in fixture.steps.iter().enumerate() {
             let label = format!("{}#{index}", fixture.method);
-            let reply = run_step(&mut peer, step, role, &mut vars, &label).await;
+            let mut checked = step.clone();
+            if step.local_only && transport == Transport::Remote {
+                checked.expect = Expect::Error("local callers only");
+            }
+            let reply = run_step(&mut peer, &checked, role, &mut vars, &label).await;
+            if step.local_only && transport == Transport::Remote {
+                assert_eq!(reply["error"]["code"], -32003, "{label}");
+            }
             recorded.push(Recorded {
-                reply: normalized(&reply, step.view, role),
+                // The local-only refusal is an intentional transport difference,
+                // asserted above; every other fixture still compares its reply.
+                reply: if step.local_only {
+                    json!("<local-only boundary checked>")
+                } else {
+                    normalized(&reply, step.view, role)
+                },
                 label,
             });
         }
@@ -230,6 +243,12 @@ fn normalized(reply: &Value, view: View, role: &str) -> Value {
             View::Full => result.clone(),
             View::Sessions => normalize::role_sessions(result, role),
             View::Shape => normalize::shape(result),
+            View::ShareState => {
+                assert!(result.get("status").is_some() && result.get("address").is_some());
+                assert!(result.get("lastError").is_some() && result.get("failure").is_some());
+                assert!(result["status"].is_null() || result["status"] == "online");
+                json!({"lastError":result["lastError"],"failure":result["failure"]})
+            }
         };
     }
     normalize::response(&shown, role)

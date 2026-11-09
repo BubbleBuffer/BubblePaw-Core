@@ -1,15 +1,17 @@
 //! The host side: reachable through a relay or its own endpoint, it admits
 //! paired devices into tunnels and serves each through the host API with the
 //! device's profile.
+pub use super::RemoteStatus;
 use super::egress::{EgressDial, SystemDial};
 use super::offer::{self, OfferSlot, PairingOffer};
 use super::reach::{self, RemoteReach};
 use super::serve_lock::ServeLock;
-pub use super::server_options::{RemoteServeOptions, RemoteStatus, SessionBackend};
+pub use super::server_options::{RemoteServeOptions, SessionBackend};
 use super::{
     PairedDevice, RemoteAddress, SELECT_EGRESS, SELECT_PAIR, SELECT_SESSION, adapter, api_profile,
     cloudflared, control, list_devices, load_or_create_key, revoke_device,
 };
+use super::{ShareFailure, ShareState, ShareStateHandle};
 use crate::host_api::Profile;
 use anyhow::{Context, Result, anyhow};
 use bubblepaw_core::CancellationToken;
@@ -71,6 +73,7 @@ pub(super) struct Inner {
     pub(super) status: watch::Sender<RemoteStatus>,
     pub(super) address: watch::Sender<Option<RemoteAddress>>,
     pub(super) last_error: Mutex<Option<String>>,
+    pub(super) failure: Mutex<Option<ShareFailure>>,
     pub(super) stop: CancellationToken,
 }
 
@@ -126,8 +129,12 @@ impl RemoteServer {
             status: watch::Sender::new(RemoteStatus::Connecting),
             address: watch::Sender::new(None),
             last_error: Mutex::new(None),
+            failure: Mutex::new(None),
             stop: CancellationToken::new(),
         });
+        if let Some(SessionBackend::Context(ctx)) = &inner.backend {
+            *ctx.remote_share.lock().unwrap() = Some(ShareStateHandle(Arc::downgrade(&inner)));
+        }
         inner.refresh(true)?;
         let mut tasks = vec![tokio::spawn(poll_store(inner.clone()))];
         let mut port = None;
@@ -203,6 +210,10 @@ impl RemoteServer {
     /// Why the host last went offline, if it did.
     pub fn last_error(&self) -> Option<String> {
         self.inner.last_error.lock().unwrap().clone()
+    }
+
+    pub fn share_state(&self) -> ShareState {
+        self.inner.share_state()
     }
 
     /// Wait until devices can reach the host.
@@ -400,6 +411,7 @@ async fn relay_loop(inner: Arc<Inner>) {
             Ok(mut host) => {
                 backoff = BACKOFF_MIN;
                 *inner.last_error.lock().unwrap() = None;
+                *inner.failure.lock().unwrap() = None;
                 inner.status.send_replace(RemoteStatus::Online);
                 loop {
                     let session = tokio::select! {
@@ -416,6 +428,11 @@ async fn relay_loop(inner: Arc<Inner>) {
             }
             Err(error) => format!("could not register at the relay: {error}"),
         };
+        *inner.failure.lock().unwrap() = Some(ShareFailure {
+            transport: "relay".into(),
+            exit_code: None,
+            retry_after_secs: backoff.as_secs(),
+        });
         inner.set_offline(Some(error));
         tokio::select! {
             _ = inner.stop.cancelled() => return,

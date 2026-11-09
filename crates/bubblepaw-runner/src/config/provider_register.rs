@@ -3,8 +3,7 @@
 use super::*;
 
 impl Settings {
-    /// The transports `providers.*` configure, with credentials read through
-    /// `environment`.
+    /// The configured transports, using stored keys before `environment`.
     pub fn register_providers_with_env(
         &self,
         registry: &mut ProviderRegistry,
@@ -68,7 +67,12 @@ impl Settings {
                 }
                 continue;
             }
-            if kind == "chat-completions" && provider.key_env.is_none() {
+            let key = self.provider_key(name, environment)?;
+            if kind == "chat-completions"
+                && provider.key_env.is_none()
+                && key.is_none()
+                && crate::provider::is_loopback_url(base)
+            {
                 let adapter = ChatCompletionsProvider::without_key(base.clone())?
                     .with_reasoning_fields(serde_json::to_value(&provider.reasoning)?)?
                     .with_reasoning_replay(provider.reasoning_replay())?;
@@ -77,12 +81,7 @@ impl Settings {
                 }
                 continue;
             }
-            let Some(key) = provider
-                .key_env
-                .as_ref()
-                .and_then(|name| environment(name))
-                .filter(|key| !key.is_empty())
-            else {
+            let Some(key) = key else {
                 continue;
             };
             ensure!(

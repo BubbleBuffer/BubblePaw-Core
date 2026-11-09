@@ -50,15 +50,3 @@ impl RemoteServeOptions {
         }
     }
 }
-
-/// Whether devices can reach the host now.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RemoteStatus {
-    Connecting,
-    /// Registered at the relay, or the endpoint is published (see
-    /// `RemoteServer::address`).
-    Online,
-    /// The last attempt failed; the server retries with backoff
-    /// (`RemoteServer::last_error` says why).
-    Offline,
-}
