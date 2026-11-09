@@ -72,13 +72,20 @@ continues to refuse the fork-local `submit_summary` and `submit_chapter` names.
 Use the captured successful route, followed by its explicitly configured provider
 fallbacks. Free first applies when the captured main route is still free; a
 confirmed paid main route does not repeatedly restart a failed free route. Route
-fallback retains the full-fork shape. Episode-only input is an explicit policy,
-not a silent response to unavailable capture, unsupported protocol or pressure.
+fallback retains the full-fork shape. Episode-only input is an explicit policy (or the `auto` resolution
+for a provider that cannot fork), not a silent response to unavailable capture,
+an explicit `fork` on an unsupported protocol, or pressure.
 Different routes are not assumed to share provider caches.
 
-Full-prefix forks currently require the Chat adapter. Messages/Responses callers
-must explicitly select `context.lcm.summary_input = "episode"` until native fork
-support exists. Archive-replay convenience constructors explicitly select episode
+Full-prefix forks currently require the Chat adapter. `context.lcm.summary_input`
+is `auto` (the default), `fork` or `episode`. `auto` resolves per gather from the
+captured main route: a provider that supports summary forks (Chat) forks, any
+other (Messages/Responses) summarizes from episode input (previous summary and
+rendered episode), declared as a fresh side call like an explicit `episode`. An
+explicitly configured `fork` or `episode` is never swapped: `fork` on a provider
+without fork support fails with `unsupported_protocol`, and the first such failure
+in a session is reported once as a `summary_input_unsupported` observation naming
+the setting to change. Archive-replay convenience constructors explicitly select episode
 input because no live main request exists; their reports identify the input mode.
 Replay's explicit `--threshold` remains an input threshold, unlike the live
 runner's physical-cap setting.

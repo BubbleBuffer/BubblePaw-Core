@@ -62,7 +62,7 @@ compact_threshold_tokens = 200000
 auto_summarize = true
 retry_base_ms = 500
 [context.lcm]
-summary_input = "fork"
+summary_input = "auto"
 decider_enabled = true
 source_target_tokens = 24000
 source_max_tokens = 32000

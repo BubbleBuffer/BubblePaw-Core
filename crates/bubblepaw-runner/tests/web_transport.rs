@@ -106,8 +106,7 @@ impl Server {
             .unwrap(),
         );
         // WebEpisodeModels only scripts episode-only summaries. docs/lcm-contract.md
-        // "Gather": episode-only input is an explicit policy, never a silent
-        // fallback from the default full-prefix fork.
+        // "Gather": an explicitly configured input is never silently swapped.
         let worker = EpisodeWorker::new_with_config(
             store.clone(),
             Arc::new(WebEpisodeModels),

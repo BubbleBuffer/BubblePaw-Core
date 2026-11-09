@@ -4,7 +4,7 @@ use bubblepaw_core::{
     ObservationRecord, ObservationScope, Reminder, Store, Usage,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     future::Future,
     sync::{Arc, Mutex},
 };
@@ -23,6 +23,8 @@ pub(crate) struct ContextRoute {
     /// Trace events only; the ledger never comes from here.
     observation: Arc<Mutex<Option<Observation>>>,
     forks: Arc<Mutex<ForkAnnotations>>,
+    /// (session, kind) pairs already reported by `warn_once`.
+    warned: Arc<Mutex<HashSet<(String, String)>>>,
 }
 
 impl Default for ContextRoute {
@@ -32,6 +34,7 @@ impl Default for ContextRoute {
             ledger: Default::default(),
             observation: Default::default(),
             forks: Default::default(),
+            warned: Default::default(),
         }
     }
 }
@@ -203,6 +206,33 @@ impl ContextRoute {
                 payload_truncated: false,
             });
         }
+    }
+
+    /// Report a non-fatal warning once per session and kind, through the same
+    /// observation sink as `cache_miss_unexplained`. Returns whether it was new.
+    pub(crate) fn warn_once(&self, session: &str, kind: &str, metrics: serde_json::Value) -> bool {
+        if !self
+            .warned
+            .lock()
+            .unwrap()
+            .insert((session.to_owned(), kind.to_owned()))
+        {
+            return false;
+        }
+        if let Some(observation) = self.observation() {
+            observation.sink.record(ObservationRecord {
+                created_at: chrono::Utc::now().to_rfc3339(),
+                kind: kind.into(),
+                scope: ObservationScope {
+                    session_id: session.into(),
+                    ..Default::default()
+                },
+                metrics,
+                payload: None,
+                payload_truncated: false,
+            });
+        }
+        true
     }
 
     /// Captures carry annotations in a disposable sidecar, preserving EpisodeFork's API.

@@ -11,6 +11,7 @@ use bubblepaw_runner::{
         SummaryInput, SummaryResult,
     },
     episode_worker::EpisodeWorker,
+    episodes::{EpisodeConfig, EpisodeSummaryInput},
     summarization::{SummarizingContext, SummaryConfig},
     usage::UsageContext,
 };
@@ -24,6 +25,9 @@ use hook::prepare_fresh;
 struct Recorded(Mutex<Vec<ModelRequest>>);
 #[async_trait]
 impl Provider for Recorded {
+    fn supports_summary_fork(&self, _: &str) -> bool {
+        true
+    }
     async fn generate(
         &self,
         request: ModelRequest,
@@ -401,6 +405,86 @@ async fn episode_worker_uses_fork_and_cleanup_releases_captures() -> Result<()> 
             .episode_fork(&f.session, &source[0].id, &source[1].id)?
             .is_none()
     );
+    Ok(())
+}
+
+/// A provider that cannot fork summaries (the trait default), as every non-chat adapter.
+struct NoFork;
+#[async_trait]
+impl Provider for NoFork {
+    async fn generate(
+        &self,
+        _: ModelRequest,
+        _: TextCallback,
+        _: CancellationToken,
+    ) -> Result<ModelResponse> {
+        Ok(ModelResponse::default())
+    }
+}
+
+async fn gather_with(
+    provider: Arc<dyn Provider>,
+    summary_input: EpisodeSummaryInput,
+) -> Result<(Arc<ForkModels>, Result<()>)> {
+    let f = Fixture::new()?;
+    let source = vec![
+        f.message(Role::User, "task"),
+        f.message(Role::Assistant, "complete exact source"),
+    ];
+    f.store.append_batch(&source)?;
+    let request = f.request(source.clone());
+    f.context.observe_request(&f.session, &request, provider);
+    f.context
+        .observe_response(&f.session, &ModelResponse::default());
+    let models = Arc::new(ForkModels::default());
+    let worker = EpisodeWorker::new_with_config(
+        f.store.clone(),
+        models.clone(),
+        f.context.clone(),
+        EpisodeConfig {
+            summary_input,
+            ..Default::default()
+        },
+    )?;
+    let result = worker.compact_until(&f.session, source.len(), None).await;
+    Ok((models, result))
+}
+
+#[test]
+fn default_summary_input_is_auto() {
+    assert_eq!(
+        EpisodeConfig::default().summary_input,
+        EpisodeSummaryInput::Auto
+    );
+}
+
+#[tokio::test]
+async fn auto_forks_when_the_provider_supports_it() -> Result<()> {
+    let (models, result) =
+        gather_with(Arc::new(Recorded::default()), EpisodeSummaryInput::Auto).await?;
+    result?;
+    assert_eq!(models.forks.lock().unwrap().len(), 1);
+    assert_eq!(*models.bounded.lock().unwrap(), 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn auto_summarizes_from_episode_input_when_the_provider_cannot_fork() -> Result<()> {
+    let (models, result) = gather_with(Arc::new(NoFork), EpisodeSummaryInput::Auto).await?;
+    result?;
+    assert!(models.forks.lock().unwrap().is_empty());
+    assert_eq!(*models.bounded.lock().unwrap(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_fork_still_selects_the_fork_path_on_an_unsupported_provider() -> Result<()> {
+    // The strict error comes from the summary call (see
+    // unsupported_fork_requires_explicit_episode_policy); the worker must not swap the input.
+    let (models, result) = gather_with(Arc::new(NoFork), EpisodeSummaryInput::Fork).await?;
+    result?;
+    assert_eq!(models.forks.lock().unwrap().len(), 1);
+    assert_eq!(*models.bounded.lock().unwrap(), 0);
     Ok(())
 }
 

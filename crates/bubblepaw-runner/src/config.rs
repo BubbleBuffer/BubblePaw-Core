@@ -2087,6 +2087,16 @@ cache_max_bytes = 1048576
     }
 
     #[test]
+    fn default_config_summarizes_with_auto_input() {
+        let root = tempfile::tempdir().unwrap();
+        let config = EffectiveConfig::load(options(root.path())).unwrap();
+        assert_eq!(
+            config.settings().unwrap().lcm.episodes.summary_input,
+            crate::episodes::EpisodeSummaryInput::Auto
+        );
+    }
+
+    #[test]
     fn lcm_sizes_are_layered_typed_and_visible_without_round_defaults() {
         let root = tempfile::tempdir().unwrap();
         let mut opts = options(root.path());
