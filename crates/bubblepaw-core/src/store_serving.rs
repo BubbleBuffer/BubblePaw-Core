@@ -135,7 +135,6 @@ impl Store {
                 conn.prepare_cached(&format!("SELECT * FROM {table} WHERE {predicate}"))?;
             let mut columns = statement
                 .column_names()
-                .into_iter()
                 .map(str::to_owned)
                 .collect::<Vec<_>>();
             let count = statement.column_count();

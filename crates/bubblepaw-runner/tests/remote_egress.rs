@@ -82,7 +82,7 @@ async fn provider() -> Result<Provider> {
     let certified = rcgen::generate_simple_self_signed(vec![PROVIDER_HOST.to_owned()])?;
     let cert_pem = certified.cert.pem();
     let key = tokio_rustls::rustls::pki_types::PrivateKeyDer::try_from(
-        certified.key_pair.serialize_der(),
+        certified.signing_key.serialize_der(),
     )
     .map_err(|error| anyhow::anyhow!("{error}"))?;
     let config = tokio_rustls::rustls::ServerConfig::builder()

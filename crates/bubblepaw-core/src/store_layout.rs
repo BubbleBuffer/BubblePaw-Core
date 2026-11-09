@@ -402,7 +402,6 @@ impl Store {
         let mut query = source.prepare(&format!("SELECT * FROM {table}{filter}"))?;
         let columns = query
             .column_names()
-            .iter()
             .map(|column| format!("\"{column}\""))
             .collect::<Vec<_>>();
         let sql = format!(
