@@ -62,7 +62,6 @@ crates/bubblepaw-runner/tests/context_strategies.rs 715
 crates/bubblepaw-runner/tests/decision_providers.rs 1078
 crates/bubblepaw-runner/tests/delegate.rs 738
 crates/bubblepaw-runner/tests/episode_background.rs 555
-crates/bubblepaw-runner/tests/episode_forks.rs 521
 crates/bubblepaw-runner/tests/episode_forks_http.rs 585
 crates/bubblepaw-runner/tests/episode_models.rs 1504
 crates/bubblepaw-runner/tests/episode_worker.rs 1124
@@ -98,7 +97,7 @@ crates/bubblepaw-runner/tests/summarization.rs 1710
 crates/bubblepaw-runner/tests/usage.rs 509
 crates/bubblepaw-runner/tests/web_input_files.rs 519
 crates/bubblepaw-runner/tests/web_providers.rs 1572
-crates/bubblepaw-runner/tests/web_transport.rs 1167
+crates/bubblepaw-runner/tests/web_transport.rs 1166
 crates/bubblepaw-runner/tests/worker_lifecycle.rs 996
 crates/bubblepaw-runner/tests/workspace_edit.rs 520
 crates/bubblepaw-runner/tests/worktree_children.rs 524

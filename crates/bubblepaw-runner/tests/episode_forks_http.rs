@@ -583,33 +583,3 @@ async fn unsupported_fork_requires_explicit_episode_policy() -> Result<()> {
     assert!(rows[0].1.to_string().contains("BOUNDED_INPUT_SENTINEL"));
     Ok(())
 }
-
-#[tokio::test]
-async fn unsupported_fork_warns_once_per_session_not_per_wake() -> Result<()> {
-    let f = fixture(vec![]).await?;
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("trace.jsonl");
-    let trace = JsonlTrace::open(TraceConfig {
-        path: path.clone(),
-        ..Default::default()
-    })?;
-    let adapter = models(f.registry.clone(), Some(trace.clone()))?;
-    for _ in 0..3 {
-        let mut captured = fork(f.registry.clone(), request());
-        captured.provider = Arc::new(UnavailableFree(Mutex::new(0)));
-        let error = adapter.summarize_fork(input(), captured).await.unwrap_err();
-        assert!(error.to_string().contains("unsupported_protocol"));
-    }
-    trace.flush(Duration::from_secs(2))?;
-    let events = std::fs::read_to_string(path)?;
-    let warnings: Vec<_> = events
-        .lines()
-        .filter(|line| line.contains("\"summary_input_unsupported\""))
-        .collect();
-    assert_eq!(warnings.len(), 1, "{events}");
-    assert!(
-        warnings[0].contains("episode"),
-        "names the setting to change"
-    );
-    Ok(())
-}

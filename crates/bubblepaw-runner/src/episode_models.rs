@@ -251,20 +251,6 @@ impl HttpEpisodeModels {
         );
     }
     fn fork_unavailable(&self, session: &str, model: &str, reason: &str) -> anyhow::Error {
-        // An explicit `fork` on a provider that cannot fork never summarizes; say so
-        // once per session instead of leaving only a suppressed retry.
-        if reason == "unsupported_protocol" {
-            self.context_route.warn_once(
-                session,
-                "summary_input_unsupported",
-                json!({
-                    "model": model,
-                    "summary_input": "fork",
-                    "reason": reason,
-                    "message": "context.lcm.summary_input = \"fork\" cannot run on this provider, so episodes are not summarized; set summary_input to \"auto\" or \"episode\"",
-                }),
-            );
-        }
         if let Some(trace) = &self.trace {
             trace.runtime_info(
                 json!({"event":"episode_fork_unavailable", "session_id":session,
