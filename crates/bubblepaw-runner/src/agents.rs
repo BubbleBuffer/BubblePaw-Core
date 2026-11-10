@@ -154,10 +154,12 @@ struct WorkerFinished {
     finished_at: String,
 }
 
+mod controlled_prompt;
 #[path = "agents_question.rs"]
 mod questions;
 #[path = "agent_reminders.rs"]
 mod reminder_notices;
+use controlled_prompt::controlled_prompt;
 mod worktree_cleanup;
 use worktree_cleanup::report_worktree_cleanup;
 
@@ -1248,7 +1250,7 @@ impl AgentTools {
         let run = match self.admit_scoped(&session.id, || {
             profile.harness.start(
                 &session.id,
-                controlled_prompt(&prompt, &controls),
+                controlled_prompt(&prompt, &controls, &profile.harness, &session.id)?,
                 self.child_run_options(
                     &session.id,
                     &profile.harness,
@@ -1855,7 +1857,7 @@ impl AgentTools {
                 "{text}\n\nThis turn has an unlimited tool-call budget; the previous turn's budget does not carry over."
             )
         } else {
-            controlled_prompt(text, &controls)
+            controlled_prompt(text, &controls, &child.harness, &child.session_id)?
         };
         // Own child is idle, so do not include it in the active-slot count.
         // Drop its result lock before the shared check reads all child turns.
@@ -2973,14 +2975,6 @@ fn save_controls(store: &Store, session: &str, run: &str, controls: &Controls) -
             b"",
         )
         .map(|_| ())
-}
-fn controlled_prompt(text: &str, controls: &Controls) -> String {
-    match controls.max_tool_calls {
-        Some(max) => format!(
-            "{text}\n\nYou have {max} tool calls for this turn. Every tool call counts, including each call made inside a js cell. Plan within the budget and return your final answer when it is exhausted."
-        ),
-        None => text.to_owned(),
-    }
 }
 fn capture_partial(
     event: HarnessEvent,

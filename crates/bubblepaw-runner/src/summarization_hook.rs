@@ -88,8 +88,12 @@ impl SummarizingContext {
     ) -> Result<()> {
         let view = self.store.context_view(session)?;
         if let Some(notes) = &self.notes {
+            // The mode is bound when the run is admitted, before any preparation.
+            let mode = self
+                .store
+                .candidate_execution_mode(session, bubblepaw_core::ExecutionMode::default())?;
             if manual {
-                writer.remind("runtime_inventory", &notes.note(session));
+                writer.remind("runtime_inventory", &notes.note(session, mode));
             } else if self
                 .prefix_changes
                 .lock()
@@ -97,9 +101,9 @@ impl SummarizingContext {
                 .get(session)
                 .is_some_and(|reason| reason == "lcm_apply")
             {
-                writer.remind_fresh("runtime_inventory", &notes.note(session));
+                writer.remind_fresh("runtime_inventory", &notes.note(session, mode));
             } else if self.automatic() || view.is_some() {
-                writer.remind("runtime_inventory", &notes.live_note(session));
+                writer.remind("runtime_inventory", &notes.live_note(session, mode));
             }
         }
         self.stage_cold_notes(session, writer)

@@ -20,7 +20,7 @@ crates/bubblepaw-mcp/src/host.rs 762
 crates/bubblepaw-mcp/src/http.rs 1377
 crates/bubblepaw-mcp/tests/http.rs 1851
 crates/bubblepaw-mcp/tests/stdio.rs 1010
-crates/bubblepaw-runner/src/agents.rs 3365
+crates/bubblepaw-runner/src/agents.rs 3359
 crates/bubblepaw-runner/src/codemode.rs 1886
 crates/bubblepaw-runner/src/config.rs 2992
 crates/bubblepaw-runner/src/delegate/ledger.rs 519

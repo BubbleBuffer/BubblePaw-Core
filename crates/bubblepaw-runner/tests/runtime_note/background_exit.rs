@@ -20,7 +20,9 @@ async fn background_exit_is_listed_until_its_result_is_polled() {
     )
     .unwrap();
     let handle = started["handle"].as_str().unwrap().to_owned();
-    let running = fixture.notes.live_note(&fixture.session);
+    let running = fixture
+        .notes
+        .live_note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(running.contains(&handle), "{running}");
     assert!(!running.contains("unread"), "{running}");
     // Let the job exit without polling it.
@@ -39,7 +41,9 @@ async fn background_exit_is_listed_until_its_result_is_polled() {
     })
     .await
     .unwrap();
-    let unread = fixture.notes.live_note(&fixture.session);
+    let unread = fixture
+        .notes
+        .live_note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(unread.contains(&handle), "{unread}");
     assert!(unread.contains("exited, unread, exit=0"), "{unread}");
     assert!(!unread.contains("private-command-output"));
@@ -65,7 +69,9 @@ async fn background_exit_is_listed_until_its_result_is_polled() {
     .await
     .unwrap();
     assert_eq!(polled["status"], "exited");
-    let quiet = fixture.notes.live_note(&fixture.session);
+    let quiet = fixture
+        .notes
+        .live_note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(!quiet.contains(&handle), "{quiet}");
     assert!(quiet.contains("Runtime: no running commands, cells or agents."));
     fixture.shutdown().await;
