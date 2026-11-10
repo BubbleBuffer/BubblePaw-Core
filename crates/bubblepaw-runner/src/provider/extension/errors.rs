@@ -2,6 +2,7 @@
 //! diagnostic lines kept from its error text and stderr. Never repeat a
 //! credential: see `diagnostic_line`.
 use super::*;
+use std::collections::BTreeMap;
 
 const MAX_DIAGNOSTIC_BYTES: usize = 300;
 
