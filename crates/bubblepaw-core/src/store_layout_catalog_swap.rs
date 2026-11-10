@@ -14,6 +14,31 @@ pub(super) struct ScannedRoots<'a> {
 }
 
 impl Store {
+    /// `open_session_record` for a session `list_sessions` can show: one whose
+    /// catalog row is still in the pending buffer has its chat file committed
+    /// already, only the disposable projection lags. The buffer is read first:
+    /// a flush commits the catalog before it clears the buffer, so a session
+    /// missing from the buffer is in the catalog.
+    pub(super) fn open_listed_session<T>(
+        &self,
+        session: &str,
+        open: impl FnOnce(&str, &Path) -> Result<T>,
+    ) -> Result<Option<(T, String)>> {
+        let layout = self.0.layout.as_ref().unwrap();
+        let pending = layout
+            .pending_catalog
+            .lock()
+            .unwrap()
+            .get(session)
+            .map(|(root, _, _)| root.clone());
+        if let Some(root) = pending {
+            let path = layout.data_dir.join(format!("chats/{root}.db"));
+            if path.is_file() {
+                return Ok(Some((open(&root, &path)?, root)));
+            }
+        }
+        open_session_record(&layout.catalog, &layout.data_dir, session, open)
+    }
     /// The ids of every catalogued session, taken before the scan starts.
     pub(super) fn catalog_ids(layout: &Layout) -> Result<Vec<String>> {
         let catalog = layout.catalog.lock().unwrap();
