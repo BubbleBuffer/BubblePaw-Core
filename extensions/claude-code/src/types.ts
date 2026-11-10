@@ -77,6 +77,8 @@ export class ProviderError extends Error {
 	usage?: Usage;
 	/** The full model ID reported before the failure, when the SDK named one. */
 	reportedModel?: string;
+	/** A summary fork that can never succeed at this cut (not merely not ready yet). */
+	forkImpossible = false;
 	constructor(
 		readonly kind: ErrorKind,
 		message: string,
@@ -88,13 +90,14 @@ export class ProviderError extends Error {
 		super(message);
 		this.name = "ProviderError";
 	}
-	get data(): { kind: ErrorKind; resets_at?: string; limit_type?: string; quota_events?: RateLimitInfo[]; terminal_quota?: boolean; usage?: Usage; reported_model?: string } {
+	get data(): { kind: ErrorKind; resets_at?: string; limit_type?: string; quota_events?: RateLimitInfo[]; terminal_quota?: boolean; fork_impossible?: boolean; usage?: Usage; reported_model?: string } {
 		return {
 			kind: this.kind,
 			...(this.resetsAt ? { resets_at: this.resetsAt } : {}),
 			...(this.limitType ? { limit_type: this.limitType } : {}),
 			...(this.quotaEvents.length ? { quota_events: this.quotaEvents } : {}),
 			...(this.message.startsWith("billing or spend limit reached") ? { terminal_quota: true } : {}),
+			...(this.forkImpossible ? { fork_impossible: true } : {}),
 			...(this.usage ? { usage: this.usage } : {}),
 			...(this.reportedModel ? { reported_model: this.reportedModel } : {}),
 		};

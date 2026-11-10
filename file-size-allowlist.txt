@@ -26,7 +26,7 @@ crates/bubblepaw-runner/src/config.rs 2992
 crates/bubblepaw-runner/src/delegate/ledger.rs 519
 crates/bubblepaw-runner/src/delegate/metrics.rs 912
 crates/bubblepaw-runner/src/episode_models.rs 991
-crates/bubblepaw-runner/src/episode_worker.rs 1053
+crates/bubblepaw-runner/src/episode_worker.rs 1048
 crates/bubblepaw-runner/src/host_transport.rs 828
 crates/bubblepaw-runner/src/main.rs 712
 crates/bubblepaw-runner/src/net.rs 2764

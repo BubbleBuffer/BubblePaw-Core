@@ -490,12 +490,7 @@ impl EpisodeWorker {
                 Some((fork, cold)) => {
                     self.models
                         .record_fork_context(session, &fork.request, &cold);
-                    self.counted(
-                        session,
-                        RequestKind::SummaryFork,
-                        self.models.summarize_fork(input, fork),
-                    )
-                    .await?
+                    self.summarize_forked(session, input, fork).await?
                 }
                 None => {
                     self.counted(

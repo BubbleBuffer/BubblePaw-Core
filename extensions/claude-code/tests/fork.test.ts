@@ -47,6 +47,9 @@ describe("the fork cut", () => {
 		for (const [name, records, prefix] of cases) {
 			expect(() => forkCut(records, prefix), name).toThrow(ProviderError);
 		}
+		// Only the cuts no later flush can fix are reported as impossible (the host then summarizes that episode without a fork).
+		const kinds = cases.map(([, records, prefix]) => { try { forkCut(records, prefix); } catch (e) { return (e as ProviderError).forkImpossible; } });
+		expect(kinds).toEqual([true, false, false, false, true]);
 	});
 
 	test("takes a system message and a user message as one turn", () => {
@@ -96,12 +99,12 @@ describe("a summary fork on the step engine", () => {
 		expect(run.closed).toBe(true);
 	});
 
-	test("without a consistent cut it fails transient before starting any query", async () => {
+	test("without a consistent cut it fails before starting any query, impossible only at a user message", async () => {
 		const { provider, fake } = fixture([]);
 		const error = await provider.summaryFork(fork([user("go")]), 1, () => {}).catch((e) => e);
-		expect(error.kind).toBe("transient");
+		expect([error.kind, error.forkImpossible]).toEqual(["fatal", true]);
 		expect(fake.runs).toHaveLength(0);
 		const none = await new ClaudeCodeProvider({ query: fake.fn }).summaryFork(fork(history.slice(0, 4)), 2, () => {}).catch((e) => e);
-		expect(none.kind).toBe("transient");
+		expect([none.kind, none.forkImpossible]).toEqual(["transient", false]);
 	});
 });

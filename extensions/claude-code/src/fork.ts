@@ -61,6 +61,13 @@ export function readRecords(mirror: Mirror, claudeDir?: string): any[] {
 	return records;
 }
 
+/** A cut this session file can never be forked at, as opposed to one not written yet. */
+function impossible(reason: string): ProviderError {
+	const error = new ProviderError("fatal", `no fork cut possible: ${reason}`);
+	error.forkImpossible = true;
+	return error;
+}
+
 function unavailable(reason: string): ProviderError {
 	return new ProviderError("transient", `no consistent fork cut: ${reason}`);
 }
@@ -120,7 +127,7 @@ export function forkCut(records: readonly any[], prefix: readonly Message[]): st
 			if (list[j]?.k !== "u") throw unavailable("a user turn is missing from the session file");
 			while (list[j]?.k === "u") last = list[j++];
 			while (prefix[p + 1]?.role === "user" || prefix[p + 1]?.role === "system") p++;
-			if (p === prefix.length - 1) throw unavailable("the cut is at a user message");
+			if (p === prefix.length - 1) throw impossible("the cut is at a user message");
 		} else if (m.role === "assistant") {
 			if (!m.content && !(m.tool_calls ?? []).length) continue;
 			skipNotes();
@@ -142,6 +149,6 @@ export function forkCut(records: readonly any[], prefix: readonly Message[]): st
 	}
 	if (!last) throw unavailable("the session file holds no conversation");
 	const next = list[j];
-	if (last.k === "t" && next?.rec === last.rec && !(next.k === "u" && next.note)) throw unavailable("the cut falls inside a record");
+	if (last.k === "t" && next?.rec === last.rec && !(next.k === "u" && next.note)) throw impossible("the cut falls inside a record");
 	return last.uuid;
 }
