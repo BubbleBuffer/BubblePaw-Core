@@ -28,10 +28,16 @@ pub(super) enum Role {
     Client(String, u64),
 }
 
-fn enqueue(sender: &mpsc::Sender<Wire>, frame: Wire) -> Result<()> {
-    sender
-        .try_send(frame)
-        .map_err(|_| Error::Limit("outbound queue"))
+/// Queue a frame for a peer's connection. A full queue closes that connection;
+/// the error and a log line name which queue and its capacity.
+fn enqueue(sender: &mpsc::Sender<Wire>, frame: Wire, queue: &'static str) -> Result<()> {
+    sender.try_send(frame).map_err(|_| {
+        tracing::warn!(
+            "relay closes a connection: its {queue} queue is full ({} frames)",
+            sender.max_capacity()
+        );
+        Error::Limit(queue)
+    })
 }
 
 impl State {
@@ -84,7 +90,11 @@ impl State {
             .checked_add(1)
             .ok_or(Error::Limit("session ids"))?;
         let session = self.next_session;
-        enqueue(&host.sender, Wire::Incoming(session, key))?;
+        enqueue(
+            &host.sender,
+            Wire::Incoming(session, key),
+            "host incoming-session",
+        )?;
         host.clients.insert(
             session,
             Client {
@@ -113,7 +123,11 @@ impl State {
                         if client.accepted {
                             return Ok(());
                         }
-                        enqueue(&client.sender, Wire::Connected(session, host.key))?;
+                        enqueue(
+                            &client.sender,
+                            Wire::Connected(session, host.key),
+                            "client connected",
+                        )?;
                         client.accepted = true;
                     }
                     Wire::Data(session, bytes) => {
@@ -123,11 +137,11 @@ impl State {
                         if let Some(observe) = observer {
                             observe(&bytes);
                         }
-                        enqueue(&client.sender, Wire::Data(session, bytes))?;
+                        enqueue(&client.sender, Wire::Data(session, bytes), "client data")?;
                     }
                     Wire::Close(session) => {
                         if let Some(client) = host.clients.remove(&session) {
-                            let _ = enqueue(&client.sender, Wire::Close(session));
+                            let _ = enqueue(&client.sender, Wire::Close(session), "client close");
                         }
                     }
                     _ => return Err(Error::Protocol("invalid host command")),
@@ -147,7 +161,7 @@ impl State {
                         if let Some(observe) = observer {
                             observe(&bytes);
                         }
-                        enqueue(&host.sender, Wire::Data(*session, bytes))?;
+                        enqueue(&host.sender, Wire::Data(*session, bytes), "host data")?;
                     }
                     Wire::Close(received) if received == *session => {
                         return Err(Error::Closed);
@@ -169,7 +183,7 @@ impl State {
                     && let Some(host) = self.hosts.remove(id)
                 {
                     for (session, client) in host.clients {
-                        let _ = enqueue(&client.sender, Wire::Close(session));
+                        let _ = enqueue(&client.sender, Wire::Close(session), "client close");
                     }
                 }
             }
@@ -181,7 +195,7 @@ impl State {
                         .is_some_and(|c| c.connection == connection)
                 {
                     host.clients.remove(session);
-                    let _ = enqueue(&host.sender, Wire::Close(*session));
+                    let _ = enqueue(&host.sender, Wire::Close(*session), "host close");
                 }
             }
         }
