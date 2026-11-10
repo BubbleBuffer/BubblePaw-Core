@@ -10,7 +10,9 @@ mod http_error;
 mod live_provider;
 mod messages;
 mod metering;
+mod opencode_session;
 pub(crate) use metering::PhysicalRequest;
+pub(crate) use opencode_session::opencode_session;
 mod registry;
 pub(crate) mod replay_state;
 mod responses_body;
@@ -549,6 +551,26 @@ impl Provider for ResponsesProvider {
         self.generate_body(request, false, on_text, cancellation)
             .await
     }
+    fn supports_summary_fork(&self, _model: &str) -> bool {
+        true
+    }
+    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
+        self.fork_mapping(request).map(Some)
+    }
+    async fn generate_summary_fork(
+        &self,
+        request: ModelRequest,
+        cancellation: CancellationToken,
+    ) -> Result<ModelResponse> {
+        self.generate(request, Arc::new(|_| {}), cancellation).await
+    }
+    fn estimate_input_tokens(
+        &self,
+        request: &ModelRequest,
+        count: &dyn Fn(&Value) -> usize,
+    ) -> Result<Option<usize>> {
+        self.token_input(request).map(|input| Some(count(&input)))
+    }
     fn wire_shape(&self, request: &ModelRequest) -> Option<bubblepaw_core::WireShape> {
         // `body` is pure; `generate_body` posts this body for main-loop rounds.
         let body = self.body(request).ok()?;
@@ -830,29 +852,6 @@ fn terminal_quota_failure(reason: &str, diagnostic: String) -> anyhow::Error {
     ProviderError::new(ProviderErrorKind::Fatal, format!("{reason}: {diagnostic}")).into()
 }
 
-/// Session id for the `x-opencode-session` header, chosen the same way for
-/// every wire that sends it: the request's session, else its first message's
-/// session, else its first message id, else a fresh UUID.
-pub(crate) fn opencode_session(request: &ModelRequest) -> String {
-    (!request.session_id.is_empty())
-        .then_some(request.session_id.as_str())
-        .or_else(|| {
-            request
-                .messages
-                .iter()
-                .find(|message| !message.session_id.is_empty())
-                .map(|message| message.session_id.as_str())
-        })
-        .or_else(|| {
-            request
-                .messages
-                .iter()
-                .find(|message| !message.id.is_empty())
-                .map(|message| message.id.as_str())
-        })
-        .map(str::to_owned)
-        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
-}
 fn is_context_overflow(body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
     lower.contains("context_length_exceeded")

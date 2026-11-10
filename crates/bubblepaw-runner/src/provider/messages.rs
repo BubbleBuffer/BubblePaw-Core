@@ -18,6 +18,9 @@ mod http;
 const UNSIGNED_CUT: &str = "unsigned_cut";
 #[path = "messages_cache.rs"]
 mod cache;
+#[path = "messages_fork.rs"]
+mod fork;
+use fork::unfinished_tool_loop;
 
 pub struct MessagesProvider {
     pub(in crate::provider) client: stream::Client,
@@ -47,6 +50,11 @@ impl MessagesProvider {
     }
 
     fn body(request: &ModelRequest) -> Result<Value> {
+        Self::build(request).map(|(body, _)| body)
+    }
+
+    /// The body plus the request message index of every wire block.
+    fn build(request: &ModelRequest) -> Result<(Value, Vec<Vec<usize>>)> {
         ensure!(!request.model.is_empty(), "model must be selected");
         ensure!(
             request.max_output_tokens != Some(0),
@@ -183,7 +191,7 @@ impl MessagesProvider {
                 json!({"type":if request.tools.is_empty() {"none"} else {"auto"}});
         }
         cache::place(&mut body, &sources, request.cache_tiers.as_ref());
-        Ok(body)
+        Ok((body, sources))
     }
 
     /// Use the actual renderer and its native replay guards, then omit transport
@@ -479,35 +487,6 @@ impl MessagesProvider {
     }
 }
 
-/// New user tasks and completed assistant answers close earlier tool loops.
-/// Generated host notices are observations within the current loop.
-/// Separate reasoning-only records can precede the first call of an open loop.
-fn unfinished_tool_loop(messages: &[bubblepaw_core::Message]) -> Option<usize> {
-    let mut start = None;
-    let mut has_calls = false;
-    for (index, message) in messages.iter().enumerate() {
-        match message.role {
-            Role::User if message.origin != Some(bubblepaw_core::MessageOrigin::Generated) => {
-                start = None;
-                has_calls = false;
-            }
-            Role::Assistant if !message.tool_calls.is_empty() => {
-                start.get_or_insert(index);
-                has_calls = true;
-            }
-            Role::Assistant if !message.content.is_empty() => {
-                start = None;
-                has_calls = false;
-            }
-            Role::Assistant => {
-                start.get_or_insert(index);
-            }
-            _ => {}
-        }
-    }
-    has_calls.then_some(start).flatten()
-}
-
 /// Largest synchronous output a model accepts, used when a role sets no
 /// `max_output_tokens`. claude-haiku-5-5 is 128K in the Anthropic models
 /// overview; other models fall back to 64000, which every listed model accepts.
@@ -639,6 +618,20 @@ fn messages_context_overflow(bytes: &[u8]) -> bool {
 
 #[async_trait]
 impl Provider for MessagesProvider {
+    fn supports_summary_fork(&self, _model: &str) -> bool {
+        true
+    }
+    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
+        Self::fork_mapping(request).map(Some)
+    }
+    async fn generate_summary_fork(
+        &self,
+        request: ModelRequest,
+        cancellation: CancellationToken,
+    ) -> Result<ModelResponse> {
+        self.generate(request, std::sync::Arc::new(|_| {}), cancellation)
+            .await
+    }
     fn estimate_input_tokens(
         &self,
         request: &ModelRequest,

@@ -570,7 +570,7 @@ dirs = []                             # extra skill collections after project an
 enabled = true                        # live: false leaves this one skill out of new catalogs
 
 [context.lcm]
-summary_input = "auto"               # auto | fork | episode: auto forks the main prefix where the provider can, else episode input; fork errors if it cannot
+summary_input = "auto"               # auto | fork | episode: auto forks the main prefix where the provider can (Chat, Messages, Responses), else episode input (Claude Code extension); fork errors if it cannot
 episode_prompt = "v2"               # v2 | v3: v3 adds a gist line and an Actions: log
 chapter_prompt = "v1"               # v1 | v2: v2 adds decisions and sections
 decider_enabled = true              # false skips semantic chapter decisions; volume rollover remains available
