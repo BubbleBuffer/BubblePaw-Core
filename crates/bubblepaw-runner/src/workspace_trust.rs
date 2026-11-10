@@ -10,10 +10,7 @@
 //! store and the settings keys. Project config cannot set these keys, and
 //! nothing a model can call writes the store.
 use anyhow::{Context, Result};
-use bubblepaw_core::{
-    config_schema::{Node, RESTART},
-    config_section,
-};
+use bubblepaw_core::{config_schema::RESTART, config_section};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 

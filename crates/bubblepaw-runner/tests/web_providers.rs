@@ -68,8 +68,8 @@ impl Files {
         let home = temp.path().join("home");
         let workspace = temp.path().join("workspace");
         let custom = temp.path().join("custom.toml");
-        std::fs::create_dir_all(&home).unwrap();
         std::fs::create_dir_all(&workspace).unwrap();
+        bubblepaw_runner::workspace_trust::trust(&home, &workspace).unwrap();
         Self {
             _temp: temp,
             home,
@@ -79,7 +79,6 @@ impl Files {
     }
 
     fn options(&self, custom: bool) -> LoadOptions {
-        bubblepaw_runner::workspace_trust::trust(&self.home, &self.workspace).unwrap();
         LoadOptions {
             workspace: self.workspace.clone(),
             home: Some(self.home.clone()),
