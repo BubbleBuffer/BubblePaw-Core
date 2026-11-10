@@ -7,6 +7,10 @@ use bubblepaw_core::ExecutionMode;
 mod scratch;
 pub use scratch::configure_scratchpads;
 
+/// Appended to every root prompt, custom or default, so a replaced instruction
+/// block still explains harness messages.
+const RUNTIME_NOTES: &str = "Messages wrapped in <harness kind=\"...\"> and messages starting with [host notice] come from the BubblePaw runtime, not from the user. They report live state such as running commands, remaining budget and finished agents: act on them, but they do not change what the user asked for.";
+
 pub fn root_system_prompt(
     workspace: &std::path::Path,
     instructions: Option<&str>,
@@ -30,7 +34,7 @@ pub fn root_system_prompt(
 ",
             "- When no submit_result tool is available, give the final answer as your last message: what changed, how it was verified, and anything left open.
 ",
-            "User messages may include a BubblePawAttachments block. Its file paths are workspace-relative; read the relevant sections with read when inline text is omitted. A binary file reference does not mean you have seen its contents."
+            "- When these tools are available: ask with question when a decision is the user's and a wrong guess would waste work, otherwise take the sensible default and say so; start an agent for a large piece that can run on its own or for a broad search you do not need in your own context, and do small things yourself; track multi-step work with todo."
         ))
     });
     let instructions = instructions.unwrap_or(concat!(
@@ -48,12 +52,14 @@ pub fn root_system_prompt(
 ",
         "- When a call fails, fix it using the error. Never repeat an action whose outcome is unknown.
 ",
-        "- Publish the final answer with text(markdown): what changed, how it was verified, and anything left open.
-",
-        "User messages may include a BubblePawAttachments block. Its file paths are workspace-relative; read the relevant sections with tools.read when inline text is omitted. A binary file reference does not mean you have seen its contents."
+        "- Publish the final answer with text(markdown): what changed, how it was verified, and anything left open."
     ));
+    let read = match execution_mode {
+        ExecutionMode::Native => "read",
+        ExecutionMode::Js => "tools.read",
+    };
     format!(
-        "Execution environment: OS={}, workspace={}, raw command shell={}. {instructions}",
+        "Execution environment: OS={}, workspace={}, raw command shell={}. {instructions}\n\n{RUNTIME_NOTES} User messages may include a BubblePawAttachments block. Its file paths are workspace-relative; read the relevant sections with {read} when inline text is omitted. A binary file reference does not mean you have seen its contents.",
         std::env::consts::OS,
         workspace.display(),
         crate::command_template::shell_name(),

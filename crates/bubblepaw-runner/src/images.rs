@@ -47,7 +47,7 @@ impl ImageBatch {
     }
     pub(crate) fn attach(&self, mut content: String) -> String {
         if self.omitted {
-            content.push_str("\n[Image limit: at most 4 distinct images per js call; additional images were omitted. Read them in another call.]");
+            content.push_str("\n[Image limit: at most 4 distinct images per tool call; additional images were omitted. Read them in another call.]");
         }
         append_refs(content, &self.images)
     }

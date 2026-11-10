@@ -72,6 +72,16 @@ fn run_selects_exactly_one_prompt_source_and_reads_utf8_verbatim() {
     assert!(run_prompt(None, Some(&root.path().join("missing.txt"))).is_err());
 }
 
+const HARNESS_SENTENCE: &str = "Messages wrapped in <harness kind=";
+const ATTACHMENTS_SENTENCE: &str = "User messages may include a BubblePawAttachments block.";
+
+fn assert_runtime_notes_once(prompt: &str, read: &str) {
+    assert_eq!(prompt.matches(HARNESS_SENTENCE).count(), 1);
+    assert_eq!(prompt.matches(ATTACHMENTS_SENTENCE).count(), 1);
+    assert!(prompt.contains(&format!("read the relevant sections with {read} when")));
+    assert!(prompt.ends_with("does not mean you have seen its contents."));
+}
+
 #[test]
 fn root_prompt_override_replaces_instructions_and_keeps_execution_metadata() {
     let root = tempfile::tempdir().unwrap();
@@ -79,9 +89,8 @@ fn root_prompt_override_replaces_instructions_and_keeps_execution_metadata() {
     assert!(defaults.contains("raw command shell="));
     assert!(!defaults.contains("workspace access="));
     assert!(defaults.contains(". You are a software engineering agent"));
-    assert!(
-        defaults.ends_with("A binary file reference does not mean you have seen its contents.")
-    );
+    assert_runtime_notes_once(&defaults, "tools.read");
+    assert!(!defaults.contains("When these tools are available"));
     let custom = root_system_prompt(
         root.path(),
         Some("Only inspect the assigned files."),
@@ -89,11 +98,15 @@ fn root_prompt_override_replaces_instructions_and_keeps_execution_metadata() {
     );
     assert!(custom.contains(&format!("workspace={}", root.path().display())));
     let shell = if cfg!(windows) { "cmd.exe" } else { "sh" };
-    assert!(custom.ends_with(&format!(
-        "raw command shell={shell}. Only inspect the assigned files."
+    assert!(custom.contains(&format!(
+        "raw command shell={shell}. Only inspect the assigned files.\n\n{HARNESS_SENTENCE}"
     )));
     assert!(!custom.contains("You are a software engineering agent"));
-    assert!(root_system_prompt(root.path(), Some(""), ExecutionMode::Js).ends_with(". "));
+    assert_runtime_notes_once(&custom, "tools.read");
+    assert!(
+        root_system_prompt(root.path(), Some(""), ExecutionMode::Js)
+            .contains(&format!(". \n\n{HARNESS_SENTENCE}"))
+    );
 }
 
 #[test]
@@ -104,12 +117,18 @@ fn native_root_prompt_uses_available_tools_and_preserves_custom_instructions() {
     assert!(prompt.contains("multiple tool calls in one message"));
     assert!(!prompt.contains("js"));
     assert!(!prompt.contains("text(markdown)"));
+    assert!(prompt.contains("- When these tools are available: ask with question when"));
+    assert!(prompt.contains("track multi-step work with todo."));
+    assert_runtime_notes_once(&prompt, "read");
+    assert!(!prompt.contains("tools.read"));
     let custom = root_system_prompt(
         root.path(),
         Some("Custom instructions."),
         ExecutionMode::Native,
     );
-    assert!(custom.ends_with(" Custom instructions."));
+    assert!(custom.contains(" Custom instructions.\n\n"));
+    assert!(!custom.contains("When these tools are available"));
+    assert_runtime_notes_once(&custom, "read");
 }
 
 fn roles_for_args(arguments: &[&str]) -> Result<bubblepaw_runner::model_roles::ModelRoles> {

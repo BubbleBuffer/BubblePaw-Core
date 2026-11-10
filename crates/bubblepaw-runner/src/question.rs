@@ -31,7 +31,7 @@ pub fn answered_by(question: &Value) -> &str {
 
 /// `live` means the current tool invocation received the answer. Otherwise the
 /// host must admit a fresh turn containing `continuation_text()`; replaying the
-/// interrupted JS cell could repeat unrelated external effects.
+/// interrupted tool call could repeat unrelated external effects.
 #[derive(Debug)]
 pub struct QuestionAnswer {
     pub question: Value,
@@ -40,7 +40,7 @@ pub struct QuestionAnswer {
 impl QuestionAnswer {
     pub fn continuation_text(&self) -> String {
         format!(
-            "[host notice]\n[question answer:{}]\nThe pending question was answered after its original tool execution ended. Continue from this answer; do not replay the interrupted JS cell.\nQuestion: {}\nAnswer: {}",
+            "[host notice]\n[question answer:{}]\nThe pending question was answered after its original tool execution ended. Continue from this answer; do not repeat the interrupted tool call.\nQuestion: {}\nAnswer: {}",
             self.question["id"].as_str().unwrap_or_default(),
             self.question["text"].as_str().unwrap_or_default(),
             self.question["answer"].as_str().unwrap_or_default()
@@ -324,7 +324,7 @@ impl QuestionTools {
         if let Some(parent) = question["parent_session_id"].as_str() {
             let id = question["id"].as_str().unwrap_or_default();
             let text = format!(
-                "Child {} is waiting_for_answer. Question: {}\nOptions: {}\nAnswer using tools.agent_send({{sessionId:{},question_id:{},text:<answer>}}).",
+                "Child {} is waiting_for_answer. Question: {}\nOptions: {}\nAnswer by calling agent_send with {{sessionId:{},question_id:{},text:<answer>}}.",
                 session,
                 question["text"].as_str().unwrap_or_default(),
                 question["options"],

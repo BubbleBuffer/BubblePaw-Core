@@ -25,7 +25,10 @@ struct FrozenMemory {
     snapshot: Snapshot,
 }
 const NOTICE: &str = "Memory files changed (the session system prefix stays frozen):\n";
-const PREFIX: &str = "Repository memory files (frozen at session start):\n";
+const PREFIX: &str = concat!(
+    "Repository memory files (frozen at session start):\n",
+    "These are the project's standing instructions and conventions. Follow them; where they conflict with the user's messages, the user's messages win.\n"
+);
 const TRUNCATED: &str = "\n[Memory files truncated at 32 KiB; remaining content omitted.]\n";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

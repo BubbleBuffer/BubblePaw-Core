@@ -90,12 +90,13 @@ pub(super) async fn auto_reason(
     let resolved = auto.config.resolve.as_ref().map(|resolve| resolve());
     let config = resolved.as_ref().unwrap_or(&auto.config);
     let arguments = bounded_arguments(&call.arguments);
+    let description = prompt::short_description(&definition.description);
     let input = prompt::render(
         &config.prompt,
         &prompt::PromptFields {
             user_request: &auto.user_request,
             tool: &call.name,
-            description: &definition.description,
+            description: &description,
             arguments: &arguments,
             working_directory: &config.working_directory,
         },

@@ -2977,7 +2977,7 @@ fn save_controls(store: &Store, session: &str, run: &str, controls: &Controls) -
 fn controlled_prompt(text: &str, controls: &Controls) -> String {
     match controls.max_tool_calls {
         Some(max) => format!(
-            "{text}\n\nYou have {max} tool calls for this turn. Each outer JS tool call and each nested host tool call counts individually. Plan within the budget and return your final answer when it is exhausted."
+            "{text}\n\nYou have {max} tool calls for this turn. Every tool call counts, including each call made inside a js cell. Plan within the budget and return your final answer when it is exhausted."
         ),
         None => text.to_owned(),
     }

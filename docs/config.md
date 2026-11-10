@@ -140,8 +140,11 @@ system_prompt = "Complete the assigned task. Return concise evidence and remaini
 ```
 
 `agent.system_prompt` replaces the root's default instruction **body**, including
-its built-in workflow and attachment guidance. The short execution-environment
+its built-in workflow guidance. The short execution-environment
 prefix (OS, workspace and shell) remains so tool instructions match the host.
+After the body, in every case (custom, default or empty), the runtime notes are
+appended: what `<harness kind="...">` and `[host notice]` messages are, and the
+BubblePawAttachments sentence (`read` in native mode, `tools.read` in JS mode).
 Root sessions also get a `Workspace access:` sentence from the live
 `approvals.read_only` setting, appended after the body, so a read-only toggle
 applies on the next request; child sessions keep their own static access text. The ordinary frozen repository memory and skill catalog are

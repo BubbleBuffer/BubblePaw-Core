@@ -208,6 +208,7 @@ impl SummarizingContext {
             || view.prefix.iter().any(|message| {
                 message.content == HISTORY_RETRIEVAL_INSTRUCTION
                     || message.content == STRATEGY_RETRIEVAL_INSTRUCTION
+                    || PREVIOUS_RETRIEVAL_INSTRUCTIONS.contains(&message.content.as_str())
             })
     }
 
@@ -279,3 +280,9 @@ impl SummarizingContext {
 
 /// The cold note kind of the hint about the history tools.
 const HISTORY_LOOKUP_NOTE: &str = "history_lookup";
+/// The lookup texts before they became mode-neutral. Views stored with these as
+/// prefix messages are still legacy views.
+const PREVIOUS_RETRIEVAL_INSTRUCTIONS: [&str; 2] = [
+    "Continue from this memory. Original messages remain available through `tools.history_search` and `tools.history_read`. Retrieve only when a needed detail is missing, ambiguous or conflicting, or original wording is required; a fact being summarized does not itself require a lookup.",
+    "This context is a disposable, lossy view. Original messages are retained. Use `tools.history_search` or `tools.history_read` to recover exact earlier details, omitted messages, or tool outputs before concluding they are absent.",
+];

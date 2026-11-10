@@ -10,6 +10,12 @@ a worktree's `.git` file mark a root. Without Git, only the workspace is searche
 arbitrary ancestors outside a repository are excluded. Missing files are allowed.
 Files with identical bytes appear once, and `@` imports are ordinary text.
 
+The block opens with two lines: the heading `Repository memory files (frozen at
+session start):` and a framing line that calls the files the project's standing
+instructions and conventions, to be followed, with the user's messages winning
+where they conflict. Existing sessions pick the framing line up because the
+prefix is rendered from the stored snapshot; it is not stored text.
+
 The combined instruction prefix has a 32 KiB UTF-8 byte cap, including file
 headings and a visible truncation marker. Discovery still tracks files after the
 cap, and all candidate paths are statted even when they do not yet exist. File

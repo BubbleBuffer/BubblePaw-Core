@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashSet};
 use tiktoken_rs::CoreBPE;
 
 pub const TYPED_USER_TOKENS: usize = 20_000;
-pub const STRATEGY_RETRIEVAL_INSTRUCTION: &str = "This context is a disposable, lossy view. Original messages are retained. Use `tools.history_search` or `tools.history_read` to recover exact earlier details, omitted messages, or tool outputs before concluding they are absent.";
+pub const STRATEGY_RETRIEVAL_INSTRUCTION: &str = "This context is a disposable, lossy view. Original messages are retained. Use the history_search or history_read tool to recover exact earlier details, omitted messages, or tool outputs before concluding they are absent.";
 
 /// The interchangeable part is the historical summary block. Projection,
 /// threshold, freezing and raw-tail mechanics belong to SummarizingContext.

@@ -1384,7 +1384,7 @@ async fn run_corpus_inner(
                         "closed_chapter_summaries"
                     } else if item.content.starts_with("Open chapter episodes") {
                         "open_episode_summaries"
-                    } else if item.content.contains("tools.history_search") {
+                    } else if item.content.contains("history_search") {
                         "retrieval_instruction"
                     } else {
                         "runtime_note_or_legacy"
