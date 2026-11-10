@@ -29,3 +29,15 @@ pub(crate) fn session_key(request: &ModelRequest) -> Option<String> {
         })
         .map(str::to_owned)
 }
+
+/// The ChatGPT backend keys its prompt cache on the `session-id` header (as the
+/// Codex CLI sends it); the body's `prompt_cache_key` carries the same value.
+pub(crate) fn codex_cache_headers(
+    builder: reqwest::RequestBuilder,
+    body: &serde_json::Value,
+) -> reqwest::RequestBuilder {
+    match body["prompt_cache_key"].as_str() {
+        Some(key) => builder.header("session-id", key).header("thread-id", key),
+        None => builder,
+    }
+}
