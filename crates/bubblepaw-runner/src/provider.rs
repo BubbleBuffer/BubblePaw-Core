@@ -12,7 +12,7 @@ mod messages;
 mod metering;
 mod opencode_session;
 pub(crate) use metering::PhysicalRequest;
-pub(crate) use opencode_session::opencode_session;
+pub(crate) use opencode_session::{opencode_session, session_key};
 mod registry;
 pub(crate) mod replay_state;
 mod responses_body;
@@ -149,6 +149,11 @@ impl ResponsesProvider {
                 builder = builder.header("x-opencode-session", session);
             }
             if let Some(account) = &account {
+                // The ChatGPT backend keys its prompt cache on this id (Codex CLI
+                // sends it as `session-id`); the body carries the same value.
+                if let Some(key) = body["prompt_cache_key"].as_str() {
+                    builder = builder.header("session-id", key).header("thread-id", key);
+                }
                 builder = builder
                     .header("ChatGPT-Account-ID", account)
                     .header("originator", "bubblepaw")

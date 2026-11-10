@@ -334,3 +334,50 @@ async fn responses_fork_keeps_encrypted_reasoning_prefix_and_instructions() -> R
     assert_eq!(fork[main.len() + 1]["role"], "user");
     Ok(())
 }
+
+/// The Codex subscription backend caches per session id: the main request and
+/// its summary fork must send the same key in the body and the headers.
+#[tokio::test]
+async fn codex_fork_shares_the_prompt_cache_key_with_its_main_request() -> Result<()> {
+    let output = json!([{"type":"message","role":"assistant","content":[{"type":"output_text","text":SUMMARY}]}]);
+    let (base, rows) = serve(
+        "/responses",
+        vec![
+            json!({"type":"response.output_text.delta","delta":SUMMARY}),
+            json!({"type":"response.completed","response":{"output":output,"usage":{"input_tokens":501,"input_tokens_details":{"cached_tokens":400},"output_tokens":23}}}),
+        ],
+    )
+    .await?;
+    let directory = tempfile::tempdir()?;
+    let auth = directory.path().join("auth.json");
+    std::fs::write(
+        &auth,
+        json!({"tokens":{"access_token":"synthetic-access","account_id":"synthetic-account"}})
+            .to_string(),
+    )?;
+    let provider = ResponsesProvider::codex_auth(&auth, base)?;
+    let store = Store::in_memory()?;
+    let session = store.create_session("Fork wire")?.id;
+    let request = request(
+        &session,
+        "p/gpt-test",
+        |index| {
+            json!({"adapter":"responses","items":[
+                {"type":"reasoning","id":format!("rs_{index}"),"summary":[],"encrypted_content":format!("ENC{index}")},
+                {"type":"function_call","call_id":format!("call-{index}"),"name":"js","arguments":"{}"}
+            ]})
+        },
+        "responses",
+        "gpt-test",
+    );
+    let rows = main_then_fork(Arc::new(provider), store, request, rows).await?;
+    let (main_headers, main) = &rows[0];
+    let (fork_headers, fork) = &rows[1];
+    assert_eq!(main["prompt_cache_key"], json!(session));
+    assert_eq!(fork["prompt_cache_key"], main["prompt_cache_key"]);
+    for name in ["session-id", "thread-id"] {
+        assert_eq!(main_headers[name].to_str()?, session);
+        assert_eq!(fork_headers[name], main_headers[name]);
+    }
+    Ok(())
+}
