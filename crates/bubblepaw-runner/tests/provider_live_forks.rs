@@ -13,6 +13,8 @@
 //! - responses: OPENAI_API_KEY; gpt-6-luna (override with BP_LIVE_RESPONSES_MODEL).
 //!   Cacheable minimum 1024 tokens; the prompt is about 1.5k tokens: three
 //!   calls, about 4.5k input in total.
+//! - opencode_messages / opencode_responses: OPENCODE_API_KEY (subscription, no
+//!   per-token key); claude-haiku-5-5 and gpt-6-luna on the Go route.
 //! - codex: BP_LIVE_CODEX=1 and ~/.codex/auth.json; gpt-6-luna (override with
 //!   BP_LIVE_CODEX_MODEL). Same sizes as responses. This is also the only check
 //!   that the subscription backend accepts a system item in mid-input.
@@ -58,11 +60,30 @@ fn frozen_prompt(sentences: usize) -> String {
     prompt
 }
 
+fn report(call: &str, model: &str, usage: Option<&bubblepaw_core::Usage>) {
+    match usage {
+        Some(u) => println!(
+            "LIVE {model} {call}: input={} cache_read={} cache_written={} output={} reasoning={:?}",
+            u.input_tokens,
+            u.cache_read_tokens,
+            u.cache_creation_tokens,
+            u.output_tokens,
+            u.reasoning_tokens
+        ),
+        None => println!("LIVE {model} {call}: no usage reported"),
+    }
+}
+
 async fn fork_reads_the_cache(
     provider: Arc<dyn Provider>,
     model: &str,
     sentences: usize,
+    effort: ReasoningEffort,
 ) -> Result<()> {
+    // BP_LIVE_FORK_SENTENCES grows the frozen prompt to probe a backend's cacheable minimum.
+    let sentences = env("BP_LIVE_FORK_SENTENCES")
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(sentences);
     let mut main = ModelRequest {
         model: model.into(),
         system_prompt: frozen_prompt(sentences),
@@ -74,13 +95,18 @@ async fn fork_reads_the_cache(
             read_only: true,
             approval: Default::default(),
         }],
-        reasoning_effort: Some(ReasoningEffort::Low),
+        reasoning_effort: Some(effort),
         session_id: "live-fork".into(),
         ..Default::default()
     };
     let first = provider
         .generate(main.clone(), Arc::new(|_| {}), CancellationToken::new())
         .await?;
+    report("main call 1", model, first.usage.as_ref());
+    println!(
+        "LIVE {model} replay state on call 1: {}",
+        first.provider_state.is_some()
+    );
     ensure!(!first.tool_calls.is_empty(), "the model did not call add");
     let mut assistant = message("a", Role::Assistant, &first.text);
     assistant.tool_calls = first.tool_calls.clone();
@@ -89,9 +115,10 @@ async fn fork_reads_the_cache(
     tool.tool_call_id = Some(first.tool_calls[0].id.clone());
     main.messages.extend([assistant, tool]);
     // The continued main request writes the cache entry the fork must read.
-    provider
+    let second = provider
         .generate(main.clone(), Arc::new(|_| {}), CancellationToken::new())
         .await?;
+    report("main call 2", model, second.usage.as_ref());
     let cut = main.messages.len();
     let mut fork = main;
     let mut control = message("", Role::System, "EPISODE MEMORY BRANCH (host-generated).");
@@ -107,6 +134,7 @@ async fn fork_reads_the_cache(
     let reply = provider
         .generate_summary_fork(fork, CancellationToken::new())
         .await?;
+    report("fork", model, reply.usage.as_ref());
     let usage = reply.usage.expect("fork usage");
     ensure!(
         usage.cache_read_tokens > 0,
@@ -128,7 +156,7 @@ async fn anthropic_messages_fork_reads_cache() -> Result<()> {
     let model =
         env("BP_LIVE_ANTHROPIC_MESSAGES_MODEL").unwrap_or_else(|| "claude-haiku-5-5".into());
     let provider = MessagesProvider::api_key(key, "https://api.anthropic.com/v1")?;
-    fork_reads_the_cache(Arc::new(provider), &model, 300).await
+    fork_reads_the_cache(Arc::new(provider), &model, 300, ReasoningEffort::Low).await
 }
 
 #[tokio::test]
@@ -140,7 +168,7 @@ async fn responses_fork_reads_cache() -> Result<()> {
     };
     let model = env("BP_LIVE_RESPONSES_MODEL").unwrap_or_else(|| "gpt-6-luna".into());
     let provider = ResponsesProvider::api_key(key, "https://api.openai.com/v1")?;
-    fork_reads_the_cache(Arc::new(provider), &model, 95).await
+    fork_reads_the_cache(Arc::new(provider), &model, 95, ReasoningEffort::Low).await
 }
 
 #[tokio::test]
@@ -156,5 +184,33 @@ async fn codex_fork_reads_cache() -> Result<()> {
     };
     let model = env("BP_LIVE_CODEX_MODEL").unwrap_or_else(|| "gpt-6-luna".into());
     let provider = ResponsesProvider::codex_auth(auth, "https://chatgpt.com/backend-api/codex")?;
-    fork_reads_the_cache(Arc::new(provider), &model, 95).await
+    fork_reads_the_cache(Arc::new(provider), &model, 95, ReasoningEffort::Low).await
+}
+
+const OPENCODE_GO: &str = "https://opencode.ai/zen/go/v1";
+
+/// OpenCode Go serves claude-haiku-5-5 over Messages (adaptive thinking).
+#[tokio::test]
+#[ignore = "live: OpenCode Go subscription calls"]
+async fn opencode_messages_fork_reads_cache() -> Result<()> {
+    let Some(key) = env("OPENCODE_API_KEY") else {
+        println!("skipped: OPENCODE_API_KEY not set");
+        return Ok(());
+    };
+    let model = env("BP_LIVE_OPENCODE_MESSAGES_MODEL").unwrap_or_else(|| "claude-haiku-5-5".into());
+    let provider = MessagesProvider::api_key(key, OPENCODE_GO)?.with_opencode_route();
+    fork_reads_the_cache(Arc::new(provider), &model, 300, ReasoningEffort::High).await
+}
+
+/// OpenCode Go serves gpt-6-luna over Responses with `x-opencode-session`.
+#[tokio::test]
+#[ignore = "live: OpenCode Go subscription calls"]
+async fn opencode_responses_fork_reads_cache() -> Result<()> {
+    let Some(key) = env("OPENCODE_API_KEY") else {
+        println!("skipped: OPENCODE_API_KEY not set");
+        return Ok(());
+    };
+    let model = env("BP_LIVE_OPENCODE_RESPONSES_MODEL").unwrap_or_else(|| "gpt-6-luna".into());
+    let provider = ResponsesProvider::api_key(key, OPENCODE_GO)?.with_opencode_route();
+    fork_reads_the_cache(Arc::new(provider), &model, 95, ReasoningEffort::Medium).await
 }
