@@ -475,7 +475,13 @@ async fn runner_explicit_episode_policy_gathers_responses_source_and_applies_at_
     };
     for index in 0..4 {
         let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_bubblepaw"))
-            .args(["--provider", "api", "--read-only", "--workspace"])
+            .args([
+                "--provider",
+                "api",
+                "--read-only",
+                "--trust-workspace",
+                "--workspace",
+            ])
             .arg(root.path())
             .arg("--db")
             .arg(&db)

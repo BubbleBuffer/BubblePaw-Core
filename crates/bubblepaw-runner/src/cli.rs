@@ -1,3 +1,4 @@
+use anyhow::{Context, Result, bail};
 use bubblepaw_core::ContextStrategy;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,10 @@ pub struct Cli {
     /// Workspace directory for the agent's tools; must exist.
     #[arg(long, global = true, default_value = ".")]
     pub workspace: PathBuf,
+    /// Apply this workspace's .bubblepaw/config.toml for this run without recording the trust
+    /// (see `bubblepaw trust`).
+    #[arg(long, global = true)]
+    pub trust_workspace: bool,
     /// Select the sibling `<stem>.data` directory of a file path as the data directory.
     /// Conflicts with --data-dir.
     #[arg(long, global = true)]
@@ -178,6 +183,8 @@ impl From<ContextStrategyChoice> for ContextStrategy {
 pub enum Command {
     /// Print effective TOML configuration and its sources; never reads credentials.
     Config,
+    /// Trust a workspace's project config (.bubblepaw/config.toml) so it applies in every host.
+    Trust(TrustArgs),
     /// Run a prompt, optionally continuing a saved session.
     Run {
         #[arg(
@@ -388,4 +395,27 @@ pub enum DelegationsCommand {
 pub enum ServingCommand {
     /// Delete serving.db and its -wal and -shm files, then create an empty one.
     Wipe,
+}
+
+/// `bubblepaw trust [PATH]`: the user-level record of workspaces whose project config applies.
+#[derive(clap::Args, Clone, Serialize, Deserialize)]
+pub struct TrustArgs {
+    /// The workspace to trust; default: --workspace.
+    pub path: Option<PathBuf>,
+    /// Remove the workspace from the trusted list instead.
+    #[arg(long, conflicts_with = "list")]
+    pub revoke: bool,
+    /// List the trusted workspaces.
+    #[arg(long)]
+    pub list: bool,
+}
+
+/// The prompt of `run`: the argument or the file, never both.
+pub fn run_prompt(prompt: Option<&str>, prompt_file: Option<&std::path::Path>) -> Result<String> {
+    match (prompt, prompt_file) {
+        (Some(prompt), None) => Ok(prompt.to_owned()),
+        (None, Some(path)) => std::fs::read_to_string(path)
+            .with_context(|| format!("read UTF-8 prompt file {}", path.display())),
+        _ => bail!("run requires either a prompt or --prompt-file, but not both"),
+    }
 }

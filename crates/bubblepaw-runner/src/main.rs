@@ -1,6 +1,6 @@
 mod cli_store;
 mod ephemeral_dir;
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use bubblepaw_core::Store;
 #[cfg(feature = "bench")]
 use bubblepaw_runner::{
@@ -54,6 +54,10 @@ fn config_overrides(
         let entry = match flag {
             "--set" => Some(Override::set(&value()?)?),
             "--data-dir" => Some(Override::value("storage.data_dir", T::String(value()?))),
+            "--trust-workspace" => Some(Override::value(
+                "workspace_trust.trust_workspace",
+                T::Boolean(true),
+            )),
             "--model" => Some(Override::value("model.main", T::String(value()?))),
             "--provider" => Some(Override::value("model.provider", T::String(value()?))),
             "--base-url" => Some(Override::value(
@@ -267,15 +271,6 @@ fn print_json(value: &impl serde::Serialize) -> Result<()> {
     Ok(())
 }
 
-fn run_prompt(prompt: Option<&str>, prompt_file: Option<&std::path::Path>) -> Result<String> {
-    match (prompt, prompt_file) {
-        (Some(prompt), None) => Ok(prompt.to_owned()),
-        (None, Some(path)) => std::fs::read_to_string(path)
-            .with_context(|| format!("read UTF-8 prompt file {}", path.display())),
-        _ => bail!("run requires either a prompt or --prompt-file, but not both"),
-    }
-}
-
 fn main() -> std::process::ExitCode {
     #[cfg(windows)]
     {
@@ -348,6 +343,9 @@ async fn run_cli() -> Result<()> {
     }
     let matches = command.get_matches_from(parse_arguments);
     let cli = Cli::from_arg_matches(&matches)?;
+    if let Command::Trust(args) = &cli.command {
+        return bubblepaw_runner::trust_cli::run(args, &cli.workspace);
+    }
     let mut effective = load_config(&cli, &arguments)?;
     // A delegation picks its model before anything else reads the configuration;
     // the choice is applied as the last CLI override so every role follows it.
@@ -403,7 +401,7 @@ async fn run_cli() -> Result<()> {
             prompt,
             prompt_file,
             ..
-        } => Some(run_prompt(prompt.as_deref(), prompt_file.as_deref())?),
+        } => Some(cli::run_prompt(prompt.as_deref(), prompt_file.as_deref())?),
         _ => None,
     };
     #[cfg(feature = "bench")]

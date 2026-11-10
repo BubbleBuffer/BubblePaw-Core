@@ -74,6 +74,7 @@ pub fn get(ctx: &HostCtx, input: ConfigGetParams) -> Result<GetResult, HostError
     if let Some(active) = ctx.active_providers() {
         let generation = active.snapshot();
         let settings = &generation.settings;
+        value["workspace_trust"] = json!(generation.effective.workspace_trust());
         value["model"] = json!(settings.main_model);
         value["provider"] = json!(crate::config::selected_main_provider(settings));
         value["read_only"] = json!(settings.approvals.read_only);

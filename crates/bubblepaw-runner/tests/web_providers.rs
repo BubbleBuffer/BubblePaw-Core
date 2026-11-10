@@ -79,6 +79,7 @@ impl Files {
     }
 
     fn options(&self, custom: bool) -> LoadOptions {
+        bubblepaw_runner::workspace_trust::trust(&self.home, &self.workspace).unwrap();
         LoadOptions {
             workspace: self.workspace.clone(),
             home: Some(self.home.clone()),

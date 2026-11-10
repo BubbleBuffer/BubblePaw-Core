@@ -30,6 +30,7 @@ fn chapter_prompt_defaults_to_v1_and_follows_all_config_layers() -> Result<()> {
     let workspace = root.path().join("workspace");
     let mut opts = options(&workspace);
     opts.home = Some(home.clone());
+    bubblepaw_runner::workspace_trust::trust(&home, &workspace)?;
     assert_eq!(selected(opts.clone())?, ChapterPrompt::V1);
 
     std::fs::create_dir_all(home.join(".bubblepaw"))?;

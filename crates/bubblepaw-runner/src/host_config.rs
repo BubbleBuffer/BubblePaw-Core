@@ -39,6 +39,20 @@ pub struct ConfigOptions {
     pub overrides: Vec<Override>,
 }
 
+impl ConfigOptions {
+    /// Apply the workspace's `.bubblepaw/config.toml` for this host without
+    /// recording the trust (the SDK form of `--trust-workspace`). To record it, use
+    /// [`crate::workspace_trust::trust`].
+    #[must_use]
+    pub fn trust_workspace(mut self) -> Self {
+        self.overrides.push(Override::value(
+            "workspace_trust.trust_workspace",
+            toml::Value::Boolean(true),
+        ));
+        self
+    }
+}
+
 /// Why the configuration cannot start a host.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]

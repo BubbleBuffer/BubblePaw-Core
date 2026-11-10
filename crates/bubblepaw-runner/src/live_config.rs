@@ -430,7 +430,11 @@ impl LiveConfig {
 }
 
 fn stamps(config: &EffectiveConfig) -> Result<Vec<FileStamp>> {
-    file_stamps(config.config_paths())
+    // Trusting a workspace changes which layers apply, so the store is watched too.
+    let mut paths = config.config_paths();
+    let home = config.load_options().home;
+    paths.extend(home.map(|home| crate::workspace_trust::store_path(&home)));
+    file_stamps(paths)
 }
 
 pub(crate) fn file_stamps(paths: Vec<PathBuf>) -> Result<Vec<FileStamp>> {

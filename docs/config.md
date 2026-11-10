@@ -15,6 +15,11 @@ Later layers win:
 4. Environment variables.
 5. CLI arguments.
 
+The project file applies only for a trusted workspace (2026-11-10): an untrusted workspace's file is
+skipped entirely, with one warning. Trust it with `bubblepaw trust`, `--trust-workspace` for one run,
+or the user keys `workspace_trust.trusted` and `workspace_trust.enabled` (see
+[workspace trust](workspace-trust.md)). Existing workspaces start untrusted.
+
 Workspace files cannot choose `remote.cloudflared` or `storage.data_dir`: both
 keys are ignored with warnings before merging, without echoing their values.
 The user's own config, an explicitly selected config file and environment/CLI

@@ -2,6 +2,7 @@
 use super::*;
 
 fn options(root: &Path) -> LoadOptions {
+    crate::workspace_trust::trust(&root.join("home"), &root.join("workspace")).unwrap();
     LoadOptions {
         workspace: root.join("workspace"),
         home: Some(root.join("home")),
