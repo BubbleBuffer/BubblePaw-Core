@@ -350,7 +350,10 @@ Call sites:
 
 - **Summary fork** keeps its measured control (a system branch control and a
   user return control after the cut prefix) instead of a tail reminder, and now
-  passes the real tiers.
+  passes the real tiers. The return control is a Generated-origin user message,
+  so it does not close the captured request's open tool loop: under the default
+  `tool_loop` reasoning replay the fork replays the same loop reasoning as the
+  main request and the wire prefix stays byte-identical.
 - **Chapter worker** forks the latest confirmed main capture cut at or extended
   to the chapter's last message (`SummarizingContext::chapter_fork`) with the
   chapter prompt and input as a `chapter_task` reminder, only when the first

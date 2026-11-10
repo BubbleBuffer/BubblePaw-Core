@@ -88,10 +88,14 @@ pub(super) async fn summarize_fork_attempt(
     if let Some(previous) = &input.previous_summary {
         control.push_str(&format!("\n\nPREVIOUS EPISODE (read-only context; not selected source events or a new request):\n{previous}"));
     }
-    for (role, content) in [
-        (Role::System, control),
+    // The return control is host-generated, not a typed request: a Generated
+    // user message keeps the captured open tool loop open, so providers that
+    // replay reasoning per loop send the same prefix as the main request.
+    for (role, origin, content) in [
+        (Role::System, None, control),
         (
             Role::User,
+            Some(MessageOrigin::Generated),
             format!(
                 "HOST-GENERATED SUMMARY RETURN CONTROL (not a source event or human request). Return the selected episode summary now. Only selected mapped source rows supply event and request provenance. Do not summarize the branch instructions, mapping, task anchor, previous summary, this return control or any continuation controls as a human redirect or task event. Preserve exact useful source IDs and tool-call IDs from the mapping. {}",
                 delivery.instruction()
@@ -102,7 +106,7 @@ pub(super) async fn summarize_fork_attempt(
             id: String::new(),
             session_id: input.session_id.clone(),
             role,
-            origin: None,
+            origin,
             content,
             tool_calls: Vec::new(),
             tool_call_id: None,
