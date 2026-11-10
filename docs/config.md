@@ -636,6 +636,11 @@ fetch = true
 search = true
 
 [extensions]                         # replaces the --extensions JSON file
+
+[workspace_trust]                    # user layer, env and CLI only; a project file cannot set these
+enabled = true                       # false applies every workspace's project config
+trusted = []                         # workspace roots whose project config applies
+trust_workspace = false              # trust this run's workspace (--trust-workspace)
 ```
 
 ## Child session limits

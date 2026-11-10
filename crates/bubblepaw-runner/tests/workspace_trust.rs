@@ -165,7 +165,8 @@ fn headless_runs_skip_with_a_warning_and_each_grant_applies_the_config() -> Resu
     let workspace = fixture.opts.workspace.to_string_lossy().replace('\\', "/");
     let user_file = fixture.home().join(".bubblepaw/config.toml");
     let base = fixture.opts.clone();
-    let grants: [(&str, Box<dyn Fn(&mut LoadOptions) -> Result<()>>); 5] = [
+    type Grant = Box<dyn Fn(&mut LoadOptions) -> Result<()>>;
+    let grants: [(&str, Grant); 5] = [
         (
             "user key trusted",
             Box::new({

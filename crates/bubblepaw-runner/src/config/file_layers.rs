@@ -101,6 +101,12 @@ impl EffectiveConfig {
 
     /// What this load did with the workspace's project config, for hosts to show.
     pub fn workspace_trust(&self) -> WorkspaceTrustState {
+        let mut state = self.trust_state();
+        state.config_file = state.workspace.join(".bubblepaw/config.toml");
+        state
+    }
+
+    fn trust_state(&self) -> WorkspaceTrustState {
         let workspace = workspace_trust::canonical(&self.load_options.workspace);
         let config_file = self.load_options.workspace.join(".bubblepaw/config.toml");
         let mut state = WorkspaceTrustState {
