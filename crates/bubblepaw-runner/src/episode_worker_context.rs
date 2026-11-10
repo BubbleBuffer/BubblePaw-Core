@@ -1,6 +1,8 @@
 //! Fork selection keeps capture provenance paired with the exact immutable request.
 use super::*;
-use crate::episode_models::{ChapterInput, ChapterResult, EpisodeFork};
+use crate::episode_models::{
+    ChapterInput, ChapterResult, EpisodeFork, SummaryInput, SummaryResult,
+};
 
 impl EpisodeWorker {
     pub(super) fn context_fork(
@@ -42,6 +44,42 @@ impl EpisodeWorker {
         } else {
             None
         })
+    }
+
+    /// Summarize as a fork of the main prefix. Under `auto`, a provider that
+    /// reports the fork impossible at this cut (never merely not ready yet)
+    /// summarizes this episode from episode input instead; an explicit `fork`
+    /// keeps the error.
+    pub(super) async fn summarize_forked(
+        &self,
+        session: &str,
+        input: SummaryInput,
+        fork: EpisodeFork,
+    ) -> Result<SummaryResult> {
+        let forked = self
+            .counted(
+                session,
+                RequestKind::SummaryFork,
+                self.models.summarize_fork(input.clone(), fork),
+            )
+            .await;
+        match forked {
+            Err(error)
+                if self.config.summary_input == EpisodeSummaryInput::Auto
+                    && bubblepaw_core::ProviderError::of(&error)
+                        .is_some_and(|error| error.fork_impossible) =>
+            {
+                self.models
+                    .record_fork_fallback(session, "fork_impossible_at_cut");
+                self.counted(
+                    session,
+                    RequestKind::SummaryFork,
+                    self.models.summarize(input),
+                )
+                .await
+            }
+            other => other,
+        }
     }
 
     /// Close a chapter as a fork of the latest confirmed main capture, cut at or

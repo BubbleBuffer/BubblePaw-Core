@@ -29,11 +29,12 @@
 //! using the JS wrapper when declared, so delegate fixtures can finish a report.
 //!
 //! With `BP_FAKE_STEP_LOG=<path>` each received step appends a JSON line
-//! `{"id","pid","step_count","params"}` and each `cancel` appends `{"cancel":<id>,"pid":<pid>}`.
+//! `{"id","method","pid","step_count","params"}` and each `cancel` appends `{"cancel":<id>,"pid":<pid>}`.
 //!
 //! Every reply's `provider_state` echoes the received model, session, cursor
 //! and tools, plus the complete step request, received step count, process id
-//! and sessions closed so far. `--capabilities=<JSON>` adds extension-wide
+//! and sessions closed so far; a `summary_fork` request is answered like a step
+//! (the echo names its `method`). `--capabilities=<JSON>` adds extension-wide
 //! capabilities to the initialize response; they are absent by default.
 use serde_json::{Value, json};
 use std::{
@@ -143,12 +144,13 @@ fn main() {
                 }
                 state.result(&id, json!({}));
             }
-            "step" => {
+            method @ ("step" | "summary_fork") => {
+                let method = method.to_owned();
                 let step_count = state.steps_received.fetch_add(1, Ordering::SeqCst) + 1;
                 let params = message["params"].clone();
-                state.log(json!({"id":id,"pid":std::process::id(),"step_count":step_count,"params":params}));
+                state.log(json!({"id":id,"method":method,"pid":std::process::id(),"step_count":step_count,"params":params}));
                 let state = state.clone();
-                std::thread::spawn(move || step(&state, id, params, step_count));
+                std::thread::spawn(move || step(&state, id, params, step_count, &method));
             }
             _ => state.error(&id, "unknown method", json!({"kind":"fatal"})),
         }
@@ -166,7 +168,7 @@ fn with_reported_model(mut value: Value) -> Value {
     value
 }
 
-fn step(state: &State, id: Value, params: Value, step_count: u64) {
+fn step(state: &State, id: Value, params: Value, step_count: u64, method: &str) {
     let mut echo = state.provider_state.clone().unwrap_or_else(|| json!({
         "model": params["model"],
         "session_id": params["session_id"],
@@ -176,6 +178,7 @@ fn step(state: &State, id: Value, params: Value, step_count: u64) {
         "closed": *state.closed.lock().unwrap(),
         "request": params,
         "step_count": step_count,
+        "method": method,
     }));
     if let Ok(value) = std::env::var("BP_FAKE_ENV") {
         echo["env"] = json!({

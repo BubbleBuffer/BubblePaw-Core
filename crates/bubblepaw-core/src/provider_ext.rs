@@ -126,6 +126,8 @@ pub struct ProviderError {
     /// Known billable usage, even when the response cannot be accepted.
     pub usage: Option<Usage>,
     pub quota: Vec<crate::QuotaReading>,
+    /// A summary fork that can never succeed at this cut, not merely not yet.
+    pub fork_impossible: bool,
 }
 impl ProviderError {
     pub fn new(kind: ProviderErrorKind, message: impl Into<String>) -> Self {
@@ -135,6 +137,7 @@ impl ProviderError {
             published: false,
             usage: None,
             quota: Vec::new(),
+            fork_impossible: false,
         }
     }
     pub fn with_published(mut self, published: bool) -> Self {

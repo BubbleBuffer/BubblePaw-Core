@@ -18,7 +18,7 @@
 //                     instance's `env` table) names them, so an inherited key never
 //                     switches an instance to API billing.
 
-import { MODELS } from "./models.js";
+import { CLAUDE_CODE_PROMPT_TOKENS, MODELS } from "./models.js";
 import { ClaudeCodeProvider, fileStepLogger, parseSystemPromptMode } from "./provider.js";
 import { dispatchLine, encode, LineSplitter, notification, type Handlers, type Write } from "./rpc.js";
 import { ProviderError, type ModelRequest } from "./types.js";
@@ -28,9 +28,11 @@ export function handlers(provider: ClaudeCodeProvider, write: Write): Handlers {
 		async request(method, params, id) {
 			switch (method) {
 				case "initialize":
-					return { provider: "claude-code", models: MODELS, capabilities: { output_schema: true, reasoning_effort: true } };
+					return { provider: "claude-code", models: MODELS, capabilities: { output_schema: true, reasoning_effort: true, summary_fork: true, input_overhead_tokens: CLAUDE_CODE_PROMPT_TOKENS } };
 				case "step":
 					return provider.step(params as ModelRequest, id, (text) => write(encode(notification("text", { id, text }))));
+				case "summary_fork":
+					return provider.summaryFork(params as ModelRequest, id, (text) => write(encode(notification("text", { id, text }))));
 				case "session.close":
 					if (typeof params?.session_id === "string") provider.closeSession(params.session_id);
 					return {};

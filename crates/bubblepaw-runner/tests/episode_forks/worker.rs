@@ -5,6 +5,8 @@ use bubblepaw_runner::episodes::{EpisodeConfig, EpisodeSummaryInput};
 struct ForkModels {
     forks: Mutex<Vec<EpisodeFork>>,
     bounded: Mutex<usize>,
+    /// The provider reports every fork impossible at the cut.
+    impossible: bool,
 }
 #[async_trait]
 impl EpisodeModels for ForkModels {
@@ -19,6 +21,14 @@ impl EpisodeModels for ForkModels {
         })
     }
     async fn summarize_fork(&self, _: SummaryInput, fork: EpisodeFork) -> Result<SummaryResult> {
+        if self.impossible {
+            let mut error = bubblepaw_core::ProviderError::new(
+                bubblepaw_core::ProviderErrorKind::Fatal,
+                "no fork cut possible",
+            );
+            error.fork_impossible = true;
+            return Err(error.into());
+        }
         let model = fork.request.model.clone();
         self.forks.lock().unwrap().push(fork);
         Ok(SummaryResult {
@@ -94,6 +104,14 @@ async fn gather_with(
     provider: Arc<dyn Provider>,
     summary_input: EpisodeSummaryInput,
 ) -> Result<(Arc<ForkModels>, Result<()>)> {
+    gather_models(provider, summary_input, Arc::new(ForkModels::default())).await
+}
+
+async fn gather_models(
+    provider: Arc<dyn Provider>,
+    summary_input: EpisodeSummaryInput,
+    models: Arc<ForkModels>,
+) -> Result<(Arc<ForkModels>, Result<()>)> {
     let f = Fixture::new()?;
     let source = vec![
         f.message(Role::User, "task"),
@@ -104,7 +122,6 @@ async fn gather_with(
     f.context.observe_request(&f.session, &request, provider);
     f.context
         .observe_response(&f.session, &ModelResponse::default());
-    let models = Arc::new(ForkModels::default());
     let worker = EpisodeWorker::new_with_config(
         f.store.clone(),
         models.clone(),
@@ -142,6 +159,34 @@ async fn auto_summarizes_from_episode_input_when_the_provider_cannot_fork() -> R
     result?;
     assert!(models.forks.lock().unwrap().is_empty());
     assert_eq!(*models.bounded.lock().unwrap(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_fork_the_provider_calls_impossible_falls_back_under_auto_but_not_under_fork()
+-> Result<()> {
+    let impossible = || {
+        Arc::new(ForkModels {
+            impossible: true,
+            ..Default::default()
+        })
+    };
+    let (models, result) = gather_models(
+        Arc::new(Recorded::default()),
+        EpisodeSummaryInput::Auto,
+        impossible(),
+    )
+    .await?;
+    result?;
+    assert_eq!(*models.bounded.lock().unwrap(), 1);
+    let (models, result) = gather_models(
+        Arc::new(Recorded::default()),
+        EpisodeSummaryInput::Fork,
+        impossible(),
+    )
+    .await?;
+    assert!(result.is_err());
+    assert_eq!(*models.bounded.lock().unwrap(), 0);
     Ok(())
 }
 

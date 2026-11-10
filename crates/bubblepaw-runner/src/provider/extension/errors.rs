@@ -2,6 +2,7 @@
 //! diagnostic lines kept from its error text and stderr. Never repeat a
 //! credential: see `diagnostic_line`.
 use super::*;
+use std::collections::BTreeMap;
 
 const MAX_DIAGNOSTIC_BYTES: usize = 300;
 
@@ -98,11 +99,16 @@ pub(super) fn rpc_error(error: &Value, secrets: &[String]) -> ProviderError {
     let reported = data
         .and_then(|data| data.get("usage"))
         .and_then(|usage| serde_json::from_value::<Usage>(usage.clone()).ok());
-    let error = ProviderError::new(kind, message).with_quota(extension_quota(
+    let impossible = data
+        .and_then(|data| data.get("fork_impossible"))
+        .and_then(Value::as_bool)
+        == Some(true);
+    let mut error = ProviderError::new(kind, message).with_quota(extension_quota(
         data,
         "claude-code",
         "claude-code",
     ));
+    error.fork_impossible = impossible;
     match reported {
         Some(usage) => error.with_usage(usage),
         None => error,

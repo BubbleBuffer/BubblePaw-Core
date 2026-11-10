@@ -26,7 +26,7 @@ crates/bubblepaw-runner/src/config.rs 2992
 crates/bubblepaw-runner/src/delegate/ledger.rs 519
 crates/bubblepaw-runner/src/delegate/metrics.rs 912
 crates/bubblepaw-runner/src/episode_models.rs 991
-crates/bubblepaw-runner/src/episode_worker.rs 1053
+crates/bubblepaw-runner/src/episode_worker.rs 1048
 crates/bubblepaw-runner/src/host_transport.rs 828
 crates/bubblepaw-runner/src/main.rs 712
 crates/bubblepaw-runner/src/net.rs 2764
@@ -35,7 +35,7 @@ crates/bubblepaw-runner/src/probes.rs 1435
 crates/bubblepaw-runner/src/provider.rs 879
 crates/bubblepaw-runner/src/provider/chat.rs 1122
 crates/bubblepaw-runner/src/provider/decisions.rs 725
-crates/bubblepaw-runner/src/provider/extension.rs 622
+crates/bubblepaw-runner/src/provider/extension.rs 599
 crates/bubblepaw-runner/src/provider/live_provider.rs 604
 crates/bubblepaw-runner/src/provider/messages.rs 1149
 crates/bubblepaw-runner/src/provider/registry.rs 1109
@@ -101,4 +101,4 @@ crates/bubblepaw-runner/tests/web_transport.rs 1166
 crates/bubblepaw-runner/tests/worker_lifecycle.rs 996
 crates/bubblepaw-runner/tests/workspace_edit.rs 520
 crates/bubblepaw-runner/tests/worktree_children.rs 524
-extensions/claude-code/src/provider.ts 876
+extensions/claude-code/src/provider.ts 796

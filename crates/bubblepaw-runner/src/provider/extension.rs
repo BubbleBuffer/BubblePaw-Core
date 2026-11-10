@@ -9,11 +9,10 @@ use bubblepaw_core::{
     CancellationToken, Capabilities, CursorResets, ModelInfo, ModelRequest, ModelResponse,
     Provider, ProviderError, ProviderErrorKind, TextCallback, Usage,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashMap},
-    path::{Path, PathBuf},
+    collections::HashMap,
     process::Stdio,
     sync::{
         Arc, Mutex,
@@ -21,64 +20,17 @@ use std::{
     },
     time::Duration,
 };
+mod config;
+pub use config::{EXTENSION_ENV_KEYS, ExtensionConfig, load_extensions, valid_env_name};
+mod fork;
+mod guard;
+use guard::StepGuard;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
     sync::{mpsc, oneshot},
     task::JoinHandle,
 };
-
-/// One entry of the extensions file: `[{"id","command","args","cwd"?,"env"?}]`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ExtensionConfig {
-    pub id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub account: Option<String>,
-    pub command: String,
-    #[serde(default)]
-    pub args: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cwd: Option<PathBuf>,
-    /// Variables set on this instance's process on top of the inherited
-    /// environment, e.g. a per-account `CLAUDE_CONFIG_DIR`.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub env: BTreeMap<String, String>,
-}
-
-/// Names the variables an instance's `env` sets explicitly (comma-separated), so
-/// an extension can tell them from inherited ones.
-pub const EXTENSION_ENV_KEYS: &str = "BUBBLEPAW_EXTENSION_ENV_KEYS";
-
-/// Whether `name` can be set on a child process and listed in [`EXTENSION_ENV_KEYS`].
-pub fn valid_env_name(name: &str) -> bool {
-    !name.is_empty() && !name.contains(['=', ',', '\0'])
-}
-
-/// Load an extensions file. A relative `cwd` is resolved against the file's directory.
-pub fn load_extensions(path: impl AsRef<Path>) -> Result<Vec<ExtensionConfig>> {
-    let path = path.as_ref();
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("cannot read extensions file {}", path.display()))?;
-    let mut entries: Vec<ExtensionConfig> = serde_json::from_slice(&bytes)
-        .with_context(|| format!("invalid extensions file {}", path.display()))?;
-    let base = path.parent().unwrap_or(Path::new("."));
-    for entry in &mut entries {
-        anyhow::ensure!(
-            !entry.id.is_empty() && !entry.command.is_empty(),
-            "extension entries need an id and a command"
-        );
-        anyhow::ensure!(
-            entry.env.keys().all(|name| valid_env_name(name)),
-            "extension env names must be nonempty and contain no '=', ',' or NUL"
-        );
-        if let Some(cwd) = &entry.cwd
-            && cwd.is_relative()
-        {
-            entry.cwd = Some(base.join(cwd));
-        }
-    }
-    Ok(entries)
-}
 
 #[derive(Debug, Clone, Deserialize)]
 struct InitializedModel {
@@ -101,6 +53,13 @@ struct Initialized {
 struct ExtensionCapabilities {
     #[serde(default)]
     reasoning_effort: bool,
+    /// The extension answers `summary_fork` (see `fork.rs`).
+    #[serde(default)]
+    summary_fork: bool,
+    /// Tokens the extension adds in front of every conversation (for example
+    /// Claude Code's own system prompt), counted into a fork's size estimate.
+    #[serde(default)]
+    input_overhead_tokens: usize,
 }
 
 /// A settled request: its outcome and the model the SDK reported for it. The model
@@ -325,31 +284,6 @@ impl Connection {
     }
 }
 
-/// Sends `cancel` if the step is abandoned (for example when the harness drops
-/// the provider future on cancellation) before its reply arrived.
-struct StepGuard {
-    connection: Arc<Connection>,
-    id: u64,
-    armed: bool,
-    cancel_sent: bool,
-}
-impl StepGuard {
-    fn cancel(&mut self) {
-        if !self.cancel_sent {
-            self.cancel_sent = true;
-            self.connection.notify("cancel", json!({"id":self.id}));
-        }
-    }
-}
-impl Drop for StepGuard {
-    fn drop(&mut self) {
-        if self.armed {
-            self.connection.forget(self.id);
-            self.cancel();
-        }
-    }
-}
-
 pub struct ExtensionProvider {
     config: ExtensionConfig,
     /// Client environment the child starts from; `None` inherits the host's.
@@ -435,39 +369,11 @@ impl ExtensionProvider {
         *slot = Some(connection.clone());
         Ok(connection)
     }
-}
-#[async_trait]
-impl Provider for ExtensionProvider {
-    /// Known after the extension has been started (first step or `start`).
-    fn models(&self) -> Vec<ModelInfo> {
-        self.info
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(|info| {
-                info.models
-                    .iter()
-                    .map(|model| ModelInfo {
-                        id: model.id.clone(),
-                        name: model.name.clone().unwrap_or_else(|| model.id.clone()),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-    /// Defaults until the extension has been started; `generate` reapplies the
-    /// tool surface itself after initialization, so the first step is correct.
-    fn capabilities(&self, model: &str) -> Capabilities {
-        self.info
-            .lock()
-            .unwrap()
-            .as_ref()
-            .and_then(|info| info.models.iter().find(|m| m.id == model))
-            .map(|model| model.capabilities.clone())
-            .unwrap_or_default()
-    }
-    async fn generate(
+    /// One request/reply exchange with the extension: `step` for a model step,
+    /// `summary_fork` for an isolated summary branch.
+    async fn call(
         &self,
+        method: &str,
         mut request: ModelRequest,
         on_text: TextCallback,
         cancellation: CancellationToken,
@@ -493,7 +399,7 @@ impl Provider for ExtensionProvider {
                 .into());
             }
         }
-        if !request.session_id.is_empty() {
+        if method == "step" && !request.session_id.is_empty() {
             let previous = self
                 .seen
                 .lock()
@@ -519,7 +425,7 @@ impl Provider for ExtensionProvider {
             let _ = text_tx.send(text.to_owned());
         });
         let mut meter = super::PhysicalRequest::new(&self.config.id, &request.model);
-        let (id, mut receiver) = connection.request("step", params, Some(queue_text))?;
+        let (id, mut receiver) = connection.request(method, params, Some(queue_text))?;
         let (on_text, published) = super::track_text_publication(on_text);
         let mut batch = TextBatch::new(on_text);
         let mut guard = StepGuard {
@@ -588,6 +494,77 @@ impl Provider for ExtensionProvider {
         })();
         meter.finish_result(&result);
         result.map_err(|error| super::mark_published(error, published.load(Ordering::Acquire)))
+    }
+}
+#[async_trait]
+impl Provider for ExtensionProvider {
+    /// Known after the extension has been started (first step or `start`).
+    fn models(&self) -> Vec<ModelInfo> {
+        self.info
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|info| {
+                info.models
+                    .iter()
+                    .map(|model| ModelInfo {
+                        id: model.id.clone(),
+                        name: model.name.clone().unwrap_or_else(|| model.id.clone()),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+    /// Defaults until the extension has been started; `generate` reapplies the
+    /// tool surface itself after initialization, so the first step is correct.
+    fn capabilities(&self, model: &str) -> Capabilities {
+        self.info
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|info| info.models.iter().find(|m| m.id == model))
+            .map(|model| model.capabilities.clone())
+            .unwrap_or_default()
+    }
+    async fn generate(
+        &self,
+        request: ModelRequest,
+        on_text: TextCallback,
+        cancellation: CancellationToken,
+    ) -> Result<ModelResponse> {
+        self.call("step", request, on_text, cancellation).await
+    }
+    fn supports_summary_fork(&self, _model: &str) -> bool {
+        self.info
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|info| info.capabilities.summary_fork)
+    }
+    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
+        Ok(Some(fork::mapping(request)))
+    }
+    async fn generate_summary_fork(
+        &self,
+        request: ModelRequest,
+        cancellation: CancellationToken,
+    ) -> Result<ModelResponse> {
+        let request = fork::request(request)?;
+        self.call("summary_fork", request, Arc::new(|_| {}), cancellation)
+            .await
+    }
+    fn estimate_summary_fork_tokens(
+        &self,
+        request: &ModelRequest,
+        count: &dyn Fn(&Value) -> usize,
+    ) -> Result<Option<usize>> {
+        let overhead = self
+            .info
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map_or(0, |info| info.capabilities.input_overhead_tokens);
+        Ok(Some(count(&fork::projection(request)) + overhead))
     }
     async fn close_session(&self, session_id: &str) -> Result<()> {
         self.resets.forget(session_id);
