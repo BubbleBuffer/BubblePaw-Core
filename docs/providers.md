@@ -605,6 +605,16 @@ tree and aborts the writer, reader and stderr tasks, so nothing the host started
 
 After a restart the host sends the next step with `rewritten_from: None`, so a stateful extension rebuilds.
 
+### Summary fork over the extension protocol
+
+An extension that sets `summary_fork: true` in its `initialize` capabilities answers a `summary_fork` request (same params and result as `step`) and is forked by episode summaries under `summary_input = auto|fork`. Capability `input_overhead_tokens` (the extension's own fixed prompt, for the Claude Code extension 4000, measured about 3.4k) is added to the host's fork size estimate (`estimate_summary_fork_tokens`; main-path estimates are unchanged).
+
+- Request: the captured main conversation up to the cut (the episode's last message), then ONE user message with no id carrying both controls (the branch instruction, then the return control, joined by a blank line); `session_id` names the session being branched. The host derives this for extensions only; other providers keep the two controls.
+- Mapping: `protocol: "claude-code"`; per source the usual fields, positions are the message ordinal among non-ephemeral messages (`position_unit` says so; ephemeral runtime notes have none).
+- Claude Code side: the fork runs the mirrored session with `resume`, `forkSession`, `resumeSessionAt` (the uuid of the last JSONL record of the cut message), `persistSession: false` and the main call's options, system prompt and tool declarations, so the prefix up to the cut is a cache hit. The mirror and the parent session file are neither written nor kept; no session of the fork's own remains. The cut is found by aligning the request's messages with the parent JSONL (assistant records grouped by `message.id`, tool results by id, user runs, `<system-note>` records skipped). A cut at a user message, a missing or mismatched message, a reply not yet written, or a mirror that is missing, stale (`needsRebuild`) or on another model returns a transient error ("no consistent fork cut"), so the gather retries after the main loop settles. The JSONL is only read, so main is never blocked.
+- Tools stay declared (they are part of the cached prefix). `canUseTool` denies every call and a tool call in the reply cancels the fork with a fatal error; no tool is run.
+- Live (claude-haiku-5-5, 2026-11-10): see the measurements below.
+
 ## Claude Code provider (first extension)
 
 A Bun process on the Agent SDK and cc-session-io, following pi-claude-bridge:

@@ -77,11 +77,11 @@ for a provider that cannot fork), not a silent response to unavailable capture,
 an explicit `fork` on an unsupported protocol, or pressure.
 Different routes are not assumed to share provider caches.
 
-Full-prefix forks are supported by the Chat, Messages and Responses adapters (not
-the Claude Code extension). `context.lcm.summary_input`
+Full-prefix forks are supported by the Chat, Messages and Responses adapters and by
+extensions that declare `summary_fork` (the Claude Code extension). `context.lcm.summary_input`
 is `auto` (the default), `fork` or `episode`. `auto` resolves per gather from the
 captured main route: a provider that supports summary forks forks, any
-other (the extension) summarizes from episode input (previous summary and
+other (an extension without `summary_fork`) summarizes from episode input (previous summary and
 rendered episode), declared as a fresh side call like an explicit `episode`. An
 explicitly configured `fork` or `episode` is never swapped: `fork` on a provider
 without fork support fails with `unsupported_protocol`, and the first such failure

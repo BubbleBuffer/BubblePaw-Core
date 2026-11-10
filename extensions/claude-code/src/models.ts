@@ -61,3 +61,8 @@ export function dominantModel(pairs: Iterable<[unknown, number]>): string | unde
 	}
 	return best;
 }
+
+/** Tokens Claude Code puts in front of every conversation (its own system prompt
+ *  and built-in framing). Measured at about 3.4k on 2026-11-10 with a one-line
+ *  system prompt and one tool; the host adds this to its fork-size estimate. */
+export const CLAUDE_CODE_PROMPT_TOKENS = 4000;

@@ -62,7 +62,7 @@ describe("JSON-RPC framing", () => {
 		const records = out.map((l) => JSON.parse(l));
 		const init = records.find((r) => r.id === 1).result;
 		expect(init.provider).toBe("claude-code");
-		expect(init.capabilities).toEqual({ output_schema: true, reasoning_effort: true });
+		expect(init.capabilities).toEqual({ output_schema: true, reasoning_effort: true, summary_fork: true, input_overhead_tokens: 4000 });
 		expect(init.models.map((m: any) => m.id)).toContain("haiku");
 		expect(init.models[0].capabilities).toEqual({ context_window: 200000, cache: "session", tool_surface: { kind: "code" }, stateful: true });
 		const texts = records.filter((r) => r.method === "text");
