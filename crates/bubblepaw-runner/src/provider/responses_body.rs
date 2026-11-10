@@ -3,9 +3,16 @@ use super::*;
 
 impl ResponsesProvider {
     pub(super) fn body(&self, request: &ModelRequest) -> Result<Value> {
+        self.build(request).map(|(body, _)| body)
+    }
+
+    /// The body plus the index of each message's first input item.
+    fn build(&self, request: &ModelRequest) -> Result<(Value, Vec<usize>)> {
         ensure!(!request.model.is_empty(), "model must be selected");
         let mut input = Vec::new();
+        let mut starts = Vec::new();
         for message in &request.messages {
+            starts.push(input.len());
             match message.role{
                 Role::Tool=> {
                     let (text, images) = crate::images::split_wire(&message.content);
@@ -47,6 +54,45 @@ impl ResponsesProvider {
         // Native tools stay native. Responses non-strict function calling accepts
         // optional fields without altering the semantic tool schema or exposure.
         tool_wire::insert_tools(&mut body, request, tool_wire::responses_declaration);
-        Ok(body)
+        Ok((body, starts))
+    }
+
+    /// Source message ids mapped to the input items they rendered into.
+    pub(super) fn fork_mapping(&self, request: &ModelRequest) -> Result<Value> {
+        let (body, starts) = self.build(request)?;
+        let end = body["input"].as_array().map_or(0, Vec::len);
+        let sources: Vec<Value> = request.messages.iter().enumerate().map(|(index, message)| {
+            let stop = starts.get(index + 1).copied().unwrap_or(end);
+            json!({
+                "source_id":message.id,"prepared_position":index,"role":message.role,
+                "origin":message.origin,"is_typed_user":bubblepaw_core::is_typed_user(message),
+                "wire_positions":(starts[index]..stop).collect::<Vec<_>>(),
+                "tool_call_ids":message.tool_calls.iter().map(|call| &call.id).collect::<Vec<_>>(),
+                "tool_call_id":message.tool_call_id,
+            })
+        }).collect();
+        Ok(json!({
+            "protocol":"responses",
+            "position_unit":"zero-based input item index (instructions are not in input)",
+            "sources":sources,
+        }))
+    }
+
+    /// The actual renderer's instructions, input and tools, without the opaque
+    /// encrypted reasoning payloads, for the host's local estimate.
+    pub(super) fn token_input(&self, request: &ModelRequest) -> Result<Value> {
+        let mut input = self.body(request)?;
+        input
+            .as_object_mut()
+            .unwrap()
+            .retain(|key, _| matches!(key.as_str(), "instructions" | "input" | "tools"));
+        for item in input["input"].as_array_mut().into_iter().flatten() {
+            if item["type"] == "reasoning"
+                && let Some(fields) = item.as_object_mut()
+            {
+                fields.remove("encrypted_content");
+            }
+        }
+        Ok(input)
     }
 }

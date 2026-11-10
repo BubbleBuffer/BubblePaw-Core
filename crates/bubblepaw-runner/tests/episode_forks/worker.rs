@@ -76,7 +76,7 @@ async fn episode_worker_uses_fork_and_cleanup_releases_captures() -> Result<()> 
     Ok(())
 }
 
-/// A provider that cannot fork summaries (the trait default), as every non-chat adapter.
+/// A provider that cannot fork summaries (the trait default), as the Claude Code extension.
 struct NoFork;
 #[async_trait]
 impl Provider for NoFork {

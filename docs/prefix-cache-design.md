@@ -575,7 +575,16 @@ a signed live fixture before promising Claude compatibility through apply.
 
 ## Summary fork
 
-Implemented for Chat in r6 and corrected by the 2026-10-19 contract.
+Implemented for Chat in r6 and corrected by the 2026-10-19 contract; the
+Messages and Responses adapters fork too (2026-11-10), and only the Claude Code
+extension cannot. Each maps the source IDs to its own wire positions (Chat: message
+index; Messages: `turn.block`, where adjacent user-role messages share a turn and
+the two controls become extra blocks of the last turn; Responses: input item index).
+A Messages fork's cut block carries a cache breakpoint through the parent tier
+(`previous_len`), so it reads the main request's cache entry. A Responses fork
+appends two input items (a system item and a user item) to the same `input`;
+the ChatGPT-Codex subscription backend's acceptance of a system item in mid-input
+is checked only by the live test `provider_live_forks::codex_fork_reads_cache`.
 `context.lcm.summary_input = "auto"` is the default: it forks when the captured
 route's provider supports summary forks and otherwise summarizes from episode
 input. `"fork"` requires the fork and fails on an unsupported provider;
