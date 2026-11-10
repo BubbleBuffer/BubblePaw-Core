@@ -68,6 +68,7 @@ retry_base_ms = 500
 # window_tokens = 400000 # Otherwise use local model metadata when available.
 
 [context.lcm]
+summary_input = "auto" # auto | fork | episode: auto forks the main prefix where the provider supports it, else uses episode input.
 decider_enabled = true # false skips semantic decisions; summary gathering still runs.
 chapter_rollover_tokens = 0 # Positive values close chapters at this summary-token size.
 

@@ -134,7 +134,7 @@ pub trait EpisodeModels: Send + Sync {
         _fork: EpisodeFork,
     ) -> Result<SummaryResult> {
         Err(anyhow!(
-            "This episode adapter does not support full-prefix summary forks; configure summary_input=episode explicitly to use episode-only input"
+            "This episode adapter does not support full-prefix summary forks; configure summary_input=auto or summary_input=episode to use episode-only input"
         ))
     }
     /// Preserve host-owned tier annotations without changing the public fork payload.
@@ -258,7 +258,7 @@ impl HttpEpisodeModels {
             );
         }
         anyhow!(
-            "Full-prefix episode summary unavailable ({reason}) for {model}; raw source remains uncovered. Configure summary_input=episode explicitly to use episode-only input"
+            "Full-prefix episode summary unavailable ({reason}) for {model}; raw source remains uncovered. Configure summary_input=auto or summary_input=episode to use episode-only input"
         )
     }
 }

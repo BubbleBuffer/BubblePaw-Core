@@ -9,11 +9,20 @@ impl EpisodeWorker {
         first: &str,
         last: &str,
     ) -> Result<Option<(EpisodeFork, Vec<usize>)>> {
-        Ok(if self.config.summary_input == EpisodeSummaryInput::Fork {
+        let input = self.config.summary_input;
+        Ok(if input != EpisodeSummaryInput::Episode {
             match self
                 .estimator
                 .episode_fork_with_context(session, first, last)
             {
+                // `auto` falls back to episode input only for a provider that cannot fork;
+                // an explicit `fork` keeps the strict error from the summary call.
+                Ok(Some((fork, _)))
+                    if input == EpisodeSummaryInput::Auto
+                        && !fork.provider.supports_summary_fork(&fork.request.model) =>
+                {
+                    None
+                }
                 Ok(Some(fork)) => Some(fork),
                 Ok(None) => {
                     self.models

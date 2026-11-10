@@ -357,7 +357,7 @@ Call sites:
   available chapter route equals the capture's model with the same reasoning
   effort and output limit (an unset role limit matches). Lineage
   `chapter_fork`, trace kind `chapter`.
-- **Episode-only summary** (`summary_input=episode`) stays fresh.
+- **Episode-only summary** (`summary_input=episode`, or `auto` on a provider that cannot fork) stays fresh.
 - **Deciders** stay fresh; they almost never share the chat's model or settings.
 
 A fresh side call is built with `ContextState::build_side` and is always
@@ -514,7 +514,7 @@ be tested; a server cache hit is still best effort and must be measured.
 | Tools-off rounds | For ordinary runs, the first final-budget round keeps `tools` unchanged, queues the `tools_off` reminder and sends no tool-choice change. Only if the model still calls a tool does an enforcement round move definitions from `tools` to `disabled_tools`, keep them on the wire in order, and send the provider's tool choice off (`none`), declaring `tools_off_enforced`. Call parsing accepts only active tools. Required-result runs instead retain `submit_result` and its access wrappers after exhaustion; ordinary targets remain blocked. Missing-result reminders also leave declarations unchanged. | The reminder round is an `append` with the same declared set and tool choice. The enforcement round is a `frozen_change`, because the active/inactive split moves. Changing API `tool_choice` can lose reuse on the tested route (controlled fork below). Chat and Responses `tool_choice: none` is not measured yet. |
 | Execution modes and live tools | Native core declarations or the opt-in `js` declaration are persisted for the whole chat. Live tool publication updates dispatch and discovery. | Notices announce changes; apply refreshes the cold catalog. Declarations stay fixed; only the skill and memory-file prompt content may be rebound at apply. |
 | Chat reasoning replay | Default `tool_loop` remains configurable; the DeepSeek Flash free/Go worker models explicitly select `all`, matching their tool-use contract. | Preserve compatible native reasoning across completed turns and length continuations; retain adapter/model/route guards. |
-| Episode summaries | Default `summary_input = "fork"` captures the final main request and appends branch-local system/user controls through the selected complete episode boundary. The opening prompt, declarations and compatible native reasoning are preserved. | Same source route and provider generation; no branch tool dispatch or main mirror mutation. Compact episode input remains explicit/configurable fallback with categorical diagnostics. |
+| Episode summaries | Default `summary_input = "auto"` (`"fork"` forces it) forks where the provider supports it and captures the final main request and appends branch-local system/user controls through the selected complete episode boundary. The opening prompt, declarations and compatible native reasoning are preserved. | Same source route and provider generation; no branch tool dispatch or main mirror mutation. Compact episode input remains explicit/configurable fallback with categorical diagnostics. |
 | Background LCM / apply | Gathering is independent; apply freezes ready chapters/episodes plus an exact uncovered suffix until the next apply. The r5 repair removes masked raw refilling; oversized completed batches can be summarized whole under pressure. | Gathering must not update the live index, chapter descriptions or old raw results in the main prefix. A complete call/result boundary and actual advancing summary coverage are required for replacement. |
 | Native thinking at apply | Replay compatibility currently checks adapter/model/route; earlier live work proved that changing signed-thinking prefixes can cause rejection. | An apply boundary needs its own native-thinking qualification. Complete call/result groups alone do not prove that retained signed state remains valid under a changed earlier prefix. |
 | Provider fallback | Free-first routing records actual route provenance and sticks to the successful route per source session. Auxiliary retries stay within the actual candidate. Token admission considers the largest known rendered input across still-reachable alternatives. | Free and Go are separate cache domains. A resumed session with Go reasoning must not be sized only as a cold free-route request. |
@@ -573,8 +573,10 @@ a signed live fixture before promising Claude compatibility through apply.
 ## Summary fork
 
 Implemented for Chat in r6 and corrected by the 2026-10-19 contract.
-`context.lcm.summary_input = "fork"`
-is the default; `"episode"` selects the earlier compact source method explicitly.
+`context.lcm.summary_input = "auto"` is the default: it forks when the captured
+route's provider supports summary forks and otherwise summarizes from episode
+input. `"fork"` requires the fork and fails on an unsupported provider;
+`"episode"` selects the earlier compact source method explicitly.
 The fork uses the captured main model/route and its generation settings, rather
 than migrating the request to another model in `roles.summary`. That role still
 controls the optional summary output allowance and configured repeats. Full-fork

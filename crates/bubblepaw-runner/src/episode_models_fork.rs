@@ -19,6 +19,18 @@ pub(super) async fn summarize_fork_attempt(
     request.model = route.to_owned();
     let unavailable = |reason: &str| models.fork_unavailable(&input.session_id, route, reason);
     if !fork.provider.supports_summary_fork(&request.model) {
+        // An explicit `fork` on a provider that cannot fork never summarizes; say so
+        // once per session instead of leaving only a suppressed retry.
+        models.context_route.warn_once(
+            &input.session_id,
+            "summary_input_unsupported",
+            json!({
+                "model": route,
+                "summary_input": "fork",
+                "reason": "unsupported_protocol",
+                "message": "context.lcm.summary_input = \"fork\" cannot run on this provider, so episodes are not summarized; set summary_input to \"auto\" or \"episode\"",
+            }),
+        );
         return Err(unavailable("unsupported_protocol"));
     }
     let delivery = ForkDelivery::new(&request, "submit_summary");
