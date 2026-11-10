@@ -30,7 +30,8 @@ permissions:
 
 # No debug info in test builds. Debug info makes up most of each test binary,
 # and the runner alone has about 140 integration-test binaries per feature set;
-# with it, the hosted runner's disk filled.
+# with it, the hosted runner's disk filled (that was with the suite built
+# twice, once per feature set).
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
@@ -74,14 +75,15 @@ jobs:
       - name: core, mcp, process and sdk tests
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
-      - name: runner tests (default features)
+      # The web,bench set is a superset of the default one (every feature gate
+      # in the runner tests is `cfg(feature = ...)`, none is `cfg(not(...))`),
+      # so the full suite runs once, below. Default features keep their clippy
+      # gate above and run only the targets that are not feature-gated and
+      # build without web/bench: the lib and bin unit tests plus two small
+      # integration tests.
+      - name: runner tests (default features, targeted)
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-runner --locked --no-fail-fast
-      # Drop the default-feature runner test binaries before building the
-      # web,bench set, so only one set is on disk at a time.
-      - name: clean runner build output
-        if: ${{ !cancelled() }}
-        run: cargo clean -p bubblepaw-runner && df -h /
+        run: cargo test -p bubblepaw-runner --lib --bins --test execution_mode_unbound --test provider_live_forks --locked --no-fail-fast
       - name: runner tests (web, bench)
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
