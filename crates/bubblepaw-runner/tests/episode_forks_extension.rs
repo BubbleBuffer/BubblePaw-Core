@@ -3,8 +3,7 @@
 //! conversation up to the cut plus one user message carrying both controls.
 use anyhow::Result;
 use bubblepaw_core::{
-    CancellationToken, Message, ModelRequest, Provider, ReasoningEffort, Role, Store, ToolCall,
-    ToolDefinition,
+    CancellationToken, Message, ModelRequest, Provider, Role, Store, ToolCall, ToolDefinition,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -60,7 +59,6 @@ fn request(session: &str) -> ModelRequest {
             approval: Default::default(),
         }],
         max_output_tokens: Some(8000),
-        reasoning_effort: Some(ReasoningEffort::High),
         session_id: session.into(),
         ..Default::default()
     }
