@@ -46,6 +46,13 @@ impl ResponsesProvider {
             .or(configured_effort)
             .unwrap_or_default();
         body["reasoning"] = json!({"effort":effort.as_str()});
+        // Codex subscription route only: one cache key per session, the same for
+        // the main loop and its forks (`session_key` also reads the messages).
+        if matches!(self.credentials, Credentials::CodexAuth(_))
+            && let Some(key) = session_key(request)
+        {
+            body["prompt_cache_key"] = json!(key);
+        }
         if matches!(self.credentials, Credentials::ApiKey(_))
             && let Some(limit) = request.max_output_tokens
         {

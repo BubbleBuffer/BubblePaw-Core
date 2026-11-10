@@ -12,7 +12,7 @@ mod messages;
 mod metering;
 mod opencode_session;
 pub(crate) use metering::PhysicalRequest;
-pub(crate) use opencode_session::opencode_session;
+pub(crate) use opencode_session::{codex_cache_headers, opencode_session, session_key};
 mod registry;
 pub(crate) mod replay_state;
 mod responses_body;
@@ -149,7 +149,7 @@ impl ResponsesProvider {
                 builder = builder.header("x-opencode-session", session);
             }
             if let Some(account) = &account {
-                builder = builder
+                builder = codex_cache_headers(builder, body)
                     .header("ChatGPT-Account-ID", account)
                     .header("originator", "bubblepaw")
                     .header("OpenAI-Beta", "responses=experimental");

@@ -115,6 +115,10 @@ async fn fork_reads_the_cache(
     tool.tool_call_id = Some(first.tool_calls[0].id.clone());
     main.messages.extend([assistant, tool]);
     // The continued main request writes the cache entry the fork must read.
+    // The backend writes cache entries asynchronously; BP_LIVE_FORK_PAUSE_MS delays call 2.
+    if let Some(ms) = env("BP_LIVE_FORK_PAUSE_MS").and_then(|n| n.parse().ok()) {
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+    }
     let second = provider
         .generate(main.clone(), Arc::new(|_| {}), CancellationToken::new())
         .await?;
