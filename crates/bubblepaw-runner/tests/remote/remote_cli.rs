@@ -3,8 +3,8 @@
 //! second `bubblepaw remote pair` process pairs a device through the running
 //! server, the device connects over the endpoint without a restart, and
 //! `remote devices revoke` from a third process shuts it out.
-#[path = "remote_tunnel/fake.rs"]
-mod fake;
+#[allow(unused_imports)]
+use crate::fake;
 
 use bubblepaw_runner::remote::{
     self, PairingPayload, RemoteAddress, RemoteConnect, RemoteError, RemotePair,

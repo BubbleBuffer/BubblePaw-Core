@@ -13,7 +13,6 @@ mod context_growth;
 mod context_routes;
 mod context_stdio;
 mod context_strategies;
-mod context_web;
 mod discovery_snapshot;
 mod lcm_decider;
 mod manual_compaction;

@@ -2,12 +2,10 @@
 //! fake `cloudflared` and a fake Cloudflare API: login state, `tunnel_login`,
 //! account and zones (by API token and by `cert.pem`), the installed version
 //! and the checksum-verified update. No real Cloudflare is contacted.
-#[allow(dead_code)]
-#[path = "remote_tunnel/fake.rs"]
-mod fake;
-#[allow(dead_code)]
-#[path = "remote_tunnel/fake_api.rs"]
-mod fake_api;
+#[allow(unused_imports)]
+use crate::fake;
+#[allow(unused_imports)]
+use crate::fake_api;
 
 use axum::Router;
 use axum::extract::State;

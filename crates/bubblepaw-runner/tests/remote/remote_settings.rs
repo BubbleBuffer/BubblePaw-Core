@@ -1,7 +1,6 @@
 //! Local-only executable selection persists to the ordinary host config.
-#[allow(dead_code)]
-#[path = "remote_tunnel/fake.rs"]
-mod fake;
+#[allow(unused_imports)]
+use crate::fake;
 
 use bubblepaw_runner::{
     host_api::{self, Profile},

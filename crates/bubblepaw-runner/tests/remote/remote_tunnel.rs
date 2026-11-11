@@ -2,10 +2,10 @@
 //! Cloudflare API: the quick tunnel's address is read from its log and
 //! changes on restart; domain setup creates the tunnel and its DNS route once
 //! and runs it with the stored credentials.
-#[path = "remote_tunnel/fake.rs"]
-mod fake;
-#[path = "remote_tunnel/fake_api.rs"]
-mod fake_api;
+#[allow(unused_imports)]
+use crate::fake;
+#[allow(unused_imports)]
+use crate::fake_api;
 
 use bubblepaw_runner::host_api::Profile;
 use bubblepaw_runner::remote::{
