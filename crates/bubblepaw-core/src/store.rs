@@ -258,6 +258,16 @@ pub struct RelatedEvidence {
     pub origin: Option<crate::MessageOrigin>,
 }
 
+impl From<String> for RelatedEvidence {
+    fn from(quote: String) -> Self {
+        Self {
+            quote,
+            related_quote_matched: None,
+            origin: None,
+        }
+    }
+}
+
 impl From<&str> for RelatedEvidence {
     fn from(quote: &str) -> Self {
         Self::from(quote.to_owned())
