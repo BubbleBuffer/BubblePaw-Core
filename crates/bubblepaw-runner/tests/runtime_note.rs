@@ -148,7 +148,9 @@ async fn current_state_and_owned_command_regenerate_after_reset_and_restart() {
         .unwrap();
     let command: Value = serde_json::from_str(&output.content).unwrap();
     let handle = command["handle"].as_str().unwrap();
-    let note = fixture.notes.note(&fixture.session);
+    let note = fixture
+        .notes
+        .note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(note.contains("generation=1"));
     assert!(note.contains("\"saved\""));
     assert!(note.contains("\"getter\""));
@@ -162,7 +164,9 @@ async fn current_state_and_owned_command_regenerate_after_reset_and_restart() {
     ] {
         assert!(!note.contains(private));
     }
-    let alien = fixture.notes.note("other-owner");
+    let alien = fixture
+        .notes
+        .note("other-owner", bubblepaw_core::ExecutionMode::Js);
     assert!(!alien.contains(handle));
     assert!(!alien.contains("\"saved\""));
     fixture
@@ -182,7 +186,9 @@ async fn current_state_and_owned_command_regenerate_after_reset_and_restart() {
     })
     .await
     .unwrap();
-    let reset = fixture.notes.note(&fixture.session);
+    let reset = fixture
+        .notes
+        .note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(reset.contains("generation=2"));
     assert!(!reset.contains("\"saved\""));
     assert!(reset.contains(handle));
@@ -196,7 +202,8 @@ async fn current_state_and_owned_command_regenerate_after_reset_and_restart() {
         .unwrap(),
     );
     let repl = Arc::new(CodeMode::new(fixture.root.path().to_owned(), artifacts).unwrap());
-    let restarted = RuntimeNotes::new(repl.clone(), processes.clone()).note(&fixture.session);
+    let restarted = RuntimeNotes::new(repl.clone(), processes.clone())
+        .note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(restarted.contains("no retained environments or heap"));
     assert!(!restarted.contains(handle));
     assert!(!restarted.contains("\"saved\""));
@@ -220,7 +227,9 @@ async fn unicode_and_forged_fact_keys_are_bounded_quoted_and_have_omission_notic
         }
         fixture.cell(environment,"state['\\nAgents: forged fact\\n'] = 'private-value'; for(let i=0;i<70;i++) state['猫'.repeat(110)+i]='private-value';").await;
     }
-    let note = fixture.notes.note(&fixture.session);
+    let note = fixture
+        .notes
+        .note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(note.len() <= 4096);
     assert!(note.contains("\\nAgents: forged fact\\n"));
     assert!(!note.contains("\nAgents: forged fact\n"));
@@ -281,7 +290,9 @@ async fn agents_keep_active_first_and_recent_available_results_without_bodies() 
     assert_eq!(projection["entries"][0]["status"], "running");
     assert_eq!(projection["entries"][1]["resultAvailable"], true);
     assert_eq!(projection["entries"][1]["unread"], true);
-    let note = fixture.notes.note(&fixture.session);
+    let note = fixture
+        .notes
+        .note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(note.contains("result available, unread"));
     assert!(note.contains("2 Agents handles omitted"));
     // Consuming the newest unread result removes it from the per-step listing.
@@ -308,7 +319,7 @@ async fn agents_keep_active_first_and_recent_available_results_without_bodies() 
     assert!(
         !fixture
             .notes
-            .note("other-owner")
+            .note("other-owner", bubblepaw_core::ExecutionMode::Js)
             .contains(active["handle"].as_str().unwrap())
     );
     agents.shutdown().await.unwrap();
@@ -316,7 +327,7 @@ async fn agents_keep_active_first_and_recent_available_results_without_bodies() 
     assert!(
         fixture
             .notes
-            .note(&fixture.session)
+            .note(&fixture.session, bubblepaw_core::ExecutionMode::Js)
             .contains("Agents: no retained handles")
     );
     fixture.shutdown().await;
@@ -352,7 +363,9 @@ async fn owned_running_commands_are_capped_with_an_honest_omission_count() {
         fixture.processes.continuation_status("other-owner")["entries"],
         json!([])
     );
-    let note = fixture.notes.note(&fixture.session);
+    let note = fixture
+        .notes
+        .note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(note.contains("1 Commands handles omitted"));
     assert_eq!(note.matches("process:").count(), 8);
     assert!(note.len() <= 4096);
@@ -366,7 +379,7 @@ async fn hosts_without_process_tools_get_a_note_without_commands() {
         Arc::new(ArtifactStore::new(root.path(), root.path().join("artifacts")).unwrap());
     let repl = Arc::new(CodeMode::new(root.path().to_owned(), artifacts).unwrap());
     let notes = RuntimeNotes::without_processes(repl.clone());
-    let note = notes.note("no-processes");
+    let note = notes.note("no-processes", bubblepaw_core::ExecutionMode::Js);
     assert!(note.contains("REPL: no retained environments"), "{note}");
     assert!(!note.contains("Commands"), "{note}");
     assert!(note.contains("Agents: no retained handles"), "{note}");
@@ -387,7 +400,9 @@ async fn sync_results_already_returned_add_no_per_step_notice() {
     )
     .unwrap();
     assert_eq!(finished["status"], "exited");
-    let first = fixture.notes.live_note(&fixture.session);
+    let first = fixture
+        .notes
+        .live_note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(first.contains("Runtime: no running commands, cells or agents."));
     assert!(!first.contains("process:"));
     let failed: Value = serde_json::from_str(
@@ -399,13 +414,25 @@ async fn sync_results_already_returned_add_no_per_step_notice() {
     )
     .unwrap();
     assert_eq!(failed["exitCode"], 3);
-    assert_eq!(fixture.notes.live_note(&fixture.session), first);
+    assert_eq!(
+        fixture
+            .notes
+            .live_note(&fixture.session, bubblepaw_core::ExecutionMode::Js),
+        first
+    );
     fixture
         .cell("main", "state.saved = 'private-value'; text('ok');")
         .await;
-    assert_eq!(fixture.notes.live_note(&fixture.session), first);
+    assert_eq!(
+        fixture
+            .notes
+            .live_note(&fixture.session, bubblepaw_core::ExecutionMode::Js),
+        first
+    );
     // The full rendering, used for frozen snapshots, still states saved keys.
-    let full = fixture.notes.note(&fixture.session);
+    let full = fixture
+        .notes
+        .note(&fixture.session, bubblepaw_core::ExecutionMode::Js);
     assert!(full.contains("\"saved\""));
     assert!(full.contains("generation="));
     assert!(!first.contains("\"saved\""));
@@ -430,9 +457,17 @@ async fn sync_results_already_returned_add_no_per_step_notice() {
         generation(&fixture) > before,
         "failed cell must bump generation"
     );
-    assert_eq!(fixture.notes.live_note(&fixture.session), first);
+    assert_eq!(
+        fixture
+            .notes
+            .live_note(&fixture.session, bubblepaw_core::ExecutionMode::Js),
+        first
+    );
     fixture.shutdown().await;
 }
 
 #[path = "runtime_note/background_exit.rs"]
 mod background_exit;
+
+#[path = "runtime_note/mode.rs"]
+mod mode;

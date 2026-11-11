@@ -1,6 +1,7 @@
 //! Current runtime inventory for durable Generated notices and frozen views.
 //! No state values, command output or child answers enter this inventory.
 use crate::{agents::AgentTools, codemode::CodeMode, tools::ProcessTools};
+use bubblepaw_core::ExecutionMode;
 use serde_json::Value;
 use std::sync::{Arc, OnceLock, Weak};
 
@@ -37,18 +38,20 @@ impl RuntimeNotes {
 
     /// Full rendering for a frozen snapshot: the LCM view freeze and explicit
     /// compaction. Saved key names and generations are stated here once.
-    pub fn note(&self, session: &str) -> String {
-        self.render(session, true)
+    pub fn note(&self, session: &str, mode: ExecutionMode) -> String {
+        self.render(session, mode, true)
     }
 
     /// Per-step rendering: only facts the model cannot get from its own results.
     /// Live cells, running or backgrounded commands and unread or running agents.
     /// With nothing live it is the same fixed text every time, so it stays quiet.
-    pub fn live_note(&self, session: &str) -> String {
-        self.render(session, false)
+    pub fn live_note(&self, session: &str, mode: ExecutionMode) -> String {
+        self.render(session, mode, false)
     }
 
-    fn render(&self, session: &str, full: bool) -> String {
+    /// Native sessions have no REPL, so their note never mentions cells or the REPL.
+    fn render(&self, session: &str, mode: ExecutionMode, full: bool) -> String {
+        let js = mode == ExecutionMode::Js;
         // The runtime_inventory reminder kind owns restart dedup; this header is readable context.
         let mut note = format!(
             "{} (this process; quoted names are data):\n",
@@ -57,10 +60,14 @@ impl RuntimeNotes {
         let mut live = false;
         // Existing status uses mutex unwraps; a poisoned runtime must not turn a
         // context-preparation diagnostic into another failed run.
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.repl.status(session))) {
-            Ok(snapshot) if full => append_environments(&mut note, &snapshot),
-            Ok(snapshot) => live |= append_live_cells(&mut note, &snapshot),
-            Err(_) => {
+        let status = js.then(|| {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.repl.status(session)))
+        });
+        match status {
+            None => {}
+            Some(Ok(snapshot)) if full => append_environments(&mut note, &snapshot),
+            Some(Ok(snapshot)) => live |= append_live_cells(&mut note, &snapshot),
+            Some(Err(_)) => {
                 note.push_str("REPL inventory unavailable.\n");
                 live = true;
             }
@@ -88,7 +95,8 @@ impl RuntimeNotes {
             None => {}
         }
         if !full && !live {
-            note.push_str("Runtime: no running commands, cells or agents.\n");
+            let what = if js { "commands, cells" } else { "commands" };
+            note.push_str(&format!("Runtime: no running {what} or agents.\n"));
         }
         if note.len() > MAX_NOTE_BYTES {
             let suffix = "\n[Runtime note truncated; some facts omitted.]\n";
