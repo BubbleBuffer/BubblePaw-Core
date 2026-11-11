@@ -927,7 +927,7 @@ The decider list is an ordered fallback chain; the [OpenCode example](../example
 ## Built (2026-10-09)
 
 The runner owns reading, merging, validation and source tracking in
-`crates/bubblepaw-runner/src/config.rs`. `bubblepaw config` prints valid TOML
+`crates/bubblepaw-runner/src/config.rs` and its `config/` modules (`loading.rs`, `resolve.rs`, `environment.rs`). `bubblepaw config` prints valid TOML
 with a source comment for every value, without opening SQLite, reading key
 values or contacting providers. Missing implicit files are fine; a missing
 custom file fails. Unknown keys fail in their original layer even if a later
