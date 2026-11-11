@@ -52,6 +52,8 @@ fn workspace_host_paths_are_ignored_but_explicit_host_configuration_is_accepted(
     let user_file = opts.home.as_ref().unwrap().join(".bubblepaw/config.toml");
     std::fs::create_dir_all(project_file.parent().unwrap())?;
     std::fs::create_dir_all(user_file.parent().unwrap())?;
+    // The gate under test is the host-path stripping, which applies to trusted workspaces too.
+    bubblepaw_runner::workspace_trust::trust(opts.home.as_ref().unwrap(), &opts.workspace)?;
     let project_text = format!(
         "[remote]\ncloudflared='{UNTRUSTED}'\nenabled=true\nmode='domain'\nhostname='paw.example.com'\nport=9876\nrelay='wss://relay.example.com'\n[storage]\ndata_dir='{UNTRUSTED}/store'\ntelemetry_retention_days=9\n"
     );

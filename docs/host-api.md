@@ -139,6 +139,8 @@ to HTTP, the CLI or the SDK.
 
 ### Settings methods
 
+`config.get` also carries `workspace_trust` (status, workspace, config file, sections, how to trust) so a client can show a skipped project config ([workspace trust](workspace-trust.md)).
+
 `config.get` returns host metadata and, from a host with an effective config, a
 `settings` list (`{key, value, live, pending_restart}` per leaf, redacted like
 `bubblepaw config`); the optional `key` selects one leaf or a section. `config.set`

@@ -461,8 +461,7 @@ async fn runner_explicit_episode_policy_gathers_responses_source_and_applies_at_
     }
     let _server = AbortServer(server);
     let root = tempfile::tempdir()?;
-    // Responses does not support a full-prefix fork. Select the documented
-    // episode-only policy explicitly; unsupported Fork must never substitute it.
+    // Responses has no full-prefix fork: select the documented episode-only policy; Fork never substitutes it.
     std::fs::create_dir_all(root.path().join(".bubblepaw"))?;
     std::fs::write(
         root.path().join(".bubblepaw/config.toml"),
@@ -475,7 +474,8 @@ async fn runner_explicit_episode_policy_gathers_responses_source_and_applies_at_
     };
     for index in 0..4 {
         let output = tokio::process::Command::new(env!("CARGO_BIN_EXE_bubblepaw"))
-            .args(["--provider", "api", "--read-only", "--workspace"])
+            .args(["--provider", "api", "--read-only", "--trust-workspace"])
+            .arg("--workspace")
             .arg(root.path())
             .arg("--db")
             .arg(&db)

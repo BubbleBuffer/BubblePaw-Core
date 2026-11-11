@@ -175,6 +175,8 @@ pub mod toolsets;
 #[cfg(feature = "host")]
 pub mod trace;
 #[cfg(feature = "host")]
+pub mod trust_cli;
+#[cfg(feature = "host")]
 pub mod usage;
 #[cfg(feature = "host")]
 pub mod usage_report;
@@ -186,6 +188,8 @@ pub mod web;
 #[cfg(feature = "web")]
 #[cfg(feature = "host")]
 pub mod web_providers;
+#[cfg(feature = "host")]
+pub mod workspace_trust;
 #[cfg(feature = "host")]
 pub mod worktrees;
 

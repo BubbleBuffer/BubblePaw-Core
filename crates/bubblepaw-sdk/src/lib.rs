@@ -91,6 +91,9 @@ pub use bubblepaw_runner::profile::Profile;
 #[cfg(feature = "host")]
 /// The CLI host's configuration, for [`Client::open_configured`].
 pub use bubblepaw_runner::host_config::{ConfigError, ConfigOptions, HostConfig};
+#[cfg(feature = "host")]
+/// The user-level record of trusted workspaces, for [`ConfigOptions::trust_workspace`] and embedders that grant trust.
+pub use bubblepaw_runner::workspace_trust;
 pub use client::{Client, ClientError, Notifications};
 #[cfg(feature = "host")]
 pub use host::{Host, HostBuilder};

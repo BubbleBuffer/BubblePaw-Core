@@ -962,14 +962,14 @@ config_section! {
         roles: BTreeMap<String, RoleEntry> => Node::Table(roles::ROLE_FIELDS),
         context: ContextSettings => Node::Table(ContextSettings::FIELDS),
         skills: SkillsConfig => skills_section::SKILLS,
-        #[serde(default)]
-        toolsets: BTreeMap<String, Toolset> => Node::Map(&Node::Table(Toolset::FIELDS)),
+        #[serde(default)] toolsets: BTreeMap<String, Toolset> => Node::Map(&Node::Table(Toolset::FIELDS)),
         approvals: ApprovalSettings => Node::Table(ApprovalSettings::FIELDS),
         agents: Agents => Node::Table(Agents::FIELDS),
         web: WebSettings => Node::Table(WebSettings::FIELDS),
         extensions: BTreeMap<String, ExtensionSettings> => Node::Map(&Node::Table(ExtensionSettings::FIELDS)),
         mcp: McpSettings => Node::Table(McpSettings::FIELDS),
         delegate: DelegateSettings => Node::Table(DelegateSettings::FIELDS),
+        #[allow(dead_code)] workspace_trust: crate::workspace_trust::TrustSettings => Node::Table(crate::workspace_trust::TrustSettings::FIELDS),
     }
 }
 config_section! {
@@ -977,8 +977,7 @@ config_section! {
     struct ModelSettings {
         main: String => LIVE,
         provider: String => LIVE,
-        #[serde(default)]
-        fallbacks: Vec<String> => LIVE,
+        #[serde(default)] fallbacks: Vec<String> => LIVE,
     }
 }
 config_section! {
@@ -991,8 +990,7 @@ config_section! {
         auto_summarize: bool => LIVE,
         retry_base_ms: u64 => RESTART,
         classical: ClassicalSettings => Node::Table(ClassicalSettings::FIELDS),
-        #[serde(default)]
-        lcm: crate::summarization::LcmConfig => Node::Table(crate::summarization::LcmConfig::FIELDS),
+        #[serde(default)] lcm: crate::summarization::LcmConfig => Node::Table(crate::summarization::LcmConfig::FIELDS),
     }
 }
 config_section! {
@@ -1991,6 +1989,7 @@ cache_max_bytes = 1048576
     }
 
     fn options(root: &Path) -> LoadOptions {
+        crate::workspace_trust::trust(&root.join("home"), &root.join("workspace")).unwrap();
         LoadOptions {
             workspace: root.join("workspace"),
             home: Some(root.join("home")),

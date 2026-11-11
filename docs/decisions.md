@@ -1,6 +1,6 @@
 # V0 decisions
 
-Status: decision log, dated; current through 2026-10-22.
+Status: decision log, dated; current through 2026-11-10.
 
 ## Native by default; JavaScript wraps native calls (2026-10-22)
 
@@ -781,3 +781,18 @@ An app configures providers through the host API, which needs a running host, so
 ## The built-in web UI is dropped (2026-10-30)
 
 The clients are the Flutter apps, through the SDK, plus the CLI. The static frontend, `web --assets` and the bundled workbench specs (`web-workbench`, `product`, `design`) are removed. The `web` feature and subcommand stay as the host's HTTP endpoint: JSON-RPC at `POST /rpc`, SSE at `/api/events` and the `/api/` REST shims. Unmatched paths, including `/`, return 404 with a plain-text pointer to `/rpc`. Earlier entries above that mention the workbench are history.
+
+## Project config needs workspace trust (2026-11-10)
+
+Opening a repository no longer lets its `.bubblepaw/config.toml` change providers, endpoints,
+approvals or MCP servers: the project layer is skipped until the user trusts the workspace, as
+in Claude Code's per-folder trust. Trust is per canonical workspace root, stored in
+`<home>/.bubblepaw/trusted-workspaces.toml`, and granted only by `bubblepaw trust`,
+`--trust-workspace`, the SDK option or the user config keys `workspace_trust.trusted` and
+`workspace_trust.enabled`. Project files cannot set those keys. Memory files and skills stay
+ungated. See [workspace trust](workspace-trust.md).
+
+Release note: **existing workspaces start untrusted**, so headless runs that relied on a project
+config now run without it and log a warning naming the file. Fix: run `bubblepaw trust` in the
+workspace (or pass `--trust-workspace`). Built without the in-host prompt; every host behaves as
+headless until that follow-up.
