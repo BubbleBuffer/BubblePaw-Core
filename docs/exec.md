@@ -187,7 +187,7 @@ See [config](config.md#exec).
 ## Tests
 
 Scripted/local only: `crates/bubblepaw-core/tests/host_notices.rs` (notice delivered once, stored
-once, request placement), `crates/bubblepaw-runner/tests/exec_jobs.rs` (sync, sync timeout,
+once, request placement), `crates/bubblepaw-runner/tests/tools/exec_jobs.rs` (sync, sync timeout,
 background, user/steer backgrounding, jobs, cursorless poll, caps, spool cap and sweep, shared
 data dir, row counts, cwd notes on Unix and Windows, Windows child/grandchild cleanup on cancel,
 hard timeout and natural shell exit, preserved Windows exit codes and error text),

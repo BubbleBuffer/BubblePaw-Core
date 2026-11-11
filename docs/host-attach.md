@@ -216,7 +216,7 @@ unavailable (`BUBBLEPAW_FIXTURES_DIR` was unset).
 
 ### MCP environment follow-up
 
-The new real-process tests in `tests/host_attach_mcp.rs` pass on Linux: two
+The new real-process tests in `tests/host/host_attach_mcp.rs` pass on Linux: two
 attached requests send their own HTTP credentials, run independent stdio servers
 with their own `env_from` values and host inheritance, omit unrelated client variables, and
 leave no credential values in stores, contents traces or CLI output. A missing
@@ -240,7 +240,7 @@ cargo test -p bubblepaw-core
 cargo test -p bubblepaw-mcp -p bubblepaw-runner
 ```
 
-The scripted process tests are in `crates/bubblepaw-runner/tests/host_attach.rs`.
+The scripted process tests are in `crates/bubblepaw-runner/tests/host/host_attach.rs`.
 They exercise concurrent runs, per-client model/approval/workspace/environment,
 stdout/stderr parity, concurrent delegations and reworks, catalog rebuild, host
 lifetime, cancellation, disconnection, host death, endpoint permissions and PID

@@ -100,7 +100,7 @@ environment variables only, never from files, command lines or logs.
 Run one provider kind, one test at a time:
 
 ```
-cargo test -p bubblepaw-runner --test provider_live -- --ignored --test-threads=1
+cargo test -p bubblepaw-runner --test providers_host provider_live:: -- --ignored --test-threads=1
 ```
 
 Filter by name, for example `opencode_messages::tools`. Override a model with

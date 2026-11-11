@@ -18,7 +18,7 @@ run, see [verification](verification.md).
   `crates/bubblepaw-runner/tests/provider_*.rs`. The recorded research-child stream
   in `crates/bubblepaw-runner/tests/fixtures/research_live400/` is synthetic task
   content that a live provider returned, replayed through a fake transport.
-- **V, live model:** env-gated ignored tests in `crates/bubblepaw-runner/tests/provider_live.rs`.
+- **V, live model:** env-gated ignored tests in `crates/bubblepaw-runner/tests/providers_host/provider_live.rs`.
   Gates are listed in [verification](verification.md). Live runs make
   paid calls and are not part of CI.
 
@@ -92,7 +92,7 @@ mapped.
 - **Signed research-child replay.** `research_live400.rs` checks the thinking,
   signature, text and tool-use block order and bytes offline, against the committed
   fixture. The offline test needs no credentials:
-  `cargo test -p bubblepaw-runner --test research_live400`. Its live case is gated
+  `cargo test -p bubblepaw-runner --test children research_live400::`. Its live case is gated
   by `BP_LIVE_RESEARCH_400=1`. No recorded signature is sent to a live service.
 - **Disabled tool declarations** are request metadata for one turn. They are not
   stored in provider state or SQLite.

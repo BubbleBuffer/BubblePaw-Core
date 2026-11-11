@@ -273,7 +273,7 @@ stored prompt). Every `Role::System` message in the list, including the LCM view
 blocks and the cold-notes message, renders in place as a user text block and
 merges with adjacent user content, as consecutive user turns already did. An apply
 therefore leaves `system` byte-identical, and the change starts at the first
-message. `tests/cold_tier.rs` checks this on the real apply path. Chat and
+message. `tests/host/cold_tier.rs` checks this on the real apply path. Chat and
 Responses are unchanged: they already keep system messages in position.
 
 In a user turn, `tool_result` blocks always come first, so a system message
@@ -300,9 +300,9 @@ ephemeral breakpoints in one function (`provider/messages_cache.rs`):
 Without tiers only (1) and (4) are placed. Message breakpoints go on user-turn
 blocks only. An apply therefore invalidates from the cold tier onward, and an
 ordinary step reads the cache up to the previous tail. Chat and Responses get no
-markers; `tests/wire_order.rs` checks that their order is unchanged.
+markers; `tests/context/wire_order.rs` checks that their order is unchanged.
 `WireShape` ignores `cache_control`, so a moved breakpoint is not counted as a
-prefix break; the signed-prefix mock in `tests/research_live400.rs` likewise
+prefix break; the signed-prefix mock in `tests/children/research_live400.rs` likewise
 compares prior messages with markers stripped. The previous tail lives in the
 in-memory lineage, so the first request after a fresh `Harness` has no (3).
 
