@@ -826,12 +826,8 @@ async fn phase_one_json_defaults_reasoning_and_accepts_legacy_string_evidence() 
     let mut chapter = serde_json::to_value(close(first.open_chapter))?;
     chapter.as_object_mut().unwrap().remove("reasoning");
     chapter["related_ids"] = serde_json::json!(["previous"]);
-    chapter["related_evidence"] = serde_json::json!(["the original user words"]);
     let chapter: ContextSubjectChapter = serde_json::from_value(chapter)?;
     assert!(chapter.reasoning.is_none());
-    assert_eq!(chapter.related_evidence[0].quote, "the original user words");
-    assert_eq!(chapter.related_evidence[0].related_quote_matched, None);
-    assert_eq!(chapter.related_evidence[0].origin, None);
     let detailed: RelatedEvidence = serde_json::from_value(serde_json::json!({"quote":"words"}))?;
     assert_eq!(detailed.related_quote_matched, None);
     assert_eq!(detailed.origin, None);

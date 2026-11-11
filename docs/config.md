@@ -285,7 +285,7 @@ Fresh `run` and `script` commands accept `--name <title>`; use `session.rename`
 or `/rename <title>` to change an existing session. Names appear in lists and
 search hits. There are no model-generated titles. `--no-session` on either
 command uses a private temporary store, removed on normal or error exit. It
-selects that store before opening or migrating storage, including when
+selects that store before opening storage, including when
 `--data-dir` points at an existing store. It conflicts with `--session`.
 
 `[storage] archived_retention_days` is omitted by default, keeping archives

@@ -796,3 +796,9 @@ Release note: **existing workspaces start untrusted**, so headless runs that rel
 config now run without it and log a warning naming the file. Fix: run `bubblepaw trust` in the
 workspace (or pass `--trust-workspace`). Built without the in-host prompt; every host behaves as
 headless until that follow-up.
+
+## Old data is dropped, not read (2026-11-11)
+
+The owner decided that data written by older versions may be forgotten. Code whose only purpose was to tolerate old stored shapes is removed as it is found: the bare-string form of `RelatedEvidence` in stored chapters, the compact-envelope fallback when parsing stored attachment messages, and the read path for catalogs whose `quota_history` lacks `balance`. Store files and rows from older versions are not migrated; a store at another schema version fails with `StoreSchemaError` (see "One schema per store"). Wire compatibility with current clients is separate and unchanged.
+
+Release note: **stores and configs written by older versions are no longer read.** Start a new data directory if a store fails to open with a schema-version error.

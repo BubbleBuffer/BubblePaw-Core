@@ -570,7 +570,7 @@ frontend uses Markdown and registered basic
 renderers, with original run ownership. Presentation output does not automatically
 add image bytes to model context.
 
-The schema v1 -> v2 migration is transactional. Pending asynchronous effects remain
+Pending asynchronous effects remain
 open until terminal observation, block forks while active, and become unknown after
 host restart. Unknown outcomes are never automatically replayed. JS heaps and
 native handles are volatile; restart/fork starts with fresh heaps. Failed/cancelled

@@ -17,14 +17,6 @@ fn has_table(conn: &Connection, table: &str) -> Result<bool> {
     )?)
 }
 
-fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool> {
-    Ok(conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM pragma_table_info(?1) WHERE name=?2)",
-        params![table, column],
-        |row| row.get(0),
-    )?)
-}
-
 #[derive(Clone, Copy)]
 enum View {
     /// Every change row, oldest first.
@@ -39,19 +31,10 @@ fn readings(conn: &Connection, view: View) -> Result<Vec<QuotaReading>> {
     if !has_table(conn, "quota_history")? {
         return Ok(Vec::new());
     }
-    // Read-only CLI access may still see a v1 catalog without the column.
-    let balance = if has_column(conn, "quota_history", "balance")? {
-        "balance"
-    } else {
-        "NULL"
-    };
     let sql = match view {
-        View::All => format!("SELECT data,{balance} FROM quota_history ORDER BY id"),
-        View::Latest => format!(
-            "SELECT data,{balance} FROM quota_history WHERE id IN (SELECT MAX(id) FROM quota_history GROUP BY account,window) ORDER BY account,window"
-        ),
-        View::LatestBalances if balance == "NULL" => return Ok(Vec::new()),
-        View::LatestBalances => "SELECT data,balance FROM quota_history WHERE id IN (SELECT MAX(id) FROM quota_history WHERE balance IS NOT NULL GROUP BY account) ORDER BY account".into(),
+        View::All => "SELECT data,balance FROM quota_history ORDER BY id".to_string(),
+        View::Latest => "SELECT data,balance FROM quota_history WHERE id IN (SELECT MAX(id) FROM quota_history GROUP BY account,window) ORDER BY account,window".to_string(),
+        View::LatestBalances => "SELECT data,balance FROM quota_history WHERE id IN (SELECT MAX(id) FROM quota_history WHERE balance IS NOT NULL GROUP BY account) ORDER BY account".to_string(),
     };
     let mut statement = conn.prepare(&sql)?;
     statement
