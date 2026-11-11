@@ -91,52 +91,52 @@ pub(super) fn validate_account(account: Option<&str>, path: &str) -> Result<()> 
 }
 config_section! {
     #[derive(Deserialize)]
-    struct RawSettings {
-        model: ModelSettings => Node::Table(ModelSettings::FIELDS),
-        agent: RootAgentSettings => Node::Table(RootAgentSettings::FIELDS),
-        storage: StorageSettings => Node::Table(StorageSettings::FIELDS),
-        exec: ExecConfig => Node::Table(ExecConfig::FIELDS),
-        quota: QuotaSettings => Node::Table(QuotaSettings::FIELDS),
-        remote: RemoteSettings => Node::Table(RemoteSettings::FIELDS),
-        providers: BTreeMap<String, ProviderSettings> => Node::Map(&Node::Table(ProviderSettings::FIELDS)),
-        roles: BTreeMap<String, RoleEntry> => Node::Table(roles::ROLE_FIELDS),
-        context: ContextSettings => Node::Table(ContextSettings::FIELDS),
-        skills: SkillsConfig => skills_section::SKILLS,
-        #[serde(default)] toolsets: BTreeMap<String, Toolset> => Node::Map(&Node::Table(Toolset::FIELDS)),
-        approvals: ApprovalSettings => Node::Table(ApprovalSettings::FIELDS),
-        agents: Agents => Node::Table(Agents::FIELDS),
-        web: WebSettings => Node::Table(WebSettings::FIELDS),
-        extensions: BTreeMap<String, ExtensionSettings> => Node::Map(&Node::Table(ExtensionSettings::FIELDS)),
-        mcp: McpSettings => Node::Table(McpSettings::FIELDS),
-        delegate: DelegateSettings => Node::Table(DelegateSettings::FIELDS),
-        #[allow(dead_code)] workspace_trust: crate::workspace_trust::TrustSettings => Node::Table(crate::workspace_trust::TrustSettings::FIELDS),
+    pub(super) struct RawSettings {
+        pub(super) model: ModelSettings => Node::Table(ModelSettings::FIELDS),
+        pub(super) agent: RootAgentSettings => Node::Table(RootAgentSettings::FIELDS),
+        pub(super) storage: StorageSettings => Node::Table(StorageSettings::FIELDS),
+        pub(super) exec: ExecConfig => Node::Table(ExecConfig::FIELDS),
+        pub(super) quota: QuotaSettings => Node::Table(QuotaSettings::FIELDS),
+        pub(super) remote: RemoteSettings => Node::Table(RemoteSettings::FIELDS),
+        pub(super) providers: BTreeMap<String, ProviderSettings> => Node::Map(&Node::Table(ProviderSettings::FIELDS)),
+        pub(super) roles: BTreeMap<String, RoleEntry> => Node::Table(roles::ROLE_FIELDS),
+        pub(super) context: ContextSettings => Node::Table(ContextSettings::FIELDS),
+        pub(super) skills: SkillsConfig => skills_section::SKILLS,
+        #[serde(default)] pub(super) toolsets: BTreeMap<String, Toolset> => Node::Map(&Node::Table(Toolset::FIELDS)),
+        pub(super) approvals: ApprovalSettings => Node::Table(ApprovalSettings::FIELDS),
+        pub(super) agents: Agents => Node::Table(Agents::FIELDS),
+        pub(super) web: WebSettings => Node::Table(WebSettings::FIELDS),
+        pub(super) extensions: BTreeMap<String, ExtensionSettings> => Node::Map(&Node::Table(ExtensionSettings::FIELDS)),
+        pub(super) mcp: McpSettings => Node::Table(McpSettings::FIELDS),
+        pub(super) delegate: DelegateSettings => Node::Table(DelegateSettings::FIELDS),
+        #[allow(dead_code)] pub(super) workspace_trust: crate::workspace_trust::TrustSettings => Node::Table(crate::workspace_trust::TrustSettings::FIELDS),
     }
 }
 config_section! {
     #[derive(Deserialize)]
-    struct ModelSettings {
-        main: String => LIVE,
-        provider: String => LIVE,
-        #[serde(default)] fallbacks: Vec<String> => LIVE,
+    pub(super) struct ModelSettings {
+        pub(super) main: String => LIVE,
+        pub(super) provider: String => LIVE,
+        #[serde(default)] pub(super) fallbacks: Vec<String> => LIVE,
     }
 }
 config_section! {
     #[derive(Deserialize)]
-    struct ContextSettings {
-        strategy: String => RESTART,
-        memory_files: bool => RESTART,
-        compact_threshold_tokens: usize => LIVE,
-        window_tokens: Option<usize> => LIVE,
-        auto_summarize: bool => LIVE,
-        retry_base_ms: u64 => RESTART,
-        classical: ClassicalSettings => Node::Table(ClassicalSettings::FIELDS),
-        #[serde(default)] lcm: crate::summarization::LcmConfig => Node::Table(crate::summarization::LcmConfig::FIELDS),
+    pub(super) struct ContextSettings {
+        pub(super) strategy: String => RESTART,
+        pub(super) memory_files: bool => RESTART,
+        pub(super) compact_threshold_tokens: usize => LIVE,
+        pub(super) window_tokens: Option<usize> => LIVE,
+        pub(super) auto_summarize: bool => LIVE,
+        pub(super) retry_base_ms: u64 => RESTART,
+        pub(super) classical: ClassicalSettings => Node::Table(ClassicalSettings::FIELDS),
+        #[serde(default)] pub(super) lcm: crate::summarization::LcmConfig => Node::Table(crate::summarization::LcmConfig::FIELDS),
     }
 }
 config_section! {
     #[derive(Deserialize)]
-    struct ClassicalSettings {
-        verbatim_user_tokens: usize => RESTART,
+    pub(super) struct ClassicalSettings {
+        pub(super) verbatim_user_tokens: usize => RESTART,
     }
 }
 #[derive(Clone, Deserialize)]
@@ -148,12 +148,12 @@ pub(super) enum RoleEntry {
 }
 config_section! {
     #[derive(Clone, Deserialize)]
-    struct RoleTable {
-        models: Vec<String> => LIVE,
-        reasoning_effort: Option<ReasoningEffort> => LIVE,
-        max_output_tokens: Option<u32> => LIVE,
-        repeats: Option<usize> => LIVE,
-        threshold: Option<f64> => LIVE,
+    pub(super) struct RoleTable {
+        pub(super) models: Vec<String> => LIVE,
+        pub(super) reasoning_effort: Option<ReasoningEffort> => LIVE,
+        pub(super) max_output_tokens: Option<u32> => LIVE,
+        pub(super) repeats: Option<usize> => LIVE,
+        pub(super) threshold: Option<f64> => LIVE,
     }
 }
 impl RoleEntry {

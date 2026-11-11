@@ -59,7 +59,7 @@ mod remote_section;
 mod resolve;
 #[path = "config/via.rs"]
 mod via;
-use provider_checks::{RoleEntry, endpoints, valid_id, validate_account};
+use provider_checks::{RawSettings, RoleEntry, RoleTable, endpoints, valid_id, validate_account};
 pub use provider_checks::{selected_main_provider, validate_provider_setup};
 #[path = "config/value_paths.rs"]
 mod value_paths;
