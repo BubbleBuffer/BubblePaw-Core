@@ -249,45 +249,13 @@ pub enum SubjectChapterStatus {
 }
 
 /// Exact request or delegated-task words offered for a related chapter link.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RelatedEvidence {
     pub quote: String,
+    #[serde(default)]
     pub related_quote_matched: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<crate::MessageOrigin>,
-}
-
-impl<'de> Deserialize<'de> for RelatedEvidence {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Evidence {
-            Legacy(String),
-            Detailed {
-                quote: String,
-                #[serde(default)]
-                related_quote_matched: Option<bool>,
-                #[serde(default)]
-                origin: Option<crate::MessageOrigin>,
-            },
-        }
-        Ok(match Evidence::deserialize(deserializer)? {
-            Evidence::Legacy(quote) => Self {
-                quote,
-                related_quote_matched: None,
-                origin: None,
-            },
-            Evidence::Detailed {
-                quote,
-                related_quote_matched,
-                origin,
-            } => Self {
-                quote,
-                related_quote_matched,
-                origin,
-            },
-        })
-    }
 }
 
 impl From<String> for RelatedEvidence {
@@ -1578,23 +1546,16 @@ impl Store {
     ) -> Result<Option<Vec<ContentPart>>> {
         // Host envelopes put their delimiters on separate lines. JSON strings
         // escape newlines, so literal tag text inside a file cannot impersonate
-        // either boundary. Retain the old parser for legacy compact envelopes.
-        let boundaries = content.rfind("<BubblePawAttachments>\n").and_then(|start| {
-            let body_start = start + "<BubblePawAttachments>\n".len();
-            content[body_start..]
-                .rfind("\n</BubblePawAttachments>")
-                .map(|end| (start, body_start, body_start + end))
-        });
-        let (start, body_start, end) = if let Some(boundaries) = boundaries {
-            boundaries
-        } else {
-            let Some(start) = content.rfind("<BubblePawAttachments>") else {
-                return Ok(None);
-            };
-            let Some(end) = content[start..].find("</BubblePawAttachments>") else {
-                return Ok(None);
-            };
-            (start, start + "<BubblePawAttachments>".len(), start + end)
+        // either boundary.
+        let Some((start, body_start, end)) =
+            content.rfind("<BubblePawAttachments>\n").and_then(|start| {
+                let body_start = start + "<BubblePawAttachments>\n".len();
+                content[body_start..]
+                    .rfind("\n</BubblePawAttachments>")
+                    .map(|end| (start, body_start, body_start + end))
+            })
+        else {
+            return Ok(None);
         };
         let envelope = &content[body_start..end];
         let Ok(value) = serde_json::from_str::<serde_json::Value>(envelope.trim()) else {

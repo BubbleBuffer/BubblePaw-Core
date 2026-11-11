@@ -173,7 +173,7 @@ the pending gate. The ordinary events are retained: `approval_requested` already
 
 ## Records and states
 
-- Table `approvals(id, session_id, run_id, call_id, tool, arguments, state, reason, created_at, decided_at)`; created with `IF NOT EXISTS` on every open outside the version ladder. The merged episode/view schema remains v6.
+- Table `approvals(id, session_id, run_id, call_id, tool, arguments, state, reason, created_at, decided_at)`; created with `IF NOT EXISTS` on every open outside the version ladder.
 - `state` is `pending`, `approved`, `approved_session`, `denied`, `expired` or `cancelled`. The store record is the truth; an in-memory waiter only wakes the gate. Waiters are shared by every harness on one store, so a parent harness can decide a child agent's approval.
 - Table `approval_rules(session_id, tool)` holds "approve for session". It persists and applies to later runs of that session only.
 - `call_id` is the provider's call id for direct calls, and the dispatcher's fresh id for nested calls.
