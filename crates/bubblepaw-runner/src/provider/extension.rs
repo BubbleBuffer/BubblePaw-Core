@@ -150,19 +150,16 @@ struct Connection {
     shared: Arc<Shared>,
     outgoing: mpsc::UnboundedSender<String>,
     generation: u64,
-    _child: Child,
+    _child: Option<Child>,
     /// Dropping the connection kills the host and anything it started.
     tree: bubblepaw_process::ProcessTree,
     tasks: Vec<JoinHandle<()>>,
 }
 impl Drop for Connection {
     fn drop(&mut self) {
-        // Kill the host's whole tree, then release the reader, writer and stderr
-        // loops instead of leaving them detached on a closed connection.
-        self.tree.kill();
-        for task in self.tasks.drain(..) {
-            task.abort();
-        }
+        // Kill the host's whole tree and release the reader, writer and stderr
+        // loops, after the writer has sent what is queued (see `guard::retire`).
+        guard::retire(self);
     }
 }
 impl Connection {
@@ -241,7 +238,7 @@ impl Connection {
             shared,
             outgoing,
             generation,
-            _child: child,
+            _child: Some(child),
             tree,
             tasks: vec![writer_task, reader_task, stderr_task],
         })

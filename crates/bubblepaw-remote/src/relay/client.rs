@@ -434,6 +434,7 @@ async fn host_loop<S>(
                     Wire::Data(id, bytes) => {
                         let Some(sender) = sessions.get(&id) else { continue; };
                         if sender.try_send(bytes).is_err() {
+                            tracing::warn!("host closes session {id}: its inbound queue is full ({} frames)", sender.max_capacity());
                             sessions.remove(&id);
                             wire::send(&mut ws, &Wire::Close(id), &limits).await?;
                         }
