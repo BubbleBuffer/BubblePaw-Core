@@ -1114,8 +1114,8 @@ impl Store {
     }
     pub(super) fn layout_session_workspace(&self, session: &str) -> Result<Option<PathBuf>> {
         let layout = self.0.layout.as_ref().unwrap();
-        let workspace =
-            open_session_record(&layout.catalog, &layout.data_dir, session, |root, path| {
+        let workspace = self
+            .open_listed_session(session, |root, path| {
                 let cached = layout.chats.lock().unwrap().get(root).cloned();
                 if let Some(chat) = cached {
                     return chat.read(|conn| {
@@ -1150,8 +1150,8 @@ impl Store {
         {
             return Ok(policy);
         }
-        Ok(
-            open_session_record(&layout.catalog, &layout.data_dir, session, |root, path| {
+        Ok(self
+            .open_listed_session(session, |root, path| {
                 let cached = layout.chats.lock().unwrap().get(root).cloned();
                 if let Some(chat) = cached {
                     return chat
@@ -1161,8 +1161,7 @@ impl Store {
                 Self::session_storage_connection(&record, session, Some(root))
             })?
             .context("Unknown session or missing chat file")?
-            .0,
-        )
+            .0)
     }
     pub(super) fn layout_sessions(&self) -> Result<Vec<Session>> {
         let layout = self.0.layout.as_ref().unwrap();
