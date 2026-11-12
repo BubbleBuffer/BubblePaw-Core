@@ -271,8 +271,8 @@ async fn client_session_holds_a_burst_until_its_reader_catches_up() {
     let mut accepted = accepted.unwrap();
     let mut connected = connected.unwrap();
     // Far more frames than the client's queue holds, sent before it reads. The
-    // pause lets the relay forward each one: its own routing queues still fail
-    // closed, so this checks only the client side of the burst.
+    // pause lets the relay forward each one, so this checks only the client
+    // side of the burst; the next test floods the relay's own queues.
     let count = Limits::default().queue_capacity * 4;
     for index in 0..count {
         accepted
@@ -287,6 +287,63 @@ async fn client_session_holds_a_burst_until_its_reader_catches_up() {
         assert_eq!(frame, (index as u32).to_be_bytes().repeat(256));
     }
     drop(connected);
+    drop(accepted);
+    drop(host);
+    relay.shutdown().await;
+}
+
+async fn next(session: &mut relay::RelaySession) -> Vec<u8> {
+    tokio::time::timeout(Duration::from_secs(10), session.recv_frame())
+        .await
+        .expect("the frame never arrived")
+        .expect("the session ended")
+}
+
+/// A reader that stops for a while must slow its sender down, not lose
+/// frames or end the host's registration. Each direction sends far more than
+/// the queues and sockets on the way hold while the receiver does not read.
+#[tokio::test]
+async fn a_peer_that_stops_reading_holds_its_sender_back_instead_of_losing_the_session() {
+    let relay = start(RelayConfig::default()).await;
+    let url = format!("ws://{}", relay.local_addr());
+    let host_key = key(14);
+    let mut host = relay::register(&url, &host_key, Limits::default())
+        .await
+        .unwrap();
+    let client_key = key(15);
+    let host_id = host_key.id();
+    let (accepted, connected) = tokio::join!(
+        host.accept(),
+        relay::connect(&url, &client_key, &host_id, Limits::default())
+    );
+    let (mut accepted, mut connected) = (accepted.unwrap(), connected.unwrap());
+    let count = 400u32;
+    let frame = |index: u32| index.to_be_bytes().repeat(16_000);
+    let sender = tokio::spawn(async move {
+        for index in 0..count {
+            accepted.send_frame(&frame(index)).await?;
+        }
+        Ok::<_, bubblepaw_remote::Error>(accepted)
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    for index in 0..count {
+        assert_eq!(next(&mut connected).await, frame(index));
+    }
+    let mut accepted = sender.await.unwrap().expect("the host's burst was refused");
+    let sender = tokio::spawn(async move {
+        for index in 0..count {
+            connected.send_frame(&frame(index)).await?;
+        }
+        Ok::<_, bubblepaw_remote::Error>(connected)
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    for index in 0..count {
+        assert_eq!(next(&mut accepted).await, frame(index));
+    }
+    sender
+        .await
+        .unwrap()
+        .expect("the client's burst was refused");
     drop(accepted);
     drop(host);
     relay.shutdown().await;

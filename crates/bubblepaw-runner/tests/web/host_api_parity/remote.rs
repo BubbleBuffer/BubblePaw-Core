@@ -23,6 +23,14 @@ pub struct Parts {
 
 /// Serve `ctx` through a relay, pair a `full` device and connect it.
 pub async fn connect(ctx: &HostCtx) -> (HostClient, Parts) {
+    // The relay logs why it ends a connection; a failed run prints it with the
+    // test output (the writer is the test harness's captured stdout).
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::new(
+            "bubblepaw_remote=debug,bubblepaw_runner::remote=debug",
+        ))
+        .with_test_writer()
+        .try_init();
     let keys = tempfile::tempdir().unwrap();
     let relay = Relay::bind("127.0.0.1:0".parse().unwrap(), RelayConfig::default())
         .await

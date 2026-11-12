@@ -223,14 +223,17 @@ address another client's stream. Duplicate host registrations are rejected.
 
 Defaults: 65,535 data bytes, 120-second idle timeout, 32 connections per source
 IP, 16 pending clients and 128 total sessions per host, and bounded queues of 16.
-WebSocket frame/message allocation also has an envelope allowance. Queues fail
-closed under overload, with one exception (2026-11-02): a `connect` client's
-connection carries a single session, so its inbound queue waits for the reader
-(up to the idle timeout) and pushes back through TCP instead of failing a burst
-such as a turn's event notifications. The relay's routing queues and the host's
-per-session inbound queues still fail closed; there is no end-to-end flow
-control, so a client that reads slower than the host writes for long enough is
-disconnected. Behind Caddy the source IP is the proxy's IP, so this
+WebSocket frame/message allocation also has an envelope allowance. Data queues
+wait for a slow reader instead of failing (2026-11-12; a `connect` client's
+inbound queue has done so since 2026-11-02): the client's, the relay's
+queues toward each peer and the host's per-session inbound queues hold the
+sender back, up to the idle timeout, and the pressure travels back through TCP.
+A reader that makes no room for the whole idle timeout loses only its own
+session; the relay never closes a host's connection because one client reads
+slowly. Control frames (incoming, accept, close) still fail closed when a queue
+is full. A sender waiting on one slow session also waits on the other sessions
+of the same connection (the relay's host connection; the host's one socket).
+Behind Caddy the source IP is the proxy's IP, so this
 limit becomes shared unless separate trusted proxy handling is added later.
 State is transient: online registrations and the live routing/limit bookkeeping
 needed to forward sessions; nothing is persisted. Logs never include payloads.
@@ -381,11 +384,11 @@ directory.
 
 ### Flow control
 
-There is no end-to-end flow control. The relay and the host queue a bounded
-number of messages per session and close a session that overruns them; a
-client that reads slower than the host writes (a slow phone during a burst of
-event notifications) may be disconnected and must reconnect. Reconnecting
-loses no host state: `events.gap` says what it missed.
+There is no end-to-end window: the relay and the host queue a bounded number of
+frames per session, and a full queue holds the sender back (through TCP) rather
+than dropping frames. A session whose reader stalls for the whole idle timeout
+(120 seconds) is closed and must reconnect; reconnecting loses no host state:
+`events.gap` says what it missed.
 
 ### Relay binary
 

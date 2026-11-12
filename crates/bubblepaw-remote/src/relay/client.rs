@@ -376,7 +376,9 @@ where
                 }
             }
         }.await;
-        let _ = result;
+        if let Err(error) = result {
+            tracing::warn!("relay client session {id} ended: {error}");
+        }
     });
     Ok(RelaySession {
         id,
@@ -391,6 +393,46 @@ where
         incoming,
         limits,
     })
+}
+
+/// Hand a frame to one session's reader, waiting for room when its queue is
+/// full instead of dropping the frame or the session: the reader may be slow
+/// for a while (a multi-chunk message arrives as a burst). Writes for the other
+/// sessions go on meanwhile. False when the reader is gone or made no room for
+/// the idle timeout; the caller then closes that session.
+async fn deliver<S>(
+    ws: &mut WebSocketStream<S>,
+    commands: &mut mpsc::Receiver<Command>,
+    sessions: &mut HashMap<u64, mpsc::Sender<Vec<u8>>>,
+    sender: &mpsc::Sender<Vec<u8>>,
+    bytes: Vec<u8>,
+    limits: &Limits,
+) -> Result<bool>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send,
+{
+    let wait = tokio::time::sleep(limits.idle_timeout);
+    tokio::pin!(wait);
+    let reserve = sender.reserve();
+    tokio::pin!(reserve);
+    loop {
+        tokio::select! {
+            permit = &mut reserve => {
+                return Ok(match permit {
+                    Ok(permit) => {
+                        permit.send(bytes);
+                        true
+                    }
+                    Err(_) => false,
+                });
+            }
+            Some(frame) = commands.recv() => {
+                if let Wire::Close(id) = &frame.frame { sessions.remove(id); }
+                write_command(ws, frame, limits).await?;
+            }
+            _ = &mut wait => return Ok(false),
+        }
+    }
 }
 
 async fn host_loop<S>(
@@ -432,9 +474,9 @@ async fn host_loop<S>(
                         }
                     }
                     Wire::Data(id, bytes) => {
-                        let Some(sender) = sessions.get(&id) else { continue; };
-                        if sender.try_send(bytes).is_err() {
-                            tracing::warn!("host closes session {id}: its inbound queue is full ({} frames)", sender.max_capacity());
+                        let Some(sender) = sessions.get(&id).cloned() else { continue; };
+                        if !deliver(&mut ws, &mut commands, &mut sessions, &sender, bytes, &limits).await? {
+                            tracing::warn!("host closes session {id}: its reader left {} frames unread for {:?}", sender.max_capacity(), limits.idle_timeout);
                             sessions.remove(&id);
                             wire::send(&mut ws, &Wire::Close(id), &limits).await?;
                         }
@@ -449,5 +491,7 @@ async fn host_loop<S>(
             }
         }
     }.await;
-    let _ = result;
+    if let Err(error) = result {
+        tracing::warn!("relay host connection ended: {error}");
+    }
 }
