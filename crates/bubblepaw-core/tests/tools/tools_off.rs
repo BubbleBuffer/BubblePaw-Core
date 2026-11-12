@@ -2,7 +2,7 @@
 //! unavailable (budget exhausted) keeps the same
 //! declarations and queues one reminder. Only a model that still calls a tool
 //! gets the enforcement round, which moves the declarations into disabled_tools.
-mod support;
+use crate::support;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;

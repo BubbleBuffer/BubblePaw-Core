@@ -16,7 +16,7 @@ use std::{
 };
 use tokio::sync::broadcast;
 
-#[path = "oauth/fake.rs"]
+#[path = "../oauth/fake.rs"]
 mod fake;
 use fake::Fake;
 

@@ -317,7 +317,7 @@ a snapshot miss that does not read the host environment, stdio precedence,
 `env_from` resolving only from the snapshot, and a server without `env_from`
 that never sees another server's forwarded value.
 Config tests cover endpoint and environment-name restrictions.
-`crates/bubblepaw-mcp/tests/oauth.rs` runs the sign-in against a local fake
+`crates/bubblepaw-mcp/tests/protocol/oauth.rs` runs the sign-in against a local fake
 authorization server and MCP endpoint: discovery from the 401 challenge,
 registration, PKCE checked by the fake (a mismatch fails), loopback and pasted
 callback completion, foreign `state` rejection, refresh with rotation, refused
@@ -325,7 +325,7 @@ refresh to `expired`, sign-out, status notifications, token-file permissions,
 and no token in settings, status, notifications, warnings, results or errors.
 `stdio_host_parity` repeats the pasted-URL sign-in through the host API and
 checks `mcp.server` notifications and that `config.get`, the config file and
-error messages hold no token. `crates/bubblepaw-mcp/tests/headers.rs` runs a
+error messages hold no token. `crates/bubblepaw-mcp/tests/protocol/headers.rs` runs a
 local fake HTTP server that records headers: a stored header arrives and wins
 over `headers_from`, removal stops it, no value shows in status, notifications
 or errors, and removing the server deletes the file; `stdio_host_parity` repeats

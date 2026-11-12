@@ -638,7 +638,7 @@ No live model acceptance or VPS deployment is claimed. CI formats and lints the
 crate and runs `cargo test -p bubblepaw-remote`.
 
 Runner wiring (2026-11-02) is covered by local-transport tests with an
-in-process relay and the scripted demo provider: `bubblepaw-sdk` `tests/remote.rs`
+in-process relay and the scripted demo provider: `bubblepaw-sdk` `tests/host/remote.rs`
 (a paired device lists sessions and runs a turn with notifications; a wrong code
 stores nothing; revoke closes the live tunnel and the next connect is refused; a
 `read` device gets -32003 for `config.set` while a `full` device succeeds), and
@@ -646,7 +646,7 @@ the host-API parity test's remote phase, compared with stdio.
 
 Direct and Cloudflare reach (2026-11-02), local transport with fakes only (no
 Cloudflare account, network service or live model): `bubblepaw-sdk`
-`tests/remote.rs` pairs and runs a demo turn over `ws://127.0.0.1`;
+`tests/host/remote.rs` pairs and runs a demo turn over `ws://127.0.0.1`;
 `bubblepaw-runner` `tests/remote/remote_tunnel.rs` runs a fake `cloudflared`
 (`bubblepaw-fake-cloudflared`) for quick-tunnel address parsing and restart, and
 a local fake Cloudflare API for domain setup (created once, reused, foreign DNS

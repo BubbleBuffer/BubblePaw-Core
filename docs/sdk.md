@@ -161,7 +161,7 @@ resolves an ID. Token rows distinguish `Reported` from `Estimated`. A view's
 `blocks` and `blocks_estimated` describe its apply-time token partition; the
 block list can be empty for a legacy view. See [context compaction](context-compaction.md)
 for triggers, coverage and estimate semantics. The SDK-only integration test is
-`crates/bubblepaw-sdk/tests/context_facts.rs`.
+`crates/bubblepaw-sdk/tests/host/context_facts.rs`.
 
 Core's `Store::reported_message_tokens` returns optional reported counts without
 decoding message bodies. The SDK fills missing counts with the runner's existing

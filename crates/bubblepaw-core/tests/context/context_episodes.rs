@@ -2,7 +2,7 @@
 mod facts;
 #[path = "context_episodes/legacy_metadata.rs"]
 mod legacy_metadata;
-mod support;
+use crate::support;
 use anyhow::Result;
 use bubblepaw_core::{
     ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter, ContextView,

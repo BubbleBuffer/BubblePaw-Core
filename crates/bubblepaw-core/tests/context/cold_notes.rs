@@ -1,6 +1,6 @@
 //! Cold notes render after the view, in a fixed order, and change only at a
 //! declared change, so the cold tier stays byte-stable between applies.
-mod support;
+use crate::support;
 
 use bubblepaw_core::{
     ContextClassification as Class, ContextState, MessageOrigin, ModelRequest, Role,

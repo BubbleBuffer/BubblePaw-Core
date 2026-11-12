@@ -484,10 +484,10 @@ for spawn and send; runner admission errors are explicit ordinary results.
 Completion regressions use `bubblepaw-runner/tests/children/auto_wake.rs`, `runner.rs`
 (real stdio subprocess with an offline provider), `web_wake.rs` (local HTTP/SSE)
 and `wake_storage.rs`. Generic archive-safe admission and bounded metadata paging
-use `bubblepaw-core/tests/active_admission.rs`. Restart fixtures replace host
+use `bubblepaw-core/tests/runtime/active_admission.rs`. Restart fixtures replace host
 services over the same canonical store; they do not kill a live model process.
 
-Control regressions use `bubblepaw-core/tests/run_controls.rs`,
+Control regressions use `bubblepaw-core/tests/tools/run_controls.rs`,
 `bubblepaw-runner/tests/children/child_controls.rs`, `child_controls_js.rs` and the runner's
 `agents::control_notice_tests`. They cover valid JSON, one correction, repeated
 validation failure, schema replacement and clearing, visible task/countdown

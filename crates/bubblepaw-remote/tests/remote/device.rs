@@ -119,7 +119,8 @@ fn existing_identity_keyfiles_round_trip_plain_and_protected() {
 #[test]
 fn upstream_plain_and_encrypted_contract_files_preserve_exact_bytes() {
     let fixture: Value =
-        serde_json::from_str(include_str!("fixtures/device-keys-contract.json")).expect("fixture");
+        serde_json::from_str(include_str!("../fixtures/device-keys-contract.json"))
+            .expect("fixture");
     for name in ["plain", "passphrase"] {
         let vector = &fixture["keyFiles"][name];
         let parsed = KeyFile::parse(&vector["file"].to_string()).expect("upstream key file");

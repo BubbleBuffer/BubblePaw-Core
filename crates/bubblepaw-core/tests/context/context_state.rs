@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use bubblepaw_core::{
     CacheAccounting, ContextClassification as Class, ContextState, ModelRequest, Observation,

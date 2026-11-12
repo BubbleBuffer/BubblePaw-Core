@@ -22,36 +22,9 @@ web = ["host", "bubblepaw-runner/web"]
 [lib]
 name = "bubblepaw_sdk"
 
+# One binary for every test of the embedded host; the host-less build skips it.
 [[test]]
-name = "client"
-required-features = ["host"]
-
-[[test]]
-name = "configured"
-required-features = ["host"]
-
-[[test]]
-name = "context_facts"
-required-features = ["host"]
-
-[[test]]
-name = "host_api"
-required-features = ["host"]
-
-[[test]]
-name = "no_provider"
-required-features = ["host"]
-
-[[test]]
-name = "questions"
-required-features = ["host"]
-
-[[test]]
-name = "remote"
-required-features = ["host"]
-
-[[test]]
-name = "sdk"
+name = "host"
 required-features = ["host"]
 
 [[example]]
