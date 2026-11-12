@@ -181,6 +181,7 @@ fn hardline_floor_defaults_on_and_only_user_cli_and_env_layers_change_it() {
     // The user file also holds the workspace trust entry; keep it.
     let user = root.path().join("home/.bubblepaw/config.toml");
     let trusted = std::fs::read_to_string(&user).unwrap();
+    let write_user = |text: &str| write(&user, &format!("{trusted}\n{text}"));
     let hardline = |opts: &LoadOptions| {
         let config = EffectiveConfig::load(opts.clone()).unwrap();
         let on = config.settings().unwrap().approvals.hardline;
@@ -194,20 +195,10 @@ fn hardline_floor_defaults_on_and_only_user_cli_and_env_layers_change_it() {
     };
     assert!(hardline(&opts).0);
     // A trusted project config cannot lower the floor.
-    write(
-        &project,
-        "[approvals]
-hardline=false
-",
-    );
+    write(&project, "[approvals]\nhardline=false\n");
     assert!(hardline(&opts).0);
     // The user config can.
-    write(
-        &user,
-        "[approvals]
-hardline=false
-",
-    );
+    write_user("[approvals]\nhardline=false\n");
     let (on, source) = hardline(&opts);
     assert!(!on && source.is_some_and(|s| s.starts_with("user:")));
     // CLI and env outrank the user config.
@@ -220,21 +211,8 @@ hardline=false
     )];
     assert!(hardline(&opts).0);
     opts.env.clear();
-    for text in [
-        "[approvals]
-hardline='no'
-",
-        "[approvals]
-hardline=1
-",
-    ] {
-        write(
-            &user,
-            &format!(
-                "{trusted}
-{text}"
-            ),
-        );
+    for text in ["[approvals]\nhardline='no'\n", "[approvals]\nhardline=1\n"] {
+        write_user(text);
         assert!(EffectiveConfig::load(opts.clone()).is_err(), "{text}");
     }
 }
