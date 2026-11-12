@@ -613,26 +613,17 @@ async fn incompatible(kind: Kind, foreign_kind: bool) -> Result<()> {
     Ok(())
 }
 #[tokio::test]
-async fn responses_to_messages_omits_foreign_opaque_state() -> Result<()> {
-    incompatible(Kind::Responses, true).await
-}
-#[tokio::test]
-async fn messages_to_responses_omits_foreign_opaque_state() -> Result<()> {
-    incompatible(Kind::Messages, true).await
-}
-#[tokio::test]
-async fn responses_known_model_mismatch_omits_opaque_state() -> Result<()> {
-    incompatible(Kind::Responses, false).await
-}
-#[tokio::test]
-async fn messages_known_model_mismatch_omits_opaque_state() -> Result<()> {
-    incompatible(Kind::Messages, false).await
-}
-#[tokio::test]
-async fn chat_to_responses_omits_foreign_opaque_state() -> Result<()> {
-    incompatible(Kind::Chat, true).await
-}
-#[tokio::test]
-async fn chat_known_model_mismatch_omits_opaque_state() -> Result<()> {
-    incompatible(Kind::Chat, false).await
+async fn incompatible_wrapper_state_is_omitted() -> Result<()> {
+    for (label, kind, foreign) in [
+        ("responses_to_messages foreign", Kind::Responses, true),
+        ("messages_to_responses foreign", Kind::Messages, true),
+        ("chat_to_responses foreign", Kind::Chat, true),
+        ("responses known model mismatch", Kind::Responses, false),
+        ("messages known model mismatch", Kind::Messages, false),
+        ("chat known model mismatch", Kind::Chat, false),
+    ] {
+        let case = incompatible(kind, foreign).await;
+        case.map_err(|error| anyhow::anyhow!("{label}: {error:#}"))?;
+    }
+    Ok(())
 }

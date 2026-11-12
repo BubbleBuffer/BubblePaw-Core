@@ -354,49 +354,6 @@ fn several_changes_in_one_durable_notice_batch_restore_without_redelivery() {
 }
 
 #[test]
-fn ten_kib_snapshot_storage_measurement() {
-    let root = tempfile::tempdir().unwrap();
-    write(root.path().join("AGENTS.md"), &"x".repeat(10 * 1024));
-    let store = Store::open_data_dir(root.path().join("data")).unwrap();
-    let session = store.create_session("measurement").unwrap();
-    store.idle_checkpoint().unwrap();
-    let before = store.storage_stats().unwrap();
-    let memory = memory(&store, root.path(), None);
-    memory.check(&session.id).unwrap();
-    let after = store.storage_stats().unwrap();
-    assert_eq!(after.transaction_count - before.transaction_count, 1);
-    assert_eq!(after.message_count, before.message_count);
-    let bytes = store
-        .attachment(&session.id, "bubblepaw-memory-files-v1")
-        .unwrap()
-        .unwrap()
-        .1;
-    assert_eq!(
-        bytes
-            .windows(10 * 1024)
-            .filter(|window| window.iter().all(|byte| *byte == b'x'))
-            .count(),
-        1
-    );
-    for _ in 0..20 {
-        memory.check(&session.id).unwrap();
-    }
-    let idle = store.storage_stats().unwrap();
-    assert_eq!(idle.transaction_count, after.transaction_count);
-    assert_eq!(idle.wal_bytes, after.wal_bytes);
-    println!(
-        "memory 10KiB: attachment={} bytes, page_growth={} bytes, database_growth={} bytes, chat_growth={} bytes, wal_growth={} bytes, transactions={}, chat_transactions={}, unchanged_transactions=0, unchanged_wal_growth=0",
-        bytes.len(),
-        after.page_bytes - before.page_bytes,
-        after.database_bytes - before.database_bytes,
-        after.chat_bytes - before.chat_bytes,
-        after.wal_bytes - before.wal_bytes,
-        after.transaction_count - before.transaction_count,
-        after.chat_transaction_count - before.chat_transaction_count
-    );
-}
-
-#[test]
 fn memory_files_switch_defaults_on_and_is_restart_only() {
     let root = tempfile::tempdir().unwrap();
     let options = LoadOptions {

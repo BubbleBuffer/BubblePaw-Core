@@ -1,6 +1,11 @@
 //! Layout checkpoints, deletion and storage statistics.
 use super::*;
 
+/// Whether any checkpoint record still names a preimage. It must stay bound to
+/// one hash and use the `checkpoint_records_preimage` index.
+pub(super) const CHECKPOINT_PREIMAGE_NAMED_SQL: &str =
+    "SELECT EXISTS(SELECT 1 FROM checkpoint_records WHERE preimage_hash=?1)";
+
 impl Store {
     pub(in crate::store) fn layout_checkpoint(&self) -> Result<()> {
         self.checkpoint_layout(true)
@@ -318,11 +323,8 @@ impl Store {
         candidates: std::collections::BTreeSet<String>,
     ) -> Result<()> {
         for hash in &candidates {
-            let named: bool = conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM checkpoint_records WHERE preimage_hash=?1)",
-                [hash],
-                |row| row.get(0),
-            )?;
+            let named: bool =
+                conn.query_row(CHECKPOINT_PREIMAGE_NAMED_SQL, [hash], |row| row.get(0))?;
             if !named {
                 conn.execute("DELETE FROM checkpoint_blobs WHERE hash=?1", [hash])?;
             }

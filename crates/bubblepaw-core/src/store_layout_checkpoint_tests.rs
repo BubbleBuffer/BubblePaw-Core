@@ -103,3 +103,34 @@ fn failing_hook_on_one_cached_chat_does_not_stop_the_others() -> anyhow::Result<
     );
     Ok(())
 }
+
+#[test]
+fn checkpoint_preimage_lookup_uses_the_preimage_index() -> anyhow::Result<()> {
+    let directory = tempfile::tempdir()?;
+    let store = Store::open_data_dir(directory.path())?;
+    let session = store.create_session("plan")?.id;
+    let id = checkpoint_id("a");
+    let record = crate::CheckpointRecord {
+        id: &id,
+        patch_index: 1,
+        boundary_seq: 1,
+        metadata: "{}",
+    };
+    store.write_checkpoint(&session, record, b"a", &[])?;
+    let conn = rusqlite::Connection::open(store.chat_path(&session)?.unwrap())?;
+    // The production statement, so changing it changes what this test checks.
+    let sql = format!(
+        "EXPLAIN QUERY PLAN {}",
+        super::deletion::CHECKPOINT_PREIMAGE_NAMED_SQL
+    );
+    let plan: Vec<String> = conn
+        .prepare(&sql)?
+        .query_map(rusqlite::params!["x"], |row| row.get::<_, String>(3))?
+        .collect::<rusqlite::Result<_>>()?;
+    assert!(
+        plan.iter()
+            .any(|line| line.contains("checkpoint_records_preimage")),
+        "plan does not use the index: {plan:?}"
+    );
+    Ok(())
+}

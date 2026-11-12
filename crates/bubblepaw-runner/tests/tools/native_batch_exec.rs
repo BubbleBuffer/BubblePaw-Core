@@ -337,66 +337,61 @@ async fn two_background_execs_are_joined_by_one_wait_batch() {
 }
 
 #[tokio::test]
-async fn failed_read_mid_batch_does_not_stop_later_calls() {
-    let root = tempfile::tempdir().unwrap();
-    let provider = run(
-        root.path(),
-        vec![
-            calls(vec![
-                call(
-                    "write",
-                    "write",
-                    json!({"path": script_name("run"), "content": ECHO_SCRIPT}),
-                ),
-                call("missing", "read", json!({"path": "missing.txt"})),
-                call("exec", "exec", json!({"command": script_command("run")})),
-            ]),
-            text("Done"),
-        ],
-    )
-    .await;
-    let requests = provider.requests.lock().unwrap();
-    assert_eq!(requests.len(), 2);
-    assert_eq!(result_ids(&requests[1]), ["write", "missing", "exec"]);
-    assert!(!result_of(&requests[1], "write").is_error);
-    assert!(result_of(&requests[1], "missing").is_error);
-    let exec = result_of(&requests[1], "exec");
-    assert!(!exec.is_error, "{}", exec.content);
-    let exec = json_of(exec);
-    assert_eq!(exec["exitCode"], 0);
-    assert!(exec["stdout"].as_str().unwrap().contains("script-ran"));
-}
-
-#[tokio::test]
-async fn unknown_tool_mid_batch_does_not_stop_later_calls() {
-    let root = tempfile::tempdir().unwrap();
-    let provider = run(
-        root.path(),
-        vec![
-            calls(vec![
-                call(
-                    "write",
-                    "write",
-                    json!({"path": script_name("run"), "content": ECHO_SCRIPT}),
-                ),
-                call("unknown", "no_such_tool", json!({})),
-                call("exec", "exec", json!({"command": script_command("run")})),
-            ]),
-            text("Done"),
-        ],
-    )
-    .await;
-    let requests = provider.requests.lock().unwrap();
-    assert_eq!(requests.len(), 2);
-    assert_eq!(result_ids(&requests[1]), ["write", "unknown", "exec"]);
-    let unknown = result_of(&requests[1], "unknown");
-    assert!(unknown.is_error);
-    assert!(
-        unknown.content.contains("no_such_tool"),
-        "{}",
-        unknown.content
-    );
-    let exec = result_of(&requests[1], "exec");
-    assert!(!exec.is_error, "{}", exec.content);
-    assert_eq!(json_of(exec)["exitCode"], 0);
+async fn failed_mid_batch_call_does_not_stop_later_calls() {
+    // (label, middle call id, tool, input, text the middle error must contain)
+    for (label, id, tool, input, error_text) in [
+        (
+            "failed_read",
+            "missing",
+            "read",
+            json!({"path": "missing.txt"}),
+            None,
+        ),
+        (
+            "unknown_tool",
+            "unknown",
+            "no_such_tool",
+            json!({}),
+            Some("no_such_tool"),
+        ),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let provider = run(
+            root.path(),
+            vec![
+                calls(vec![
+                    call(
+                        "write",
+                        "write",
+                        json!({"path": script_name("run"), "content": ECHO_SCRIPT}),
+                    ),
+                    call(id, tool, input),
+                    call("exec", "exec", json!({"command": script_command("run")})),
+                ]),
+                text("Done"),
+            ],
+        )
+        .await;
+        let requests = provider.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2, "{label}");
+        assert_eq!(result_ids(&requests[1]), ["write", id, "exec"], "{label}");
+        assert!(!result_of(&requests[1], "write").is_error, "{label}");
+        let failed = result_of(&requests[1], id);
+        assert!(failed.is_error, "{label}");
+        if let Some(needle) = error_text {
+            assert!(
+                failed.content.contains(needle),
+                "{label}: {}",
+                failed.content
+            );
+        }
+        let exec = result_of(&requests[1], "exec");
+        assert!(!exec.is_error, "{label}: {}", exec.content);
+        let exec = json_of(exec);
+        assert_eq!(exec["exitCode"], 0, "{label}");
+        assert!(
+            exec["stdout"].as_str().unwrap().contains("script-ran"),
+            "{label}"
+        );
+    }
 }

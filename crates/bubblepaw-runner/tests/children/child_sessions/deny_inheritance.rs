@@ -211,3 +211,184 @@ async fn recursive_deny_rules_union_at_every_generation_with_pinned_override() -
     }
     Ok(())
 }
+
+/// A fake `exec`: the command is never run, only recorded if it reaches the tool.
+#[derive(Default)]
+struct HardlineExec {
+    commands: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl Tool for HardlineExec {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "exec".into(),
+            description: "Recording stand-in for the shell tool".into(),
+            input_schema: json!({"type":"object"}),
+            read_only: false,
+            approval: Approval::Confirm,
+        }
+    }
+
+    async fn invoke(&self, _: ToolContext, input: Value) -> Result<ToolResult> {
+        self.commands
+            .lock()
+            .unwrap()
+            .push(input["command"].as_str().unwrap().into());
+        Ok(ToolResult::text("ran"))
+    }
+}
+
+/// A child model that tries a hardline command and a harmless one in one round.
+struct HardlineProvider;
+
+#[async_trait]
+impl Provider for HardlineProvider {
+    async fn generate(
+        &self,
+        request: ModelRequest,
+        _: TextCallback,
+        _: CancellationToken,
+    ) -> Result<ModelResponse> {
+        if request
+            .messages
+            .iter()
+            .any(|message| message.role == Role::Tool)
+        {
+            return Ok(ModelResponse {
+                text: "hardline probe done".into(),
+                ..Default::default()
+            });
+        }
+        Ok(ModelResponse {
+            tool_calls: [("hardline-rm", "rm -rf /"), ("hardline-safe", "echo ok")]
+                .into_iter()
+                .map(|(id, command)| ToolCall {
+                    id: id.into(),
+                    name: "exec".into(),
+                    arguments: json!({"command": command}),
+                })
+                .collect(),
+            ..Default::default()
+        })
+    }
+}
+
+#[tokio::test]
+async fn real_child_honours_the_host_hardline_floor_in_both_spawn_shapes() -> Result<()> {
+    for worker in [false, true] {
+        let shape = if worker { "worker" } else { "agent" };
+        let directory = tempfile::tempdir()?;
+        let store = Store::open_data_dir(directory.path())?;
+        let exec = Arc::new(HardlineExec::default());
+        let mut child_tools = ToolRegistry::new();
+        child_tools.register(exec.clone())?;
+        // The profile tries to turn the floor off; the host keeps it on.
+        let profile = AgentProfile {
+            name: "floor-off".into(),
+            description: "Profile that tries to drop the hardline floor".into(),
+            model: None,
+            max_rounds: Some(12),
+            approval: Some(ApprovalPolicy {
+                hardline: false,
+                ..allow()
+            }),
+            harness: Arc::new(Harness::new(
+                store.clone(),
+                Arc::new(HardlineProvider),
+                child_tools,
+                HarnessConfig {
+                    approval: allow(),
+                    ..Default::default()
+                },
+            )),
+        };
+        let manager = Arc::new(
+            AgentTools::from_profiles(store.clone(), vec![profile.clone()])?
+                .with_limits(Agents::default()),
+        );
+        let (entered, _entered_rx) = mpsc::unbounded_channel();
+        let probe = Arc::new(Probe {
+            requests: Mutex::default(),
+            entered,
+            release: Notify::new(),
+        });
+        let mut parent_tools = ToolRegistry::new();
+        parent_tools.register(Arc::new(Bridge))?;
+        manager.register(&mut parent_tools)?;
+        let parent = Harness::new(
+            store.clone(),
+            probe,
+            parent_tools,
+            HarnessConfig {
+                approval: allow(),
+                ..Default::default()
+            },
+        );
+        let session = store.create_session("hardline floor parent")?;
+        let child = if worker {
+            let owner = ToolContext {
+                session_id: session.id.clone(),
+                run_id: "hardline-run".into(),
+                invocation_id: "hardline-call".into(),
+                cancellation: CancellationToken::new(),
+                approval: allow(),
+            };
+            manager.start_worker(&owner, profile, json!({"task":"hardline"}))?
+        } else {
+            // The run override also tries to drop the floor.
+            let run = tokio::time::timeout(
+                DEADLINE,
+                parent.prompt(
+                    &session.id,
+                    format!(
+                        "CALL:{}",
+                        json!({"target":"agent","input":{"task":"hardline","profile":"floor-off"}})
+                    ),
+                    RunOptions {
+                        approval: Some(ApprovalPolicy {
+                            hardline: false,
+                            ..allow()
+                        }),
+                        ..Default::default()
+                    },
+                ),
+            )
+            .await??;
+            assert_eq!(run.status, "completed", "{shape}");
+            let reply = store
+                .messages(&session.id)?
+                .into_iter()
+                .rev()
+                .find(|message| message.role == Role::Tool)
+                .unwrap();
+            assert!(!reply.is_error, "{shape}: {}", reply.content);
+            serde_json::from_str(&reply.content)?
+        };
+        let child_id = child["sessionId"].as_str().unwrap();
+        let result = manager.wait(&session.id, child_id, Some(5000)).await?;
+        assert_eq!(result["status"], "completed", "{shape}: {result}");
+        assert_eq!(
+            *exec.commands.lock().unwrap(),
+            ["echo ok"],
+            "{shape}: only the harmless command may reach the tool"
+        );
+        let messages = store.messages(child_id)?;
+        let reply = |id: &str| {
+            messages
+                .iter()
+                .find(|message| message.tool_call_id.as_deref() == Some(id))
+                .unwrap()
+        };
+        let blocked = reply("hardline-rm");
+        assert!(blocked.is_error, "{shape}: {}", blocked.content);
+        assert!(
+            blocked.content.contains("Blocked by hardline rule"),
+            "{shape}: {}",
+            blocked.content
+        );
+        assert!(!reply("hardline-safe").is_error, "{shape}");
+        manager.shutdown().await?;
+    }
+    Ok(())
+}

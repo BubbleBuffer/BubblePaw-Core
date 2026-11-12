@@ -975,70 +975,68 @@ async fn chapter_without_content_after_related_extraction_fails_with_usage() {
     assert_eq!(server.requests.lock().unwrap().len(), 1);
 }
 #[tokio::test]
-async fn chat_host_retries_only_unpublished_provider_errors_through_context() {
-    for status in [StatusCode::BAD_GATEWAY, StatusCode::TOO_MANY_REQUESTS] {
-        for published in [false, true] {
-            let server = serve(vec![
-                (status, json!({"published":published,"context":true})),
-                chat("# Recovered\nBody"),
-            ])
-            .await;
-            let result = models(&server, false).summarize(summary()).await;
-            if published {
-                let error = result.unwrap_err();
-                let typed = ProviderError::of(&error).unwrap();
-                assert!(typed.published);
-                assert_eq!(
-                    typed.kind,
-                    if status == StatusCode::TOO_MANY_REQUESTS {
-                        ProviderErrorKind::RateLimit { resets_at: None }
-                    } else {
-                        ProviderErrorKind::Transient
-                    }
-                );
-                assert_eq!(server.requests.lock().unwrap().len(), 1);
-                assert_eq!(server.replies.lock().unwrap().len(), 1);
-            } else {
-                assert_eq!(result.unwrap().title, "Recovered");
-                assert_eq!(server.requests.lock().unwrap().len(), 2);
-                assert!(server.replies.lock().unwrap().is_empty());
+async fn role_retries_only_unpublished_provider_errors() {
+    for (role, decide) in [("chat", false), ("decision", true)] {
+        for status in [StatusCode::BAD_GATEWAY, StatusCode::TOO_MANY_REQUESTS] {
+            for published in [false, true] {
+                let label = format!("{role} role, {status}, published={published}");
+                let mut replies = vec![(status, json!({"published":published,"context":true}))];
+                if decide {
+                    replies.extend([
+                        decision(0.1, 0.8, 0.1),
+                        decision(0.1, 0.8, 0.1),
+                        decision(0.1, 0.8, 0.1),
+                    ]);
+                } else {
+                    replies.push(chat("# Recovered\nBody"));
+                }
+                let server = serve(replies).await;
+                let result = if decide {
+                    models(&server, true)
+                        .decide(split())
+                        .await
+                        .map(|answer| answer.choice.unwrap_or_default())
+                } else {
+                    models(&server, false)
+                        .summarize(summary())
+                        .await
+                        .map(|summary| summary.title)
+                };
+                // Chat roles call the chat endpoint; the decision role calls the decisions endpoint.
+                let calls = if decide {
+                    server.decisions.lock().unwrap().len()
+                } else {
+                    server.requests.lock().unwrap().len()
+                };
+                let replies_left = server.replies.lock().unwrap().len();
+                if published {
+                    let error = result.unwrap_err();
+                    let typed = ProviderError::of(&error).unwrap();
+                    assert!(typed.published, "{label}");
+                    assert_eq!(
+                        typed.kind,
+                        if status == StatusCode::TOO_MANY_REQUESTS {
+                            ProviderErrorKind::RateLimit { resets_at: None }
+                        } else {
+                            ProviderErrorKind::Transient
+                        },
+                        "{label}"
+                    );
+                    assert_eq!(calls, 1, "{label}");
+                    assert_eq!(replies_left, if decide { 3 } else { 1 }, "{label}");
+                } else {
+                    assert_eq!(
+                        result.unwrap(),
+                        if decide { "u2" } else { "Recovered" },
+                        "{label}"
+                    );
+                    assert_eq!(calls, if decide { 4 } else { 2 }, "{label}");
+                    assert_eq!(replies_left, 0, "{label}");
+                }
+                if decide {
+                    assert!(server.requests.lock().unwrap().is_empty(), "{label}");
+                }
             }
-        }
-    }
-}
-
-#[tokio::test]
-async fn decision_role_retries_only_unpublished_provider_errors_through_context() {
-    for status in [StatusCode::BAD_GATEWAY, StatusCode::TOO_MANY_REQUESTS] {
-        for published in [false, true] {
-            let server = serve(vec![
-                (status, json!({"published":published,"context":true})),
-                decision(0.1, 0.8, 0.1),
-                decision(0.1, 0.8, 0.1),
-                decision(0.1, 0.8, 0.1),
-            ])
-            .await;
-            let result = models(&server, true).decide(split()).await;
-            if published {
-                let error = result.unwrap_err();
-                let typed = ProviderError::of(&error).unwrap();
-                assert!(typed.published);
-                assert_eq!(
-                    typed.kind,
-                    if status == StatusCode::TOO_MANY_REQUESTS {
-                        ProviderErrorKind::RateLimit { resets_at: None }
-                    } else {
-                        ProviderErrorKind::Transient
-                    }
-                );
-                assert_eq!(server.decisions.lock().unwrap().len(), 1);
-                assert_eq!(server.replies.lock().unwrap().len(), 3);
-            } else {
-                assert_eq!(result.unwrap().choice.as_deref(), Some("u2"));
-                assert_eq!(server.decisions.lock().unwrap().len(), 4);
-                assert!(server.replies.lock().unwrap().is_empty());
-            }
-            assert!(server.requests.lock().unwrap().is_empty());
         }
     }
 }

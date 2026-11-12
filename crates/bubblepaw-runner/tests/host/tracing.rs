@@ -10,14 +10,6 @@ mod support;
 use support::run;
 
 #[tokio::test]
-async fn default_is_disabled_and_does_not_create_trace_files() -> Result<()> {
-    assert!(HarnessConfig::default().observation.is_none());
-    let (directory, result) = run(None, false).await?;
-    assert_eq!(result.status, "completed");
-    assert!(!directory.path().join("trace.jsonl").exists());
-    Ok(())
-}
-#[tokio::test]
 async fn metadata_correlates_real_requests_nested_calls_errors_usage_and_repeats() -> Result<()> {
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("trace.jsonl");

@@ -253,31 +253,41 @@ fn assert_enforced(wire: Wire, bodies: &[Value]) {
 }
 
 #[tokio::test]
-async fn chat_tools_off_reminder_complies_without_a_tool_choice_change() {
-    assert_complied(&budget_run(Wire::Chat, false).await);
-}
-
-#[tokio::test]
-async fn chat_ignored_tools_off_reminder_is_enforced_with_tool_choice_none() {
-    assert_enforced(Wire::Chat, &budget_run(Wire::Chat, true).await);
-}
-
-#[tokio::test]
-async fn responses_tools_off_reminder_complies_without_a_tool_choice_change() {
-    assert_complied(&budget_run(Wire::Responses, false).await);
-}
-
-#[tokio::test]
-async fn responses_ignored_tools_off_reminder_is_enforced_with_tool_choice_none() {
-    assert_enforced(Wire::Responses, &budget_run(Wire::Responses, true).await);
-}
-
-#[tokio::test]
-async fn messages_tools_off_reminder_complies_without_a_tool_choice_change() {
-    assert_complied(&budget_run(Wire::Messages, false).await);
-}
-
-#[tokio::test]
-async fn messages_ignored_tools_off_reminder_is_enforced_with_tool_choice_none() {
-    assert_enforced(Wire::Messages, &budget_run(Wire::Messages, true).await);
+async fn tools_off_reminder_is_honoured_or_enforced() {
+    for (label, wire, ignored) in [
+        ("chat_tools_off_reminder_complies", Wire::Chat, false),
+        (
+            "chat_ignored_tools_off_reminder_is_enforced",
+            Wire::Chat,
+            true,
+        ),
+        (
+            "responses_tools_off_reminder_complies",
+            Wire::Responses,
+            false,
+        ),
+        (
+            "responses_ignored_tools_off_reminder_is_enforced",
+            Wire::Responses,
+            true,
+        ),
+        (
+            "messages_tools_off_reminder_complies",
+            Wire::Messages,
+            false,
+        ),
+        (
+            "messages_ignored_tools_off_reminder_is_enforced",
+            Wire::Messages,
+            true,
+        ),
+    ] {
+        eprintln!("case: {label}");
+        let bodies = budget_run(wire, ignored).await;
+        if ignored {
+            assert_enforced(wire, &bodies);
+        } else {
+            assert_complied(&bodies);
+        }
+    }
 }

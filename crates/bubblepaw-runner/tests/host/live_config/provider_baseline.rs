@@ -27,32 +27,30 @@ models=[{id='m'}]
 ";
 
 #[tokio::test]
-async fn provider_save_leaves_no_pending_change_for_check_or_reload() {
-    let fixture = Fixture::new(&config("")).await;
-    let setup = setup(&fixture);
-    setup
-        .save("extra", json!({"kind":"scripted","models":[{"id":"m"}]}))
-        .await
-        .unwrap();
-    assert!(
-        std::fs::read_to_string(&fixture.file)
-            .unwrap()
-            .contains("[providers.extra]")
-    );
-    assert_baseline_current(&fixture, &setup, "after save").await;
-    fixture.shutdown().await;
-}
-
-#[tokio::test]
-async fn provider_remove_leaves_no_pending_change_for_check_or_reload() {
-    let fixture = Fixture::new(&config(EXTRA)).await;
-    let setup = setup(&fixture);
-    setup.remove("extra").await.unwrap();
-    assert!(
-        !std::fs::read_to_string(&fixture.file)
-            .unwrap()
-            .contains("[providers.extra]")
-    );
-    assert_baseline_current(&fixture, &setup, "after remove").await;
-    fixture.shutdown().await;
+async fn provider_baseline_follows_save_and_remove() {
+    // (label, starting config, save instead of remove, file holds the provider afterwards)
+    for (label, start, save, present) in [
+        ("provider_save", "", true, true),
+        ("provider_remove", EXTRA, false, false),
+    ] {
+        let fixture = Fixture::new(&config(start)).await;
+        let setup = setup(&fixture);
+        if save {
+            setup
+                .save("extra", json!({"kind":"scripted","models":[{"id":"m"}]}))
+                .await
+                .unwrap();
+        } else {
+            setup.remove("extra").await.unwrap();
+        }
+        assert_eq!(
+            std::fs::read_to_string(&fixture.file)
+                .unwrap()
+                .contains("[providers.extra]"),
+            present,
+            "{label}: provider presence in the config file"
+        );
+        assert_baseline_current(&fixture, &setup, label).await;
+        fixture.shutdown().await;
+    }
 }

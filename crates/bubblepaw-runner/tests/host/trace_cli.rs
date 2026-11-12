@@ -3,6 +3,11 @@ use std::process::Command;
 
 #[test]
 fn cli_trace_modes_report_and_default_off() {
+    assert!(
+        bubblepaw_core::HarnessConfig::default()
+            .observation
+            .is_none()
+    );
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
