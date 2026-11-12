@@ -1,0 +1,58 @@
+# TEMPORARY: repeats the affected test binaries to measure flake rates. Removed before merge.
+name: flake-loop
+on:
+  push:
+    branches: [fix/shared-process-flakes]
+env:
+  CARGO_TERM_COLOR: never
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+jobs:
+  loop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        shard: [1, 2, 3, 4, 5]
+    name: loop ${{ matrix.os }} ${{ matrix.shard }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: build
+        run: cargo test -p bubblepaw-runner --features web,bench --locked --no-run --lib --test web --test tools
+      - name: loop
+        run: |
+          pass=0; fail=0
+          for i in $(seq 1 10); do
+            if cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast --test web --test tools > loop.log 2>&1; then
+              pass=$((pass+1))
+            else
+              fail=$((fail+1))
+              echo "--- iteration $i failed:"
+              grep -E "\.\.\. FAILED|panicked at" -A3 loop.log | head -40
+            fi
+          done
+          echo "RESULT ${{ matrix.os }} shard ${{ matrix.shard }}: pass=$pass fail=$fail"
+          [ "$fail" -eq 0 ]
+      - name: loop lib (linux, two copies at once for contention)
+        if: runner.os == 'Linux'
+        run: |
+          pass=0; fail=0
+          for i in $(seq 1 6); do
+            cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast --lib > lib1.log 2>&1 &
+            a=$!
+            cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast --lib > lib2.log 2>&1 &
+            b=$!
+            ok=1; wait $a || ok=0; wait $b || ok=0
+            if [ $ok = 1 ]; then pass=$((pass+1)); else fail=$((fail+1)); grep -hE "\.\.\. FAILED|panicked at" -A3 lib1.log lib2.log | head -30; fi
+          done
+          echo "RESULT lib shard ${{ matrix.shard }}: pass=$pass fail=$fail"
+          [ "$fail" -eq 0 ]
