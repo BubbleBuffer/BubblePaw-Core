@@ -4,7 +4,7 @@ use super::{
     wire::{self, Wire},
 };
 use crate::{Error, Result, device::DeviceId};
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 use tokio::sync::mpsc;
 
 struct Client {
@@ -40,7 +40,65 @@ fn enqueue(sender: &mpsc::Sender<Wire>, frame: Wire, queue: &'static str) -> Res
     })
 }
 
+/// A data frame for one peer's queue, handed to the caller so it can wait for
+/// room outside the routing lock. A peer that reads slowly holds the sender
+/// back (its own socket fills, then this queue); the frame is not dropped and
+/// the sender's connection is not closed because of it.
+pub(super) struct Forward {
+    sender: mpsc::Sender<Wire>,
+    frame: Wire,
+    to: Target,
+}
+pub(super) enum Target {
+    /// Toward the client of `session` on `host`.
+    Client {
+        host: String,
+        session: u64,
+    },
+    Host,
+}
+/// What became of a [`Forward`].
+pub(super) enum Delivery {
+    Sent,
+    /// The receiving connection ended; its own detach cleans up.
+    Gone,
+    /// The receiver made no room within the wait. Toward a client, only that
+    /// session is dropped; toward the host, the sending client's connection
+    /// ends.
+    Stalled(Target),
+}
+
+impl Forward {
+    pub(super) async fn deliver(self, wait: Duration) -> Delivery {
+        match tokio::time::timeout(wait, self.sender.send(self.frame)).await {
+            Ok(Ok(())) => Delivery::Sent,
+            Ok(Err(_)) => Delivery::Gone,
+            Err(_) => {
+                let queue = match self.to {
+                    Target::Client { .. } => "client data",
+                    Target::Host => "host data",
+                };
+                tracing::warn!(
+                    "relay drops a stalled peer: its {queue} queue stayed full for {wait:?}"
+                );
+                Delivery::Stalled(self.to)
+            }
+        }
+    }
+}
+
 impl State {
+    /// A client that stopped reading for the whole wait: end its session and
+    /// tell the host. The client's connection ends itself, its socket write
+    /// having stalled as well.
+    pub(super) fn drop_stalled_client(&mut self, host: &str, session: u64) {
+        if let Some(host) = self.hosts.get_mut(host)
+            && host.clients.remove(&session).is_some()
+        {
+            let _ = enqueue(&host.sender, Wire::Close(session), "host close");
+        }
+    }
+
     /// Whether a host is registered under this device ID.
     pub(super) fn is_online(&self, host: &str) -> bool {
         self.hosts.contains_key(host)
@@ -111,17 +169,17 @@ impl State {
         role: &Role,
         frame: Wire,
         observer: &Option<CiphertextObserver>,
-    ) -> Result<()> {
+    ) -> Result<Option<Forward>> {
         match role {
             Role::Host(id) => {
                 let host = self.hosts.get_mut(id).ok_or(Error::Closed)?;
                 match frame {
                     Wire::Accept(session) => {
                         let Some(client) = host.clients.get_mut(&session) else {
-                            return Ok(());
+                            return Ok(None);
                         };
                         if client.accepted {
-                            return Ok(());
+                            return Ok(None);
                         }
                         enqueue(
                             &client.sender,
@@ -132,12 +190,19 @@ impl State {
                     }
                     Wire::Data(session, bytes) => {
                         let Some(client) = host.clients.get(&session).filter(|c| c.accepted) else {
-                            return Ok(());
+                            return Ok(None);
                         };
                         if let Some(observe) = observer {
                             observe(&bytes);
                         }
-                        enqueue(&client.sender, Wire::Data(session, bytes), "client data")?;
+                        return Ok(Some(Forward {
+                            sender: client.sender.clone(),
+                            frame: Wire::Data(session, bytes),
+                            to: Target::Client {
+                                host: id.clone(),
+                                session,
+                            },
+                        }));
                     }
                     Wire::Close(session) => {
                         if let Some(client) = host.clients.remove(&session) {
@@ -161,7 +226,11 @@ impl State {
                         if let Some(observe) = observer {
                             observe(&bytes);
                         }
-                        enqueue(&host.sender, Wire::Data(*session, bytes), "host data")?;
+                        return Ok(Some(Forward {
+                            sender: host.sender.clone(),
+                            frame: Wire::Data(*session, bytes),
+                            to: Target::Host,
+                        }));
                     }
                     Wire::Close(received) if received == *session => {
                         return Err(Error::Closed);
@@ -170,7 +239,7 @@ impl State {
                 }
             }
         }
-        Ok(())
+        Ok(None)
     }
 
     pub(super) fn detach(&mut self, role: &Role, connection: u64) {

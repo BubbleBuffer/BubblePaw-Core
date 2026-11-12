@@ -1,6 +1,6 @@
 use super::{
     RelayAdmission, RelayConfig, RelayRole, admission,
-    routing::{Role, State},
+    routing::{Delivery, Role, State, Target},
     wire::{self, Wire},
 };
 use crate::{Error, Result};
@@ -165,10 +165,15 @@ impl RelayRouter {
         }
         // Cancellation covers authentication, policy rejection writes and data
         // writes as well as reads. Dropping the protocol future releases its guard.
-        tokio::select! {
+        let id = connection.id;
+        let result = tokio::select! {
             _ = stop.changed() => Err(Error::Closed),
             result = self.run_protocol(ws, connection, policy) => result,
+        };
+        if let Err(error) = &result {
+            tracing::warn!("relay connection {id} ended: {error}");
         }
+        result
     }
 
     async fn run_protocol<S>(
@@ -235,8 +240,23 @@ impl RelayRouter {
         loop {
             tokio::select! {
                 incoming = wire::recv(&mut ws, limits) => {
-                    self.inner.state.lock().unwrap_or_else(|error| error.into_inner())
+                    let forward = self.inner.state.lock().unwrap_or_else(|error| error.into_inner())
                         .routing.route(role, incoming?, &self.inner.config.ciphertext_observer)?;
+                    if let Some(forward) = forward {
+                        match forward.deliver(limits.idle_timeout).await {
+                            Delivery::Sent => {}
+                            Delivery::Gone => {
+                                if matches!(role, Role::Client(_, _)) {
+                                    return Err(Error::Closed);
+                                }
+                            }
+                            Delivery::Stalled(Target::Client { host, session }) => {
+                                self.inner.state.lock().unwrap_or_else(|error| error.into_inner())
+                                    .routing.drop_stalled_client(&host, session);
+                            }
+                            Delivery::Stalled(Target::Host) => return Err(Error::Limit("host data")),
+                        }
+                    }
                 }
                 Some(frame) = outgoing.recv() => {
                     let close = matches!(frame, Wire::Close(_));

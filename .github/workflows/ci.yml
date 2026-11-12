@@ -74,7 +74,7 @@ jobs:
         run: cargo clippy -p bubblepaw-runner --features web,bench --all-targets --locked -- -D warnings -A deprecated
       - name: core, mcp, process and sdk tests
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
+        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
       # The web,bench set is a superset of the default one (every feature gate
       # in the runner tests is `cfg(feature = ...)`, none is `cfg(not(...))`),
       # so the full suite runs once, below. Default features keep their clippy
@@ -157,7 +157,7 @@ jobs:
             ~/.cargo/git/db
           key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: core, mcp, process and sdk tests
-        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
+        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
       - name: runner tests (web, bench)
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
