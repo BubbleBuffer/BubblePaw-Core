@@ -178,10 +178,8 @@ fn hardline_floor_defaults_on_and_only_user_cli_and_env_layers_change_it() {
     let root = tempfile::tempdir().unwrap();
     let mut opts = options(root.path());
     let project = opts.workspace.join(".bubblepaw/config.toml");
-    // The user file also holds the workspace trust entry; keep it.
     let user = root.path().join("home/.bubblepaw/config.toml");
-    let trusted = std::fs::read_to_string(&user).unwrap();
-    let write_user = |text: &str| write(&user, &format!("{trusted}\n{text}"));
+    let write_user = |text: &str| write(&user, text);
     let hardline = |opts: &LoadOptions| {
         let config = EffectiveConfig::load(opts.clone()).unwrap();
         let on = config.settings().unwrap().approvals.hardline;
