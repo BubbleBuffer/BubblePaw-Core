@@ -379,28 +379,6 @@ fn sweep_copies_current_and_previous_turn_and_removes_legacy_rows() -> Result<()
     Ok(())
 }
 
-#[test]
-fn checkpoint_preimage_lookup_uses_the_preimage_index() -> Result<()> {
-    let directory = tempfile::tempdir()?;
-    let store = Store::open_data_dir(directory.path())?;
-    let session = store.create_session("plan")?.id;
-    store.write_checkpoint(&session, record(&checkpoint_id("a"), 1, 1), b"a", &[])?;
-    let conn = connection(&store, &session)?;
-    // Same statement as the reference check in store_layout.rs.
-    let plan: Vec<String> = conn
-        .prepare(
-            "EXPLAIN QUERY PLAN SELECT EXISTS(SELECT 1 FROM checkpoint_records WHERE preimage_hash=?1)",
-        )?
-        .query_map(params!["x"], |row| row.get::<_, String>(3))?
-        .collect::<rusqlite::Result<_>>()?;
-    assert!(
-        plan.iter()
-            .any(|line| line.contains("checkpoint_records_preimage")),
-        "plan does not use the index: {plan:?}"
-    );
-    Ok(())
-}
-
 /// A second caller for a chat must wait while that chat's open hook runs. Otherwise it
 /// could receive the chat before its migration has been attempted.
 #[test]

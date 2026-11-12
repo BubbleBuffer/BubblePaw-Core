@@ -85,6 +85,23 @@ fn classifies_short_exhausted_long_terminal_unknown_and_max_wait() {
         ),
         LimitAction::Short(Duration::from_secs(2))
     );
+    // A current named reset overrides a cached longer window.
+    let cached = vec![observed(
+        "seven_day",
+        now + chrono::Duration::days(3),
+        QuotaSource::UsageApi,
+    )];
+    assert_eq!(
+        classify_limit(
+            "shared",
+            "claude-sonnet-5-5",
+            &rejected(Some(soon)),
+            &cached,
+            now,
+            max
+        ),
+        LimitAction::Short(Duration::from_secs(2))
+    );
     assert!(
         matches!(classify_limit("shared", "claude-sonnet-5-5", &rejected_with(vec![exhausted(soon)]), &[], now, max), LimitAction::Park { window, .. } if window == "five_hour")
     );
@@ -340,26 +357,6 @@ fn fallback_ignores_unknown_kinds_credits_other_accounts_and_unknown_scopes() {
             Duration::from_secs(3600)
         ),
         LimitAction::Short(Duration::ZERO)
-    );
-}
-
-#[test]
-fn no_evidence_stays_short_and_current_reset_overrides_cached_windows() {
-    let now = Utc::now();
-    let soon = now + chrono::Duration::seconds(2);
-    let cached = vec![observed(
-        "seven_day",
-        now + chrono::Duration::days(3),
-        QuotaSource::UsageApi,
-    )];
-    let max = Duration::from_secs(3600);
-    assert_eq!(
-        classify_limit("shared", "sonnet", &rejected(None), &[], now, max),
-        LimitAction::Short(Duration::ZERO)
-    );
-    assert_eq!(
-        classify_limit("shared", "sonnet", &rejected(Some(soon)), &cached, now, max),
-        LimitAction::Short(Duration::from_secs(2))
     );
 }
 

@@ -576,16 +576,16 @@ async fn run_fixture(kind: Kind, erase_state: bool) -> Result<()> {
 }
 
 #[tokio::test]
-async fn messages_thinking_and_redacted_thinking_survive_three_durable_tool_rounds() -> Result<()> {
-    run_fixture(Kind::Messages, false).await
-}
-#[tokio::test]
-async fn responses_encrypted_content_survives_three_durable_tool_rounds() -> Result<()> {
-    run_fixture(Kind::Responses, false).await
-}
-#[tokio::test]
-async fn chat_default_replays_reasoning_content_after_three_durable_tool_rounds() -> Result<()> {
-    run_fixture(Kind::Chat, false).await
+async fn opaque_reasoning_survives_three_durable_tool_rounds() -> Result<()> {
+    for (label, kind) in [
+        ("messages thinking and redacted thinking", Kind::Messages),
+        ("responses encrypted content", Kind::Responses),
+        ("chat default replays reasoning content", Kind::Chat),
+    ] {
+        let case = run_fixture(kind, false).await;
+        case.map_err(|error| anyhow::anyhow!("{label}: {error:#}"))?;
+    }
+    Ok(())
 }
 #[tokio::test]
 async fn missing_current_messages_state_fails_locally_before_followup_http() -> Result<()> {

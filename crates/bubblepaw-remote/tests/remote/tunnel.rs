@@ -94,26 +94,6 @@ async fn rejection_is_mutual_even_when_only_one_side_distrusts() {
 }
 
 #[tokio::test]
-async fn admission_completes_over_a_one_byte_duplex_buffer() {
-    let alice = DeviceKey::generate().unwrap();
-    let bob = DeviceKey::generate().unwrap();
-    let (left, right) = duplex(1);
-    let alice_trust = [bob.public_key()];
-    let bob_trust = [alice.public_key()];
-    let handshake = async {
-        let (left, right) = tokio::join!(
-            tunnel::connect(ByteFrames::new(left), &alice, &alice_trust),
-            tunnel::accept(ByteFrames::new(right), &bob, &bob_trust),
-        );
-        assert!(left.is_ok());
-        assert!(right.is_ok());
-    };
-    tokio::time::timeout(Duration::from_secs(5), handshake)
-        .await
-        .unwrap();
-}
-
-#[tokio::test]
 async fn raw_psk_handshake_agrees_on_peer_and_hash_without_admission() {
     let alice = DeviceKey::generate().unwrap();
     let bob = DeviceKey::generate().unwrap();

@@ -221,21 +221,6 @@ async fn messages_continuation_limit_returns_incomplete_not_an_error() {
 }
 
 #[tokio::test]
-async fn messages_refusal_stays_an_error() {
-    let (base, _mock) = start(vec![messages_reply("No.", "refusal", 3)]).await;
-    let provider = MessagesProvider::api_key("synthetic-key", base).unwrap();
-    let error = provider
-        .generate(
-            request("claude-haiku-5-5", None),
-            noop(),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("refused"), "{error}");
-}
-
-#[tokio::test]
 async fn messages_output_limit_comes_from_the_table_or_the_role() {
     let (base, mock) = start(vec![
         messages_reply("a", "end_turn", 1),

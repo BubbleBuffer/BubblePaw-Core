@@ -222,16 +222,24 @@ async fn shapes(kind: Kind) {
     server.abort();
 }
 #[tokio::test]
-async fn chat_image_follows_complete_parallel_tool_group() {
-    shapes(Kind::Chat).await;
-}
-#[tokio::test]
-async fn responses_tool_output_contains_native_image_parts() {
-    shapes(Kind::Responses).await;
-}
-#[tokio::test]
-async fn messages_tool_result_contains_native_image_blocks() {
-    shapes(Kind::Messages).await;
+async fn tool_images_reach_each_adapter_natively() {
+    for (label, kind) in [
+        (
+            "chat_image_follows_complete_parallel_tool_group",
+            Kind::Chat,
+        ),
+        (
+            "responses_tool_output_contains_native_image_parts",
+            Kind::Responses,
+        ),
+        (
+            "messages_tool_result_contains_native_image_blocks",
+            Kind::Messages,
+        ),
+    ] {
+        eprintln!("case: {label}");
+        shapes(kind).await;
+    }
 }
 
 #[test]

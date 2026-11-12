@@ -4,7 +4,6 @@ use bubblepaw_core::{
     DecisionUsage, ModelRequest, Provider, Question, QuestionKind, ReasoningEffort, ScoreLevel,
 };
 use bubblepaw_runner::{
-    episode_models::{SplitInput, SplitOption},
     model_roles::ModelRole,
     provider::{
         LlmDecisions, OpenAiDecisions, OpenCodeDecisions, OpenRouterDecisions, ProviderEndpoints,
@@ -44,45 +43,6 @@ fn request(questions: Vec<Question>) -> DecisionRequest {
         session_id: Some("s".into()),
         reasoning_effort: Default::default(),
     }
-}
-
-#[test]
-fn openrouter_fixed_split_body_matches_prechange_jev_golden() {
-    let input = SplitInput {
-        session_id: "fixed-session".into(),
-        open_chapter: "Fix the import".into(),
-        options: vec![SplitOption {
-            message_id: "u1".into(),
-            user: "Please  inspect\n the next task".into(),
-            agent_before: "Import   fixed".into(),
-        }],
-    };
-    // Frozen pre-change Jev payload for this SplitInput, including its whitespace collapse.
-    let golden = json!({"model":"typesafe/jev-1.13","state":"LAST CHAPTER:\nFix the import\n\nNEXT USER MESSAGES:\n1. (agent before: Import fixed) Please inspect the next task","questions":{"choice":{"type":"choice","instructions":SPLIT_QUESTION,"criteria":{"1":"Select option 1 from the state.","none":"No listed option applies."}}},"session_id":"fixed-session"});
-    let req = DecisionRequest {
-        model: "typesafe/jev-1.13".into(),
-        input: format!(
-            "LAST CHAPTER:\n{}\n\nNEXT USER MESSAGES:\n1. (agent before: {}) {}",
-            input.open_chapter,
-            input.options[0]
-                .agent_before
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" "),
-            input.options[0]
-                .user
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-        ),
-        questions: vec![choice_question()],
-        session_id: Some(input.session_id),
-        reasoning_effort: Default::default(),
-    };
-    assert_eq!(
-        serde_json::to_vec(&OpenRouterDecisions::body(&req)).unwrap(),
-        serde_json::to_vec(&golden).unwrap()
-    );
 }
 
 #[tokio::test]

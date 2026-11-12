@@ -207,37 +207,29 @@ async fn default_process_wait_waits_for_five_second_command_to_exit() {
 }
 
 #[tokio::test]
-async fn explicit_exec_waits_can_exceed_the_configured_sync_timeout() {
-    let fixture = Fixture::new(ExecConfig {
-        sync_timeout_secs: 1,
-        ..ExecConfig::default()
-    });
-    for options in [json!({"timeoutMs":30000}), json!({"yieldMs":30000})] {
-        let mut input = options;
-        input["command"] = json!(DELAYED);
-        let result = call(&fixture.registry, "owner", "exec", input).await;
-        assert_eq!(result["status"], "exited", "{result}");
-        assert_eq!(result["stdout"], "firstlast");
-        assert_eq!(result["exitCode"], 0);
-        assert!(result.get("reason").is_none());
+async fn exec_waits_accept_timeout_and_yield() {
+    // (label, sync timeout default, wait ms, command, stdout, also check exit code and no reason)
+    for (label, sync_timeout_secs, wait_ms, command, stdout, full) in [
+        ("explicit", 1, 30000, DELAYED, "firstlast", true),
+        ("large", 0, 900001, ECHO, "hello", false),
+    ] {
+        let fixture = Fixture::new(ExecConfig {
+            sync_timeout_secs,
+            ..ExecConfig::default()
+        });
+        for options in [json!({"timeoutMs":wait_ms}), json!({"yieldMs":wait_ms})] {
+            let mut input = options.clone();
+            input["command"] = json!(command);
+            let result = call(&fixture.registry, "owner", "exec", input).await;
+            assert_eq!(result["status"], "exited", "{label} {options}: {result}");
+            assert_eq!(result["stdout"], stdout, "{label} {options}");
+            if full {
+                assert_eq!(result["exitCode"], 0, "{label} {options}");
+                assert!(result.get("reason").is_none(), "{label} {options}");
+            }
+        }
+        fixture.processes.shutdown().await;
     }
-    fixture.processes.shutdown().await;
-}
-
-#[tokio::test]
-async fn large_explicit_exec_waits_are_accepted_even_with_a_zero_sync_default() {
-    let fixture = Fixture::new(ExecConfig {
-        sync_timeout_secs: 0,
-        ..ExecConfig::default()
-    });
-    for options in [json!({"timeoutMs":900001}), json!({"yieldMs":900001})] {
-        let mut input = options;
-        input["command"] = json!(ECHO);
-        let result = call(&fixture.registry, "owner", "exec", input).await;
-        assert_eq!(result["status"], "exited", "{result}");
-        assert_eq!(result["stdout"], "hello");
-    }
-    fixture.processes.shutdown().await;
 }
 
 #[tokio::test]
@@ -912,27 +904,6 @@ fn quoted(path: &Path) -> String {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn cd_inside_command_adds_reset_note_to_the_final_result() {
-    let fixture = Fixture::new(ExecConfig::default());
-    let elsewhere = tempfile::tempdir().unwrap();
-    let other = std::fs::canonicalize(elsewhere.path()).unwrap();
-    let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
-    let result = call(
-        &fixture.registry,
-        "owner",
-        "exec",
-        json!({"command": format!("cd {} && pwd", quoted(&other))}),
-    )
-    .await;
-    assert_eq!(result["status"], "exited");
-    assert_eq!(result["exitCode"], 0);
-    assert_eq!(result["stdout"], format!("{}\n", other.display()));
-    assert_eq!(result["note"], cwd_reset_note(&start));
-    fixture.processes.shutdown().await;
-}
-
-#[cfg(unix)]
-#[tokio::test]
 async fn commands_without_a_directory_change_get_no_note() {
     let fixture = Fixture::new(ExecConfig::default());
     let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
@@ -967,6 +938,17 @@ async fn exit_code_and_output_are_unchanged_after_cd_and_nonzero_exit_gets_note(
     let elsewhere = tempfile::tempdir().unwrap();
     let other = std::fs::canonicalize(elsewhere.path()).unwrap();
     let start = std::fs::canonicalize(fixture._workspace.path()).unwrap();
+    let pwd = call(
+        &fixture.registry,
+        "owner",
+        "exec",
+        json!({"command": format!("cd {} && pwd", quoted(&other))}),
+    )
+    .await;
+    assert_eq!(pwd["status"], "exited");
+    assert_eq!(pwd["exitCode"], 0);
+    assert_eq!(pwd["stdout"], format!("{}\n", other.display()));
+    assert_eq!(pwd["note"], cwd_reset_note(&start));
     let moved = call(
         &fixture.registry,
         "owner",

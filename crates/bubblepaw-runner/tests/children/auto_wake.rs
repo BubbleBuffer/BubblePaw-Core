@@ -440,23 +440,35 @@ async fn nested_visible_parent_wakes_through_child_observer_and_remains_continua
     Ok(())
 }
 #[tokio::test]
-async fn failed_and_cancelled_children_deliver_terminal_notices() -> Result<()> {
-    let mut fixture = Fixture::new(true, 20)?;
-    let _registration = fixture.wake.register_harness(fixture.root.clone());
-    let _driver = fixture.wake.start_driver();
-    let failed = fixture.start("fail")?;
-    eventually(|| fixture.notices(&fixture.parent).len() == 1).await;
-    assert!(fixture.notices(&fixture.parent)[0].contains("status failed"));
-    fixture.root.wait_for_idle(&fixture.parent).await?;
-    let cancelled = fixture.start("gate")?;
-    fixture.entered().await;
-    fixture
-        .agents
-        .cancel(&fixture.parent, cancelled["handle"].as_str().unwrap())
-        .await?;
-    eventually(|| fixture.notices(&fixture.parent).len() == 2).await;
-    assert!(fixture.notices(&fixture.parent)[1].contains("status cancelled"));
-    assert_ne!(failed["sessionId"], cancelled["sessionId"]);
+async fn terminal_children_wake_parent_with_status() -> Result<()> {
+    for (label, trigger, debounce, status) in [
+        ("failed_child", "fail", 20, "failed"),
+        ("cancelled_child", "cancel", 20, "cancelled"),
+        ("timed_out_child", "timeout", 10, "timed_out"),
+    ] {
+        let mut fixture = Fixture::new(true, debounce)?;
+        let _registration = fixture.wake.register_harness(fixture.root.clone());
+        let _driver = fixture.wake.start_driver();
+        match trigger {
+            "fail" => _ = fixture.start("fail")?,
+            "cancel" => {
+                let child = fixture.start("gate")?;
+                fixture.entered().await;
+                let handle = child["handle"].as_str().unwrap();
+                fixture.agents.cancel(&fixture.parent, handle).await?;
+            }
+            _ => {
+                let context = fixture.context(&fixture.parent);
+                fixture
+                    .agents
+                    .start(&context, json!({"task":"gate","timeout":20}))?;
+            }
+        }
+        eventually(|| fixture.notices(&fixture.parent).len() == 1).await;
+        let notice = fixture.notices(&fixture.parent)[0].clone();
+        let want = format!("status {status}");
+        assert!(notice.contains(&want), "{label}: {notice}");
+    }
     Ok(())
 }
 #[tokio::test]
@@ -590,19 +602,6 @@ async fn mixed_child_and_exec_completions_batch_into_one_parent_turn() -> Result
     assert!(fixture.agents.take_reminders(&fixture.parent).is_empty());
     assert!(processes.take_reminders(&fixture.parent).is_empty());
     processes.shutdown().await;
-    Ok(())
-}
-#[tokio::test]
-async fn timed_out_child_wakes_parent_with_terminal_timeout_status() -> Result<()> {
-    let fixture = Fixture::new(true, 10)?;
-    let _registration = fixture.wake.register_harness(fixture.root.clone());
-    let _driver = fixture.wake.start_driver();
-    fixture.agents.start(
-        &fixture.context(&fixture.parent),
-        json!({"task":"gate","timeout":20}),
-    )?;
-    eventually(|| fixture.notices(&fixture.parent).len() == 1).await;
-    assert!(fixture.notices(&fixture.parent)[0].contains("status timed_out"));
     Ok(())
 }
 #[tokio::test]

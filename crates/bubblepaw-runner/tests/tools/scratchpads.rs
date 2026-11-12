@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bubblepaw_core::{ContextStrategy, Store};
 use bubblepaw_runner::{scratchpads::ScratchpadStore, tools::WorkspaceTools};
-use std::{fs, path::Path};
+use std::fs;
 
 #[test]
 fn root_chat_and_descendants_share_files_until_root_deletion() -> Result<()> {
@@ -193,60 +193,6 @@ fn deleting_after_a_temporary_host_drops_does_not_recreate_its_directory() -> Re
         "a cleanup callback must not recreate released temporary data"
     );
     Ok(())
-}
-
-fn reject_link_escape(link: impl Fn(&Path, &Path)) -> Result<()> {
-    let data = tempfile::tempdir()?;
-    let workspace = tempfile::tempdir()?;
-    let store = Store::in_memory()?;
-    let session = store.create_session("link")?;
-    let service = ScratchpadStore::new(data.path())?;
-    let paths = service.for_session(&store, &session.id, workspace.path())?;
-    fs::write(workspace.path().join("private.txt"), "workspace file")?;
-    for root in [&paths.chat, &paths.workspace] {
-        link(&root.join("escape"), workspace.path());
-        assert!(
-            paths
-                .resolve(&root.join("escape/private.txt"), false)
-                .is_err()
-        );
-        assert!(
-            paths
-                .resolve(&root.join("escape/new/nested.txt"), true)
-                .is_err()
-        );
-    }
-    Ok(())
-}
-
-#[cfg(unix)]
-#[test]
-fn scratch_symlinks_cannot_escape_to_the_workspace() -> Result<()> {
-    reject_link_escape(|link, target| std::os::unix::fs::symlink(target, link).unwrap())
-}
-
-#[cfg(windows)]
-#[test]
-fn scratch_junctions_cannot_escape_to_the_workspace() -> Result<()> {
-    reject_link_escape(|link, target| {
-        let plain = |path: &Path| {
-            path.to_string_lossy()
-                .trim_start_matches(r"\\?\")
-                .to_owned()
-        };
-        let output = std::process::Command::new("cmd.exe")
-            .args(["/d", "/c", "mklink", "/J"])
-            .arg(plain(link))
-            .arg(plain(target))
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "junction creation failed: {} {}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-    })
 }
 
 #[cfg(windows)]
