@@ -553,7 +553,7 @@ cannot start, the client points at a closed port. `EgressError` and
 providers with an `https://` base URL on port 443; decision providers and other
 kinds reject it at validation. The provider-setup editor does not edit `via`; saving a provider there keeps the `via` its file already holds. `providers.<name>.via` is live (read at the next
 registration). No Desktop UI exists for it yet. Tests
-(`crates/bubblepaw-runner/tests/remote_egress.rs`) use a fake HTTPS provider on
+(`crates/bubblepaw-runner/tests/remote/remote_egress.rs`) use a fake HTTPS provider on
 loopback, an in-process relay and a forwarding host with a test dial; no network.
 Live model acceptance has not run for this change.
 
@@ -644,11 +644,11 @@ the host-API parity test's remote phase, compared with stdio.
 Direct and Cloudflare reach (2026-11-02), local transport with fakes only (no
 Cloudflare account, network service or live model): `bubblepaw-sdk`
 `tests/remote.rs` pairs and runs a demo turn over `ws://127.0.0.1`;
-`bubblepaw-runner` `tests/remote_tunnel.rs` runs a fake `cloudflared`
+`bubblepaw-runner` `tests/remote/remote_tunnel.rs` runs a fake `cloudflared`
 (`bubblepaw-fake-cloudflared`) for quick-tunnel address parsing and restart, and
 a local fake Cloudflare API for domain setup (created once, reused, foreign DNS
-records left alone, the `cloudflared` login path); `tests/remote_install.rs`
-installs from a fake release and refuses a bad checksum; `tests/remote_cli.rs`
+records left alone, the `cloudflared` login path); `tests/remote/remote_install.rs`
+installs from a fake release and refuses a bad checksum; `tests/remote/remote_cli.rs`
 pairs from a second `bubblepaw remote pair --json` process while `bubblepaw
 remote serve` runs, connects and runs a turn without a restart, and revokes from
 a third process.

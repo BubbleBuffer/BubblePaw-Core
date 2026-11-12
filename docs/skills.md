@@ -96,7 +96,7 @@ workspace boundary; skills add only ordinary `read` access.
 Even initial absence or disabled skills produce an empty frozen attachment, so
 enabling skills after a host restart cannot rewrite an existing session's system
 prefix before compaction. Unchanged turns add no skill messages, attachments or application write
-transactions. No schema is added. `tests/skills.rs` covers discovery precedence,
+transactions. No schema is added. `tests/tools/skills.rs` covers discovery precedence,
 duplicates, YAML errors, the byte cap, body edits, exact-once durable notices,
 reopen behavior and read boundaries. `tests/live_config.rs` covers the configured
 host, CodeMode reads of external skill bodies and helpers, live additions and

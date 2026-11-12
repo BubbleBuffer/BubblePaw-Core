@@ -121,7 +121,7 @@ login another process already rotated is adopted. A refresh answered with
 the host prints once (stderr and a tracing warning) that the user should run
 `bubblepaw login opencode --account <account>`. A refreshed token that is still
 refused pauses the same way. Fake-server tests in
-`crates/bubblepaw-runner/tests/opencode_console.rs` cover parsing, rotation
+`crates/bubblepaw-runner/tests/providers_host/opencode_console.rs` cover parsing, rotation
 written back, the `invalid_grant` pause, the 60-second floor, change-only
 history and a 429 parking until the `five_hour` reset.
 

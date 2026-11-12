@@ -1,6 +1,6 @@
 #![cfg(feature = "web")]
 //! The HTTP routes use the same context reads as stdio and SDK callers.
-#[path = "context_stdio/fixture.rs"]
+#[path = "context/context_stdio/fixture.rs"]
 mod fixture;
 
 use anyhow::Result;

@@ -88,7 +88,7 @@ for replay and retention.
 
 **No usable provider (2026-10-30).** A missing key variable, an unreadable Codex auth file or an empty `base_url` on the selected main route no longer stops a host from starting: that route's registry slot refuses model calls with the typed `NoProviderConfigured` error (host-API code `-32004`) until a configuration that resolves is applied through `providers.*` / `roles.set_main`. A `model.provider` that names a route absent from `providers` is still a configuration error. See [host API](host-api.md).
 
-Every built provider kind meets the 12-item bar in [provider-qualification](provider-qualification.md) at the scripted and local-transport levels: `codex` and `responses` (Responses), `anthropic-messages`, `chat-completions` (now tool-capable), and the Claude Code extension. Live acceptance is a separate, ignored suite (`tests/provider_live.rs`) that skips without credentials. Its OpenCode Go kinds have been run live: chat completions and Messages pass, with a flaky chat schema test; Responses against Go is in the same results, see [provider-qualification](provider-qualification.md).
+Every built provider kind meets the 12-item bar in [provider-qualification](provider-qualification.md) at the scripted and local-transport levels: `codex` and `responses` (Responses), `anthropic-messages`, `chat-completions` (now tool-capable), and the Claude Code extension. Live acceptance is a separate, ignored suite (`tests/providers_host/provider_live.rs`) that skips without credentials. Its OpenCode Go kinds have been run live: chat completions and Messages pass, with a flaky chat schema test; Responses against Go is in the same results, see [provider-qualification](provider-qualification.md).
 
 - **Codex OAuth.** BubblePaw never refreshes or writes `~/.codex/auth.json`; the Codex CLI owns refresh. The file is re-read on every attempt and again after a 401: a changed token gets one retry, an unchanged one an Auth error telling the user to refresh with `codex`. Missing or malformed files give Auth errors that name the path and never the token.
 - **Codex prompt cache (2026-11-10).** The ChatGPT-Codex backend reported 0 cached tokens until requests carried a session identity. Codex-route requests now send `prompt_cache_key` in the body and `session-id` and `thread-id` headers, all equal to the session id (the request's, else its first message's, so a summary fork that clears `session_id` still matches its main loop; `provider/opencode_session.rs::session_key`), as the Codex CLI does (`codex-rs/core/src/client.rs`, `codex-rs/codex-api/src/requests/headers.rs`). The API-key Responses route is unchanged. Reads are best effort: live runs showed 3712 of 3859 cached tokens on most calls but occasional zero reads right after a write.
@@ -335,9 +335,9 @@ usage and stop errors. Follow-up live acceptance is unverified. From this worktr
 
 ```powershell
 # One short summary request, no tools (one model call).
-cargo test -p bubblepaw-runner --test provider_messages live_summary_smoke -- --ignored --nocapture
+cargo test -p bubblepaw-runner --test providers_wire provider_messages::live_summary_smoke -- --ignored --nocapture
 # One echo-tool round trip (two model calls).
-cargo test -p bubblepaw-runner --test provider_messages live_tool_smoke -- --ignored --nocapture
+cargo test -p bubblepaw-runner --test providers_wire provider_messages::live_tool_smoke -- --ignored --nocapture
 ```
 
 These tests are ignored by normal workspace tests. They make real model calls
@@ -365,7 +365,7 @@ This follow-up does not claim live Haiku replay acceptance.
 
 ## Streaming (2026-10-10)
 
-**Status:** Built with mock SSE tests (`tests/provider_stream.rs`, `tests/provider_responses.rs`).
+**Status:** Built with mock SSE tests (`tests/providers_wire/provider_stream.rs`, `tests/providers_wire/provider_responses.rs`).
 No live call has been made for streaming; the smoke command is run only after approval.
 
 All three HTTP kinds (Responses, chat completions, Anthropic Messages) send
@@ -399,11 +399,11 @@ usage including cache reads and writes, and the stop reason. Chat requests
 
 Live smoke, to run only after approval (one short streamed Haiku call,
 `opencode-messages/claude-haiku-5-5`, needs `OPENCODE_API_KEY`):
-`cargo test -p bubblepaw-runner --test provider_messages live_summary_smoke -- --ignored --nocapture`
+`cargo test -p bubblepaw-runner --test providers_wire provider_messages::live_summary_smoke -- --ignored --nocapture`
 
 ## Output length (2026-10-10)
 
-**Status:** Built with mock tests (`tests/provider_continuation.rs`). No live call was made.
+**Status:** Built with mock tests (`tests/providers_wire/provider_continuation.rs`). No live call was made.
 
 Output length never fails a model call. The defaults send no output limit where the API allows one:
 
@@ -443,7 +443,7 @@ request by the adapter, in `bubblepaw_core::provider_state_replay_compatible`:
   Messages rejects missing/incompatible state on current-loop assistant tool
   turns because reconstructing those turns can lose required signed blocks.
   When the session returns to the origin provider and model, the
-  artifacts are sent again unchanged (`tests/reasoning_replay.rs`).
+  artifacts are sent again unchanged (`tests/providers_wire/reasoning_replay.rs`).
 - States without `_bubblepaw_route_origin` inherit the current route, provided
   their adapter/model are compatible, so plain upgrades preserve unfinished signed
   Messages tool loops. Only a recorded route/endpoint mismatch is incompatible;
@@ -546,7 +546,7 @@ live; the separate one-call smoke below remains unrun.
 Explicit opt-in acceptance (one paid model call, not run during offline gates):
 
 ```powershell
-cargo test -p bubblepaw-runner --test provider_messages live_schema_smoke -- --ignored --nocapture
+cargo test -p bubblepaw-runner --test providers_wire provider_messages::live_schema_smoke -- --ignored --nocapture
 ```
 
 `provider::parse_retry_after` accepts delta-seconds and HTTP dates; it is the

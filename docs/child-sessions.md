@@ -332,13 +332,13 @@ the same binding, and the parent answers with `agent_send`; the worker stays
 silent toward its visible caller. The earlier control-only qualification's
 hidden-parent limitation no longer applies to this merged lifecycle.
 
-Scripted acceptance is in `tests/questions.rs` and `question::tests`: actual
+Scripted acceptance is in `tests/children/questions.rs` and `question::tests`: actual
 CodeMode child questions wake idle parents with optional wakes enabled and
 disabled, `agent_send` resumes the original turn, root/client and direct-parent
 answers work, cancellation releases waits, and a frozen restart fixture preserves
 an unknown effect while accepting a durable answer once. No live-model acceptance
 or real process-crash proof is claimed.
-`tests/question_routing.rs` additionally qualifies grandchild questions and
+`tests/children/question_routing.rs` additionally qualifies grandchild questions and
 ordinary children of hidden workers through actual CodeMode calls. Each fixture
 first leaves the direct parent idle, then releases its child's question, verifies
 that only the immediate parent wakes, rejects an ancestor's attempted answer,
@@ -481,14 +481,14 @@ all leave no unknown effect. Core's existing dispatch call wrapper already
 converts tool errors to ordinary results. Regression tests preserve that behavior
 for spawn and send; runner admission errors are explicit ordinary results.
 
-Completion regressions use `bubblepaw-runner/tests/auto_wake.rs`, `runner.rs`
+Completion regressions use `bubblepaw-runner/tests/children/auto_wake.rs`, `runner.rs`
 (real stdio subprocess with an offline provider), `web_wake.rs` (local HTTP/SSE)
 and `wake_storage.rs`. Generic archive-safe admission and bounded metadata paging
 use `bubblepaw-core/tests/active_admission.rs`. Restart fixtures replace host
 services over the same canonical store; they do not kill a live model process.
 
 Control regressions use `bubblepaw-core/tests/run_controls.rs`,
-`bubblepaw-runner/tests/child_controls.rs`, `child_controls_js.rs` and the runner's
+`bubblepaw-runner/tests/children/child_controls.rs`, `child_controls_js.rs` and the runner's
 `agents::control_notice_tests`. They cover valid JSON, one correction, repeated
 validation failure, schema replacement and clearing, visible task/countdown
 budgets, excess parallel calls, and tools-disabled final answers. Timeout fixtures

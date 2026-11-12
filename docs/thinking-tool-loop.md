@@ -87,7 +87,7 @@ A `thinking` block cut by `max_tokens` before its signature arrives is kept.
 Messages request builder leaves marked blocks out, so no continuation, tool
 round or later turn sends them. An assistant turn that holds only such blocks
 is skipped. The rule for interrupted or cancelled streams is unchanged.
-Regression tests: `tests/provider_continuation.rs`
+Regression tests: `tests/providers_wire/provider_continuation.rs`
 (`messages_continuation_omits_a_thinking_block_cut_before_its_signature`,
 `messages_withheld_thinking_stays_out_of_tool_rounds_and_next_turns`).
 Chat `reasoning_replay` does not apply to Messages.
@@ -130,7 +130,7 @@ is covered in the paragraph above.
 
 ## Acceptance (2026-10-14)
 
-The dedicated `tests/research_live400.rs` uses an ordinary research child,
+The dedicated `tests/children/research_live400.rs` uses an ordinary research child,
 OpenCode Messages/Haiku 5.5, low effort, the consumer-shaped schema and output
 ceiling, and `max_tool_calls: 6`. A loopback search/fetch fixture makes one actual
 search and fetch; repeated cached host calls exercise the six-call boundary.
@@ -222,7 +222,7 @@ The required Linux gates run with Rust 1.97.1:
   byte-exactly. All three tests in that target pass on the focused rerun.
 - The other full-run failure is
   `native_effects::pending_completed_run_recovers_unknown_without_replaying_process`
-  at `crates/bubblepaw-runner/tests/native_effects.rs:179`: immediate store
+  at `crates/bubblepaw-runner/tests/tools/native_effects.rs:179`: immediate store
   reopen fails with an ownership lock error. All three tests in that target
   pass on the focused rerun without changes to that test or its production
   code. Source inspection suggests a pre-existing teardown race: `CodeMode`

@@ -78,7 +78,7 @@ instructions; they do not change [approval policy](approvals.md).
 
 ## Verification
 
-`tests/memory_files.rs` covers user/repository order, both names, identical-content
+`tests/host/memory_files.rs` covers user/repository order, both names, identical-content
 deduplication, `.git` files, no-Git discovery, literal imports, UTF-8 truncation,
 changes beyond the initial cap, add/remove, exact-once durable delivery across
 store reopen, the disabled switch, separate child workspace snapshots and a
@@ -87,7 +87,7 @@ and real host wiring to check a stable root system prompt, durable change notice
 and a new child's independent snapshot.
 
 Linux focused acceptance passed on 2026-10-15 with Rust 1.97.1:
-`--test memory_files` passed all nine discovery/cap/reopen/switch/storage checks;
+`--test host memory_files::` passed all nine discovery/cap/reopen/switch/storage checks;
 `--test live_config` passed all eight host checks, including root/child freezing,
 one-time change delivery and the two-turn measurement. Formatting, strict Clippy
 and the full workspace suite are separate final integration gates.
@@ -116,5 +116,5 @@ These are local scripted storage results, with no live-model or cache-hit claim.
 Reproduce the host measurement with `cargo +1.97.1 test -p bubblepaw-runner --test
 live_config memory_files_ten_kib_scripted_session_storage_measurement -- --nocapture`.
 The isolated snapshot-overhead measurement is `cargo +1.97.1 test -p
-bubblepaw-runner --test memory_files ten_kib_snapshot_storage_measurement --
+bubblepaw-runner --test host memory_files::ten_kib_snapshot_storage_measurement --
 --nocapture`.

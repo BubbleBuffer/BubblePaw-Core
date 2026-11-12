@@ -47,7 +47,7 @@ Counts and latest-message/run metadata remain accurate for roots and children
 without restoring their chat files. The web sidebar checks pending questions
 only in active sessions, so merely listing chats preserves their archive age.
 
-`tests/session_lifecycle.rs` covers the real CLI, stdio and local HTTP naming
+`tests/web/session_lifecycle.rs` covers the real CLI, stdio and local HTTP naming
 paths, byte-for-byte isolation of the real store, temporary spill cleanup,
 default retention, eligibility boundaries, rebuild and re-archive, and complete
 expired-chat resource deletion. It also reports archive bytes, WAL and
@@ -149,7 +149,7 @@ Large exec output is preserved from the complete bounded job spool before it is
 reaped. Preview gaps are separate from spool loss. Capture beyond the configured
 job spool cap cannot be reconstructed and produces `fullOutputError` rather than
 a false complete-output reference. See [exec](exec.md) and [CodeMode](codemode.md).
-The scripted `tests/spill.rs` fixture measures retained text bytes, database/WAL
+The scripted `tests/context/spill.rs` fixture measures retained text bytes, database/WAL
 bytes and application transaction counts; dated results belong in verification.
 
 ## File checkpoints (2026-10-15)
@@ -200,11 +200,11 @@ preserving images after their originating session is deleted is outside this
 change. A missing attachment in a retained origin produces an explicit note.
 Store retention semantics remain unchanged.
 
-`tests/images.rs` measures original bytes, compressed blob bytes, database/WAL
+`tests/tools/images.rs` measures original bytes, compressed blob bytes, database/WAL
 bytes and transaction count for repeated reads. It checks one original blob,
 zero attachment transactions on repeat storage, reference-only messages, actual
 close/reopen replay and fork provenance. Provider-specific wire shapes and
-explicitly gated live acceptance are in `tests/provider_images.rs`; see
+explicitly gated live acceptance are in `tests/providers_wire/provider_images.rs`; see
 [image input](providers.md#image-input-2026-10-15) for the limits and capability
 override. Reported verification results belong in the dated verification page.
 
@@ -441,7 +441,7 @@ assistant message, so its reasoning is not kept: stream fragments are transient
   reopen, export and canonical re-import all return
   identical signature and ciphertext bytes, and the next Responses or Messages
   request body equals the one built before storage
-  (`crates/bubblepaw-runner/tests/reasoning_storage.rs`).
+  (`crates/bubblepaw-runner/tests/providers_wire/reasoning_storage.rs`).
 - **Replay is not storage.** Adapters send an artifact only to a compatible
   provider and model ([providers](providers.md#reasoning-artifacts-2026-10-13));
   the store keeps everything regardless. Current Messages tool-loop turns need

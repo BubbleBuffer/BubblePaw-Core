@@ -623,7 +623,7 @@ calls in order; a thrown JS error aborts that cell.
 
 Start parallel command work with two `exec({background:true,...})` calls. Once
 their handles are returned, call `wait` once per handle in the same next batch.
-`wait` accepts one handle and is unchanged. See `tests/native_batch_exec.rs` for
+`wait` accepts one handle and is unchanged. See `tests/tools/native_batch_exec.rs` for
 scripted batch-ordering and error-continuation checks.
 
 JS-mode instructions apply only to the opt-in wrapper. They ask for independent
