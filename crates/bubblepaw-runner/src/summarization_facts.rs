@@ -153,6 +153,7 @@ impl SummarizingContext {
             &episodes,
             &chapters,
             cutoff,
+            view.threshold,
         )?;
         ensure!(
             prefix.len() == view.prefix.len()

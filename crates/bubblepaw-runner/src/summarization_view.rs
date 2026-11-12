@@ -33,6 +33,7 @@ impl SummarizingContext {
                     chapters,
                     checkpoint: None,
                     cutoff,
+                    threshold,
                 },
             )?,
             masked_tool_output_ids: Vec::new(),
@@ -270,8 +271,9 @@ impl SummarizingContext {
     ) -> Result<ContextView> {
         let raw_start = cutoff.map_or(0, |index| index + 1);
         let history = snapshot.anchor_history(raw_start)?;
-        let (prefix, mut blocks) =
-            self.episode_prefix_with_blocks(session, &history, legacy, episodes, chapters, cutoff)?;
+        let (prefix, mut blocks) = self.episode_prefix_with_blocks(
+            session, &history, legacy, episodes, chapters, cutoff, threshold,
+        )?;
         // Legacy groups keep their actual provenance when it is available.
         // Imported synthetic text has no trustworthy individual summary ID or
         // source range; leave those optional fields empty rather than inventing
@@ -409,6 +411,7 @@ mod block_tests {
             &episodes,
             &chapters,
             Some(3),
+            100_000,
         )?;
         assert_eq!(
             blocks.iter().map(|block| block.kind).collect::<Vec<_>>(),

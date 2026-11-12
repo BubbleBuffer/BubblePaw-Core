@@ -71,6 +71,7 @@ retry_base_ms = 500
 summary_input = "auto" # auto | fork | episode: auto forks the main prefix where the provider supports it, else uses episode input.
 decider_enabled = true # false skips semantic decisions; summary gathering still runs.
 chapter_rollover_tokens = 0 # Positive values close chapters at this summary-token size.
+chapter_budget_percent = 10 # Share of the context threshold for closed-chapter summaries; 0 removes the cap.
 
 [context.classical]
 verbatim_user_tokens = 20000

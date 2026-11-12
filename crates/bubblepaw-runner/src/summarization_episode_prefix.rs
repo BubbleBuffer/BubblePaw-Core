@@ -11,9 +11,12 @@ impl SummarizingContext {
         episodes: &[ContextEpisode],
         chapters: &[ContextSubjectChapter],
         cutoff: Option<usize>,
+        threshold: usize,
     ) -> Result<Vec<Message>> {
         Ok(self
-            .episode_prefix_with_blocks(session, history, legacy, episodes, chapters, cutoff)?
+            .episode_prefix_with_blocks(
+                session, history, legacy, episodes, chapters, cutoff, threshold,
+            )?
             .0)
     }
 
@@ -26,6 +29,7 @@ impl SummarizingContext {
         episodes: &[ContextEpisode],
         chapters: &[ContextSubjectChapter],
         cutoff: Option<usize>,
+        threshold: usize,
     ) -> Result<(Vec<Message>, Vec<ContextBlock>)> {
         let covered = episodes
             .iter()
@@ -85,6 +89,8 @@ impl SummarizingContext {
             created_at: created_at.into(),
             ..Self::synthetic(session, Role::System, content)
         };
+        let (mut closed_texts, left_out) =
+            self.closed_chapter_texts(&covered, chapters, threshold)?;
         let mut index_rows = Vec::new();
         let mut index_used = self.tokens("Subject chapter index (historical navigation):\n");
         let mut omitted = 0;
@@ -102,7 +108,7 @@ impl SummarizingContext {
                 "Partial coverage; retrieve original episodes"
             };
             let row = format!(
-                "[{}] Chapter {} ({}) | {} | episodes {}-{} | related: {}\n",
+                "[{}] Chapter {} ({}) | {} | episodes {}-{} | related: {}{}\n",
                 chapter.short_id(),
                 chapter.ordinal,
                 chapter.id,
@@ -112,7 +118,12 @@ impl SummarizingContext {
                 ),
                 chapter.first_episode_ordinal,
                 last.ordinal,
-                chapter.related_ids.join(", ")
+                chapter.related_ids.join(", "),
+                if left_out.contains(chapter.id.as_str()) {
+                    " | summary left out of this view; use history_read"
+                } else {
+                    ""
+                }
             );
             let cost = self.tokens(&row);
             if index_used + cost <= self.config.lcm.index_tokens {
@@ -130,7 +141,12 @@ impl SummarizingContext {
             );
             if omitted > 0 {
                 index.push_str(&format!(
-                    "{omitted} navigation rows omitted; complete chapter memory follows.\n"
+                    "{omitted} navigation rows omitted; {} memory follows.\n",
+                    if left_out.is_empty() {
+                        "complete chapter"
+                    } else {
+                        "newer chapter"
+                    }
                 ));
             }
             let message = summary_block(index);
@@ -167,29 +183,10 @@ impl SummarizingContext {
                 .last()
                 .is_some_and(|e| e.ordinal == chapter.last_episode_ordinal);
             if is_closed && whole_chapter {
-                let summary = chapter.summary.as_deref().unwrap_or("");
-                if let Some(reason) =
-                    crate::episode_models::summary_output_reason("chapter", summary)
-                {
-                    anyhow::bail!(
-                        "Context summarization failed: stored chapter {} requires repair ({reason}); view was not changed",
-                        chapter.id
-                    );
-                }
-                // Older records acquire their immutable ordinal label only when
-                // a new serving view is applied; existing frozen views stay intact.
-                let label = format!("[{}]\n", chapter.short_id());
-                let label = if summary.starts_with(&label) {
-                    ""
-                } else {
-                    &label
+                // A chapter left out by the budget keeps only its index row.
+                let Some(text) = closed_texts.remove(chapter.id.as_str()) else {
+                    continue;
                 };
-                let text = format!(
-                    "\n## Chapter {} ({})\n{}\n",
-                    chapter.ordinal,
-                    chapter.id,
-                    format_args!("{label}{summary}")
-                );
                 block.push_str(&text);
                 spans.push((
                     block.len(),
@@ -260,5 +257,71 @@ impl SummarizingContext {
             prefix.push(message);
         }
         Ok((prefix, blocks))
+    }
+
+    /// Rendered text of every whole closed chapter, plus the ids the chapter budget
+    /// leaves out. The budget is `chapter_budget_percent` of the view threshold; the
+    /// oldest chapters go first and the newest always stays. A pure function of the
+    /// stored chapters, config and threshold, so a view is rebuilt identically.
+    fn closed_chapter_texts<'a>(
+        &self,
+        covered: &[&ContextEpisode],
+        chapters: &'a [ContextSubjectChapter],
+        threshold: usize,
+    ) -> Result<(HashMap<&'a str, String>, HashSet<&'a str>)> {
+        let mut texts = HashMap::new();
+        let mut order = Vec::new();
+        for chapter in chapters
+            .iter()
+            .filter(|c| c.status == SubjectChapterStatus::Closed)
+        {
+            let whole = covered
+                .iter()
+                .rev()
+                .find(|e| e.chapter_id == chapter.id)
+                .is_some_and(|e| e.ordinal == chapter.last_episode_ordinal);
+            if !whole {
+                continue;
+            }
+            let summary = chapter.summary.as_deref().unwrap_or("");
+            if let Some(reason) = crate::episode_models::summary_output_reason("chapter", summary) {
+                anyhow::bail!(
+                    "Context summarization failed: stored chapter {} requires repair ({reason}); view was not changed",
+                    chapter.id
+                );
+            }
+            // Older records acquire their immutable ordinal label only when
+            // a new serving view is applied; existing frozen views stay intact.
+            let label = format!("[{}]\n", chapter.short_id());
+            let label = if summary.starts_with(&label) {
+                ""
+            } else {
+                &label
+            };
+            let text = format!(
+                "\n## Chapter {} ({})\n{}\n",
+                chapter.ordinal,
+                chapter.id,
+                format_args!("{label}{summary}")
+            );
+            order.push((chapter.id.as_str(), self.tokens(&text)));
+            texts.insert(chapter.id.as_str(), text);
+        }
+        let percent = self.config.lcm.episodes.chapter_budget_percent;
+        let mut left_out = HashSet::new();
+        if percent > 0 {
+            let budget = threshold.saturating_mul(percent) / 100;
+            let mut total: usize = order.iter().map(|(_, tokens)| tokens).sum();
+            // `order` is oldest first; the last entry is never cut.
+            for (id, tokens) in order.iter().take(order.len().saturating_sub(1)) {
+                if total <= budget {
+                    break;
+                }
+                total -= tokens;
+                left_out.insert(*id);
+                texts.remove(id);
+            }
+        }
+        Ok((texts, left_out))
     }
 }

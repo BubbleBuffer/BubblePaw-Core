@@ -1,6 +1,6 @@
 # V0 decisions
 
-Status: decision log, dated; current through 2026-11-10.
+Status: decision log, dated; current through 2026-11-12.
 
 ## Native by default; JavaScript wraps native calls (2026-10-22)
 
@@ -802,3 +802,7 @@ headless until that follow-up.
 The owner decided that data written by older versions may be forgotten. Code whose only purpose was to tolerate old stored shapes is removed as it is found: the bare-string form of `RelatedEvidence` in stored chapters, the compact-envelope fallback when parsing stored attachment messages, and the read path for catalogs whose `quota_history` lacks `balance`. Store files and rows from older versions are not migrated; a store at another schema version fails with `StoreSchemaError` (see "One schema per store"). Wire compatibility with current clients is separate and unchanged.
 
 Release note: **stores and configs written by older versions are no longer read.** Start a new data directory if a store fails to open with a schema-version error.
+
+## Closed-chapter summaries are capped in the served view (2026-11-12)
+
+Closed chapters had no bound on count or total size, so a long session's served view grew by a whole summary per chapter. `context.lcm.chapter_budget_percent` (default 10, `0` = off) now limits the closed-chapter summaries to that percent of the view threshold. When over, the oldest chapters' summaries are left out of the view, oldest first; the newest closed chapter always stays. Only whole closed-chapter summaries are cut. A left-out chapter keeps its index row, marked as left out, and its originals stay reachable through the history tools. The cut is computed when a view is built at apply and is not stored, so it adds no prompt-cache change beyond what apply already causes. Current: [LCM contract](lcm-contract.md), [config](config.md).

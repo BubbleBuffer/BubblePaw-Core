@@ -584,6 +584,7 @@ source_max_tokens = 32000
 summary_target_tokens = 2000
 chapter_summary_max_tokens = 8000
 chapter_description_tokens = 300
+chapter_budget_percent = 10          # closed-chapter summaries may take this percent of the view threshold; oldest are left out, newest stays; 0 = no cap
 chapter_rollover_tokens = 0          # disabled; positive values explicitly opt into volume rollover
 decision_context_tokens = 4000  # accumulated open-chapter decision input
 tool_evidence_tokens = 0             # full episode tool evidence; positive values opt into clipping (fork unchanged)
@@ -720,6 +721,13 @@ the switch takes effect when the host starts. Examples:
 `BUBBLEPAW_CONTEXT__LCM__DECIDER_ENABLED=false`.
 Metered replay also skips decider price and credential preflight while disabled;
 its summary and chapter routes still require their normal credentials.
+
+`context.lcm.chapter_budget_percent` (default `10`, range 0-100) caps the closed-chapter
+summaries in a served view at that percent of the view threshold (the context window
+less the output reserve; a child session uses its own window). Over it, the oldest
+chapters' summaries are left out at apply, oldest first; the newest closed chapter always
+stays. Left-out chapters keep an index row marked as such and remain readable through
+the history tools. `0` turns the cap off. See the [LCM contract](lcm-contract.md).
 
 `context.lcm.episode_prompt` selects the episode summary prompt: `v2` (default)
 or `v3`. Both use the same length target and limit. `v3` adds a one-sentence
