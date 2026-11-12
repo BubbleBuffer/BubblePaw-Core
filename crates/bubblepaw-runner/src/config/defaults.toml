@@ -73,6 +73,7 @@ source_max_tokens = 32000
 summary_target_tokens = 2000
 chapter_summary_max_tokens = 8000
 chapter_description_tokens = 300
+chapter_budget_percent = 10
 chapter_rollover_tokens = 0
 decision_context_tokens = 4000
 tool_evidence_tokens = 0

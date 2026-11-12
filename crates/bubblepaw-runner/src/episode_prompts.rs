@@ -40,3 +40,17 @@ impl ChapterPrompt {
         }
     }
 }
+
+/// Input for the episode summary call.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EpisodeSummaryInput {
+    /// Fork the main request's prefix when the captured route's provider supports
+    /// summary forks, otherwise summarize from episode input. Resolved per gather.
+    #[default]
+    Auto,
+    /// Always fork the main prefix; an unsupported provider is an error.
+    Fork,
+    /// Always summarize from the previous summary and the rendered episode.
+    Episode,
+}

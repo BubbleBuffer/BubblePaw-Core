@@ -184,7 +184,18 @@ Under pressure, wait for needed gathering and publish an admissible view with:
    (default 2000). It lists closed chapters with covered episodes, newest first.
    Open chapters are never listed. Each description is excerpted to
    `chapter_description_tokens` (default 300). An omitted-row count follows when rows do not fit.
-4. Complete closed-chapter summaries, without duplicated member episodes.
+   A row whose chapter summary the budget below left out says so and points to `history_read`.
+4. Complete closed-chapter summaries, without duplicated member episodes. Together they
+   may take at most `chapter_budget_percent` (default 10) of the view threshold (the
+   context window less the output reserve; a child session uses its own smaller one). When
+   they are over, the oldest chapters' summaries are left out of the view, oldest first;
+   the newest closed chapter always stays, even alone over the budget. `0` removes the cap.
+   Only whole closed-chapter summaries count: partial closed chapters, open-chapter
+   episodes, the index, anchors and the raw suffix are never cut. Left-out chapters keep
+   their index row and stay readable through `history_chapters`, `history_search` and
+   `history_read`. This is evaluated only when a view is built at apply, as a pure function
+   of the stored chapters, config and threshold; nothing is stored, and the frozen view
+   changes only at the next apply.
 5. Partial closed-chapter episodes: when apply covers only some episodes of a closed
    chapter, those covered episodes are served in place of its summary. They appear whole,
    with no separate budget. Items 4 and 5 share one closed-chapter block, in chapter order.

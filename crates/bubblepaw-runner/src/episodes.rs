@@ -13,23 +13,9 @@ use crate::summarization::SummarizingContext;
 pub const EPISODE_TARGET_TOKENS: usize = 24_000;
 pub const EPISODE_MAX_TOKENS: usize = 32_000;
 
-/// Input for the episode summary call.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum EpisodeSummaryInput {
-    /// Fork the main request's prefix when the captured route's provider supports
-    /// summary forks, otherwise summarize from episode input. Resolved per gather.
-    #[default]
-    Auto,
-    /// Always fork the main prefix; an unsupported provider is an error.
-    Fork,
-    /// Always summarize from the previous summary and the rendered episode.
-    Episode,
-}
-
 #[path = "episode_prompts.rs"]
 mod prompts;
-pub use prompts::{ChapterPrompt, EpisodePrompt};
+pub use prompts::{ChapterPrompt, EpisodePrompt, EpisodeSummaryInput};
 
 config_section! {
     /// Gathering policy, independent of the serving context pressure threshold.
@@ -51,6 +37,9 @@ config_section! {
         pub decision_context_tokens: usize => RESTART,
         pub chapter_summary_max_tokens: usize => RESTART,
         pub chapter_description_tokens: usize => RESTART,
+        /// Closed-chapter summaries in a served view may take this percent of the view threshold;
+        /// older ones are left out (the newest always stays). 0 disables the cap.
+        pub chapter_budget_percent: usize => RESTART,
         /// Optional volume rollover; zero keeps a chapter open until a semantic boundary.
         pub chapter_rollover_tokens: usize => RESTART,
         /// Episode-only input: 0 retains complete tool results/arguments; positive values
@@ -71,6 +60,7 @@ impl Default for EpisodeConfig {
             decision_context_tokens: 4_000,
             chapter_summary_max_tokens: 8_000,
             chapter_description_tokens: 300,
+            chapter_budget_percent: 10,
             chapter_rollover_tokens: 0,
             tool_evidence_tokens: 0,
         }
@@ -123,6 +113,10 @@ impl EpisodeConfig {
         ] {
             ensure!(value > 0, "{name} must be positive");
         }
+        ensure!(
+            self.chapter_budget_percent <= 100,
+            "chapter_budget_percent must be at most 100"
+        );
         ensure!(
             self.source_max_tokens >= self.source_target_tokens,
             "source_max_tokens must be at least source_target_tokens"

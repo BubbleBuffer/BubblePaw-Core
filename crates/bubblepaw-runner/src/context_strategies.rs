@@ -28,6 +28,8 @@ pub struct SummaryPrefixInput<'a> {
     pub chapters: &'a [ContextSubjectChapter],
     pub checkpoint: Option<&'a ContextCheckpoint>,
     pub cutoff: Option<usize>,
+    /// The view threshold, the basis of the closed-chapter budget.
+    pub threshold: usize,
 }
 pub struct LcmStrategy;
 pub struct ClassicalStrategy;
@@ -44,6 +46,7 @@ impl ContextSummaryStrategy for LcmStrategy {
             input.episodes,
             input.chapters,
             input.cutoff,
+            input.threshold,
         )
     }
 }
