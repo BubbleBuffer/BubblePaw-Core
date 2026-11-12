@@ -806,3 +806,7 @@ Release note: **stores and configs written by older versions are no longer read.
 ## Closed-chapter summaries are capped in the served view (2026-11-12)
 
 Closed chapters had no bound on count or total size, so a long session's served view grew by a whole summary per chapter. `context.lcm.chapter_budget_percent` (default 10, `0` = off) now limits the closed-chapter summaries to that percent of the view threshold. When over, the oldest chapters' summaries are left out of the view, oldest first; the newest closed chapter always stays. Only whole closed-chapter summaries are cut. A left-out chapter keeps its index row, marked as left out, and its originals stay reachable through the history tools. The cut is computed when a view is built at apply and is not stored, so it adds no prompt-cache change beyond what apply already causes. Current: [LCM contract](lcm-contract.md), [config](config.md).
+
+## approvals.hardline is user-only (2026-11-12)
+
+Since workspace trust, a trusted project `.bubblepaw/config.toml` could set `approvals.hardline = false` and the whole agent tree ran without the floor. The project config layer now drops `approvals.hardline` the same way it drops `workspace_trust`, with a warning; user config, environment and CLI still set it. Current: [approvals](approvals.md#hardline-floor), [config](config.md).
