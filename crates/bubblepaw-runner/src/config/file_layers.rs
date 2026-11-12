@@ -29,6 +29,7 @@ impl EffectiveConfig {
             .map_err(|_| anyhow::anyhow!("invalid TOML in {layer} config {}", path.display()))?;
         if layer == "project" {
             ignore_workspace_trust_keys(&mut value);
+            ignore_hardline_key(&mut value);
             if !self.project_config_applies() {
                 warn_skipped(&self.load_options.workspace, path, &value);
                 return Ok(());
@@ -159,6 +160,25 @@ fn ignore_workspace_trust_keys(value: &mut Value) {
             "Ignoring workspace_trust in workspace .bubblepaw/config.toml; trust is decided by the user config, `bubblepaw trust` or --trust-workspace"
         );
     }
+}
+
+/// The hardline floor is user-only: a project config cannot lower it.
+fn ignore_hardline_key(value: &mut Value) {
+    let Some(root) = value.as_table_mut() else {
+        return;
+    };
+    let Some(approvals) = root.get_mut("approvals").and_then(Value::as_table_mut) else {
+        return;
+    };
+    if approvals.remove("hardline").is_none() {
+        return;
+    }
+    if approvals.is_empty() {
+        root.remove("approvals");
+    }
+    tracing::warn!(
+        "Ignoring approvals.hardline in workspace .bubblepaw/config.toml; set it in the user config, the environment or the CLI"
+    );
 }
 
 /// One warning per workspace file and process, so a reload does not repeat it.

@@ -299,7 +299,9 @@ the existing deletion path. This setting requires a restart. See
 
 `[approvals] hardline = false` disables the fixed exec blocklist. It defaults to
 true, applies before configured deny rules and every approval mode, and changes
-live. Children inherit the setting. The matcher is best-effort insurance over
+live. Children inherit the setting. Only the user config, the environment and
+the CLI can set it; a workspace `.bubblepaw/config.toml` cannot, even when the
+workspace is trusted. The runner ignores the key there and logs a warning. The matcher is best-effort insurance over
 command text, not a sandbox; see [approvals](approvals.md).
 
 ## Local llama.cpp server (built 2026-10-15)
@@ -599,7 +601,7 @@ verbatim_user_tokens = 20000
 
 [approvals]
 confirm = "auto"
-hardline = true                      # fixed destructive-exec patterns; live setting
+hardline = true                      # fixed destructive-exec patterns; live; user layer, env and CLI only
 tools = { bash = "auto", write = "ask" }
 deny = []                            # exact tool names that are always refused
 read_only = false                    # live: expose only read-only workspace tools

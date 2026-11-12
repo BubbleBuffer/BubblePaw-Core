@@ -174,43 +174,43 @@ fn approval_deny_layers_validation_and_reload_classification() {
 }
 
 #[test]
-fn hardline_floor_defaults_on_and_layers_like_other_approval_settings() {
+fn hardline_floor_defaults_on_and_only_user_cli_and_env_layers_change_it() {
     let root = tempfile::tempdir().unwrap();
     let mut opts = options(root.path());
-    let file = opts.workspace.join(".bubblepaw/config.toml");
-    let defaults = EffectiveConfig::load(opts.clone()).unwrap();
-    assert!(defaults.settings().unwrap().approvals.hardline);
-    assert!(
-        crate::live_config::approval_policy(&defaults.settings().unwrap())
-            .unwrap()
-            .hardline
-    );
-    write(&file, "[approvals]\nhardline=false\n");
-    let off = EffectiveConfig::load(opts.clone()).unwrap();
-    assert!(!off.settings().unwrap().approvals.hardline);
-    assert!(
-        !crate::live_config::approval_policy(&off.settings().unwrap())
-            .unwrap()
-            .hardline
-    );
-    assert!(
-        off.source("approvals.hardline")
-            .unwrap()
-            .starts_with("project:")
-    );
+    let project = opts.workspace.join(".bubblepaw/config.toml");
+    let user = root.path().join("home/.bubblepaw/config.toml");
+    let write_user = |text: &str| write(&user, text);
+    let hardline = |opts: &LoadOptions| {
+        let config = EffectiveConfig::load(opts.clone()).unwrap();
+        let on = config.settings().unwrap().approvals.hardline;
+        assert_eq!(
+            on,
+            crate::live_config::approval_policy(&config.settings().unwrap())
+                .unwrap()
+                .hardline
+        );
+        (on, config.source("approvals.hardline").map(str::to_owned))
+    };
+    assert!(hardline(&opts).0);
+    // A trusted project config cannot lower the floor.
+    write(&project, "[approvals]\nhardline=false\n");
+    assert!(hardline(&opts).0);
+    // The user config can.
+    write_user("[approvals]\nhardline=false\n");
+    let (on, source) = hardline(&opts);
+    assert!(!on && source.is_some_and(|s| s.starts_with("user:")));
+    // CLI and env outrank the user config.
     opts.cli = vec![Override::set("approvals.hardline=true").unwrap()];
-    assert!(
-        EffectiveConfig::load(opts.clone())
-            .unwrap()
-            .settings()
-            .unwrap()
-            .approvals
-            .hardline
-    );
+    assert!(hardline(&opts).0);
+    opts.cli.clear();
+    opts.env = vec![(
+        "BUBBLEPAW_APPROVALS__HARDLINE".to_owned(),
+        "true".to_owned(),
+    )];
+    assert!(hardline(&opts).0);
+    opts.env.clear();
     for text in ["[approvals]\nhardline='no'\n", "[approvals]\nhardline=1\n"] {
-        write(&file, text);
-        let mut invalid = opts.clone();
-        invalid.cli.clear();
-        assert!(EffectiveConfig::load(invalid).is_err(), "{text}");
+        write_user(text);
+        assert!(EffectiveConfig::load(opts.clone()).is_err(), "{text}");
     }
 }

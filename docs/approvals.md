@@ -76,6 +76,12 @@ explicit `reload` applies it, with a one-time diff notice
 (`approval hardline floor: on → off`). Run overrides and child profiles take the
 host's value and cannot turn it off. Children inherit it from the parent.
 
+Only the user config, the environment and the CLI can set it. A workspace
+`.bubblepaw/config.toml` cannot, even for a trusted workspace: the runner drops
+`approvals.hardline` from the project layer and logs a warning. The floor is what
+no approval mode can loosen, so a file that ships with the repository must not be
+able to remove it for the whole agent tree.
+
 Matched calls are recorded `denied` with reason `hardline <pattern>` and no
 wait. No effect row is written and the tool does not start. The model gets an
 error naming the rule:
