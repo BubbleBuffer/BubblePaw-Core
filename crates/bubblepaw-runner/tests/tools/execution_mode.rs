@@ -308,11 +308,13 @@ async fn workspace_children_inherit_native_mode_and_read_only_capabilities() {
     }
     {
         let requests = f.provider.requests.lock().unwrap();
-        assert!(
-            requests
-                .iter()
-                .all(|request| !request.system_prompt.contains("JS"))
-        );
+        // The prompt names the workspace, a random temporary directory whose
+        // name can contain "JS" by chance.
+        let workspace = f.root.path().display().to_string();
+        for request in requests.iter() {
+            let prompt = request.system_prompt.replace(&workspace, "<workspace>");
+            assert!(!prompt.contains("JS"), "{prompt}");
+        }
     }
     f.shutdown().await;
 }

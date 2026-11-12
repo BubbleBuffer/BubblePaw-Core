@@ -31,7 +31,7 @@ jobs:
       - name: loop
         run: |
           pass=0; fail=0
-          for i in $(seq 1 10); do
+          for i in $(seq 1 $([ "$RUNNER_OS" = Linux ] && echo 20 || echo 10)); do
             if cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast --test web --test tools > loop.log 2>&1; then
               pass=$((pass+1))
             else

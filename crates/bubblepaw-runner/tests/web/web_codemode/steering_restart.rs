@@ -213,6 +213,14 @@ async fn http_steer_then_explicit_interrupt_preserves_wait_and_captured_outputs_
                 .unwrap()
                 .iter()
                 .any(|o| o["output"]["text"] == "wait resumed")
+                // The environment turns idle before the cell's completion record
+                // is persisted, so wait for the record: a later write would move
+                // the store revision under the unchanged-revision check below.
+                && value["outputs"].as_array().unwrap().iter().any(|o| {
+                    o["output"]["type"] == "execution"
+                        && o["output"]["environment"] == "main"
+                        && o["output"]["status"] == "completed"
+                })
                 && value["repl"]["environments"]
                     .as_array()
                     .unwrap()
