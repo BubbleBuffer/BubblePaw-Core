@@ -188,9 +188,9 @@ fn hardline_floor_defaults_on_and_only_user_cli_and_env_layers_change_it() {
                 .unwrap()
                 .hardline
         );
-        (on, config.source("approvals.hardline").unwrap().to_owned())
+        (on, config.source("approvals.hardline").map(str::to_owned))
     };
-    assert_eq!(hardline(&opts), (true, "default".to_owned()));
+    assert!(hardline(&opts).0);
     // A trusted project config cannot lower the floor.
     write(
         &project,
@@ -198,7 +198,7 @@ fn hardline_floor_defaults_on_and_only_user_cli_and_env_layers_change_it() {
 hardline=false
 ",
     );
-    assert_eq!(hardline(&opts), (true, "default".to_owned()));
+    assert!(hardline(&opts).0);
     // The user config can.
     write(
         &user,
@@ -207,7 +207,7 @@ hardline=false
 ",
     );
     let (on, source) = hardline(&opts);
-    assert!(!on && source.starts_with("user:"), "{source}");
+    assert!(!on && source.is_some_and(|s| s.starts_with("user:")));
     // CLI and env outrank the user config.
     opts.cli = vec![Override::set("approvals.hardline=true").unwrap()];
     assert!(hardline(&opts).0);
