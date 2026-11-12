@@ -1373,7 +1373,7 @@ async fn full_closed_chapter_summaries_are_chronological_without_silent_body_omi
             expected_previous_coverage: f.store.episode_coverage_token(&f.session)?,
         })?;
     }
-    let policy = f.policy(Script::normal(), 256000)?;
+    let policy = chapter_ids::policy_with_chapter_budget(&f, 0)?;
     f.prepare(&policy).await?;
     let view = f.store.context_view(&f.session)?.unwrap();
     let frontier = f

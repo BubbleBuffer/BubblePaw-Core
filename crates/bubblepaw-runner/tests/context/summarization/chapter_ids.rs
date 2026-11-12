@@ -41,6 +41,30 @@ async fn chapter_ids_are_frozen_with_summary_text_across_later_turns() -> Result
     Ok(())
 }
 
+/// A 256k-threshold policy with the given closed-chapter budget; 0 serves them all.
+pub(super) fn policy_with_chapter_budget(
+    fixture: &Fixture,
+    percent: usize,
+) -> Result<SummarizingContext> {
+    SummarizingContext::new(
+        fixture.store.clone(),
+        Script::normal(),
+        SummaryConfig {
+            threshold_cap: 256000,
+            lcm: bubblepaw_runner::summarization::LcmConfig {
+                output_reserve_tokens: 0,
+                episodes: bubblepaw_runner::episodes::EpisodeConfig {
+                    chapter_budget_percent: percent,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+        None,
+    )
+}
+
 /// Four closed one-episode chapters of about 4000 summary tokens each, over a
 /// 256k threshold: `chapter_budget_percent` decides which summaries the applied
 /// view keeps. Every chapter keeps its index row either way.
@@ -110,23 +134,7 @@ async fn closed_chapter_summaries_are_capped_oldest_first_and_keep_their_index_r
                     .episode_coverage_token(&fixture.session)?,
             })?;
         }
-        let policy = SummarizingContext::new(
-            fixture.store.clone(),
-            Script::normal(),
-            SummaryConfig {
-                threshold_cap: 256000,
-                lcm: bubblepaw_runner::summarization::LcmConfig {
-                    output_reserve_tokens: 0,
-                    episodes: bubblepaw_runner::episodes::EpisodeConfig {
-                        chapter_budget_percent: percent,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            None,
-        )?;
+        let policy = policy_with_chapter_budget(&fixture, percent)?;
         fixture.prepare(&policy).await?;
         let view = fixture.store.context_view(&fixture.session)?.unwrap();
         let text = |start: &str| {
