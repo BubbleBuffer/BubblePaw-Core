@@ -98,7 +98,7 @@ Built 2026-10-19 ([cache_accounting.rs](../crates/bubblepaw-core/src/cache_accou
   ledger call rows store expected cacheable, unexplained miss, break reason and
   wire bytes; attempt rows store undeclared busts and the summed unexplained
   miss.
-- **Acceptance.** `crates/bubblepaw-core/tests/cache_accounting.rs` replays a
+- **Acceptance.** `crates/bubblepaw-core/tests/context/cache_accounting.rs` replays a
   scripted tool loop over three runs. Every main step is a pure append with no
   unexplained miss, and the declared LCM apply is the only break. The same
   replay without the declaration reports one undeclared break. Live provider
@@ -400,7 +400,7 @@ prompt carried the project name and folder, busting the whole cache on every
 switch or process state change. It now sends `remind("project", ...)` and
 `remind("processes", ...)` and leaves the system prompt static.
 
-Checks (Linux, scripted): `tests/host_writer.rs` (4 tests) covers tail placement
+Checks (Linux, scripted): `tests/runtime/host_writer.rs` (4 tests) covers tail placement
 and dedup, the undeclared hook edit, the declared resolver change and the
 compaction focus reaching the next tail. `cargo fmt --check` and strict workspace
 Clippy pass; the core suite passes, including the file-size ratchet; the runner
@@ -487,7 +487,7 @@ matching `context_built`) with zero `cache_miss_unexplained`. `prompt_tiers` hel
 7 and 8 blobs (16 and 20 KB); serving.db grew from 160 KB (run9) to 213 and
 217 KB. `storage_turn_measure` keeps 5 transactions (4 chat, 1 serving) against
 8f34a56; its WAL grows 32 960 bytes (1 363 816 to 1 396 776). Unit tests in
-`context_log.rs` and `tests/prompt_log.rs` cover the warning, the row, the blob
+`context_log.rs` and `tests/context/prompt_log.rs` cover the warning, the row, the blob
 and retention paths; the bench did not trigger a warning. No live-model acceptance.
 
 ## Outcome

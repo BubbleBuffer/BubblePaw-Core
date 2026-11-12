@@ -1,4 +1,4 @@
-mod support;
+use crate::support;
 
 use anyhow::Result;
 use bubblepaw_core::{ContextChapter, Message, RunOptions, Store, Usage};

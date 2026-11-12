@@ -1,6 +1,6 @@
 //! A run's `tool_names` restricts calls at call time: declarations and the system
 //! prompt stay those of the session profile, and the restriction is stated once.
-mod support;
+use crate::support;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;

@@ -115,7 +115,7 @@ mode. The episode worker reads it per trigger. It observes and declares nothing.
 
 ## Tests
 
-`crates/bubblepaw-core/tests/host_writer.rs`: hook reminders land at the tail and
+`crates/bubblepaw-core/tests/runtime/host_writer.rs`: hook reminders land at the tail and
 are sent only when changed; a hook editing the system prompt is an undeclared
 `frozen_change` with `frozen_writer`; a later resolver value applies only to new
 chats and is not declared; a compaction
