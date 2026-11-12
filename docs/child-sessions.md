@@ -14,7 +14,7 @@ their own children can wake them.
 
 ### Placement and storage
 
-`crates/bubblepaw-runner/src/agents.rs`, `profiles.rs` and `agent_handles.rs`
+`crates/bubblepaw-runner/src/agents.rs` and its `agents/` modules, `profiles.rs` and `agent_handles.rs`
 own orchestration. Core provides generic per-run structured output and tool-call
 budgets, effective `ApprovalPolicy` on `ToolContext`, host notice delivery and
 projections from durable child run boundaries; orchestration stays in the runner.

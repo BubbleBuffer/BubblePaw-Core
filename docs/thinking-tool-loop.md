@@ -155,7 +155,7 @@ are recorded in [provider qualification](provider-qualification.md).
 | `crates/bubblepaw-runner/src/probes.rs` (`answer`; former round loop at 580) | Uses a hidden child Harness with frozen source context and source-bound history tools. | Former hand-built probe agent loop removed. Replay persists its probe artifacts before acknowledgement. |
 | Former `parallel.rs::model_step` | Same-request retry/backoff policy moved to a runner provider decorator used by the child Harness. | Transport-only retries preserved; the decorator never executes tools or builds history. Published errors remain terminal. |
 | `crates/bubblepaw-runner/src/research.rs` | Builds the restricted ordinary research profile Harness; the parent starts and continues it through the normal agents tools. | Uses child sessions and the real runtime. The separate `research` tool and its quick/thorough config were removed on 2026-10-13; there is no hand-built research loop. |
-| `crates/bubblepaw-runner/src/agents.rs` (`start_profile_owned`, `send`, `observe_turn`) | Starts the profile Harness for new and continuing children and supervises completion/cancellation. | The same real runtime consumer now also launches hidden workers. |
+| `crates/bubblepaw-runner/src/agents/` (`start.rs`: `start_profile_owned`; `send.rs`: `send`; `observe.rs`: `observe_turn`) | Starts the profile Harness for new and continuing children and supervises completion/cancellation. | The same real runtime consumer now also launches hidden workers. |
 | `crates/bubblepaw-runner/src/codemode.rs:1396` | Pumps JS jobs and host tool calls. | No provider calls or model loop. Left unchanged. |
 | `crates/bubblepaw-runner/src/provider.rs:576` | Continues Responses output-limit stops; transport retries live in `post`/`send_round`. | Adapter continuation/retry, no tool execution. Left unchanged. |
 | `crates/bubblepaw-runner/src/provider/messages.rs:626` (`generate`, loop at 655) | Continues Messages output-limit stops. | Adapter continuation, no tool execution. Left unchanged. |
@@ -165,7 +165,7 @@ are recorded in [provider qualification](provider-qualification.md).
 | `crates/bubblepaw-runner/src/model_roles.rs:200` | Repeats and aggregates decision samples, with bounded safe retries. | Decision sampling/retry, no tool execution. Left unchanged. |
 | `crates/bubblepaw-runner/src/summarization.rs` and `episode_worker.rs` / `episode_background.rs` | Prepare context and schedule derived summary/episode work through `EpisodeModels`; they do not dispatch model tools. | Orchestration of direct tools-disabled summary calls. No inner agent loop. |
 | `crates/bubblepaw-runner/src/probes.rs::judge` | One tools-disabled grading request with strict judgment parsing. | Direct one-shot retained; adding a child would add no tool/runtime behavior. |
-| Chat titles in `agents.rs`, `web.rs`, `main.rs`, imports and episode parsing | Literal caller/task text or a title extracted from the existing summary response. | No separate title model call exists; no title worker is needed. |
+| Chat titles in `agents/start.rs`, `web.rs`, `main.rs`, imports and episode parsing | Literal caller/task text or a title extracted from the existing summary response. | No separate title model call exists; no title worker is needed. |
 | `extensions/claude-code/src/provider.ts:459`, `:717` | Consumes the SDK query and parks host tool calls until the next harness step delivers results; the one-off path consumes a tool-free query. | Stateful provider adapter, no host-side agent/tool execution loop. Left unchanged. |
 
 The authoritative model/tool loop is `crates/bubblepaw-core/src/runtime.rs`.
@@ -229,7 +229,7 @@ The required Linux gates run with Rust 1.97.1:
   Drop at `codemode.rs:897` sends Close without joining the JS thread, while
   the last Store owner can still run `Inner::drop` at
   `crates/bubblepaw-core/src/store_serving.rs:529` and retain its lock after
-  the weak owner is no longer upgradeable (`store_layout.rs:590`). This is an
+  the weak owner is no longer upgradeable (`store_layout_open_dir.rs:49`). This is an
   inference, not a repaired or conclusively reproduced race. The full
   workspace gate remains failed; the passing rerun does not replace it.
 
