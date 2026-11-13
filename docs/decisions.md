@@ -812,3 +812,7 @@ Closed chapters had no bound on count or total size, so a long session's served 
 ## approvals.hardline is user-only (2026-11-12)
 
 Since workspace trust, a trusted project `.bubblepaw/config.toml` could set `approvals.hardline = false` and the whole agent tree ran without the floor. The project config layer now drops `approvals.hardline` the same way it drops `workspace_trust`, with a warning; user config, environment and CLI still set it. Current: [approvals](approvals.md#hardline-floor), [config](config.md).
+
+## Harness notes are user-role (2026-11-13)
+
+Decision (the user): notes the harness adds after the conversation started (cold notes, reminders, host notices, LCM view blocks and controls) go to the model as user-role content wrapped in `<harness>`, never as mid-conversation system messages; several providers reject or mishandle them and they break prefix caching on some. Implemented in `ContextState::build` and `fork` (`harness_view`): every `Role::System` message of a request becomes a user-role Generated message `<harness>\n...\n</harness>`; cold notes are user-role directly. Stored history is unchanged. Current: [prefix-cache-design](prefix-cache-design.md).

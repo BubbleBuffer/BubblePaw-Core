@@ -82,6 +82,23 @@ impl ContextState {
         cold
     }
 
+    /// Send every system-role message of the request as user-role harness
+    /// content: `<harness>` and `</harness>` around the text, origin Generated. The request's
+    /// `system_prompt` is the only system prompt; providers reject or mishandle
+    /// system messages later in the conversation, and they break prefix caching
+    /// on some. Applies to the request view only, in place (indexes unchanged);
+    /// stored history is untouched. A converted message is no longer a system
+    /// message, so repeating the call changes nothing.
+    pub(super) fn harness_view(request: &mut ModelRequest) {
+        for message in &mut request.messages {
+            if message.role == Role::System {
+                message.role = Role::User;
+                message.origin = Some(MessageOrigin::Generated);
+                message.content = format!("<harness>\n{}\n</harness>", message.content);
+            }
+        }
+    }
+
     /// One message with every note, ordered by kind and then insertion, in the same
     /// `<harness kind=…>` wrapper as reminders. Its id derives from its text.
     pub fn cold_notes_message(
@@ -99,7 +116,8 @@ impl ContextState {
             .map(|(kind, text)| harness_block(kind, text))
             .collect::<Vec<_>>()
             .join("\n");
-        let mut message = crate::Store::message(session, Role::System, content);
+        // Already wrapped per kind, so it is sent as user content directly.
+        let mut message = crate::Store::message(session, Role::User, content);
         message.id = format!(
             "context:cold_notes:{}",
             fingerprint(message.content.as_bytes())

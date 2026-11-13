@@ -262,7 +262,7 @@ Every request uses `thinking: {type: "adaptive"}` and
 output-config effort while thinking stays adaptive. There are no sampling parameters or assistant
 prefills. `max_tokens` is required, so it is always sent: the role's `max_output_tokens` when set, otherwise the model maximum from the table in `provider/messages.rs`, where `claude-haiku-5-5` is 128,000 (source in Output length below). A length stop is continued the same way. Only the request's system prompt goes
 in the top-level `system` field, so it stays byte-identical across an LCM apply.
-Every history system message (LCM view blocks, cold notes, any mid-list control)
+Every history system message handed directly to the adapter (since 2026-11-13 context building already sends view blocks, cold notes and controls as user-role `<harness>` content, see prefix-cache-design)
 renders in place as a user text block, merged into adjacent user content like
 consecutive user turns (P5, 2026-10-21). In a user turn, `tool_result` blocks
 always come first, so text from a system or user message never precedes a result.

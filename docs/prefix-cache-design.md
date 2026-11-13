@@ -244,7 +244,7 @@ before this change.
 View-dependent instructions are cold notes. The runner's `SummarizingContext`
 writes them from the hook with `ContextWriter::cold_note` (today only
 `history_lookup`), and `build_persisted` places them as one
-Generated system message right after the last cold message, ordered by kind and
+Generated user message right after the last cold message, ordered by kind and
 then insertion, each in the `<harness kind>` wrapper. The served notes for a
 lineage refresh only at its first request, at a newer declaration, or when the
 cold tier is empty; an undeclared change is held back, so the cold tier stays
@@ -261,6 +261,24 @@ replay. Cold notes are placed only by core (`ContextState::place_cold_notes`,
 `cold_notes.rs`), so the same served lineage cache applies everywhere. Replay
 builds each request it sends through its own `ContextState` (`prepare_step`), so
 a compaction request carries the cold notes as a live request does.
+
+## Harness content is user-role (2026-11-13)
+
+No request carries a system message after the system prompt. `ContextState::build`
+and `ContextState::fork` send every `Role::System` message of the request (LCM
+view blocks, the checkpoint, imported summaries, episode and fork controls) as
+user-role content `<harness>\n...\n</harness>` with origin Generated, in place, so
+indexes and tiers do not move (`harness_view`, `cold_notes.rs`). Cold notes are
+already user-role, wrapped per kind (`<harness kind="...">`) like tail reminders.
+Reminders and `[host notice]` input were always user-role. Stored history and
+the host's view are unchanged: this is the request only. Reason: several providers
+reject or mishandle system messages after the first turn, and a mid-history
+system message breaks prefix caching on some. The root prompt tells the model
+that harness blocks come from the runtime, not the user. Running sessions take one
+prefix-cache miss after the upgrade, because the view blocks change bytes.
+
+The Messages, Chat and Responses adapters still map a `Role::System` they
+receive directly, but requests built through context never contain one.
 
 ## Static Messages `system` (P5, 2026-10-21)
 
