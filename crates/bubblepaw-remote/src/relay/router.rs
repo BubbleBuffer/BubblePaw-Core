@@ -1,6 +1,8 @@
 use super::{
     RelayAdmission, RelayConfig, RelayRole, admission,
-    routing::{Delivery, Role, State, Target},
+    lanes::Lanes,
+    outbox::{self, Outbox, Sent},
+    routing::{Forward, Role, State},
     wire::{self, Wire},
 };
 use crate::{Error, Result};
@@ -12,7 +14,7 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    sync::{Notify, mpsc, watch},
+    sync::{Notify, watch},
 };
 use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::WebSocketConfig};
 
@@ -205,7 +207,7 @@ impl RelayRouter {
             wire::send(&mut ws, &Wire::Presence(online), limits).await?;
             return Ok(());
         }
-        let (sender, mut outgoing) = mpsc::channel(limits.queue_capacity);
+        let (outbox, mut inbox) = outbox::channel(limits.queue_capacity);
         let role_byte = if proof.role == RelayRole::Host {
             wire::REGISTER
         } else {
@@ -222,7 +224,7 @@ impl RelayRouter {
                 proof.public_key,
                 proof.target.map(|id| id.to_string()).unwrap_or_default(),
                 connection.id,
-                sender,
+                outbox,
                 limits,
             );
         let role = match attached {
@@ -237,31 +239,42 @@ impl RelayRouter {
         if matches!(role, Role::Host(_)) {
             wire::send(&mut ws, &Wire::Registered, limits).await?;
         }
+        // Frames from a host fan out to its sessions through lanes: a session whose
+        // queue is full waits there while the host's other sessions go on.
+        let mut lanes = Lanes::<Outbox<Wire>>::new(limits.queue_capacity, limits.idle_timeout);
         loop {
             tokio::select! {
-                incoming = wire::recv(&mut ws, limits) => {
+                incoming = wire::recv(&mut ws, limits), if !lanes.blocked() => {
                     let forward = self.inner.state.lock().unwrap_or_else(|error| error.into_inner())
                         .routing.route(role, incoming?, &self.inner.config.ciphertext_observer)?;
-                    if let Some(forward) = forward {
-                        match forward.deliver(limits.idle_timeout).await {
-                            Delivery::Sent => {}
-                            Delivery::Gone => {
-                                if matches!(role, Role::Client(_, _)) {
-                                    return Err(Error::Closed);
-                                }
+                    let Some(Forward { to, frame, control, session }) = forward else { continue };
+                    if matches!(role, Role::Host(_)) {
+                        lanes.send(session, &to, frame, control);
+                    } else {
+                        // A client waits for the host's queue on its own connection;
+                        // no other session is held up by it.
+                        match to.send_data(frame, limits.idle_timeout).await {
+                            Sent::Queued => {}
+                            Sent::Gone => return Err(Error::Closed),
+                            Sent::Stalled => {
+                                tracing::warn!("relay drops a stalled peer: the host's queue stayed full for {:?}", limits.idle_timeout);
+                                return Err(Error::Limit("host data"));
                             }
-                            Delivery::Stalled(Target::Client { host, session }) => {
-                                self.inner.state.lock().unwrap_or_else(|error| error.into_inner())
-                                    .routing.drop_stalled_client(&host, session);
-                            }
-                            Delivery::Stalled(Target::Host) => return Err(Error::Limit("host data")),
                         }
                     }
                 }
-                Some(frame) = outgoing.recv() => {
+                frame = inbox.recv() => {
                     let close = matches!(frame, Wire::Close(_));
                     wire::send(&mut ws, &frame, limits).await?;
                     if close && matches!(role, Role::Client(_, _)) { return Ok(()); }
+                }
+                stalled = lanes.next() => if let Some(stalled) = stalled {
+                    tracing::warn!("relay drops a stalled peer: a client's queue stayed full for {:?}", limits.idle_timeout);
+                    if let Role::Host(host) = role {
+                        self.inner.state.lock().unwrap_or_else(|error| error.into_inner())
+                            .routing.drop_stalled_client(host, stalled.id);
+                    }
+                    stalled.dest.control(Wire::Close(stalled.id));
                 }
             }
         }
