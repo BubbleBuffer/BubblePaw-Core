@@ -47,7 +47,8 @@ pub(super) fn admit_fork(
         (Some(configured), Some(physical)) => Some(configured.min(physical)),
         (configured, physical) => configured.or(physical),
     };
-    // An unknown window is bounded like the main request: by the compaction cap.
+    // Neither configured nor provider-reported: bound it like the main request,
+    // by the compaction cap (fork.fallback_window_tokens).
     let window = window.or(Some(fork.fallback_window_tokens));
     let output_reserve = request
         .max_output_tokens

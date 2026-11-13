@@ -11,7 +11,6 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-
 use crate::{
     model_roles::{ModelRole, ModelRoles},
     provider::{LiveProviderConfig, ProviderRegistry, decision_error_usage},
@@ -93,8 +92,6 @@ pub struct EpisodeFork {
     pub provider: Arc<dyn Provider>,
     pub max_request_bytes: usize,
     pub context_window: Option<usize>,
-    /// Window used when neither the configuration nor the provider names one:
-    /// the same compaction cap the main request is bounded by in that case.
     pub fallback_window_tokens: usize,
     /// Physical output reservation when the provider request has no hard limit.
     pub output_reserve_tokens: usize,
