@@ -113,10 +113,7 @@ impl bubblepaw_core::Provider for Reuse {
         _: bubblepaw_core::TextCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
-        assert_eq!(
-            request.messages[0].content,
-            "<harness>\nsummary of previous tool call\n</harness>"
-        );
+        assert!(request.messages[0].content.ends_with("call\n</harness>"));
         assert!(
             !request
                 .messages

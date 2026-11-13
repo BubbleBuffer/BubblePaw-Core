@@ -9,7 +9,9 @@ use std::collections::VecDeque;
 pub fn canonical_message_tokens(message: &Message) -> usize {
     // A system-role message is sent as user-role harness content.
     if message.role == Role::System {
-        return canonical_message_tokens(&bubblepaw_core::harness_user_message(message));
+        return canonical_message_tokens(&bubblepaw_core::ContextState::harness_user_message(
+            message,
+        ));
     }
     let body = if let Some(state) = &message.provider_state
         && state["adapter"] == "responses"

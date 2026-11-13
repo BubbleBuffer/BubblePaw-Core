@@ -63,7 +63,6 @@ pub use context_facts::{
 pub use context_state::{
     BuiltContext, CacheTiers, ContextBuild, ContextClassification, ContextState, ContextWriter,
     Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord, RequestLogRow, TierFingerprint,
-    harness_user_message,
 };
 pub use decision::{
     Answer, AnswerKind, DecisionChoice, DecisionProvider, DecisionRequest, DecisionResponse,

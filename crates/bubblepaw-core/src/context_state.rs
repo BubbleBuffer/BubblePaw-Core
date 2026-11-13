@@ -18,7 +18,6 @@ mod log;
 mod reminders;
 #[path = "context_writer.rs"]
 mod writer;
-pub use cold_notes::harness_user_message;
 pub use log::RequestLogRow;
 pub use reminders::{Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord};
 pub use writer::ContextWriter;
