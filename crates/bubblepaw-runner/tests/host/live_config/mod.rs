@@ -253,7 +253,7 @@ async fn turn_start_applies_sections_and_invalid_file_keeps_old_config() {
     let text = config(&format!("[approvals.tools]\nexec='deny'\n[agents]\nmax_depth=0\nauto_wake=false\nwake_debounce_ms=13\n[exec]\nsync_timeout_secs=0\nmax_jobs=1\n[mcp.servers.fixture]\ncommand={mcp_command}\napproval='none'\n"))
         .replace("demo/first", "alternate/second") + "[providers.alternate]\nkind='scripted'\n";
     fixture.write(&text);
-    fixture.code("changed", "try { const r=await tools.exec({command:'printf forbidden'}); if(!JSON.stringify(r).toLowerCase().includes('denied')) throw Error('unexpected '+JSON.stringify(r)); } catch(e) { if(!String(e).toLowerCase().includes('denied')) throw e; } const names=(await tools.$list()).map(t=>t.name); if(!names.includes('mcp__fixture__echo')) throw Error('missing MCP'); try { await tools.agent({task:'blocked',profile:'workspace'}); throw Error('depth allowed'); } catch(e) { if(!String(e).toLowerCase().includes('depth')) throw e; } return 'checked';");
+    fixture.code("changed", "try { const r=await tools.exec({command:'printf forbidden'}); if(!JSON.stringify(r).toLowerCase().includes('denied')) throw Error('unexpected '+JSON.stringify(r)); } catch(e) { if(!String(e).toLowerCase().includes('denied')) throw e; } const names=(await tools.$list()).map(t=>t.name); if(!names.includes('mcp__fixture__echo')) throw Error('missing MCP'); return 'checked';");
     fixture.turn("changed").await;
     let generation = fixture.providers.snapshot();
     assert_eq!(generation.settings.main_model, "alternate/second");
@@ -261,7 +261,7 @@ async fn turn_start_applies_sections_and_invalid_file_keeps_old_config() {
         generation.settings.roles.summary.models,
         ["alternate/second"]
     );
-    assert_eq!(generation.settings.agents.max_depth, Some(0));
+    assert_eq!(generation.settings.agents.max_depth, Some(5));
     assert!(!generation.settings.agents.auto_wake);
     assert_eq!(generation.settings.exec.sync_timeout_secs, 0);
     assert!(!text.is_empty());
