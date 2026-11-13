@@ -254,7 +254,7 @@ impl Store {
             return chat.for_each_message_header(session, visit);
         }
         self.read(|conn| {
-            let mut statement = conn.prepare("SELECT h.message_seq,m.message_id,h.role,h.origin,h.typed_user,h.created_at,h.is_error FROM message_headers h JOIN messages m ON m.seq=h.message_seq WHERE h.session_id=?1 ORDER BY h.message_seq")?;
+            let mut statement = conn.prepare("SELECT h.message_seq,m.message_id,h.role,h.origin,h.created_at,h.is_error FROM message_headers h JOIN messages m ON m.seq=h.message_seq WHERE h.session_id=?1 ORDER BY h.message_seq")?;
             let mut calls = conn.prepare_cached("SELECT call_id,kind FROM message_tool_calls WHERE session_id=?1 AND message_seq=?2 ORDER BY kind,call_id")?;
             let mut rows = statement.query([session])?;
             let mut count = 0;
@@ -262,9 +262,8 @@ impl Store {
                 let seq: i64 = row.get(0)?;
                 let role = match row.get::<_,String>(2)?.as_str() { "system" => Role::System, "user" => Role::User, "assistant" => Role::Assistant, "tool" => Role::Tool, _ => anyhow::bail!("Unknown canonical message header role") };
                 let origin: Option<String> = row.get(3)?;
-                let typed_user: bool = row.get(4)?;
-                let origin = origin.map(|origin| serde_json::from_str(&origin)).transpose()?.or_else(|| if role==Role::User { Some(if typed_user { crate::MessageOrigin::Typed } else { crate::MessageOrigin::Generated }) } else { None });
-                let mut message = Message { id: row.get(1)?, session_id: session.into(), role, origin, content: String::new(), tool_calls: Vec::new(), tool_call_id: None, provider_state: None, is_error: row.get(6)?, created_at: row.get(5)? };
+                let origin = origin.map(|origin| serde_json::from_str(&origin)).transpose()?;
+                let mut message = Message { id: row.get(1)?, session_id: session.into(), role, origin, content: String::new(), tool_calls: Vec::new(), tool_call_id: None, provider_state: None, is_error: row.get(5)?, created_at: row.get(4)? };
                 for call in calls.query_map(params![session,seq], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?)))? {
                     let (id,kind) = call?;
                     if kind == "call" { message.tool_calls.push(ToolCall {id,name:String::new(),arguments:serde_json::Value::Null}); } else { message.tool_call_id=Some(id); }

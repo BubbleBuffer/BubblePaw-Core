@@ -3,12 +3,12 @@ crates/bubblepaw-core/src/approvals/mod.rs 592
 crates/bubblepaw-core/src/approvals_tests.rs 1376
 crates/bubblepaw-core/src/event_log.rs 661
 crates/bubblepaw-core/src/event_log_tests.rs 900
-crates/bubblepaw-core/src/lib.rs 816
+crates/bubblepaw-core/src/lib.rs 813
 crates/bubblepaw-core/src/runtime.rs 1614
 crates/bubblepaw-core/src/store_cold.rs 573
 crates/bubblepaw-core/src/tests.rs 2007
 crates/bubblepaw-core/src/transcript.rs 1314
-crates/bubblepaw-core/tests/context/context_episodes.rs 891
+crates/bubblepaw-core/tests/context/context_episodes.rs 884
 crates/bubblepaw-core/tests/context/transcript_import.rs 798
 crates/bubblepaw-core/tests/quota.rs 807
 crates/bubblepaw-core/tests/storage/storage_cold.rs 898
