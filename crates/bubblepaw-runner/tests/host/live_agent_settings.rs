@@ -239,21 +239,8 @@ impl Fixture {
 }
 
 #[tokio::test]
-async fn depth_limit_can_grow_from_zero_and_shrink_without_removing_profiles() -> Result<()> {
-    let fixture = Fixture::new(Some(0))?;
-    assert!(
-        fixture
-            .manager
-            .start(&fixture.owner, json!({"task":"first"}))
-            .unwrap_err()
-            .to_string()
-            .contains("depth limit")
-    );
-    fixture.manager.apply_limits(&Agents {
-        max_depth: Some(1),
-        auto_wake: false,
-        ..Default::default()
-    });
+async fn depth_limit_can_grow_and_shrink_without_removing_profiles() -> Result<()> {
+    let fixture = Fixture::new(Some(1))?;
     let child = fixture
         .manager
         .start(&fixture.owner, json!({"task":"first"}))?;
@@ -286,14 +273,14 @@ async fn depth_limit_can_grow_from_zero_and_shrink_without_removing_profiles() -
             .contains("agent_send")
     );
     fixture.manager.apply_limits(&Agents {
-        max_depth: Some(0),
+        max_depth: Some(1),
         auto_wake: false,
         ..Default::default()
     });
     assert!(
         fixture
             .manager
-            .start(&fixture.owner, json!({"task":"blocked"}))
+            .start(&child_owner, json!({"task":"blocked"}))
             .is_err()
     );
     fixture.manager.send(
@@ -558,3 +545,5 @@ async fn live_research_profile_can_enable_after_startup_without_exposing_parent_
 
 #[path = "live_agent_settings/deny_reload.rs"]
 mod deny_reload;
+#[path = "live_agent_settings/depth_cap.rs"]
+mod depth_cap;
