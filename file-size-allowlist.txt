@@ -68,7 +68,7 @@ crates/bubblepaw-runner/tests/host/config_cli.rs 579
 crates/bubblepaw-runner/tests/host/config_runtime.rs 506
 crates/bubblepaw-runner/tests/host/host_attach.rs 779
 crates/bubblepaw-runner/tests/host/host_attach_mcp.rs 600
-crates/bubblepaw-runner/tests/host/live_agent_settings.rs 549
+crates/bubblepaw-runner/tests/host/live_agent_settings.rs 560
 crates/bubblepaw-runner/tests/host/live_config/mod.rs 674
 crates/bubblepaw-runner/tests/host/live_config_routes.rs 689
 crates/bubblepaw-runner/tests/provider_reload.rs 529

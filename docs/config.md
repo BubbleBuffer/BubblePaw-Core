@@ -612,7 +612,7 @@ worker_retention_days = 7           # finished internal worker inspection window
 worker_keep_all = false             # debug: preserve successful workers too
 auto_wake = true                    # wake idle parents on visible child/background exec completion
 wake_debounce_ms = 1500             # coalesce nearby completions into one reminder message
-# max_depth = 3                      # subagent nesting cap; 0 = unlimited
+# max_depth = 3                      # subagent nesting cap (default 3); 0 disables subagents
 # max_active_per_parent = 8
 # max_active_total = 32
 # max_retained = 64
@@ -655,8 +655,8 @@ to web tools and file reads. The caps are available against runaway recursion.
 
 The root is depth zero and its children are depth 1. With the default `max_depth = 3`
 a depth-3 agent cannot spawn: its `agent` call returns the tool error
-"subagent depth limit 3 reached" and nothing is started. `max_depth = 0` removes the
-cap. There is no cap on rounds per turn. Active caps count running
+"subagent depth limit 3 reached" and nothing is started. `max_depth = 0` disables
+spawning; there is no unlimited setting, so set a larger number for deeper nesting. There is no cap on rounds per turn. Active caps count running
 turns, so an idle child releases its active slot and a new send must pass admission
 again. The total is shared across the host's parent and child harnesses.
 

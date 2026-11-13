@@ -84,7 +84,7 @@ tools = {} # e.g. { bash = "auto", write = "ask" }
 
 [agents]
 # max_depth caps subagent nesting and defaults to 3: the root's children are depth 1 and a
-# depth-3 agent cannot spawn. 0 means unlimited. The other caps are unset (no limit).
+# depth-3 agent cannot spawn. 0 disables subagents. The other caps are unset (no limit).
 # max_depth = 3
 # max_active_per_parent = 8
 # max_active_total = 32 # Shared by all depths in this host.

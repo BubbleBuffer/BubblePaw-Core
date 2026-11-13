@@ -230,7 +230,7 @@ are available against runaway recursion.
 
 Root depth is zero, counted along the catalog parent chain. The depth cap rejects
 deeper starts with the tool error "subagent depth limit N reached": with the default
-3, a depth-3 agent cannot spawn. Zero means unlimited. Workspace profiles retain
+3, a depth-3 agent cannot spawn. Zero disables spawning; there is no unlimited setting. Workspace profiles retain
 weak child controls at every depth, so raising a live cap allows deeper children
 immediately. Active caps count running turns and
 apply again to idle sends. Host-wide caps are shared across depths. Retention

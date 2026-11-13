@@ -19,8 +19,8 @@ impl Default for QuotaSettings {
 }
 
 config_section! {
-    /// Host limits for child sessions. `max_depth` defaults to 3 and zero means
-    /// unlimited; the other caps are unlimited when unset and reject zero.
+    /// Host limits for child sessions. `max_depth` defaults to 3 and zero disables
+    /// new children; the other caps are unlimited when unset and reject zero.
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(default)]
     pub struct Agents {

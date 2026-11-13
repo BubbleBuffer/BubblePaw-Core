@@ -815,4 +815,4 @@ Since workspace trust, a trusted project `.bubblepaw/config.toml` could set `app
 
 ## Subagent depth is capped at 3 by default (2026-11-13)
 
-`agents.max_depth` now defaults to 3 (root's children are depth 1; a depth-3 agent cannot spawn, and the `agent` tool returns "subagent depth limit 3 reached"). `0` means unlimited, replacing the old meaning of "disable spawning". There is deliberately no cap on rounds per turn. Current: [child sessions](child-sessions.md#limits-and-cancellation), [config](config.md#child-session-limits).
+`agents.max_depth` now defaults to 3 (root's children are depth 1; a depth-3 agent cannot spawn, and the `agent` tool returns "subagent depth limit 3 reached"). `0` keeps its meaning of disabling spawning, so existing configs stay safe; there is no unlimited setting. There is deliberately no cap on rounds per turn. Current: [child sessions](child-sessions.md#limits-and-cancellation), [config](config.md#child-session-limits).
