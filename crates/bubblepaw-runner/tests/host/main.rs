@@ -32,4 +32,5 @@ mod runtime_note;
 mod storage_cli;
 mod trace_cli;
 mod tracing;
+mod trust_api;
 mod wake_storage;
