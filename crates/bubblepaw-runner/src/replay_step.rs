@@ -147,7 +147,10 @@ impl ReplayRun {
         self.history.push(message.clone());
         if !self.execution.optimized()
             || self.imports.is_full()
-            || self.history.len() % PROGRESS_INTERVAL_MESSAGES == 0
+            || self
+                .history
+                .len()
+                .is_multiple_of(PROGRESS_INTERVAL_MESSAGES)
         {
             self.imports.flush_profiled(
                 &mut self.importer,
@@ -155,7 +158,11 @@ impl ReplayRun {
                 self.compactions.len(),
             )?;
         }
-        if self.history.len() % PROGRESS_INTERVAL_MESSAGES == 0 {
+        if self
+            .history
+            .len()
+            .is_multiple_of(PROGRESS_INTERVAL_MESSAGES)
+        {
             self.progress.write(
                 "running",
                 self.imports.committed_messages,
