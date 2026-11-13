@@ -105,22 +105,10 @@ pub(super) struct Layout {
     pub(super) event_reserved_end: AtomicU64,
     pub(super) recovery: super::recovery::RecoveryEvents,
     pub(super) serving_transactions: AtomicU64,
-    chat_open_hooks: Mutex<Vec<(&'static str, ChatOpenHook)>>,
     /// Roots whose chat files a delete is removing; they must not reopen.
     deleting: Mutex<std::collections::HashSet<String>>,
 }
 
-/// Runs once for each chat store, the first time the process opens it. A failed
-/// hook fails that open. Hooks may use chat-store methods, but never open chats.
-pub type ChatOpenHook = Arc<dyn Fn(&Store) -> Result<()> + Send + Sync>;
-
-/// A chat that was already open when a hook was registered, and for which the hook
-/// failed. The other open chats still ran it.
-#[derive(Debug)]
-pub struct ChatOpenFailure {
-    pub chat: PathBuf,
-    pub error: anyhow::Error,
-}
 impl Layout {
     pub(super) fn options(&self) -> StoreOptions {
         self.options

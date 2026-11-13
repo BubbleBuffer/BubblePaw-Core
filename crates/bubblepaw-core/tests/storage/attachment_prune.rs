@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bubblepaw_core::{CHECKPOINT_PREFIX, CheckpointRecord, Store};
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 
 fn checkpoint_id(name: &str) -> String {
     format!("{CHECKPOINT_PREFIX}{name}")
@@ -33,30 +33,6 @@ fn plain_blob_rows(store: &Store, session: &str) -> Result<i64> {
 
 fn record_rows(store: &Store, session: &str) -> Result<i64> {
     count(store, session, "SELECT COUNT(*) FROM checkpoint_records")
-}
-
-fn legacy_rows(store: &Store, session: &str) -> Result<i64> {
-    count(
-        store,
-        session,
-        "SELECT COUNT(*) FROM attachments WHERE substr(id,1,length('file-checkpoint-v1/'))='file-checkpoint-v1/'",
-    )
-}
-
-/// Insert a row under the checkpoint prefix that names a plain blob, as an older
-/// build wrote it. Store APIs refuse prefixed attachment IDs now, so this uses raw SQL.
-fn insert_legacy_checkpoint_row(
-    store: &Store,
-    session: &str,
-    id: &str,
-    hash: &str,
-    metadata: &str,
-) -> Result<()> {
-    connection(store, session)?.execute(
-        "INSERT INTO attachments(session_id,id,metadata,blob_hash) VALUES(?1,?2,?3,?4)",
-        params![session, id, metadata, hash],
-    )?;
-    Ok(())
 }
 
 #[test]
@@ -312,139 +288,7 @@ fn checkpoint_api_never_touches_plain_attachments() -> Result<()> {
     // A prune bound that covers everything leaves the plain attachment alone.
     let prunes = [(session.clone(), i64::MAX)];
     store.write_checkpoint(&session, record(&checkpoint_id("y"), 1, 1), b"y", &prunes)?;
-    store.sweep_legacy_checkpoints(&session, ("marker", "v2"), &[], &[])?;
     assert_eq!(store.attachment(&session, "plain")?.unwrap().1, b"kept");
     assert_eq!(record_rows(&store, &session)?, 1);
-    Ok(())
-}
-
-#[test]
-fn sweep_copies_current_and_previous_turn_and_removes_legacy_rows() -> Result<()> {
-    let directory = tempfile::tempdir()?;
-    let store = Store::open_data_dir(directory.path())?;
-    let session = store.create_session("sweep")?.id;
-    let legacy_blob = store.store_attachment(&session, "holder", "{}", b"legacy bytes")?;
-    // Patch 1 sits at boundary 1, below the keep bound 3: an old turn, dropped.
-    insert_legacy_checkpoint_row(
-        &store,
-        &session,
-        &checkpoint_id("legacy/1"),
-        &legacy_blob,
-        r#"{"patch_index":1,"boundary_seq":1}"#,
-    )?;
-    // Patch 2 sits at boundary 5, at or above the bound: the previous or current turn, kept.
-    insert_legacy_checkpoint_row(
-        &store,
-        &session,
-        &checkpoint_id("legacy/2"),
-        &legacy_blob,
-        r#"{"patch_index":2,"boundary_seq":5}"#,
-    )?;
-    assert_eq!(legacy_rows(&store, &session)?, 2);
-
-    let before = store.revision();
-    store.sweep_legacy_checkpoints(&session, ("marker", "v2"), &[(session.clone(), 3)], &[])?;
-    // One transaction; legacy rows go, the kept record moves to the current tables.
-    assert_eq!(store.revision(), before + 1);
-    assert_eq!(legacy_rows(&store, &session)?, 0);
-    assert_eq!(record_rows(&store, &session)?, 1);
-    assert_eq!(preimage_rows(&store, &session)?, 1);
-    assert_eq!(
-        store
-            .checkpoint_preimage(&session, &checkpoint_id("legacy/2"))?
-            .unwrap(),
-        b"legacy bytes"
-    );
-    assert_eq!(
-        store.checkpoint_preimage(&session, &checkpoint_id("legacy/1"))?,
-        None
-    );
-    // blobs is never changed by the sweep; the holder row and its blob remain.
-    assert_eq!(plain_blob_rows(&store, &session)?, 1);
-    assert_eq!(
-        store.attachment(&session, "holder")?.unwrap().1,
-        b"legacy bytes"
-    );
-    assert_eq!(
-        store.chat_metadata(&session, "marker")?.as_deref(),
-        Some("v2")
-    );
-    // The sweep raised the high-water mark to the highest legacy patch.
-    assert_eq!(store.checkpoint_high_water(&session)?, 2);
-    assert!(
-        store
-            .write_checkpoint(&session, record(&checkpoint_id("stale"), 1, 6), b"x", &[])
-            .is_err()
-    );
-    Ok(())
-}
-
-/// A second caller for a chat must wait while that chat's open hook runs. Otherwise it
-/// could receive the chat before its migration has been attempted.
-#[test]
-fn chat_is_not_visible_to_other_callers_until_its_open_hook_has_run() -> Result<()> {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex, mpsc};
-    use std::time::Duration;
-
-    let directory = tempfile::tempdir()?;
-    let store = Store::open_data_dir(directory.path())?;
-    let session = store.create_session("ordering")?.id;
-    assert!(store.archive_chat(&session)?);
-
-    let armed = Arc::new(AtomicBool::new(false));
-    let fired = Arc::new(AtomicBool::new(false));
-    let migrated = Arc::new(AtomicBool::new(false));
-    let blocked = Arc::new(AtomicBool::new(false));
-    let (done_tx, done_rx) = mpsc::channel::<()>();
-    let done_rx = Mutex::new(done_rx);
-    let (seen_tx, seen_rx) = mpsc::channel::<bool>();
-    let seen_tx = Mutex::new(seen_tx);
-    let directory_handle = store.clone();
-    let hook_armed = armed.clone();
-    let (hook_fired, hook_migrated, hook_blocked) =
-        (fired.clone(), migrated.clone(), blocked.clone());
-    store.on_chat_open(
-        "test.ordering",
-        Arc::new(move |chat: &Store| {
-            if !hook_armed.load(Ordering::SeqCst) {
-                return Ok(());
-            }
-            hook_fired.store(true, Ordering::SeqCst);
-            let session = chat.chat_session_ids()?.remove(0);
-            // A second caller asks for the same chat while the hook runs.
-            let caller = directory_handle.clone();
-            let caller_migrated = hook_migrated.clone();
-            let caller_done = done_tx.clone();
-            let caller_seen = seen_tx.lock().unwrap().clone();
-            std::thread::spawn(move || {
-                let _ = caller.checkpoint_records_page(&session, None, 10);
-                let _ = caller_seen.send(caller_migrated.load(Ordering::SeqCst));
-                let _ = caller_done.send(());
-            });
-            let waiting = done_rx
-                .lock()
-                .unwrap()
-                .recv_timeout(Duration::from_millis(300));
-            hook_blocked.store(waiting.is_err(), Ordering::SeqCst);
-            // The migration is done here; only now may the second caller proceed.
-            hook_migrated.store(true, Ordering::SeqCst);
-            Ok(())
-        }),
-    )?;
-
-    armed.store(true, Ordering::SeqCst);
-    store.checkpoint_records_page(&session, None, 10)?;
-    armed.store(false, Ordering::SeqCst);
-
-    assert!(
-        fired.load(Ordering::SeqCst),
-        "the open did not run the hook"
-    );
-    assert!(
-        blocked.load(Ordering::SeqCst),
-        "a second caller received the chat while its open hook was running"
-    );
-    assert!(seen_rx.recv_timeout(Duration::from_secs(10))?);
     Ok(())
 }

@@ -62,8 +62,7 @@ pub use context_facts::{
 };
 pub use context_state::{
     BuiltContext, CacheTiers, ContextBuild, ContextClassification, ContextState, ContextWriter,
-    LegacyReminderSource, Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord,
-    RequestLogRow, TierFingerprint,
+    Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord, RequestLogRow, TierFingerprint,
 };
 pub use decision::{
     Answer, AnswerKind, DecisionChoice, DecisionProvider, DecisionRequest, DecisionResponse,
@@ -109,12 +108,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
 pub use store::{
-    CHECKPOINT_PREFIX, ChapterSection, ChatOpenFailure, ChatOpenHook, CheckpointRecord,
-    ContextChapter, ContextCheckpoint, ContextDecision, ContextEpisode, ContextSubjectChapter,
-    ContextView, DecisionKind, EpisodeBatch, InputKind, LegacyCheckpointNote, QueuedInput,
-    RelatedEvidence, RootStoragePolicy, SearchHit, SearchIndexProgress, SessionCleanup,
-    SessionRecord, SessionSnapshot, StorageStats, Store, StoreOptions, StoreSchemaError,
-    SubjectChapterStatus,
+    CHECKPOINT_PREFIX, ChapterSection, CheckpointRecord, ContextChapter, ContextCheckpoint,
+    ContextDecision, ContextEpisode, ContextSubjectChapter, ContextView, DecisionKind,
+    EpisodeBatch, InputKind, QueuedInput, RelatedEvidence, RootStoragePolicy, SearchHit,
+    SearchIndexProgress, SessionCleanup, SessionRecord, SessionSnapshot, StorageStats, Store,
+    StoreOptions, StoreSchemaError, SubjectChapterStatus,
 };
 use tokio::sync::watch;
 pub use transcript::{

@@ -54,7 +54,6 @@ impl AgentTools {
                 {
                     continue;
                 }
-                let legacy = format!("runId {})", run.id);
                 let mut reply = terminal_reply("restored", &run);
                 if let Some((metadata, _)) = self
                     .store
@@ -72,7 +71,6 @@ impl AgentTools {
                     crate::wake::DeliveryMarker::new(
                         "child_completion",
                         child_delivery_id(&session.id, &run.id),
-                        legacy,
                     ),
                     child_completion(
                         &session.id,
@@ -94,11 +92,7 @@ impl AgentTools {
                 &self.store,
                 owner,
                 candidates.iter().map(|(marker, _)| {
-                    crate::wake::DeliveryMarker::new(
-                        marker.kind,
-                        marker.id.clone(),
-                        marker.legacy.clone(),
-                    )
+                    crate::wake::DeliveryMarker::new(marker.kind, marker.id.clone())
                 }),
             )?;
             Ok(candidates

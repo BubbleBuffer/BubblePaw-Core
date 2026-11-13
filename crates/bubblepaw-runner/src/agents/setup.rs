@@ -3,9 +3,6 @@ use super::*;
 
 impl AgentTools {
     pub fn new(store: Store, read_only_child: Harness, workspace_child: Option<Harness>) -> Self {
-        if let Err(error) = crate::rewind::install_checkpoint_sweep(&store) {
-            tracing::warn!(%error, "rewind checkpoint sweep is not installed");
-        }
         let mut profiles = vec![AgentProfile {
             name: "read-only".into(),
             description: "Read-only workspace child".into(),
@@ -53,9 +50,6 @@ impl AgentTools {
     where
         F: FnOnce(&Arc<Self>) -> Result<Vec<AgentProfile>>,
     {
-        if let Err(error) = crate::rewind::install_checkpoint_sweep(&store) {
-            tracing::warn!(%error, "rewind checkpoint sweep is not installed");
-        }
         registry.wake.configure(
             limits.auto_wake,
             Duration::from_millis(limits.wake_debounce_ms),

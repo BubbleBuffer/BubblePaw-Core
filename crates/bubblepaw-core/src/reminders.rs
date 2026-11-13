@@ -51,19 +51,10 @@ impl From<Reminder> for ReminderRecord {
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LegacyReminderSource {
-    pub record_id: String,
-    pub text: String,
-}
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReminderMetadata {
     pub version: u32,
     pub request_kind: String,
     pub reminders: Vec<ReminderRecord>,
-    /// Only original accepted input predating the immutable migration watermark.
-    /// New message text is never a legacy delivery-identity source.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub legacy_sources: Vec<LegacyReminderSource>,
 }
 impl ReminderMetadata {
     pub fn new(request_kind: impl Into<String>, reminders: Vec<Reminder>) -> Self {
@@ -71,7 +62,6 @@ impl ReminderMetadata {
             version: 1,
             request_kind: request_kind.into(),
             reminders: reminders.into_iter().map(Into::into).collect(),
-            legacy_sources: Vec::new(),
         }
     }
 }

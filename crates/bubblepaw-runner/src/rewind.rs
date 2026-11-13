@@ -2,25 +2,20 @@
 //! compressed, content-addressed preimages; the core store needs no file-specific schema.
 use anyhow::{Context, Result, anyhow, ensure};
 use bubblepaw_core::{
-    CHECKPOINT_PREFIX, ChatOpenHook, CheckpointRecord, Message, MessageOrigin, Role, Store,
-    ToolContext, is_typed_user,
+    CHECKPOINT_PREFIX, CheckpointRecord, Message, MessageOrigin, Role, Store, ToolContext,
+    is_typed_user,
 };
 use serde::{Deserialize, Serialize};
 use std::{
     cell::RefCell,
     collections::BTreeMap,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use crate::tools::WorkspaceTools;
 
 const PREFIX: &str = CHECKPOINT_PREFIX;
 const CHECKPOINT_LIMIT: usize = 10 * 1024 * 1024;
-/// Path and reason of the unrestorable record the sweep writes for a session with a
-/// legacy row whose metadata cannot be read. The row's own path is unknown.
-const UNREADABLE_PATH: &str = "a legacy checkpoint with unreadable metadata";
-const UNREADABLE_REASON: &str = "its metadata cannot be read, so its turn is unknown";
 const LIMITATION: &str = "Only this session's checkpointed file changes are restored. Exec, MCP, other sessions and outside edits are not rewound; forks start their own checkpoint ownership.";
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,10 +29,6 @@ struct Checkpoint {
     pre_hash: Option<String>,
     post_hash: Option<String>,
     barrier: Option<String>,
-    /// Set on a record the upgrade sweep migrated without its preimage. Its turn
-    /// cannot be restored, so rewind refuses it. It is never written by a patch.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    unrestorable: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -162,7 +153,6 @@ pub(crate) fn checkpoint_changes<'a>(
             pre_hash: content_hash(previous),
             post_hash: content_hash(content),
             barrier,
-            unrestorable: None,
         };
         let id = format!("{PREFIX}{patch_index:020}/{index:06}");
         let bytes = if checkpoint.barrier.is_some() {
@@ -201,90 +191,6 @@ pub(crate) fn checkpoint_changes<'a>(
         }
     }
     Ok(summary)
-}
-
-/// The sweep marker and its rule version. Both are set in the sweep's transaction.
-const PRUNE_MARKER: &str = "rewind_checkpoint_prune";
-const PRUNE_RULE: &str = "v2";
-/// Hook key of the sweep. The core registers each key once, so every host
-/// construction may install it again.
-const SWEEP_HOOK: &str = "rewind.checkpoint-sweep";
-
-/// Register the one-time checkpoint sweep. A chat store runs it the first time
-/// this process opens it, outside any checkpoint write, and runs it now on the
-/// chats already open (the directory store opens active chats at startup).
-/// Every agent host calls this on its store when it is constructed.
-pub fn install_checkpoint_sweep(store: &Store) -> Result<()> {
-    let hook: ChatOpenHook = Arc::new(sweep_chat);
-    // A chat whose sweep fails stays unmigrated and refuses rewind. The other open
-    // chats are still swept.
-    for failure in store.on_chat_open(SWEEP_HOOK, hook)? {
-        tracing::warn!(
-            chat = %failure.chat.display(),
-            error = %format!("{:#}", failure.error),
-            "rewind checkpoint sweep failed; this chat refuses rewind until it succeeds"
-        );
-    }
-    Ok(())
-}
-
-/// Delete every legacy checkpoint record of one opened chat, once, and set the
-/// marker in the same transaction. No retention applies: legacy records are
-/// never restorable under the current layout. Their blobs are not reclaimed
-/// here; they go with the chat. The sweep only ever opens the chat it is given,
-/// so archived chats stay archived.
-fn sweep_chat(chat: &Store) -> Result<()> {
-    let sessions = chat.chat_session_ids()?;
-    let Some(first) = sessions.first() else {
-        // A chat with no sessions has no legacy rows. Mark it now: it is cached, so
-        // its sweep never runs again, and a session created in it later must rewind.
-        return chat.set_chat_metadata(PRUNE_MARKER, PRUNE_RULE);
-    };
-    if chat.chat_metadata(first, PRUNE_MARKER)?.as_deref() == Some(PRUNE_RULE) {
-        return Ok(());
-    }
-    // Legacy rows at or above each session's keep bound are copied into the current
-    // tables. A session with fewer than two turns keeps all of its rows.
-    let mut keep = Vec::new();
-    let mut unreadable = Vec::new();
-    for session in &sessions {
-        if let Some(from) = keep_from(chat, session)? {
-            keep.push((session.clone(), from));
-        }
-        // An unreadable legacy row's turn is unknown, so its record sits at the latest
-        // turn start. Rewinding that turn then refuses.
-        if let Some((seq, message_id)) = turn_starts(chat, session, 1)?.pop() {
-            let checkpoint = Checkpoint {
-                workspace: PathBuf::new(),
-                path: UNREADABLE_PATH.to_owned(),
-                invocation_id: String::new(),
-                boundary_message_id: Some(message_id),
-                boundary_seq: seq,
-                patch_index: 0,
-                pre_hash: None,
-                post_hash: None,
-                barrier: None,
-                unrestorable: Some(UNREADABLE_REASON.to_owned()),
-            };
-            unreadable.push((session.clone(), seq, serde_json::to_string(&checkpoint)?));
-        }
-    }
-    let skipped =
-        chat.sweep_legacy_checkpoints(first, (PRUNE_MARKER, PRUNE_RULE), &keep, &unreadable)?;
-    if !skipped.is_empty() {
-        let chat_path = chat.chat_path(first)?.unwrap_or_default();
-        for row in skipped {
-            tracing::warn!(
-                chat = %chat_path.display(),
-                checkpoint = %row.id,
-                session = %row.session_id,
-                reason = %row.reason,
-                left = row.left,
-                "legacy checkpoint could not be restored; left=true keeps it in attachments"
-            );
-        }
-    }
-    Ok(())
 }
 
 /// A turn starts at a typed user row (run, steer or followup) or at a child-task
@@ -335,8 +241,7 @@ fn keep_from(store: &Store, session_id: &str) -> Result<Option<i64>> {
 
 /// Prune bounds of every session in the writing session's chat, applied inside
 /// the checkpoint write's transaction. Sessions with no records or fewer than two
-/// turns are left out. Read only. Legacy records are not pruned here: the
-/// one-time sweep handles them when the chat opens.
+/// turns are left out. Read only.
 fn prune_plan(store: &Store, session_id: &str) -> Result<Vec<(String, i64)>> {
     let mut prunes = Vec::new();
     for session in store.chat_sessions(session_id)? {
@@ -378,15 +283,6 @@ fn rewind_plan(
             boundary == Some(checkpoint.boundary_seq),
             "checkpoint boundary no longer matches source history; refusing rewind"
         );
-        if let Some(reason) = &checkpoint.unrestorable {
-            // Refuse before any fork or write: a partial restore would report success.
-            ensure!(
-                checkpoint.boundary_seq < cutoff,
-                "rewind refused: {} has an unrestorable checkpoint in the turn being rewound ({reason}); its earlier content cannot be restored",
-                checkpoint.path
-            );
-            continue;
-        }
         if checkpoint.boundary_seq >= cutoff {
             ensure!(
                 checkpoint.workspace == workspace.root(),
@@ -422,15 +318,6 @@ pub fn rewind_session(
         !message_id.trim().is_empty(),
         "rewind requires a target message ID"
     );
-    // A chat whose sweep has not finished still holds legacy rows, so its history is
-    // incomplete. Refuse before any workspace or fork work.
-    // An in-memory store has no legacy data, so it has nothing to upgrade.
-    if store.chat_path(session_id)?.is_some() {
-        ensure!(
-            store.chat_metadata(session_id, PRUNE_MARKER)?.as_deref() == Some(PRUNE_RULE),
-            "rewind refused: this chat's checkpoint upgrade has not run; reopen the chat so the sweep can finish, then retry"
-        );
-    }
     let workspace = crate::worktrees::workspace(store, session_id, workspace.as_ref())?;
     let workspace = WorkspaceTools::new(workspace)?;
     let _guard = workspace.mutation_guard()?;
@@ -473,7 +360,6 @@ pub fn rewind_session(
                         "file differs from the last checkpoint postimage (outside edit or interrupted patch)");
                     if checkpoint.pre_hash == current { return Ok(None); }
                     // Preimages come only from checkpoint_records and checkpoint_blobs.
-                    // Legacy attachment rows were swept when the chat opened.
                     let content = if checkpoint.pre_hash.is_some() {
                         let bytes = store.checkpoint_preimage(session_id, id)?.context("checkpoint preimage is missing")?;
                         ensure!(content_hash(Some(&bytes)) == checkpoint.pre_hash, "checkpoint preimage hash differs");

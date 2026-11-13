@@ -1,7 +1,6 @@
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use bubblepaw_core::*;
-use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
@@ -177,76 +176,5 @@ async fn admitted_reminder_metadata_is_atomic_and_recovered_at_the_model_tail() 
     let store = Store::open(&path)?;
     let metadata = store.reminder_metadata(&session, &tail.id)?.unwrap();
     assert_eq!(metadata.reminders[0].deliveries[0].id, "q");
-    assert!(metadata.legacy_sources.is_empty());
-    Ok(())
-}
-
-#[tokio::test]
-async fn legacy_queued_inputs_retain_all_old_sources_through_staging_flush_and_reopen() -> Result<()>
-{
-    let directory = tempfile::tempdir()?;
-    let path = directory.path().join("paw.db");
-    let store = Store::open(&path)?;
-    let session = store.create_session("legacy accepted")?.id;
-    let old_a = store.queue_with_origin(
-        &session,
-        InputKind::Steer,
-        "[host notice]\nold process p completed",
-        MessageOrigin::Generated,
-    )?;
-    let old_b = store.queue_with_origin(
-        &session,
-        InputKind::Steer,
-        "[host notice]\nold question q answered",
-        MessageOrigin::Generated,
-    )?;
-    let chat = store.chat_path(&session)?.unwrap();
-    drop(store);
-    let conn = Connection::open(&chat)?;
-    conn.execute_batch("DROP TABLE reminder_metadata; DELETE FROM metadata WHERE key IN ('reminders_v1_message_cutoff','reminders_v1_input_cutoff');")?;
-    drop(conn);
-    let store = Store::open(&path)?;
-    assert!(store.reminder_legacy_eligible(&session, &old_a.id)?);
-    let provider = Capture::new(&["done"]);
-    let harness = Harness::new(
-        store.clone(),
-        provider.clone(),
-        ToolRegistry::new(),
-        HarnessConfig::default(),
-    );
-    harness.start_resume(&session, RunOptions::default())?;
-    assert_eq!(harness.wait_for_idle(&session).await?.status, "completed");
-    let tail = provider.requests.lock().unwrap()[0]
-        .messages
-        .last()
-        .unwrap()
-        .clone();
-    assert!(tail.content.contains(&old_a.text));
-    assert!(tail.content.contains(&old_b.text));
-    let metadata = store.reminder_metadata(&session, &tail.id)?.unwrap();
-    assert_eq!(metadata.reminders.len(), 2);
-    assert_eq!(metadata.legacy_sources.len(), 2);
-    assert_eq!(metadata.legacy_sources[0].record_id, old_a.id);
-    assert_eq!(metadata.legacy_sources[1].text, old_b.text);
-    assert!(
-        store
-            .queued_inputs(&session)?
-            .iter()
-            .all(|input| input.state == "consumed")
-    );
-    drop(harness);
-    drop(store);
-    let store = Store::open(&path)?;
-    let reopened = store.reminder_metadata(&session, &tail.id)?.unwrap();
-    assert_eq!(reopened, metadata);
-    assert!(!store.reminder_legacy_eligible(&session, &tail.id)?);
-    assert_eq!(
-        store
-            .reminder_metadata(&session, &old_a.id)?
-            .unwrap()
-            .legacy_sources[0]
-            .text,
-        old_a.text
-    );
     Ok(())
 }

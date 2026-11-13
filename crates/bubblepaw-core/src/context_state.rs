@@ -19,9 +19,7 @@ mod reminders;
 #[path = "context_writer.rs"]
 mod writer;
 pub use log::RequestLogRow;
-pub use reminders::{
-    LegacyReminderSource, Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord,
-};
+pub use reminders::{Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord};
 pub use writer::ContextWriter;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

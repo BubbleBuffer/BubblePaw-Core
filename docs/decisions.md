@@ -1,6 +1,6 @@
 # V0 decisions
 
-Status: decision log, dated; current through 2026-11-12.
+Status: decision log, dated; current through 2026-11-13.
 
 ## Native by default; JavaScript wraps native calls (2026-10-22)
 
@@ -802,6 +802,8 @@ headless until that follow-up.
 The owner decided that data written by older versions may be forgotten. Code whose only purpose was to tolerate old stored shapes is removed as it is found: the bare-string form of `RelatedEvidence` in stored chapters, the compact-envelope fallback when parsing stored attachment messages, and the read path for catalogs whose `quota_history` lacks `balance`. Store files and rows from older versions are not migrated; a store at another schema version fails with `StoreSchemaError` (see "One schema per store"). Wire compatibility with current clients is separate and unchanged.
 
 Release note: **stores and configs written by older versions are no longer read.** Start a new data directory if a store fails to open with a schema-version error.
+
+2026-11-13: two more leftovers are removed on the same rule. The rewind checkpoint sweep (`Store::sweep_legacy_checkpoints`, `rewind::install_checkpoint_sweep`, the chat-open hook registry it used, the `unrestorable` checkpoint mark and the rewind refusal on a missing upgrade marker) is gone: checkpoint rows from the earlier attachment layout are not migrated. Matching of old-format reminder and host-notice text is gone too (`DeliveryMarker.legacy`, `ReminderMetadata.legacy_sources`, `Store::reminder_legacy_eligible` and the two migration watermarks): delivery recovery reads structured reminder metadata only, so unannotated `[host notice]` records from older versions are not counted as delivered. Current: [rewind](rewind.md), [prefix-cache-design](prefix-cache-design.md).
 
 ## Closed-chapter summaries are capped in the served view (2026-11-12)
 

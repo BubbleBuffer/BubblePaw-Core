@@ -218,13 +218,10 @@ records are stored in SQLite, and the existing schema version stays unchanged.
 
 Host notices reach the model only as structured reminders: the string
 `take_notices` methods, legacy string wake callbacks and `[host notice]` text
-building are gone. Two immutable migration watermarks restrict recognition of
-`[host notice]` text to records already present when this feature first opens
-the store. New unannotated text cannot claim legacy delivery. If an old queued notice is flushed after the
-upgrade, its verified old source text and record ID travel as migration-only
-`legacy_sources` provenance; this small compatibility case retains an extra copy
-of the old text. Recovery can inspect that provenance after restart without
-parsing the new combined message. Existing Generated origin remains available
+building are gone. Recognition of delivery uses structured reminder metadata
+only; message and input text is never parsed for a delivery marker. Unannotated
+notice text from older versions no longer counts as delivered (2026-11-13, see
+`decisions.md`). Existing Generated origin remains available
 to host consumers. Dedicated server-assembled decision
 APIs remain excluded as documented above.
 

@@ -2,9 +2,6 @@ use super::*;
 use crate::{Reminder, ReminderMetadata};
 use std::collections::HashSet;
 
-const MESSAGE_CUTOFF: &str = "reminders_v1_message_cutoff";
-const INPUT_CUTOFF: &str = "reminders_v1_input_cutoff";
-
 impl Store {
     pub(super) fn initialize_reminders(connection: &Connection) -> Result<()> {
         let tx = connection.unchecked_transaction()?;
@@ -16,14 +13,6 @@ impl Store {
                 PRIMARY KEY(session_id,record_id)
             );",
         )?;
-        // These boundaries describe the first additive migration, never the
-        // current open. Absence of metadata on newer records is not legacy.
-        for (key, table) in [(MESSAGE_CUTOFF, "messages"), (INPUT_CUTOFF, "inputs")] {
-            tx.execute(
-                &format!("INSERT OR IGNORE INTO metadata(key,value) SELECT ?1,CAST(COALESCE(MAX(seq),0) AS TEXT) FROM {table}"),
-                [key],
-            )?;
-        }
         tx.commit()?;
         Ok(())
     }
@@ -114,8 +103,7 @@ impl Store {
     }
 
     /// Metadata for a generated input. Inputs queued without metadata get a
-    /// per-input kind; those older than the migration cutoff also keep their
-    /// original text as a legacy source. `write` persists synthesized metadata.
+    /// per-input kind. `write` persists synthesized metadata.
     pub(crate) fn input_reminder_metadata_tx(
         conn: &Connection,
         session: &str,
@@ -126,24 +114,8 @@ impl Store {
         if let Some(metadata) = Self::reminder_metadata_tx(conn, session, input)? {
             return Ok(metadata);
         }
-        let legacy: bool = conn.query_row(
-            "SELECT seq<=CAST((SELECT value FROM metadata WHERE key=?2) AS INTEGER) FROM inputs WHERE id=?1",
-            params![input, INPUT_CUTOFF],
-            |row| row.get(0),
-        )?;
-        let prefix = if legacy {
-            "legacy_input"
-        } else {
-            "generated_input"
-        };
-        let reminder = Reminder::new(format!("{prefix}:{input}"), text);
-        let mut metadata = ReminderMetadata::new("root", vec![reminder]);
-        if legacy {
-            metadata.legacy_sources.push(crate::LegacyReminderSource {
-                record_id: input.into(),
-                text: text.into(),
-            });
-        }
+        let reminder = Reminder::new(format!("generated_input:{input}"), text);
+        let metadata = ReminderMetadata::new("root", vec![reminder]);
         if write {
             Self::write_reminder_metadata_tx(conn, session, input, &metadata)?;
         }
@@ -161,51 +133,6 @@ impl Store {
             Self::write_reminder_metadata_tx(conn, destination_session, destination_id, &metadata)?;
         }
         Ok(())
-    }
-
-    /// Only records already present at the first migration may use the legacy
-    /// reminder parser. Missing newer metadata must remain ordinary content.
-    pub fn reminder_legacy_eligible(&self, session: &str, record_id: &str) -> Result<bool> {
-        if let Some(store) = self.scoped(session)? {
-            return store.reminder_legacy_eligible(session, record_id);
-        }
-        let (eligible, archived_cutoff) = self.read(|conn| {
-            let annotated: bool = conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM reminder_metadata WHERE session_id=?1 AND record_id=?2)",
-                params![session, record_id],
-                |row| row.get(0),
-            )?;
-            if annotated {
-                return Ok((false, None));
-            }
-            let eligible = conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM messages WHERE session_id=?1 AND message_id=?2 AND seq<=CAST((SELECT value FROM metadata WHERE key=?3) AS INTEGER))
-                OR EXISTS(SELECT 1 FROM inputs WHERE session_id=?1 AND id=?2 AND seq<=CAST((SELECT value FROM metadata WHERE key=?4) AS INTEGER))",
-                params![session, record_id, MESSAGE_CUTOFF, INPUT_CUTOFF],
-                |row| row.get::<_, bool>(0),
-            )?;
-            let cutoff = conn.query_row(
-                "SELECT CAST(value AS INTEGER) FROM metadata WHERE key=?1",
-                [INPUT_CUTOFF],
-                |row| row.get::<_, i64>(0),
-            )?;
-            Ok((eligible, Some(cutoff)))
-        })?;
-        if eligible {
-            return Ok(true);
-        }
-        // Resolved input rows are disposable serving records, but source_seq
-        // retains their original canonical position across that move.
-        if let (Some(host), Some(cutoff)) = (self.host(), archived_cutoff) {
-            return host.read(|conn| {
-                Ok(conn.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM inputs WHERE session_id=?1 AND id=?2 AND source_seq<=?3)",
-                    params![session, record_id, cutoff],
-                    |row| row.get(0),
-                )?)
-            });
-        }
-        Ok(false)
     }
 
     pub(crate) fn pending_reminder_inputs(
@@ -285,7 +212,6 @@ impl Store {
             return store.append_reminder_message(message, metadata, input_ids);
         }
         self.write(|tx| {
-            let mut metadata = metadata.clone();
             for input in input_ids {
                 let (text, blob, format): (String, Option<String>, Option<String>) = tx.query_row(
                     "SELECT text,content_blob,content_format FROM inputs WHERE session_id=?1 AND id=?2",
@@ -293,12 +219,10 @@ impl Store {
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )?;
                 let text = Self::input_text(tx, &text, blob.as_deref(), format.as_deref())?;
-                let source =
-                    Self::input_reminder_metadata_tx(tx, &message.session_id, input, &text, true)?;
-                metadata.legacy_sources.extend(source.legacy_sources);
+                Self::input_reminder_metadata_tx(tx, &message.session_id, input, &text, true)?;
             }
             Self::insert_message(tx, message)?;
-            Self::write_reminder_metadata_tx(tx, &message.session_id, &message.id, &metadata)?;
+            Self::write_reminder_metadata_tx(tx, &message.session_id, &message.id, metadata)?;
             Self::acknowledge_reminder_inputs_tx(
                 tx,
                 &message.session_id,

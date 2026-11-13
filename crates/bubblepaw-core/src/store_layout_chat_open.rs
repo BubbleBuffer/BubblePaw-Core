@@ -177,52 +177,12 @@ impl Store {
             pending_usage: temporary.0.pending_usage.clone(),
             _lock: None,
         }));
-        // Chat-open hooks, such as the legacy checkpoint sweep, run before the chat is
-        // published. The chats lock stays held, so no other caller can receive this
-        // chat until its migration has run. A failing hook fails the open and leaves
-        // the chat unpublished, so the next open attempts the migration again.
-        let hooks = layout.chat_open_hooks.lock().unwrap().clone();
-        for (_, hook) in hooks {
-            hook(&store)?;
-        }
         chats.insert(root.into(), store.clone());
         drop(chats);
         store.finish_chat_open_recovery(split)?;
         Ok(store)
     }
 
-    /// Register a hook under `key` that runs when a chat store is first opened in
-    /// this process. Chats that the store constructor already opened (active roots
-    /// are scanned at open) are cached before any hook exists, so the hook runs
-    /// on those now, once each. A failing hook on one of them does not stop the
-    /// others; each failure is returned, so the caller can report it. A key already
-    /// registered is ignored, so callers may register on every construction. Only a
-    /// directory store takes hooks.
-    pub fn on_chat_open(
-        &self,
-        key: &'static str,
-        hook: ChatOpenHook,
-    ) -> Result<Vec<ChatOpenFailure>> {
-        let layout = self.0.layout.as_ref().context("Not a directory store")?;
-        {
-            let mut hooks = layout.chat_open_hooks.lock().unwrap();
-            if hooks.iter().any(|(registered, _)| *registered == key) {
-                return Ok(Vec::new());
-            }
-            hooks.push((key, hook.clone()));
-        }
-        let open: Vec<Self> = layout.chats.lock().unwrap().values().cloned().collect();
-        let mut failures = Vec::new();
-        for chat in &open {
-            if let Err(error) = hook(chat) {
-                failures.push(ChatOpenFailure {
-                    chat: chat.0.path.clone().unwrap_or_default(),
-                    error,
-                });
-            }
-        }
-        Ok(failures)
-    }
     pub fn chat_path(&self, session: &str) -> Result<Option<PathBuf>> {
         match self.scoped(session)? {
             Some(store) => Ok(store.0.path.clone()),
