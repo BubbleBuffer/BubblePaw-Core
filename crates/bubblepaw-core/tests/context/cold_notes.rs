@@ -48,14 +48,20 @@ fn notes_render_after_the_cold_tier_by_kind_then_insertion() {
         .iter()
         .map(|m| m.content.as_str())
         .collect();
-    assert_eq!(contents[..2], ["view 1", "view 2"]);
-    assert_eq!(contents[3], "raw");
+    assert_eq!(
+        contents[..2],
+        [
+            "<harness>\nview 1\n</harness>",
+            "<harness>\nview 2\n</harness>"
+        ]
+    );
+    assert_eq!(contents[3], "<harness>\nraw\n</harness>");
     assert_eq!(
         contents[2],
         "<harness kind=\"a\">only a</harness>\n<harness kind=\"b\">first b</harness>\n<harness kind=\"b\">second b</harness>"
     );
     let note = &request.messages[2];
-    assert_eq!(note.role, Role::System);
+    assert_eq!(note.role, Role::User);
     assert_eq!(note.origin, Some(MessageOrigin::Generated));
     assert_eq!(
         note.created_at, "time",
@@ -125,4 +131,38 @@ fn tiers_report_the_cold_end_and_the_appended_previous_length() {
     assert_eq!((apply.cold_end, apply.previous_len), (Some(2), None));
     let plain = ContextState::default().build(request(&["a"]), "s", "root", &[]);
     assert_eq!(plain.tiers, bubblepaw_core::CacheTiers::default());
+}
+
+/// A reminder, a cold note and a system-role view block all reach the provider
+/// request as user-role harness content; no system message follows the prompt.
+#[test]
+fn request_carries_no_system_message_after_the_prompt() {
+    let store = bubblepaw_core::Store::in_memory().unwrap();
+    let session = store.create_session("harness view").unwrap().id;
+    let state = ContextState::default();
+    state.cold_note(&session, "lookup", "cold text");
+    state.remind(&session, "root", "inventory", "reminder text");
+    let mut request = request(&["view"]);
+    request.messages[0].session_id = session.clone();
+    let built = state
+        .build_persisted(request, &session, "root", &[0], &store, |_| Ok(()))
+        .unwrap();
+    let messages = &built.request.messages;
+    assert_eq!(messages.len(), 3);
+    assert_eq!(built.request.system_prompt, "system");
+    assert!(messages.iter().all(|m| m.role == Role::User));
+    assert!(
+        messages
+            .iter()
+            .all(|m| m.origin == Some(MessageOrigin::Generated))
+    );
+    assert_eq!(messages[0].content, "<harness>\nview\n</harness>");
+    assert_eq!(
+        messages[1].content,
+        "<harness kind=\"lookup\">cold text</harness>"
+    );
+    assert_eq!(
+        messages[2].content,
+        "<harness kind=\"inventory\">reminder text</harness>"
+    );
 }

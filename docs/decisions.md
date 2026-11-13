@@ -813,9 +813,13 @@ Closed chapters had no bound on count or total size, so a long session's served 
 
 Since workspace trust, a trusted project `.bubblepaw/config.toml` could set `approvals.hardline = false` and the whole agent tree ran without the floor. The project config layer now drops `approvals.hardline` the same way it drops `workspace_trust`, with a warning; user config, environment and CLI still set it. Current: [approvals](approvals.md#hardline-floor), [config](config.md).
 
+
 ## Subagent depth is capped at 3 by default (2026-11-13)
 
 `agents.max_depth` now defaults to 3 (root's children are depth 1; a depth-3 agent cannot spawn, and the `agent` tool returns "subagent depth limit 3 reached"). `0` keeps its meaning of disabling spawning, so existing configs stay safe; there is no unlimited setting. There is deliberately no cap on rounds per turn. Current: [child sessions](child-sessions.md#limits-and-cancellation), [config](config.md#child-session-limits).
+## Harness notes are user-role (2026-11-13)
+
+Decision (the user): notes the harness adds after the conversation started (cold notes, reminders, host notices, LCM view blocks and controls) go to the model as user-role content wrapped in `<harness>`, never as mid-conversation system messages; several providers reject or mishandle them and they break prefix caching on some. Implemented in `ContextState::build` and `fork` (`harness_view`): every `Role::System` message of a request becomes a user-role Generated message `<harness>\n...\n</harness>`; cold notes are user-role directly. Stored history is unchanged. Current: [prefix-cache-design](prefix-cache-design.md).
 
 ## Relay control frames never drop, and one slow session does not stall the rest (2026-11-13)
 

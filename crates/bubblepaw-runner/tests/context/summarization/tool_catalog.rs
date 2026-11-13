@@ -181,7 +181,7 @@ async fn real_lcm_apply_preserves_frozen_chat_prefix_and_refreshes_cold_tool_cat
     );
     let (cold, encoded) = harness_block(&fourth, "tool_catalog")
         .expect("applied inventory is present in cold context");
-    assert_eq!(cold.role, Role::System);
+    assert_eq!(cold.role, Role::User);
     let catalog: Value = serde_json::from_str(encoded)?;
     assert_eq!(serde_json::to_string(&catalog)?, encoded);
     let anchors = catalog["anchors"].as_str().unwrap();

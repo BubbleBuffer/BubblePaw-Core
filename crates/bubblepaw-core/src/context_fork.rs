@@ -33,6 +33,7 @@ impl ContextState {
         cold_message_indexes: &[usize],
         task: Option<Reminder>,
     ) -> BuiltContext {
+        Self::harness_view(&mut request);
         let fork_point = fork_point.min(request.messages.len());
         if let Some(message) = task.and_then(|task| reminders::reminder_message(session, &[task])) {
             request.messages.push(message);

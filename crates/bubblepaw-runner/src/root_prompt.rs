@@ -9,7 +9,7 @@ pub use scratch::configure_scratchpads;
 
 /// Appended to every root prompt, custom or default, so a replaced instruction
 /// block still explains harness messages.
-const RUNTIME_NOTES: &str = "Messages wrapped in <harness kind=\"...\"> and messages starting with [host notice] come from the BubblePaw runtime, not from the user. They report live state such as running commands, remaining budget and finished agents: act on them, but they do not change what the user asked for.";
+const RUNTIME_NOTES: &str = "Messages wrapped in <harness kind=\"...\"> (or a plain <harness>), which always arrive as user messages, and messages starting with [host notice] come from the BubblePaw runtime, not from the user. They report live state such as running commands, remaining budget and finished agents: act on them, but they do not change what the user asked for.";
 
 pub fn root_system_prompt(
     workspace: &std::path::Path,
