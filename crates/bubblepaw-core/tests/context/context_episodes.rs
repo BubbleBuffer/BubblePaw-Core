@@ -301,23 +301,16 @@ async fn origin_round_trips_admission_queue_restart_and_consumption() -> Result<
 }
 
 #[tokio::test]
-async fn origin_legacy_fallback_excludes_only_generated_wrappers() -> Result<()> {
+async fn missing_origin_counts_as_typed_regardless_of_text() -> Result<()> {
     let store = Store::in_memory()?;
-    let session = store.create_session("legacy")?;
+    let session = store.create_session("no origin")?;
     let mut message = canonical_history(&store, &session.id, 1).await?.remove(0);
     message.origin = None;
     let json = serde_json::to_value(&message)?;
     assert!(json.get("origin").is_none());
     let restored: Message = serde_json::from_value(json)?;
     assert!(is_typed_user(&restored));
-    for wrapper in ["Task:\nchild", "Explicit context (JSON):\n{}"] {
-        message.content = wrapper.into();
-        assert!(!is_typed_user(&message));
-        message.origin = Some(MessageOrigin::Typed);
-        assert!(is_typed_user(&message));
-        message.origin = None;
-    }
-    message.content = "Task: a normal user sentence".into();
+    message.content = "Task:\nlooks like a wrapper".into();
     assert!(is_typed_user(&message));
     message.role = Role::Assistant;
     message.origin = Some(MessageOrigin::Typed);

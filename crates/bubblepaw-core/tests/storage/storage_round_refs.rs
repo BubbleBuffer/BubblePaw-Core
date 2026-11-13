@@ -137,6 +137,7 @@ fn headers_preserve_typed_classification_without_original_body_reads() -> Result
     let mut typed = message(&session.id, 0, Role::User);
     typed.content = "A real user request".into();
     let mut generated = message(&session.id, 1, Role::User);
+    generated.origin = Some(bubblepaw_core::MessageOrigin::ChildTask);
     generated.content = "Task:\nSynthetic child task".into();
     store.append_batch(&[typed, generated])?;
     let mut flags = Vec::new();

@@ -170,9 +170,8 @@ pub enum MessageOrigin {
     ArchiveUnknownOutcome,
 }
 
-/// Legacy child-task wrapper prefixes. Explicit origins take precedence.
-pub const GENERATED_USER_WRAPPER_PREFIXES: &[&str] = &["Task:\n", "Explicit context (JSON):\n"];
-
+/// A user message is typed unless its origin says otherwise. A missing origin
+/// (only in-memory requests; every persisted writer sets one) counts as typed.
 pub fn is_typed_user(message: &Message) -> bool {
     message.role == Role::User
         && match message.origin {
@@ -182,9 +181,7 @@ pub fn is_typed_user(message: &Message) -> bool {
                 | MessageOrigin::Generated
                 | MessageOrigin::ArchiveUnknownOutcome,
             ) => false,
-            None => !GENERATED_USER_WRAPPER_PREFIXES
-                .iter()
-                .any(|prefix| message.content.trim_start().starts_with(prefix)),
+            None => true,
         }
 }
 

@@ -1,6 +1,6 @@
 //! Indexed cold-history access. Metadata may grow with history; decoded bodies do not.
 use anyhow::{Context, Result};
-use bubblepaw_core::{Message, MessageOrigin, Role, Store, is_typed_user};
+use bubblepaw_core::{Message, MessageOrigin, Store, is_typed_user};
 use std::{cell::Cell, collections::HashMap, sync::Mutex};
 
 use crate::summarization::SummarizingContext;
@@ -101,15 +101,6 @@ impl HistorySnapshot {
 
     /// Keep identities, roles, dates and call boundaries, never body/argument payloads.
     fn strip(mut message: Message) -> Message {
-        // Legacy generated users are identified by their original envelope.
-        // Preserve that classification before dropping its content.
-        if message.role == Role::User && message.origin.is_none() {
-            message.origin = Some(if is_typed_user(&message) {
-                MessageOrigin::Typed
-            } else {
-                MessageOrigin::Generated
-            });
-        }
         message.content = String::new();
         message.provider_state = None;
         for call in &mut message.tool_calls {
@@ -254,7 +245,7 @@ mod tests {
         episodes::plan_episodes_with_estimator, provider::ScriptedProvider,
         summarization::SummaryConfig,
     };
-    use bubblepaw_core::ToolCall;
+    use bubblepaw_core::{Role, ToolCall};
     use serde_json::json;
     use std::sync::Arc;
 
@@ -301,6 +292,7 @@ mod tests {
             });
         }
         history[2].content = "Task:\nGenerated child task".into();
+        history[2].origin = Some(MessageOrigin::ChildTask);
         history[3].id = history[1].id.clone();
         history[3].tool_calls.push(ToolCall {
             id: "pending".into(),
