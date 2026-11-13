@@ -83,9 +83,9 @@ tools = {} # e.g. { bash = "auto", write = "ask" }
 # auto_prompt = "..." # Approver prompt template; unset uses the built-in default (docs/approvals.md).
 
 [agents]
-# All caps are unset by default: no limit, including recursive child sessions.
-# Optional caps are available against runaway recursion.
-# max_depth = 3 # Root is depth 0; 1 permits children, 2 permits grandchildren.
+# max_depth caps subagent nesting and defaults to 3: the root's children are depth 1 and a
+# depth-3 agent cannot spawn. 0 means unlimited. The other caps are unset (no limit).
+# max_depth = 3
 # max_active_per_parent = 8
 # max_active_total = 32 # Shared by all depths in this host.
 # max_retained = 64 # In-memory handles only; sessionId survives eviction/restart.

@@ -19,8 +19,8 @@ impl Default for QuotaSettings {
 }
 
 config_section! {
-    /// Host limits for child sessions. `None` (unset) is unlimited. Zero depth
-    /// disables new children; zero concurrency or retention is rejected.
+    /// Host limits for child sessions. `max_depth` defaults to 3 and zero means
+    /// unlimited; the other caps are unlimited when unset and reject zero.
     #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
     #[serde(default)]
     pub struct Agents {
@@ -42,7 +42,7 @@ config_section! {
 impl Default for Agents {
     fn default() -> Self {
         Self {
-            max_depth: None,
+            max_depth: Some(3),
             max_active_per_parent: None,
             max_active_total: None,
             max_retained: None,

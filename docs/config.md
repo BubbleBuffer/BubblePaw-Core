@@ -607,12 +607,12 @@ deny = []                            # exact tool names that are always refused
 read_only = false                    # live: expose only read-only workspace tools
 # auto_prompt = "..."                # approver prompt template; unset uses the built-in default
 
-[agents]                            # Unset caps mean no limit.
+[agents]                            # max_depth defaults to 3; the other unset caps mean no limit.
 worker_retention_days = 7           # finished internal worker inspection window
 worker_keep_all = false             # debug: preserve successful workers too
 auto_wake = true                    # wake idle parents on visible child/background exec completion
 wake_debounce_ms = 1500             # coalesce nearby completions into one reminder message
-# max_depth = 3
+# max_depth = 3                      # subagent nesting cap; 0 = unlimited
 # max_active_per_parent = 8
 # max_active_total = 32
 # max_retained = 64
@@ -649,13 +649,14 @@ trust_workspace = false              # trust this run's workspace (--trust-works
 ## Child session limits
 
 `[agents]` provides optional caps for the runner's [child sessions](child-sessions.md).
-`max_depth`, `max_active_per_parent`, `max_active_total` and `max_retained` are all
-unset by default, meaning no limit. Workspace child profiles receive agent tools
-and can start children at any depth. Research stays restricted to web tools and
-file reads. The caps are available against runaway recursion.
+`max_depth` defaults to 3; `max_active_per_parent`, `max_active_total` and
+`max_retained` are unset by default, meaning no limit. Research stays restricted
+to web tools and file reads. The caps are available against runaway recursion.
 
-The root is depth zero. An explicit `max_depth` gives children agent tools while
-their depth is below that limit; zero disables spawning. Active caps count running
+The root is depth zero and its children are depth 1. With the default `max_depth = 3`
+a depth-3 agent cannot spawn: its `agent` call returns the tool error
+"subagent depth limit 3 reached" and nothing is started. `max_depth = 0` removes the
+cap. There is no cap on rounds per turn. Active caps count running
 turns, so an idle child releases its active slot and a new send must pass admission
 again. The total is shared across the host's parent and child harnesses.
 

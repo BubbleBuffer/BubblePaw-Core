@@ -223,16 +223,16 @@ Unattended one-shot `run`/`resume` continues to deny requests.
 ### Limits and cancellation
 
 The layered [`[agents]` configuration](config.md#child-session-limits) leaves
-`max_depth`, `max_active_per_parent`, `max_active_total` and `max_retained` unset
-by default. Unset means no limit: workspace profiles receive agent tools and can
-start children at any depth. Research children may delegate to the same research
-profile; workspace profiles retain their own capability ceiling. Optional caps
+`max_active_per_parent`, `max_active_total` and `max_retained` unset by default
+(no limit) and set `max_depth` to 3. Research children may delegate to the same
+research profile; workspace profiles retain their own capability ceiling. The caps
 are available against runaway recursion.
 
-Root depth is zero, counted along the catalog parent chain. An explicit depth
-cap rejects deeper starts; zero disables spawning. Workspace profiles retain
-weak child controls at every depth, so raising a live cap (including an initial
-zero) allows deeper children immediately. Active caps count running turns and
+Root depth is zero, counted along the catalog parent chain. The depth cap rejects
+deeper starts with the tool error "subagent depth limit N reached": with the default
+3, a depth-3 agent cannot spawn. Zero means unlimited. Workspace profiles retain
+weak child controls at every depth, so raising a live cap allows deeper children
+immediately. Active caps count running turns and
 apply again to idle sends. Host-wide caps are shared across depths. Retention
 bounds only in-memory handles: evicted children remain in the catalog, appear in status listings and receive a fresh
 handle when addressed by `sessionId`. Cancellation includes idle descendants

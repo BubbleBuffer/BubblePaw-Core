@@ -812,3 +812,7 @@ Closed chapters had no bound on count or total size, so a long session's served 
 ## approvals.hardline is user-only (2026-11-12)
 
 Since workspace trust, a trusted project `.bubblepaw/config.toml` could set `approvals.hardline = false` and the whole agent tree ran without the floor. The project config layer now drops `approvals.hardline` the same way it drops `workspace_trust`, with a warning; user config, environment and CLI still set it. Current: [approvals](approvals.md#hardline-floor), [config](config.md).
+
+## Subagent depth is capped at 3 by default (2026-11-13)
+
+`agents.max_depth` now defaults to 3 (root's children are depth 1; a depth-3 agent cannot spawn, and the `agent` tool returns "subagent depth limit 3 reached"). `0` means unlimited, replacing the old meaning of "disable spawning". There is deliberately no cap on rounds per turn. Current: [child sessions](child-sessions.md#limits-and-cancellation), [config](config.md#child-session-limits).
