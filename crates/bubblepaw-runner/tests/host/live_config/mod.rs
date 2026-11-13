@@ -250,7 +250,7 @@ async fn turn_start_applies_sections_and_invalid_file_keeps_old_config() {
     let fixture = Fixture::new(&config("")).await;
     fixture.turn("initial").await;
     let mcp_command = toml::Value::String(env!("CARGO_BIN_EXE_bubblepaw-runner-fake-mcp").into());
-    let text = config(&format!("[approvals.tools]\nexec='deny'\n[agents]\nmax_depth=0\nauto_wake=false\nwake_debounce_ms=13\n[exec]\nsync_timeout_secs=0\nmax_jobs=1\n[mcp.servers.fixture]\ncommand={mcp_command}\napproval='none'\n"))
+    let text = config(&format!("[approvals.tools]\nexec='deny'\n[agents]\nmax_depth=5\nauto_wake=false\nwake_debounce_ms=13\n[exec]\nsync_timeout_secs=0\nmax_jobs=1\n[mcp.servers.fixture]\ncommand={mcp_command}\napproval='none'\n"))
         .replace("demo/first", "alternate/second") + "[providers.alternate]\nkind='scripted'\n";
     fixture.write(&text);
     fixture.code("changed", "try { const r=await tools.exec({command:'printf forbidden'}); if(!JSON.stringify(r).toLowerCase().includes('denied')) throw Error('unexpected '+JSON.stringify(r)); } catch(e) { if(!String(e).toLowerCase().includes('denied')) throw e; } const names=(await tools.$list()).map(t=>t.name); if(!names.includes('mcp__fixture__echo')) throw Error('missing MCP'); return 'checked';");
