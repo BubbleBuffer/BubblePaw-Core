@@ -94,6 +94,7 @@ deny = []
 # Fixed exec floor. User config, env and CLI only; a project config cannot set it.
 hardline = true
 [agents]
+max_depth = 3
 stale_reminder_secs = 7200
 auto_wake = true
 wake_debounce_ms = 1500

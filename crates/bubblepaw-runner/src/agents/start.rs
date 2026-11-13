@@ -278,8 +278,9 @@ impl AgentTools {
                 .map_err(|error| anyhow!("worker profile must use the owner's store: {error}"))?;
         }
         let depth = self.depth(&owner.id)?.saturating_add(1);
+        // The default cap is 3; zero disables spawning.
         if let Some(max) = self.limits().max_depth {
-            ensure!(depth <= max, "agent depth limit reached ({max})");
+            ensure!(depth <= max, "subagent depth limit {max} reached");
         }
         ensure!(
             tokio::runtime::Handle::try_current().is_ok(),
