@@ -1,9 +1,4 @@
 //! Episode model adapters. Credentials and HTTP payloads never enter the archive or trace.
-use crate::{
-    model_roles::{ModelRole, ModelRoles},
-    provider::{LiveProviderConfig, ProviderRegistry, decision_error_usage},
-    trace::JsonlTrace,
-};
 use anyhow::{Result, anyhow, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -15,6 +10,12 @@ use serde_json::{Value, json};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
+};
+
+use crate::{
+    model_roles::{ModelRole, ModelRoles},
+    provider::{LiveProviderConfig, ProviderRegistry, decision_error_usage},
+    trace::JsonlTrace,
 };
 
 #[path = "episode_models_chapter.rs"]
@@ -92,7 +93,6 @@ pub struct EpisodeFork {
     pub provider: Arc<dyn Provider>,
     pub max_request_bytes: usize,
     pub context_window: Option<usize>,
-    pub fallback_window_tokens: usize,
     /// Physical output reservation when the provider request has no hard limit.
     pub output_reserve_tokens: usize,
     /// False for a cold candidate captured before a main dispatch was possible.

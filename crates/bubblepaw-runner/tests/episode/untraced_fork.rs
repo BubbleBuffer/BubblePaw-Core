@@ -113,7 +113,6 @@ async fn untraced_summary_fork_appends_to_the_root_turn_in_the_serving_log() -> 
         provider: provider.clone(),
         max_request_bytes: 1_000_000,
         context_window: Some(1_000_000),
-        fallback_window_tokens: 200_000,
         output_reserve_tokens: 100,
         dispatched: true,
     };

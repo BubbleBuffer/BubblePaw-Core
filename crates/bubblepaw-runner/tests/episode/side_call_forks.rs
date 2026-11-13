@@ -155,7 +155,6 @@ impl Fixture {
             provider: self.provider.clone(),
             max_request_bytes: 1_000_000,
             context_window: Some(1_000_000),
-            fallback_window_tokens: 200_000,
             output_reserve_tokens: 100,
             dispatched: true,
         }

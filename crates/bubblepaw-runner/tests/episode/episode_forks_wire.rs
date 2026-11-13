@@ -157,7 +157,6 @@ async fn main_then_fork(
                 provider: registry,
                 max_request_bytes: 2 * 1024 * 1024,
                 context_window: Some(200_000),
-                fallback_window_tokens: 200_000,
                 output_reserve_tokens: 4000,
                 dispatched: true,
             },
