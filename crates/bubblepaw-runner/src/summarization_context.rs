@@ -36,16 +36,28 @@ impl SummarizingContext {
         request: &ModelRequest,
         provider: Arc<dyn Provider>,
     ) -> Result<()> {
-        // Ordinary no-auto history already bypasses summary admission, including
-        // when a previously applied view exists. The core byte guard still runs.
-        if !self.automatic() {
-            return Ok(());
-        }
         let bound = Self {
             provider,
             ..self.clone()
         };
         let config = bound.config_for_request(session, request);
+        // With auto-summarize off nothing may summarize on the user's behalf, but
+        // a request that plainly exceeds a known window must not be sent either.
+        // The fallback cap is a compaction threshold, not a window, so it does
+        // not apply here. The plain error is not recoverable by summarizing. The
+        // core byte guard still runs.
+        if !self.automatic() {
+            let Some(window) = config.context_window else {
+                return Ok(());
+            };
+            let estimate = bound.estimated_input(request).0;
+            let reserve = config.lcm.output_reserve_tokens;
+            ensure!(
+                estimate.saturating_add(reserve) <= window,
+                "Prepared request is about {estimate} tokens, which with {reserve} reserved for output exceeds the {window}-token context window, and auto-summarize is off. Compact the session manually (or turn auto_summarize on) before continuing."
+            );
+            return Ok(());
+        }
         let threshold = config.threshold();
         ensure!(
             threshold > 0,

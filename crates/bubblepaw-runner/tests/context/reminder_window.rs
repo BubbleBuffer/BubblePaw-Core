@@ -239,7 +239,8 @@ async fn response_calibration_uses_the_dispatched_reminder_instead_of_counting_i
 }
 
 #[test]
-fn disabled_automatic_summary_admission_keeps_existing_bypass_with_or_without_view() -> Result<()> {
+fn disabled_automatic_summary_admission_refuses_over_known_window_with_or_without_view()
+-> Result<()> {
     let store = Store::in_memory()?;
     let session = store.create_session("ordinary no-auto history")?.id;
     let provider = Arc::new(Estimate {
@@ -248,7 +249,11 @@ fn disabled_automatic_summary_admission_keeps_existing_bypass_with_or_without_vi
     });
     let context = context(&store, provider.clone())?.with_auto_summarize(false);
     let request = ModelRequest::default();
-    context.validate_prepared_request(&session, &request, provider.clone())?;
+    assert!(
+        context
+            .validate_prepared_request(&session, &request, provider.clone())
+            .is_err()
+    );
     store.save_context_view(&bubblepaw_core::ContextView {
         session_id: session.clone(),
         frontier: None,
@@ -263,6 +268,10 @@ fn disabled_automatic_summary_admission_keeps_existing_bypass_with_or_without_vi
         blocks: Vec::new(),
         blocks_estimated: true,
     })?;
-    context.validate_prepared_request(&session, &request, provider)?;
+    assert!(
+        context
+            .validate_prepared_request(&session, &request, provider)
+            .is_err()
+    );
     Ok(())
 }

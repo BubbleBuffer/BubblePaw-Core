@@ -3,6 +3,12 @@ use super::*;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 
+/// Fixed token figure for one image attachment sent to an image-capable model
+/// when the provider has no estimate of its own. Provider image costs vary
+/// (roughly 1k-5k tokens for the largest accepted images), so this is the
+/// conservative end. Images are the only attachments carried in a request.
+pub const IMAGE_ATTACHMENT_TOKENS: usize = 6_000;
+
 /// Estimate one canonical message using the runner's ordinary serving estimator.
 /// Responses replay items are hydrated from canonical text and calls; opaque
 /// encrypted reasoning is excluded. This is an estimate, never provider usage.
@@ -193,6 +199,22 @@ impl SummarizingContext {
             .map(|text| self.tokens(text))
             .sum()
     }
+    /// Image bytes travel as attachment refs in canonical messages and are only
+    /// hydrated at the provider boundary, so the refs alone say nothing of their
+    /// cost. Count each distinct image once, as hydration sends it once.
+    fn image_attachment_tokens(&self, request: &ModelRequest) -> usize {
+        if !self.provider.capabilities(&request.model).image_input {
+            return 0;
+        }
+        let ids: std::collections::HashSet<String> = request
+            .messages
+            .iter()
+            .filter(|message| message.role == Role::Tool)
+            .flat_map(|message| crate::images::split_refs(&message.content).1)
+            .map(|image| image.id)
+            .collect();
+        ids.len().saturating_mul(IMAGE_ATTACHMENT_TOKENS)
+    }
     pub fn estimated_tokens(&self, request: &ModelRequest) -> usize {
         self.estimated_input(request).0
     }
@@ -207,7 +229,8 @@ impl SummarizingContext {
                 .messages
                 .iter()
                 .map(|m| self.message_tokens(m))
-                .sum::<usize>();
+                .sum::<usize>()
+            + self.image_attachment_tokens(request);
         match self
             .provider
             .estimate_input_tokens(request, &|input| {
