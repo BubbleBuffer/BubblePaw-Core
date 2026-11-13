@@ -220,14 +220,16 @@ async fn lcm_apply_changes_only_the_cold_tier() -> Result<()> {
         after
             .messages
             .iter()
-            .all(|message| message.content != HISTORY_RETRIEVAL_INSTRUCTION),
-        "the view prefix no longer carries the lookup hint itself"
+            .filter(|message| message.content.contains(HISTORY_RETRIEVAL_INSTRUCTION))
+            .count()
+            == 1,
+        "only the cold note carries the lookup hint, not the view prefix"
     );
     assert!(
-        after.messages[lookup + 1..]
-            .iter()
-            .all(|message| !message.content.starts_with("Closed chapter")
-                && !message.content.starts_with("Open chapter")),
+        after.messages[lookup + 1..].iter().all(|message| !message
+            .content
+            .starts_with("<harness>\nClosed chapter")
+            && !message.content.starts_with("<harness>\nOpen chapter")),
         "the note follows the view"
     );
 
@@ -250,13 +252,20 @@ async fn lcm_apply_changes_only_the_cold_tier() -> Result<()> {
         .flat_map(|turn| turn["content"].as_array().unwrap())
         .filter_map(|block| block["text"].as_str())
         .collect();
-    let system: Vec<_> = after
+    assert!(
+        after
+            .messages
+            .iter()
+            .all(|message| message.role != Role::System),
+        "no system message after the system prompt"
+    );
+    let harness: Vec<_> = after
         .messages
         .iter()
-        .filter(|message| message.role == Role::System)
+        .filter(|message| message.content.starts_with("<harness"))
         .collect();
-    assert!(system.len() > 1, "view blocks and the cold note");
-    for message in system {
+    assert!(harness.len() > 1, "view blocks and the cold note");
+    for message in harness {
         assert!(user_text.contains(&message.content.as_str()), "{message:?}");
     }
     Ok(())

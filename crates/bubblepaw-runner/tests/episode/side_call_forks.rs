@@ -246,7 +246,8 @@ async fn summary_fork_sends_the_parent_prefix_with_its_cache_tiers() -> Result<(
     assert_eq!(prefix(&sent[0], 3)?, prefix(&parent, 3)?);
     // The measured summary control follows the prefix unchanged.
     assert_eq!(sent[0].messages.len(), 5);
-    assert_eq!(sent[0].messages[3].role, Role::System);
+    assert_eq!(sent[0].messages[3].role, Role::User);
+    assert!(sent[0].messages[3].content.starts_with("<harness>\n"));
     assert!(
         sent[0].messages[4]
             .content
