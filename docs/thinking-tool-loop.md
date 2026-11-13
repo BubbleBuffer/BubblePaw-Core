@@ -169,8 +169,8 @@ are recorded in [provider qualification](provider-qualification.md).
 | `extensions/claude-code/src/provider.ts:459`, `:717` | Consumes the SDK query and parks host tool calls until the next harness step delivers results; the one-off path consumes a tool-free query. | Stateful provider adapter, no host-side agent/tool execution loop. Left unchanged. |
 
 The authoritative model/tool loop is `crates/bubblepaw-core/src/runtime.rs`.
-The recorded-corpus replay loop in `runner/src/replay.rs` imports recorded
-messages and evaluates context; it does not execute a live research agent loop.
+The recorded-corpus replay loop in `runner/src/replay.rs` (its phases in the
+`replay_*.rs` modules) imports recorded messages and evaluates context; it does not execute a live research agent loop.
 
 The checks for background workers are listed in [verification](verification.md). Probe exchanges preserve
 generated origins, tool-error flags, child session identity and the history cursor.
