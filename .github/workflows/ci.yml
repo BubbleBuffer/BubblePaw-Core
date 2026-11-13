@@ -156,11 +156,29 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: cargo-registry-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-      - name: core, mcp, process and sdk tests
-        run: cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
-      - name: runner tests (web, bench)
+      # Windows compiles every test target of the workspace (so compile errors
+      # show up here), but runs only the tests whose behaviour can differ by
+      # platform: processes and shells, filesystem paths and locking, PTY,
+      # codemode exec, the local transports and the remote relay. Pure logic
+      # (context, episodes, provider wire formats, store logic) runs on Linux
+      # only. See docs/verification.md.
+      - name: build all test targets
+        run: |
+          cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-run
+          cargo test -p bubblepaw-runner --features web,bench --locked --no-run
+      - name: core, mcp, process, remote and sdk tests (platform-sensitive)
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
+        run: cargo test -p bubblepaw-core --test storage --test tools -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
+      - name: runner tests (platform-sensitive, web, bench)
+        if: ${{ !cancelled() }}
+        run: >
+          cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
+          --lib --bins
+          --test tools --test web --test host --test remote --test rewind
+          --test workspace_trust --test config_trust --test scratchpad_retention --test extension_stderr_log
+      - name: runner extension processes (providers_host)
+        if: ${{ !cancelled() }}
+        run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast --test providers_host -- provider_ext
       - name: host-less client
         if: ${{ !cancelled() }}
         run: |
