@@ -81,6 +81,7 @@ pub(crate) fn source_fingerprint() -> String {
         include_str!("host_api/providers.rs"),
         include_str!("host_api/config.rs"),
         include_str!("host_api/remote_settings.rs"),
+        include_str!("host_api/trust.rs"),
         include_str!("host_attach/sessions.rs"),
         include_str!("remote/share_state.rs"),
         include_str!("remote/adapter.rs"),

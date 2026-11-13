@@ -46,6 +46,13 @@ known after the config has loaded). The SDK exposes `bubblepaw_sdk::workspace_tr
 - **Host API:** `config.get` carries `workspace_trust`: `{status, workspace, config_file, sections,
   how_to_trust}` with `status` one of `no_project_config`, `gate_off`, `trusted`, `untrusted`. A client
   can show it and later offer a Trust action.
+- **Session event:** a root session opened by `session.open` while the project config is skipped carries one
+  durable `host_state_changed` event (key `workspace_trust`, value as in `config.get`: `status`, `workspace`,
+  `config_file`, `sections`, `how_to_trust`). It replays through `events.after`, so a host can show a Trust
+  prompt when it opens the session. Forks copy it.
+- **Host API:** `workspace_trust.list`, `.trust` and `.revoke` list, grant and revoke trust for local Full
+  callers ([host API](host-api.md#settings-methods)). A grant records the folder in the store and reloads the
+  config, so sessions started afterwards apply the project config; a running session is not reloaded by the call.
 - **Live reload:** the project layer stays skipped on every reload while untrusted. The trust store
   is watched with the config files, so trusting (for example `bubblepaw trust` in another terminal)
   takes effect at the next turn-start check or `config.reload`, with no restart; restart-only keys

@@ -83,6 +83,19 @@ pub fn all() -> Vec<Fixture> {
             "remote.share.state",
             vec![ok("remote.share.state", json!({})).share_state()],
         ),
+        // Malformed requests prove adapter validation without touching the test machine's trust store.
+        fixture(
+            "workspace_trust.list",
+            vec![any_err("workspace_trust.list", json!(false)).local_only()],
+        ),
+        fixture(
+            "workspace_trust.trust",
+            vec![any_err("workspace_trust.trust", json!(false)).local_only()],
+        ),
+        fixture(
+            "workspace_trust.revoke",
+            vec![any_err("workspace_trust.revoke", json!(false)).local_only()],
+        ),
         fixture(
             "providers.save",
             vec![

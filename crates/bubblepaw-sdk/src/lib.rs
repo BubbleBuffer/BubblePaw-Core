@@ -70,6 +70,7 @@ pub mod store;
 pub mod todo;
 #[cfg(feature = "host")]
 pub mod tools;
+pub mod trust_settings;
 pub mod tunnel_settings;
 #[cfg(feature = "web")]
 pub mod web;

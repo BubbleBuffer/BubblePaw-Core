@@ -12,6 +12,7 @@ pub fn open(ctx: &HostCtx, input: OpenParams) -> Result<OpenResult, HostError> {
     }
     let title = crate::sessions::title(input.title.as_deref(), "New session")
         .map_err(|e| HostError::invalid(e.to_string()))?;
+    let root = input.parent_session_id.is_none();
     let requested = match (&input.workspace, &input.parent_session_id) {
         (Some(path), None) => Some(open_workspace(ctx, path)?),
         _ => None,
@@ -38,6 +39,9 @@ pub fn open(ctx: &HostCtx, input: OpenParams) -> Result<OpenResult, HostError> {
     }
     if let Some(live) = &ctx.live_config {
         live.initialize_config_cursor(&session.id);
+    }
+    if root {
+        super::trust::note_untrusted(ctx, &session.id);
     }
     Ok(session)
 }
