@@ -4,6 +4,7 @@ mod device;
 mod pairing;
 mod relay;
 mod relay_admission;
+mod relay_flow;
 mod relay_lifecycle;
 mod stores;
 mod trust;
