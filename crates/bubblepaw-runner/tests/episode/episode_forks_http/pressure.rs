@@ -24,7 +24,7 @@ async fn pressure_reply(
     let summary = messages.iter().any(|message| {
         message["content"]
             .as_str()
-            .is_some_and(|text| text.starts_with("EPISODE MEMORY BRANCH"))
+            .is_some_and(|text| text.starts_with("<harness>\nEPISODE MEMORY BRANCH"))
     });
     let chapter = messages.iter().any(|message| {
         message["content"]
@@ -219,7 +219,7 @@ async fn delegated_native_result_tool_run_crosses_pressure_and_completes_after_a
                     .any(|tool| tool["function"]["name"] == "submit_result")
             }) && !body["messages"].as_array().unwrap().iter().any(|message| {
                 message["content"].as_str().is_some_and(|text| {
-                    text.starts_with("EPISODE MEMORY BRANCH")
+                    text.starts_with("<harness>\nEPISODE MEMORY BRANCH")
                         || text.starts_with("<harness kind=\"chapter_task\">")
                 })
             })
@@ -232,7 +232,7 @@ async fn delegated_native_result_tool_run_crosses_pressure_and_completes_after_a
             body["messages"].as_array().unwrap().iter().any(|message| {
                 message["content"]
                     .as_str()
-                    .is_some_and(|text| text.starts_with("EPISODE MEMORY BRANCH"))
+                    .is_some_and(|text| text.starts_with("<harness>\nEPISODE MEMORY BRANCH"))
             })
         })
         .collect();

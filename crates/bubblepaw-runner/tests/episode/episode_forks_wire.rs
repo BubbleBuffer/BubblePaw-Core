@@ -255,7 +255,7 @@ async fn messages_fork_keeps_signed_thinking_prefix_and_marks_the_cut() -> Resul
     );
     assert_eq!(blocks[0]["cache_control"], json!({"type":"ephemeral"}));
     let control = blocks[1]["text"].as_str().unwrap();
-    assert!(control.starts_with("EPISODE MEMORY BRANCH"));
+    assert!(control.starts_with("<harness>\nEPISODE MEMORY BRANCH"));
     assert!(control.contains(r#""wire_positions":["1.0","1.1"]"#));
     assert!(control.contains(r#""wire_positions":["3.0","3.1","3.2"]"#));
     assert!(control.contains(r#""wire_positions":["4.0"]"#));
@@ -325,9 +325,9 @@ async fn responses_fork_keeps_encrypted_reasoning_prefix_and_instructions() -> R
     assert_eq!(&fork[..main.len()], main);
     assert_eq!(fork.len(), main.len() + 2);
     assert_eq!(fork[4]["encrypted_content"], "ENC2");
-    assert_eq!(fork[main.len()]["role"], "system");
+    assert_eq!(fork[main.len()]["role"], "user");
     let control = fork[main.len()]["content"][0]["text"].as_str().unwrap();
-    assert!(control.starts_with("EPISODE MEMORY BRANCH"));
+    assert!(control.starts_with("<harness>\nEPISODE MEMORY BRANCH"));
     assert!(control.contains(r#""wire_positions":[1,2]"#));
     assert!(control.contains(r#""wire_positions":[4,5,6]"#));
     assert!(control.contains(r#""wire_positions":[7]"#));

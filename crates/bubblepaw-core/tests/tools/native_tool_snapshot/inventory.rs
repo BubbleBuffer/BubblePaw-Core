@@ -163,7 +163,7 @@ async fn compaction_apply_folds_inventory_into_cold_catalog_without_changing_cha
                     Some((message, tail.split_once("</harness>")?.0))
                 })
                 .expect("applied inventory remains in the cold context");
-            assert_eq!(message.role, Role::System);
+            assert_eq!(message.role, Role::User);
             let catalog: Value = serde_json::from_str(encoded)?;
             assert_eq!(
                 serde_json::to_string(&catalog)?,

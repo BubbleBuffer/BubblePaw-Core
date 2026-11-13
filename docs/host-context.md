@@ -15,12 +15,12 @@ its per-request context goes. The cache rules behind this are in
 | Static per-session instructions | system prompt (frozen tier) | `HarnessConfig.system_prompt`, `RunOptions.system_prompt` |
 | Memory, skills and other derived prompt text | system prompt, frozen when the chat first binds | `HarnessConfig.system_prompt_resolver` |
 | Live facts that change between requests (current project, processes) | tail reminder | `ContextWriter::remind(kind, text)` |
-| Instructions that depend on the applied view | end of the cold tier | `ContextWriter::cold_note(kind, text)` |
+| Instructions that depend on the applied view | end of the cold tier, as a user-role harness block | `ContextWriter::cold_note(kind, text)` |
 | Runtime inventory | tail reminder `runtime_inventory` | written by the runner's `SummarizingContext` through `ContextWriter::remind`, and `remind_fresh` once after an LCM apply |
 
 The runner's root prompt always ends with a short runtime-notes block, even when
 `agent.system_prompt` replaces the instruction body. It tells the model that
-`<harness kind="...">` and `[host notice]` messages come from the runtime, not the
+`<harness>`, `<harness kind="...">` and `[host notice]` messages (always user-role in the request) come from the runtime, not the
 user, and carries the attachments sentence. The native default body also names the
 optional `question`, `agent` and `todo` tools. Retrieval, budget, image-limit and
 question-answer texts are mode-neutral: they name tools (`history_search`,

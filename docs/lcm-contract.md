@@ -214,8 +214,8 @@ The view carries no runtime inventory. Between compactions the system prompt is
 byte-identical; an apply may also rebind its skill and memory-file content as
 described above. Tool declarations retain their existing ordering and behavior.
 The apply declares its prefix change as `lcm_apply`. View-dependent instructions, such as the short
-original-history lookup note, are cold notes: one Generated message at the end of
-the cold tier, `<harness kind="history_lookup">…</harness>`, ordered by kind and
+original-history lookup note, are cold notes: one Generated user-role message at the end of
+the cold tier, `<harness kind="history_lookup">…</harness>`; the view blocks reach the provider as user-role `<harness>` content too (2026-11-13), ordered by kind and
 then insertion. The lookup note is derived from the view on each build; the tool
 catalog is persisted separately at apply. Both retain their text between applies. The full runtime
 facts reach the model once, as the `runtime_inventory` tail reminder sent with the
