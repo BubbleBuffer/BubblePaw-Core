@@ -2,6 +2,8 @@
 //! Terminate TLS at a reverse proxy, and expose only its `wss://` endpoint.
 mod admission;
 mod client;
+mod lanes;
+mod outbox;
 mod router;
 mod routing;
 mod server;

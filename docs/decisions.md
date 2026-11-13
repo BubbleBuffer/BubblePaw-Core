@@ -813,6 +813,11 @@ Closed chapters had no bound on count or total size, so a long session's served 
 
 Since workspace trust, a trusted project `.bubblepaw/config.toml` could set `approvals.hardline = false` and the whole agent tree ran without the floor. The project config layer now drops `approvals.hardline` the same way it drops `workspace_trust`, with a warning; user config, environment and CLI still set it. Current: [approvals](approvals.md#hardline-floor), [config](config.md).
 
+
 ## Hosts learn about skipped project config through a session event (2026-11-13)
 
 A skipped untrusted project config reaches hosts as a durable `HostStateChanged` event (key `workspace_trust`) on each new root session, not as a new notification channel, so late subscribers replay it with `events.after`. Hosts grant and revoke trust through `workspace_trust.list`, `.trust` and `.revoke` (local Full callers only), which reload the config so the next session applies it. Live-reloading a running session stays out of scope. Current: [workspace trust](workspace-trust.md), [host API](host-api.md#settings-methods).
+
+## Relay control frames never drop, and one slow session does not stall the rest (2026-11-13)
+
+After the relay stopped closing a host's connection for a slow client's full data queue, control frames (incoming, accept, close) were still sent with `try_send` and silently lost when a queue was full, and the host's single reader waited on one slow session while the others behind it waited too. Each relay connection now has an ordered outbound queue where data respects the capacity and control frames always get in, in order. Frames from a host (in the relay, and in the host's own relay client) go to their session through per-session lanes: a full queue makes only that session's frames wait, and only a lane as long as a queue pauses reading the connection, until room appears or the idle timeout drops that session. New clients are refused while a host's control queue holds `sessions_per_host` frames, which bounds it. Current: [remote](remote.md#relay).

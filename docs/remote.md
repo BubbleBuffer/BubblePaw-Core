@@ -230,9 +230,17 @@ queues toward each peer and the host's per-session inbound queues hold the
 sender back, up to the idle timeout, and the pressure travels back through TCP.
 A reader that makes no room for the whole idle timeout loses only its own
 session; the relay never closes a host's connection because one client reads
-slowly. Control frames (incoming, accept, close) still fail closed when a queue
-is full. A sender waiting on one slow session also waits on the other sessions
-of the same connection (the relay's host connection; the host's one socket).
+slowly. Control frames (incoming, accept, close) are never dropped while their
+connection lives (2026-11-13): they ignore the data capacity and keep their
+order with the data. Frames from a host to a session whose queue is full wait
+in a per-session lane, in order, while the host's other sessions go on; the
+host connection is read again as soon as the lane drains, and stops being read
+only once one lane holds as many frames as a queue does, until that session
+makes room or its idle timeout cuts it off. The host's relay client does the
+same for its sessions' inbound queues, and a dropped session reaches the relay
+through an unbounded close queue instead of the command queue. The control
+queue toward a host stays bounded because new clients are refused while it
+holds `sessions_per_host` frames.
 Behind Caddy the source IP is the proxy's IP, so this
 limit becomes shared unless separate trusted proxy handling is added later.
 State is transient: online registrations and the live routing/limit bookkeeping
@@ -386,9 +394,12 @@ directory.
 
 There is no end-to-end window: the relay and the host queue a bounded number of
 frames per session, and a full queue holds the sender back (through TCP) rather
-than dropping frames. A session whose reader stalls for the whole idle timeout
-(120 seconds) is closed and must reconnect; reconnecting loses no host state:
-`events.gap` says what it missed.
+than dropping frames. A session that falls behind by more than its queue holds
+back only itself for a while (its frames wait in a lane of the same length);
+the other sessions of the connection keep flowing until that lane is full too.
+A session whose reader stalls for the whole idle timeout (120 seconds) is closed
+and must reconnect; reconnecting loses no host state: `events.gap` says what it
+missed.
 
 ### Relay binary
 
