@@ -92,7 +92,7 @@ crates/bubblepaw-runner/tests/tools/codemode_runtime.rs 1386
 crates/bubblepaw-runner/tests/tools/exec_jobs.rs 1109
 crates/bubblepaw-runner/tests/tools/history_tools.rs 825
 crates/bubblepaw-runner/tests/tools/skills.rs 533
-crates/bubblepaw-runner/tests/tools/workspace_edit.rs 520
+crates/bubblepaw-runner/tests/tools/workspace_edit.rs 519
 crates/bubblepaw-runner/tests/web/session_lifecycle.rs 599
 crates/bubblepaw-runner/tests/web/web_input_files.rs 519
 crates/bubblepaw-runner/tests/web/web_providers.rs 1572
