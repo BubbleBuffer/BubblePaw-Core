@@ -6,7 +6,12 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::Path;
 
-pub use bubblepaw_runner::workspace_trust::TrustRecord;
+/// One trusted workspace root and when it was trusted (RFC 3339).
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct TrustRecord {
+    pub path: String,
+    pub trusted_at: String,
+}
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct TrustList {
