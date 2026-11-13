@@ -7,6 +7,10 @@ use std::collections::VecDeque;
 /// Responses replay items are hydrated from canonical text and calls; opaque
 /// encrypted reasoning is excluded. This is an estimate, never provider usage.
 pub fn canonical_message_tokens(message: &Message) -> usize {
+    // A system-role message is sent as user-role harness content.
+    if message.role == Role::System {
+        return canonical_message_tokens(&bubblepaw_core::harness_user_message(message));
+    }
     let body = if let Some(state) = &message.provider_state
         && state["adapter"] == "responses"
         && state["items"].is_array()

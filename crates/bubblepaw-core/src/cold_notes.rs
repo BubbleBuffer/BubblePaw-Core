@@ -92,9 +92,7 @@ impl ContextState {
     pub(super) fn harness_view(request: &mut ModelRequest) {
         for message in &mut request.messages {
             if message.role == Role::System {
-                message.role = Role::User;
-                message.origin = Some(MessageOrigin::Generated);
-                message.content = format!("<harness>\n{}\n</harness>", message.content);
+                *message = harness_user_message(message);
             }
         }
     }
@@ -126,4 +124,15 @@ impl ContextState {
         message.created_at = created_at.to_owned();
         Some(message)
     }
+}
+
+/// A system-role message as the request carries it: user-role, origin
+/// Generated, text wrapped in `<harness>`. Token estimates of messages that are
+/// still system-role use it, so they match the built request.
+pub fn harness_user_message(message: &Message) -> Message {
+    let mut message = message.clone();
+    message.role = Role::User;
+    message.origin = Some(MessageOrigin::Generated);
+    message.content = format!("<harness>\n{}\n</harness>", message.content);
+    message
 }
