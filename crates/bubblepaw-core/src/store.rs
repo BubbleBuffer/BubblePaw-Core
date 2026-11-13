@@ -39,7 +39,7 @@ mod layout;
 mod sessions;
 #[path = "store_tool_surface.rs"]
 pub(crate) mod tool_surface;
-pub use layout::{ChatOpenFailure, ChatOpenHook, RootStoragePolicy, StoreOptions};
+pub use layout::{RootStoragePolicy, StoreOptions};
 #[path = "store_quota.rs"]
 mod quota;
 #[path = "store_schema.rs"]
@@ -74,7 +74,7 @@ mod test_support;
 #[path = "store_workspace.rs"]
 mod workspace;
 pub(crate) use checkpoints::CHECKPOINT_SCHEMA;
-pub use checkpoints::{CHECKPOINT_PREFIX, CheckpointRecord, LegacyCheckpointNote};
+pub use checkpoints::{CHECKPOINT_PREFIX, CheckpointRecord};
 #[path = "store_blobs.rs"]
 mod blobs;
 #[path = "store_context_records.rs"]

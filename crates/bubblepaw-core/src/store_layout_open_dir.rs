@@ -96,7 +96,6 @@ impl Store {
                 event_reserved_end: AtomicU64::new(0),
                 recovery: Default::default(),
                 serving_transactions: AtomicU64::new(0),
-                chat_open_hooks: Mutex::default(),
                 deleting: Mutex::default(),
             })),
             host: None,

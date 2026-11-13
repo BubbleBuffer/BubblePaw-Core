@@ -71,7 +71,6 @@ fn user_answer_marker(session: &str, question: &Value) -> crate::wake::DeliveryM
     crate::wake::DeliveryMarker::new(
         "question_answered_by_user",
         serde_json::to_string(&[session, id]).expect("question identity is JSON"),
-        format!("[question answered by user:{session}:{id}]"),
     )
 }
 fn user_answer_reminder(session: &str, question: &Value) -> bubblepaw_core::Reminder {
@@ -99,7 +98,7 @@ fn user_answer_reminder(session: &str, question: &Value) -> bubblepaw_core::Remi
 
 fn answer_marker(answer: &QuestionAnswer) -> crate::wake::DeliveryMarker {
     let id = answer.question["id"].as_str().unwrap_or_default();
-    crate::wake::DeliveryMarker::new("question_answer", id, format!("[question answer:{id}]"))
+    crate::wake::DeliveryMarker::new("question_answer", id)
 }
 pub(crate) fn answer_is_undelivered(
     store: &Store,
@@ -116,14 +115,7 @@ pub(crate) fn answer_has_pending_input(
     let marker = answer_marker(answer);
     for input in store.queued_inputs(session)? {
         if matches!(input.state.as_str(), "pending" | "reminder_pending")
-            && crate::wake::record_delivers(
-                store,
-                session,
-                &input.id,
-                input.origin,
-                &input.text,
-                &marker,
-            )?
+            && crate::wake::record_delivers(store, session, &input.id, input.origin, &marker)?
         {
             return Ok(true);
         }

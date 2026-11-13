@@ -67,11 +67,7 @@ impl ProcessTools {
                 store,
                 owner,
                 candidates.iter().map(|(handle, _)| {
-                    crate::wake::DeliveryMarker::new(
-                        "process_completion",
-                        handle.clone(),
-                        handle.clone(),
-                    )
+                    crate::wake::DeliveryMarker::new("process_completion", handle.clone())
                 }),
             )?;
             Ok(candidates

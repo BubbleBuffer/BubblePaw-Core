@@ -3,7 +3,7 @@ crates/bubblepaw-core/src/approvals/mod.rs 592
 crates/bubblepaw-core/src/approvals_tests.rs 1376
 crates/bubblepaw-core/src/event_log.rs 661
 crates/bubblepaw-core/src/event_log_tests.rs 900
-crates/bubblepaw-core/src/lib.rs 818
+crates/bubblepaw-core/src/lib.rs 816
 crates/bubblepaw-core/src/runtime.rs 1614
 crates/bubblepaw-core/src/store_cold.rs 573
 crates/bubblepaw-core/src/tests.rs 2007
@@ -87,7 +87,7 @@ crates/bubblepaw-runner/tests/providers_wire/reasoning_replay.rs 564
 crates/bubblepaw-runner/tests/providers_wire/reasoning_storage.rs 629
 crates/bubblepaw-runner/tests/providers_wire/reasoning_tool_loops.rs 593
 crates/bubblepaw-runner/tests/quota_scheduling.rs 868
-crates/bubblepaw-runner/tests/rewind/rewind.rs 1581
+crates/bubblepaw-runner/tests/rewind/rewind.rs 985
 crates/bubblepaw-runner/tests/tools/codemode_runtime.rs 1386
 crates/bubblepaw-runner/tests/tools/exec_jobs.rs 1109
 crates/bubblepaw-runner/tests/tools/history_tools.rs 825

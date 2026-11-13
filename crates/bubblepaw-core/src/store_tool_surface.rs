@@ -134,8 +134,7 @@ impl Store {
 }
 
 impl Store {
-    /// Set a chat-level metadata key on a chat store. The rewind sweep uses it to mark
-    /// a chat that has no sessions yet, so a session created later can rewind.
+    /// Set a chat-level metadata key on a chat store.
     pub fn set_chat_metadata(&self, key: &str, value: &str) -> Result<()> {
         self.write(|tx| {
             tx.execute(

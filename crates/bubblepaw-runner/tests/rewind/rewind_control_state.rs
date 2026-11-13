@@ -53,7 +53,6 @@ async fn rewind_uses_target_todo_and_omits_an_ended_question_waiter_after_reopen
     let b = json!([{"text":"B","status":"done"}]);
     let (source, fork, question, source_messages) = {
         let store = Store::open_data_dir(data.path())?;
-        bubblepaw_runner::rewind::install_checkpoint_sweep(&store)?;
         let source = store.create_session("rewind control source")?.id;
         let questions = Arc::new(QuestionTools::new(store.clone(), Arc::default(), true));
         let mut tools = ToolRegistry::new();

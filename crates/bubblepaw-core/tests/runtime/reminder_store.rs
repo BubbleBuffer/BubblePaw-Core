@@ -45,7 +45,6 @@ fn accepted_reminder_text_and_metadata_share_one_write_and_survive_reopen() -> R
         bubblepaw_core::fingerprint(input.text.as_bytes())
     );
     assert!(store.reminder_metadata(&other.id, &input.id)?.is_none());
-    assert!(!store.reminder_legacy_eligible(&session.id, &input.id)?);
     assert!(store.last_reminders(&session.id, "root")?.is_empty());
     drop(store);
     let reopened = Store::open(&path)?;
@@ -58,7 +57,7 @@ fn accepted_reminder_text_and_metadata_share_one_write_and_survive_reopen() -> R
 }
 
 #[test]
-fn missing_metadata_does_not_make_current_inputs_or_messages_legacy() -> Result<()> {
+fn typed_inputs_and_ordinary_messages_get_no_reminder_metadata() -> Result<()> {
     let directory = tempfile::tempdir()?;
     for store in [
         Store::in_memory()?,
@@ -78,41 +77,7 @@ fn missing_metadata_does_not_make_current_inputs_or_messages_legacy() -> Result<
                 .reminder_metadata(&session.id, &ordinary.id)?
                 .is_none()
         );
-        assert!(!store.reminder_legacy_eligible(&session.id, &input.id)?);
-        assert!(!store.reminder_legacy_eligible(&session.id, &ordinary.id)?);
-        assert!(!store.reminder_legacy_eligible(&session.id, "absent")?);
     }
-    Ok(())
-}
-
-#[test]
-fn migration_cutoffs_are_frozen_across_restart() -> Result<()> {
-    let directory = tempfile::tempdir()?;
-    let path = directory.path().join("paw.db");
-    let store = Store::open(&path)?;
-    let session = store.create_session("old")?;
-    let old_input = store.queue(&session.id, InputKind::Steer, "legacy generated")?;
-    let old_message = message(&session.id, "legacy-message")?;
-    store.append_batch(std::slice::from_ref(&old_message))?;
-    let chat = store.chat_path(&session.id)?.unwrap();
-    drop(store);
-    // Simulate the exact pre-additive shape without regressing other schema.
-    let conn = Connection::open(&chat)?;
-    conn.execute_batch("DROP TABLE reminder_metadata; DELETE FROM metadata WHERE key IN ('reminders_v1_message_cutoff','reminders_v1_input_cutoff');")?;
-    drop(conn);
-    let store = Store::open(&path)?;
-    assert!(store.reminder_legacy_eligible(&session.id, &old_input.id)?);
-    assert!(store.reminder_legacy_eligible(&session.id, &old_message.id)?);
-    let new_input = store.queue(&session.id, InputKind::Followup, "new ordinary")?;
-    let new_message = message(&session.id, "new-message")?;
-    store.append_batch(std::slice::from_ref(&new_message))?;
-    assert!(!store.reminder_legacy_eligible(&session.id, &new_input.id)?);
-    assert!(!store.reminder_legacy_eligible(&session.id, &new_message.id)?);
-    drop(store);
-    let store = Store::open(&path)?;
-    assert!(store.reminder_legacy_eligible(&session.id, &old_message.id)?);
-    assert!(!store.reminder_legacy_eligible(&session.id, &new_message.id)?);
-    assert!(!store.reminder_legacy_eligible(&session.id, &new_input.id)?);
     Ok(())
 }
 

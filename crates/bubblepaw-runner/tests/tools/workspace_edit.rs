@@ -336,8 +336,7 @@ async fn read_only_registration_omits_mutators_and_direct_invocation_cannot_bypa
     assert!(!f.root.path().join("a.txt").exists());
 }
 
-/// An in-memory store has no legacy layout and never runs the sweep, so it rewinds
-/// its edits without waiting for an upgrade marker.
+/// An in-memory store records an edit's checkpoint and rewinds it.
 #[tokio::test]
 async fn in_memory_store_records_an_edit_and_rewinds_it() {
     let f = Fixture::new();

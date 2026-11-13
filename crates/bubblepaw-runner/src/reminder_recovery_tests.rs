@@ -1,9 +1,9 @@
-//! Recovery reader contracts across structured, staged and pre-migration records.
+//! Recovery reader contracts across structured and staged records.
 use super::*;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, InputKind, Message, ModelRequest, ModelResponse,
-    Provider, Role, RunOptions, TextCallback, ToolRegistry,
+    Provider, Role, TextCallback, ToolRegistry,
 };
 struct Complete;
 #[async_trait]
@@ -25,13 +25,9 @@ use serde_json::json;
 
 fn markers() -> Vec<DeliveryMarker> {
     vec![
-        DeliveryMarker::new("child_completion", r#"["child-1","run-1"]"#, "runId run-1)"),
-        DeliveryMarker::new("process_completion", "process:one", "process:one"),
-        DeliveryMarker::new(
-            "question_answer",
-            "question-1",
-            "[question answer:question-1]",
-        ),
+        DeliveryMarker::new("child_completion", r#"["child-1","run-1"]"#),
+        DeliveryMarker::new("process_completion", "process:one"),
+        DeliveryMarker::new("question_answer", "question-1"),
     ]
 }
 fn message(session: &str, id: &str, text: &str) -> Message {
@@ -160,7 +156,7 @@ async fn queued_staged_and_combined_reminders_recover_exact_identities_once() ->
 }
 
 #[test]
-fn structured_and_current_plain_records_never_match_incidental_legacy_text() -> Result<()> {
+fn plain_records_never_match_incidental_marker_text() -> Result<()> {
     let store = Store::in_memory()?;
     let session = store.create_session("incidental markers")?.id;
     let text = "[host notice]\nrunId run-1) process:one [question answer:question-1]";
@@ -182,84 +178,5 @@ fn structured_and_current_plain_records_never_match_incidental_legacy_text() -> 
         &session,
         &answer("question-1")
     )?);
-    Ok(())
-}
-
-#[tokio::test]
-async fn pre_migration_legacy_history_and_pending_answer_still_count_without_duplicates()
--> Result<()> {
-    let temp = tempfile::tempdir()?;
-    let path = temp.path().join("paw.db");
-    let store = Store::open(&path)?;
-    let session = store.create_session("legacy recovery")?.id;
-    store.append_batch(&[message(
-        &session,
-        "legacy-child",
-        "[host notice]\nChild (runId run-1) ended.",
-    )])?;
-    store.queue_with_origin(
-        &session,
-        InputKind::Steer,
-        "[host notice]\nJob process:one exited",
-        MessageOrigin::Generated,
-    )?;
-    let input = store.queue_with_origin(
-        &session,
-        InputKind::Steer,
-        "[host notice]\n[question answer:question-1]\nAnswer: Yes",
-        MessageOrigin::Generated,
-    )?;
-    let chat = store.chat_path(&session)?.unwrap();
-    drop(store);
-    let conn = rusqlite::Connection::open(chat)?;
-    conn.execute_batch("DROP TABLE reminder_metadata; DELETE FROM metadata WHERE key IN ('reminders_v1_message_cutoff','reminders_v1_input_cutoff');")?;
-    drop(conn);
-    let store = Store::open(&path)?;
-    assert!(store.reminder_legacy_eligible(&session, &input.id)?);
-    assert!(undelivered_markers(&store, &session, markers())?.is_empty());
-    assert!(answer_has_pending_input(
-        &store,
-        &session,
-        &answer("question-1")
-    )?);
-    assert!(!answer_is_undelivered(
-        &store,
-        &session,
-        &answer("question-1")
-    )?);
-    let harness = Harness::new(
-        store.clone(),
-        Arc::new(Complete),
-        ToolRegistry::new(),
-        HarnessConfig::default(),
-    );
-    harness.start_resume(&session, RunOptions::default())?;
-    harness.wait_for_idle(&session).await?;
-    assert!(!answer_has_pending_input(
-        &store,
-        &session,
-        &answer("question-1")
-    )?);
-    let before = store.messages(&session)?.len();
-    assert!(undelivered_markers(&store, &session, markers())?.is_empty());
-    drop(harness);
-    drop(store);
-    let store = Store::open(&path)?;
-    assert!(undelivered_markers(&store, &session, markers())?.is_empty());
-    assert!(!answer_is_undelivered(
-        &store,
-        &session,
-        &answer("question-1")
-    )?);
-    assert!(!answer_has_pending_input(
-        &store,
-        &session,
-        &answer("question-1")
-    )?);
-    assert_eq!(
-        store.messages(&session)?.len(),
-        before,
-        "reopen recovery never duplicates flushed old deliveries"
-    );
     Ok(())
 }
