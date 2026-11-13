@@ -164,11 +164,12 @@ impl ContextState {
     /// Cold membership is host metadata, never inferred from message text.
     pub fn build(
         &self,
-        request: ModelRequest,
+        mut request: ModelRequest,
         session: &str,
         request_kind: &str,
         cold_message_indexes: &[usize],
     ) -> BuiltContext {
+        Self::harness_view(&mut request);
         let indexes: BTreeSet<_> = cold_message_indexes.iter().copied().collect();
         let measured = measure(&request, &indexes, request.messages.len());
         let Measured {

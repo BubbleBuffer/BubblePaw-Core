@@ -378,8 +378,8 @@ JS state. It receives only the explicit task/context and its tool reference.
 Request `profile:"workspace"` for those capabilities; a read-only host omits
 that profile. With web enabled, `profile:"research"` provides only
 search, page reading and JS. Profiles can override the inherited provider/model
-and round limit. Children receive agent tools at every depth by default. An
-explicit `agents.max_depth` cap restricts them to depths below that limit.
+and round limit. Children receive agent tools below `agents.max_depth` (default 3, 0 disables spawning);
+a depth-3 agent's spawn returns a depth-limit tool error.
 
 `wait({handle|sessionId})` returns turn `status:"completed"`, `"failed"` or `"cancelled"`,
 with `text`, `sessionId`, and available `usage`/`error`. A `timeoutMs` returns
@@ -412,9 +412,9 @@ and idle send returns `pending` and settles its parent effect only after the tur
 ends and cleanup succeeds. A running steer settles immediately. Admission errors
 return ordinary error results rather than pending work.
 
-The layered `[agents]` caps `max_depth`, `max_active_per_parent`, `max_active_total`
-and `max_retained` are unset by default, meaning no limit. Optional caps are
-available against runaway recursion. Active caps count running turns, including
+The layered `[agents]` cap `max_depth` defaults to 3 (0 disables spawning);
+`max_active_per_parent`, `max_active_total` and `max_retained` are unset by default,
+meaning no limit. Optional caps are available against runaway recursion. Active caps count running turns, including
 sends, across all depths. A retention cap expires older inactive handles first;
 those sessions remain available by `sessionId` and in status listings. Replies fit within
 60 KiB of serialized JSON; truncation is explicit and the full answer remains

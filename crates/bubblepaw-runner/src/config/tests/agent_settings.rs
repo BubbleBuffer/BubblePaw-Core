@@ -8,7 +8,7 @@ fn agents_defaults_and_layers_preserve_sources() {
     assert_eq!(
         defaults.settings().unwrap().agents,
         Agents {
-            max_depth: None,
+            max_depth: Some(3),
             max_active_per_parent: None,
             max_active_total: None,
             max_retained: None,
@@ -38,12 +38,8 @@ fn agents_defaults_and_layers_preserve_sources() {
         Some("default")
     );
     assert_eq!(defaults.source("agents.worker_keep_all"), Some("default"));
-    for key in [
-        "max_depth",
-        "max_active_per_parent",
-        "max_active_total",
-        "max_retained",
-    ] {
+    assert_eq!(rendered["agents"]["max_depth"].as_integer(), Some(3));
+    for key in ["max_active_per_parent", "max_active_total", "max_retained"] {
         assert!(
             rendered["agents"].get(key).is_none(),
             "default cap {key} is set"

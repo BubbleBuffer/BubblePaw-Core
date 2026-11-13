@@ -166,7 +166,10 @@ async fn frozen_runtime_request_skips_unreadable_cold_rows_and_keeps_exact_wire_
     baseline_request.messages = store.messages(&session.id)?;
     let baseline =
         prepare_fresh(&*context, provider.clone(), &session.id, baseline_request).await?;
-    let mut first = baseline.request;
+    // The runtime path sends system-role view blocks as user-role harness content.
+    let mut first = bubblepaw_core::ContextState::default()
+        .build(baseline.request, &session.id, "root", &[])
+        .request;
     // The runtime path marks the end of the stored view prefix as the cold tier.
     first.cache_tiers = Some(CacheTiers {
         cold_end: Some(2),

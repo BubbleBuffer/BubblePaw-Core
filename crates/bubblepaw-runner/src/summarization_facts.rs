@@ -14,8 +14,25 @@ impl SummarizingContext {
         heading_bytes: usize,
         spans: Vec<(usize, ContextBlock)>,
     ) -> Vec<ContextBlock> {
-        let body = json!({"role":message.role,"content":message.content,
-            "tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id})
+        // A system-role message is sent as user-role harness content; the
+        // wrapper's opening text precedes the original content in the body.
+        let sent = (message.role == Role::System)
+            .then(|| bubblepaw_core::ContextState::harness_user_message(message));
+        let wrapper_bytes = sent.as_ref().map_or(0, |sent| {
+            json!(
+                &sent.content[..sent.content.len()
+                    - message.content.len()
+                    - "
+</harness>"
+                        .len()]
+            )
+            .to_string()
+            .len()
+                - 2
+        });
+        let wire = sent.as_ref().unwrap_or(message);
+        let body = json!({"role":wire.role,"content":wire.content,
+            "tool_calls":wire.tool_calls,"tool_call_id":wire.tool_call_id})
         .to_string();
         let content_start =
             body.find("\"content\":").expect("canonical content field") + "\"content\":".len() + 1;
@@ -33,7 +50,7 @@ impl SummarizingContext {
             .collect::<Vec<_>>();
         let mut previous = 0;
         let mut previous_content = 0;
-        let mut escaped_bytes = 0;
+        let mut escaped_bytes = wrapper_bytes;
         let span_count = spans.len();
         spans
             .into_iter()
