@@ -149,6 +149,7 @@ pub(super) fn fork(provider: Arc<Script>, native: bool) -> EpisodeFork {
         provider,
         max_request_bytes: 1024 * 1024,
         context_window: Some(200_000),
+        fallback_window_tokens: 200_000,
         output_reserve_tokens: 0,
         dispatched: true,
     }

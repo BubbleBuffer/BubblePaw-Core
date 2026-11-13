@@ -219,6 +219,7 @@ async fn fork_carries_exact_cold_annotations_and_preserves_captured_prefix() -> 
                 provider: provider.clone(),
                 max_request_bytes: 100_000,
                 context_window: Some(100_000),
+                fallback_window_tokens: 200_000,
                 output_reserve_tokens: 100,
                 dispatched: true,
             },

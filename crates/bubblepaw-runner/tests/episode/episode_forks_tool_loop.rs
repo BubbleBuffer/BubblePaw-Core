@@ -128,6 +128,7 @@ async fn fork_keeps_reasoning_of_an_open_tool_loop_in_the_shared_prefix() -> Res
                 provider: registry,
                 max_request_bytes: 2 * 1024 * 1024,
                 context_window: Some(200_000),
+                fallback_window_tokens: 200_000,
                 output_reserve_tokens: 4000,
                 dispatched: true,
             },

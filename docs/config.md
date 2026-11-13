@@ -958,6 +958,13 @@ The approver makes one yes/no decision per call: `roles.approver.repeats` and
 prompt is `approvals.auto_prompt` (a template with `{user_request}`, `{tool}`,
 `{description}`, `{arguments}`, `{working_directory}`; unknown `{...}` is kept),
 read live at each gate; unset uses the built-in default ([approvals](approvals.md#auto-mode)).
+With `auto_summarize = false` nothing is summarized, but a prepared request whose
+estimate plus the output reserve exceeds a known window (`window_tokens` or the
+model's catalog window) is refused before it is sent; the error names the estimate
+and the window and suggests compacting manually. An unknown window is not
+refused (the cap is a compaction threshold, not a window). Each distinct image
+attachment counts as at least 6,000 tokens when the provider has no estimate, and
+a summary or chapter fork with an unknown window is checked against the cap.
 Compaction remains
 `min(window, compact_threshold_tokens) - output_reserve_tokens` (defaults: 16k reserve, 200k root physical cap; omitted window uses the cap); classical retains the default 20,000-token
 user-message budget. Only strategy is persisted per session; explicit strategy
