@@ -174,11 +174,16 @@ jobs:
         run: >
           cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
           --lib --bins
-          --test tools --test web --test host --test remote --test rewind
+          --test tools --test web --test host --test remote --test rewind --test children
           --test workspace_trust --test config_trust --test scratchpad_retention --test extension_stderr_log
       - name: runner extension processes (providers_host)
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast --test providers_host -- provider_ext
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast --test providers_host -- provider_ext | tee ext.log
+          # A renamed module would match nothing and pass silently.
+          grep -E "^running [1-9][0-9]* tests?" ext.log > /dev/null || { echo "provider_ext filter matched no tests"; exit 1; }
       - name: host-less client
         if: ${{ !cancelled() }}
         run: |
