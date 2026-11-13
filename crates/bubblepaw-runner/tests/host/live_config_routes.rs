@@ -669,10 +669,10 @@ fn assert_fork_control_focus(request: &Value, focus: &str) {
         .iter()
         .skip(1)
         .find(|message| {
-            message["role"] == "system"
+            message["role"] == "user"
                 && message["content"]
                     .as_str()
-                    .is_some_and(|content| content.starts_with("EPISODE MEMORY BRANCH"))
+                    .is_some_and(|content| content.starts_with("<harness>\nEPISODE MEMORY BRANCH"))
         })
         .unwrap_or_else(|| panic!("summary control missing: {request}"));
     assert!(

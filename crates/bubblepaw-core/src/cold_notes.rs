@@ -92,7 +92,7 @@ impl ContextState {
     pub(super) fn harness_view(request: &mut ModelRequest) {
         for message in &mut request.messages {
             if message.role == Role::System {
-                *message = harness_user_message(message);
+                *message = Self::harness_user_message(message);
             }
         }
     }

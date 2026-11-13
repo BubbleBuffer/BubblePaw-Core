@@ -71,7 +71,7 @@ async fn serialized_fork_preserves_native_prefix_tools_route_and_main_continuati
     let messages = branch["messages"].as_array().unwrap();
     assert_eq!(&messages[..prefix.len()], prefix);
     assert_eq!(messages.len(), prefix.len() + 2);
-    assert_eq!(messages[prefix.len()]["role"], "system");
+    assert_eq!(messages[prefix.len()]["role"], "user");
     let control = messages[prefix.len()]["content"].as_str().unwrap();
     assert!(control.contains("source-u through source-t"));
     assert!(control.contains(r#""source_id":"source-a""#));
