@@ -1,4 +1,9 @@
 //! Episode model adapters. Credentials and HTTP payloads never enter the archive or trace.
+use crate::{
+    model_roles::{ModelRole, ModelRoles},
+    provider::{LiveProviderConfig, ProviderRegistry, decision_error_usage},
+    trace::JsonlTrace,
+};
 use anyhow::{Result, anyhow, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -10,11 +15,6 @@ use serde_json::{Value, json};
 use std::{
     sync::Arc,
     time::{Duration, Instant},
-};
-use crate::{
-    model_roles::{ModelRole, ModelRoles},
-    provider::{LiveProviderConfig, ProviderRegistry, decision_error_usage},
-    trace::JsonlTrace,
 };
 
 #[path = "episode_models_chapter.rs"]
