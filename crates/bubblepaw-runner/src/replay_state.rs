@@ -21,7 +21,7 @@ pub(super) struct ReplayRun {
     pub(super) telemetry: Arc<Mutex<Telemetry>>,
     pub(super) relay_task: Option<tokio::task::JoinHandle<()>>,
     pub(super) probe_model: Arc<ReplayProbeModel>,
-    pub(super) worker: EpisodeWorker,
+    pub(super) worker: Arc<EpisodeWorker>,
     pub(super) context_state: bubblepaw_core::ContextState,
     pub(super) importer: Store,
     pub(super) history: Vec<Message>,
