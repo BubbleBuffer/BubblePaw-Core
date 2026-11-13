@@ -82,6 +82,9 @@ device's profile without introducing another host implementation.
 | `remote.cloudflared.info` | Read |
 | `remote.cloudflared.set` | Full; local callers only |
 | `remote.share.state` | Read |
+| `workspace_trust.list` | Full; local callers only |
+| `workspace_trust.trust` | Full; local callers only |
+| `workspace_trust.revoke` | Full; local callers only |
 | `session.open` | Edit |
 | `session.list` | Read |
 | `session.view` | Read |
@@ -138,6 +141,17 @@ result shapes are preserved. New methods expose capabilities previously limited
 to HTTP, the CLI or the SDK.
 
 ### Settings methods
+
+**Workspace trust.** `workspace_trust.list {}` returns `{workspaces: [{path, trusted_at}], workspace}`
+(`workspace` is the host's own `config.get` trust state, or null). `workspace_trust.trust {path}` records
+the folder in the user's trust store and `workspace_trust.revoke {path}` removes it (`{removed}`); both
+answer with `reload`, the report of the config reload they trigger, so a session opened afterwards applies
+(or stops applying) that workspace's `.bubblepaw/config.toml`. A running session is not reloaded. `path`
+must be an existing directory. All three need Full and refuse remote callers. When `session.open` creates
+a root session while the host's project config is skipped as untrusted, the session gets a durable
+`host_state_changed` event with key `workspace_trust` and value `{status: "untrusted", workspace,
+config_file, sections, how_to_trust}`; it is also readable as the session's host state and replays through
+`events.after`, so a client that opens the session can offer a Trust action ([workspace trust](workspace-trust.md)).
 
 `config.get` also carries `workspace_trust` (status, workspace, config file, sections, how to trust) so a client can show a skipped project config ([workspace trust](workspace-trust.md)).
 

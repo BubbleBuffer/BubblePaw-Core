@@ -37,6 +37,7 @@ clients. They are also available with `default-features = false`:
 | `Client::cloudflared_info()` | `remote.cloudflared.info`; `tunnel_settings::CloudflaredResult` |
 | `Client::set_cloudflared(Some(path))` / `Client::set_cloudflared(None)` | `remote.cloudflared.set`; choose / clear (local only) |
 | `Client::share_state()` | `remote.share.state`; `tunnel_settings::ShareState` |
+| `Client::trusted_workspaces()`, `trust_workspace(path)`, `revoke_workspace_trust(path)` | `workspace_trust.list`, `.trust`, `.revoke`; `trust_settings::{TrustList, TrustGrant, TrustRevoke}`. Local Full callers only. |
 | `Client::search_session_titles(query, limit, cursor)` | `session.list`; `sessions::SessionPage` |
 
 Provider-key reads expose only `is_set` and `ProviderKeySource::{Stored,

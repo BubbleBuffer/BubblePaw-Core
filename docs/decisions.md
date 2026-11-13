@@ -812,3 +812,7 @@ Closed chapters had no bound on count or total size, so a long session's served 
 ## approvals.hardline is user-only (2026-11-12)
 
 Since workspace trust, a trusted project `.bubblepaw/config.toml` could set `approvals.hardline = false` and the whole agent tree ran without the floor. The project config layer now drops `approvals.hardline` the same way it drops `workspace_trust`, with a warning; user config, environment and CLI still set it. Current: [approvals](approvals.md#hardline-floor), [config](config.md).
+
+## Hosts learn about skipped project config through a session event (2026-11-13)
+
+A skipped untrusted project config reaches hosts as a durable `HostStateChanged` event (key `workspace_trust`) on each new root session, not as a new notification channel, so late subscribers replay it with `events.after`. Hosts grant and revoke trust through `workspace_trust.list`, `.trust` and `.revoke` (local Full callers only), which reload the config so the next session applies it. Live-reloading a running session stays out of scope. Current: [workspace trust](workspace-trust.md), [host API](host-api.md#settings-methods).

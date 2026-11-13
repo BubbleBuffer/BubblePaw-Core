@@ -44,6 +44,7 @@ pub mod sessions;
 mod storage_tests;
 #[cfg(test)]
 mod tests;
+pub mod trust;
 #[cfg(test)]
 mod view_tests;
 pub mod views;
@@ -214,6 +215,7 @@ enum Group {
     Views,
     Mcp,
     RemoteSettings,
+    Trust,
 }
 pub type Handler = for<'a> fn(
     &'a HostCtx,
@@ -251,6 +253,9 @@ methods! {
     RemoteCloudflaredInfo => ("remote.cloudflared.info", Read, RemoteSettings, None),
     RemoteCloudflaredSet => ("remote.cloudflared.set", Full, RemoteSettings, None),
     RemoteShareState => ("remote.share.state", Read, RemoteSettings, None),
+    WorkspaceTrustList => ("workspace_trust.list", Full, Trust, None),
+    WorkspaceTrustTrust => ("workspace_trust.trust", Full, Trust, None),
+    WorkspaceTrustRevoke => ("workspace_trust.revoke", Full, Trust, None),
     SessionOpen => ("session.open", Edit, Sessions, Some("sessions")),
     SessionList => ("session.list", Read, Sessions, Some("session.list.pagination")),
     SessionView => ("session.view", Read, Views, None),
@@ -332,6 +337,7 @@ async fn invoke(
         Group::Services => services::command(ctx, method, params).await,
         Group::Mcp => mcp::command(ctx, method, params).await,
         Group::RemoteSettings => remote_settings::command(ctx, method, params).await,
+        Group::Trust => trust::command(ctx, method, params).await,
         Group::Sessions => {
             let ctx = ctx.clone();
             tokio::task::spawn_blocking(move || sessions::command(&ctx, method, params))
