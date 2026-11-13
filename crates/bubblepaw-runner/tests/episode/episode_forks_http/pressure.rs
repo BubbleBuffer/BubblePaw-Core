@@ -286,3 +286,24 @@ async fn unsupported_fork_warns_once_per_session_not_per_wake() -> Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn unknown_window_fork_is_bounded_by_the_compaction_cap() -> Result<()> {
+    let f = fixture(vec![]).await?;
+    let mut source = request();
+    source.messages.insert(
+        0,
+        message("source-old", Role::User, &"word ".repeat(300_000)),
+    );
+    let mut captured = fork(f.registry.clone(), source);
+    captured.context_window = None;
+    models(f.registry.clone(), None)?
+        .summarize_fork(input(), captured)
+        .await
+        .unwrap_err();
+    assert!(
+        f.wire.requests.lock().unwrap().is_empty(),
+        "a fork far past the fallback window must not be sent"
+    );
+    Ok(())
+}

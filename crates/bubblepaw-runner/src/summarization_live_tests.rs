@@ -74,10 +74,27 @@ async fn reload_changes_threshold_auto_and_model_window_but_retains_lcm() -> Res
         )],
         ..Default::default()
     };
-    // Automatic admission is skipped with the ordinary history left intact.
+    // Automatic admission is skipped with the ordinary history left intact, but
+    // a request over the known window is refused instead of sent or summarized.
     let (_, prepared) = prepare_main(&context, live.clone(), &session, request.clone()).await?;
     assert_eq!(prepared.request.messages, request.messages);
-    context.validate_final_request(&session, &request, live.clone())?;
+    let error = context
+        .validate_final_request(&session, &request, live.clone())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("180000") && error.contains("Compact the session manually"),
+        "{error}"
+    );
+    let small = ModelRequest {
+        messages: vec![SummarizingContext::synthetic(
+            &session,
+            Role::User,
+            "x ".repeat(1000),
+        )],
+        ..request.clone()
+    };
+    context.validate_final_request(&session, &small, live.clone())?;
     write(
         "second",
         "window_tokens=100000\ncompact_threshold_tokens=90000\nauto_summarize=true\n",
@@ -101,5 +118,45 @@ async fn reload_changes_threshold_auto_and_model_window_but_retains_lcm() -> Res
             .context_window,
         Some(180000)
     );
+    Ok(())
+}
+
+#[test]
+fn image_attachments_count_once_toward_the_estimate() -> Result<()> {
+    use crate::images::{ImageRef, append_refs};
+    let provider = crate::provider::ChatCompletionsProvider::without_key("http://127.0.0.1:1")?;
+    let context = SummarizingContext::new(
+        Store::in_memory()?,
+        Arc::new(provider),
+        SummaryConfig::default(),
+        None,
+    )?;
+    let image = |n: usize| ImageRef {
+        id: format!("image-{n:064x}"),
+        session_id: "s".into(),
+        mime_type: "image/png".into(),
+        bytes: 1000,
+    };
+    let tool = |call: &str, images: &[ImageRef]| {
+        let mut message =
+            SummarizingContext::synthetic("s", Role::Tool, append_refs("ok".into(), images));
+        message.tool_call_id = Some(call.into());
+        message
+    };
+    let estimate = |messages| {
+        context.estimated_tokens(&ModelRequest {
+            model: "test".into(),
+            messages,
+            ..Default::default()
+        })
+    };
+    let plain = estimate(vec![tool("a", &[])]);
+    let two = estimate(vec![tool("a", &[image(1), image(2)])]);
+    let repeated = estimate(vec![
+        tool("a", &[image(1), image(2)]),
+        tool("b", &[image(2)]),
+    ]);
+    assert!(two > plain + 8_000, "{plain} {two}");
+    assert!(repeated - two < 1_000, "{two} {repeated}");
     Ok(())
 }
