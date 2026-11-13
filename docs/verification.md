@@ -14,8 +14,10 @@ Two CI setups run the same gates:
   runners for every pull request and every push to `main`. The `linux` job
   (`ubuntu-latest`) runs fmt, both clippy gates and the tests below, with the runner
   tested once with default features and once with `web,bench`. The `windows` job
-  (`windows-latest`, MSVC) runs the core, MCP, process and runner (`web,bench`)
-  tests. A `claude-code extension` job runs `bun run typecheck` and `bun test` in
+  (`windows-latest`, MSVC) compiles every test target but runs only the tests
+  whose behaviour can differ by platform (processes and shells, paths and locking,
+  PTY, codemode exec, local transports, the remote relay); pure-logic groups run on
+  Linux only (2026-11-13, selection by `--test` in `ci.yml`). A `claude-code extension` job runs `bun run typecheck` and `bun test` in
   `extensions/claude-code`. `.github/workflows/release.yml` builds `bubblepaw` for
   Linux and Windows, with default features and with `web`, on every `v*` tag and
   attaches the archives and a `SHA256SUMS` file to a GitHub release.

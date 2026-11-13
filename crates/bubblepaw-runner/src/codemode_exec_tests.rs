@@ -470,9 +470,13 @@ async fn real_web_calls_cancel_cleanly_after_outlasting_idle_deadlines() {
 #[tokio::test]
 async fn process_handle_wait_suspends_both_shortened_idle_deadlines() {
     let command = sleep_command(7);
+    // Start the process as a foreground exec that yields after 1 ms: that call
+    // is a wait, so the shortened ordinary-call deadline does not cover the
+    // process spawn. `background:true` would run the spawn under that 30 ms
+    // deadline and fail whenever the spawn is slow on a loaded machine.
     let fixture = Fixture::new(format!(
         "const p=await tools.exec({}); return await wait({{handle:p.handle}});",
-        json!({"command":command,"background":true})
+        json!({"command":command,"yieldMs":1})
     ));
     let result = fixture.result().await;
     assert!(!result.is_error, "{}", result.content);

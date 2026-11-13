@@ -1,21 +1,21 @@
 use super::{
     Limits,
+    outbox::Outbox,
     server::CiphertextObserver,
     wire::{self, Wire},
 };
 use crate::{Error, Result, device::DeviceId};
-use std::{collections::HashMap, time::Duration};
-use tokio::sync::mpsc;
+use std::collections::HashMap;
 
 struct Client {
     connection: u64,
-    sender: mpsc::Sender<Wire>,
+    outbox: Outbox<Wire>,
     accepted: bool,
 }
 struct Host {
     connection: u64,
     key: [u8; 32],
-    sender: mpsc::Sender<Wire>,
+    outbox: Outbox<Wire>,
     clients: HashMap<u64, Client>,
 }
 #[derive(Default)]
@@ -28,63 +28,14 @@ pub(super) enum Role {
     Client(String, u64),
 }
 
-/// Queue a frame for a peer's connection. A full queue closes that connection;
-/// the error and a log line name which queue and its capacity.
-fn enqueue(sender: &mpsc::Sender<Wire>, frame: Wire, queue: &'static str) -> Result<()> {
-    sender.try_send(frame).map_err(|_| {
-        tracing::warn!(
-            "relay closes a connection: its {queue} queue is full ({} frames)",
-            sender.max_capacity()
-        );
-        Error::Limit(queue)
-    })
-}
-
-/// A data frame for one peer's queue, handed to the caller so it can wait for
-/// room outside the routing lock. A peer that reads slowly holds the sender
-/// back (its own socket fills, then this queue); the frame is not dropped and
-/// the sender's connection is not closed because of it.
+/// A frame for one peer's queue, handed to the caller so it can wait for room
+/// outside the routing lock. A peer that reads slowly holds a data frame's
+/// sender back, up to the idle timeout; control frames never wait.
 pub(super) struct Forward {
-    sender: mpsc::Sender<Wire>,
-    frame: Wire,
-    to: Target,
-}
-pub(super) enum Target {
-    /// Toward the client of `session` on `host`.
-    Client {
-        host: String,
-        session: u64,
-    },
-    Host,
-}
-/// What became of a [`Forward`].
-pub(super) enum Delivery {
-    Sent,
-    /// The receiving connection ended; its own detach cleans up.
-    Gone,
-    /// The receiver made no room within the wait. Toward a client, only that
-    /// session is dropped; toward the host, the sending client's connection
-    /// ends.
-    Stalled(Target),
-}
-
-impl Forward {
-    pub(super) async fn deliver(self, wait: Duration) -> Delivery {
-        match tokio::time::timeout(wait, self.sender.send(self.frame)).await {
-            Ok(Ok(())) => Delivery::Sent,
-            Ok(Err(_)) => Delivery::Gone,
-            Err(_) => {
-                let queue = match self.to {
-                    Target::Client { .. } => "client data",
-                    Target::Host => "host data",
-                };
-                tracing::warn!(
-                    "relay drops a stalled peer: its {queue} queue stayed full for {wait:?}"
-                );
-                Delivery::Stalled(self.to)
-            }
-        }
-    }
+    pub(super) to: Outbox<Wire>,
+    pub(super) frame: Wire,
+    pub(super) control: bool,
+    pub(super) session: u64,
 }
 
 impl State {
@@ -95,7 +46,7 @@ impl State {
         if let Some(host) = self.hosts.get_mut(host)
             && host.clients.remove(&session).is_some()
         {
-            let _ = enqueue(&host.sender, Wire::Close(session), "host close");
+            host.outbox.control(Wire::Close(session));
         }
     }
 
@@ -110,7 +61,7 @@ impl State {
         key: [u8; 32],
         target: String,
         connection: u64,
-        sender: mpsc::Sender<Wire>,
+        outbox: Outbox<Wire>,
         limits: &Limits,
     ) -> Result<Role> {
         if role == wire::REGISTER {
@@ -123,7 +74,7 @@ impl State {
                 Host {
                     connection,
                     key,
-                    sender,
+                    outbox,
                     clients: HashMap::new(),
                 },
             );
@@ -148,16 +99,20 @@ impl State {
             .checked_add(1)
             .ok_or(Error::Limit("session ids"))?;
         let session = self.next_session;
-        enqueue(
-            &host.sender,
-            Wire::Incoming(session, key),
-            "host incoming-session",
-        )?;
+        // Close frames queued for the host are bounded by the sessions that were
+        // admitted here, so gating the admissions bounds the whole control queue.
+        if host.outbox.control_len() >= limits.sessions_per_host {
+            tracing::warn!("relay refuses a client: the host's control queue is full");
+            return Err(Error::Limit("host incoming-session"));
+        }
+        if !host.outbox.control(Wire::Incoming(session, key)) {
+            return Err(Error::Closed);
+        }
         host.clients.insert(
             session,
             Client {
                 connection,
-                sender,
+                outbox,
                 accepted: false,
             },
         );
@@ -181,12 +136,13 @@ impl State {
                         if client.accepted {
                             return Ok(None);
                         }
-                        enqueue(
-                            &client.sender,
-                            Wire::Connected(session, host.key),
-                            "client connected",
-                        )?;
                         client.accepted = true;
+                        return Ok(Some(Forward {
+                            to: client.outbox.clone(),
+                            frame: Wire::Connected(session, host.key),
+                            control: true,
+                            session,
+                        }));
                     }
                     Wire::Data(session, bytes) => {
                         let Some(client) = host.clients.get(&session).filter(|c| c.accepted) else {
@@ -196,17 +152,20 @@ impl State {
                             observe(&bytes);
                         }
                         return Ok(Some(Forward {
-                            sender: client.sender.clone(),
+                            to: client.outbox.clone(),
                             frame: Wire::Data(session, bytes),
-                            to: Target::Client {
-                                host: id.clone(),
-                                session,
-                            },
+                            control: false,
+                            session,
                         }));
                     }
                     Wire::Close(session) => {
                         if let Some(client) = host.clients.remove(&session) {
-                            let _ = enqueue(&client.sender, Wire::Close(session), "client close");
+                            return Ok(Some(Forward {
+                                to: client.outbox,
+                                frame: Wire::Close(session),
+                                control: true,
+                                session,
+                            }));
                         }
                     }
                     _ => return Err(Error::Protocol("invalid host command")),
@@ -227,9 +186,10 @@ impl State {
                             observe(&bytes);
                         }
                         return Ok(Some(Forward {
-                            sender: host.sender.clone(),
+                            to: host.outbox.clone(),
                             frame: Wire::Data(*session, bytes),
-                            to: Target::Host,
+                            control: false,
+                            session: *session,
                         }));
                     }
                     Wire::Close(received) if received == *session => {
@@ -252,7 +212,7 @@ impl State {
                     && let Some(host) = self.hosts.remove(id)
                 {
                     for (session, client) in host.clients {
-                        let _ = enqueue(&client.sender, Wire::Close(session), "client close");
+                        client.outbox.control(Wire::Close(session));
                     }
                 }
             }
@@ -264,7 +224,7 @@ impl State {
                         .is_some_and(|c| c.connection == connection)
                 {
                     host.clients.remove(session);
-                    let _ = enqueue(&host.sender, Wire::Close(*session), "host close");
+                    host.outbox.control(Wire::Close(*session));
                 }
             }
         }

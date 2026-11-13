@@ -1,5 +1,6 @@
 use super::{
     Limits,
+    lanes::Lanes,
     wire::{self, Wire},
 };
 use crate::{
@@ -11,7 +12,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     net::TcpStream,
-    sync::{mpsc, oneshot, watch},
+    sync::{mpsc, oneshot},
     task::JoinHandle,
 };
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
@@ -74,7 +75,9 @@ struct SessionGuard {
     id: u64,
     outgoing: mpsc::Sender<Command>,
     task: Option<JoinHandle<()>>,
-    overload_shutdown: Option<watch::Sender<bool>>,
+    /// A host's sessions close through their own unbounded queue, so a full
+    /// command queue cannot lose the close.
+    closes: Option<mpsc::UnboundedSender<u64>>,
 }
 
 impl RelaySession {
@@ -88,16 +91,13 @@ impl RelaySession {
 
 impl Drop for SessionGuard {
     fn drop(&mut self) {
-        if self
-            .outgoing
-            .try_send(Command {
+        if let Some(closes) = &self.closes {
+            let _ = closes.send(self.id);
+        } else {
+            let _ = self.outgoing.try_send(Command {
                 frame: Wire::Close(self.id),
                 completion: None,
-            })
-            .is_err()
-            && let Some(shutdown) = &self.overload_shutdown
-        {
-            let _ = shutdown.send(true);
+            });
         }
         if let Some(task) = self.task.take() {
             task.abort();
@@ -273,15 +273,12 @@ where
     }
     let (outgoing, outgoing_rx) = mpsc::channel(limits.queue_capacity);
     let (incoming_tx, incoming) = mpsc::channel(limits.pending_per_host);
-    let (shutdown, shutdown_rx) = watch::channel(false);
     let task = tokio::spawn(host_loop(
         ws,
         outgoing.clone(),
         outgoing_rx,
         incoming_tx,
         limits.clone(),
-        shutdown,
-        shutdown_rx,
     ));
     Ok(Host {
         incoming,
@@ -387,52 +384,12 @@ where
             id,
             outgoing: outgoing.clone(),
             task: Some(task),
-            overload_shutdown: None,
+            closes: None,
         }),
         outgoing,
         incoming,
         limits,
     })
-}
-
-/// Hand a frame to one session's reader, waiting for room when its queue is
-/// full instead of dropping the frame or the session: the reader may be slow
-/// for a while (a multi-chunk message arrives as a burst). Writes for the other
-/// sessions go on meanwhile. False when the reader is gone or made no room for
-/// the idle timeout; the caller then closes that session.
-async fn deliver<S>(
-    ws: &mut WebSocketStream<S>,
-    commands: &mut mpsc::Receiver<Command>,
-    sessions: &mut HashMap<u64, mpsc::Sender<Vec<u8>>>,
-    sender: &mpsc::Sender<Vec<u8>>,
-    bytes: Vec<u8>,
-    limits: &Limits,
-) -> Result<bool>
-where
-    S: AsyncRead + AsyncWrite + Unpin + Send,
-{
-    let wait = tokio::time::sleep(limits.idle_timeout);
-    tokio::pin!(wait);
-    let reserve = sender.reserve();
-    tokio::pin!(reserve);
-    loop {
-        tokio::select! {
-            permit = &mut reserve => {
-                return Ok(match permit {
-                    Ok(permit) => {
-                        permit.send(bytes);
-                        true
-                    }
-                    Err(_) => false,
-                });
-            }
-            Some(frame) = commands.recv() => {
-                if let Wire::Close(id) = &frame.frame { sessions.remove(id); }
-                write_command(ws, frame, limits).await?;
-            }
-            _ = &mut wait => return Ok(false),
-        }
-    }
 }
 
 async fn host_loop<S>(
@@ -441,19 +398,21 @@ async fn host_loop<S>(
     mut commands: mpsc::Receiver<Command>,
     incoming: mpsc::Sender<RelaySession>,
     limits: Limits,
-    shutdown: watch::Sender<bool>,
-    mut shutdown_rx: watch::Receiver<bool>,
 ) where
     S: AsyncRead + AsyncWrite + Unpin + Send,
 {
     let mut sessions: HashMap<u64, mpsc::Sender<Vec<u8>>> = HashMap::new();
+    let (closes, mut closed) = mpsc::unbounded_channel();
+    // A session whose reader is slow has its frames wait in a lane, in order,
+    // while the other sessions go on; one that makes no room for the idle
+    // timeout is closed.
+    let mut lanes = Lanes::new(limits.queue_capacity, limits.idle_timeout);
     let result: Result<()> = async {
         let mut keepalive = wire::keepalive(&limits);
         loop {
             tokio::select! {
-                _ = shutdown_rx.changed() => return Ok(()),
                 _ = keepalive.tick() => wire::ping(&mut ws, &limits).await?,
-                frame = wire::recv(&mut ws, &limits) => match frame? {
+                frame = wire::recv(&mut ws, &limits), if !lanes.blocked() => match frame? {
                     Wire::Incoming(id, peer) => {
                         if sessions.len() >= limits.sessions_per_host || sessions.contains_key(&id) {
                             return Err(Error::Limit("host sessions"));
@@ -462,7 +421,7 @@ async fn host_loop<S>(
                         sessions.insert(id, sender);
                         let guard = Arc::new(SessionGuard {
                             id, outgoing: outgoing.clone(), task: None,
-                            overload_shutdown: Some(shutdown.clone()),
+                            closes: Some(closes.clone()),
                         });
                         let session = RelaySession {
                             id, peer, outgoing: outgoing.clone(), incoming: receiver,
@@ -474,19 +433,25 @@ async fn host_loop<S>(
                         }
                     }
                     Wire::Data(id, bytes) => {
-                        let Some(sender) = sessions.get(&id).cloned() else { continue; };
-                        if !deliver(&mut ws, &mut commands, &mut sessions, &sender, bytes, &limits).await? {
-                            tracing::warn!("host closes session {id}: its reader left {} frames unread for {:?}", sender.max_capacity(), limits.idle_timeout);
-                            sessions.remove(&id);
-                            wire::send(&mut ws, &Wire::Close(id), &limits).await?;
+                        if let Some(sender) = sessions.get(&id) {
+                            lanes.send(id, sender, bytes, false);
                         }
                     }
+                    // A lane still holding this session's frames delivers them
+                    // first and then drops the sender, which ends the reader.
                     Wire::Close(id) => { sessions.remove(&id); }
                     _ => return Err(Error::Protocol("unexpected host frame")),
                 },
-                Some(frame) = commands.recv() => {
-                    if let Wire::Close(id) = &frame.frame { sessions.remove(id); }
-                    write_command(&mut ws, frame, &limits).await?;
+                Some(frame) = commands.recv() => write_command(&mut ws, frame, &limits).await?,
+                Some(id) = closed.recv() => {
+                    sessions.remove(&id);
+                    lanes.remove(id);
+                    wire::send(&mut ws, &Wire::Close(id), &limits).await?;
+                }
+                stalled = lanes.next() => if let Some(stalled) = stalled {
+                    tracing::warn!("host closes session {}: its reader made no room for {:?}", stalled.id, limits.idle_timeout);
+                    sessions.remove(&stalled.id);
+                    wire::send(&mut ws, &Wire::Close(stalled.id), &limits).await?;
                 }
             }
         }
