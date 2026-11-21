@@ -986,7 +986,7 @@ the inherited environment; the host also sets `BUBBLEPAW_EXTENSION_ENV_KEYS` to
 the comma-separated names it set. Values whose names contain `KEY`, `TOKEN`,
 `SECRET` or `PASSWORD` are shown as `<redacted>` in `config show` output, but
 they are still plain text in the file. One Claude Code instance per subscription
-uses this for `CLAUDE_CONFIG_DIR`; see [providers](providers.md#claude-subscriptions). File-defined
+uses this for `CLAUDE_CONFIG_DIR`; see [providers](providers.md#claude-subscriptions). The Antigravity extension is registered the same way (`[extensions.antigravity]`, `cwd` = `extensions/antigravity`); its `env` may set `BUBBLEPAW_AGY_BIN` (the `agy` binary, default `agy` on PATH), `BUBBLEPAW_AGY_DIR` and `BUBBLEPAW_AGY_LOG`; see [providers](providers.md#antigravity-provider-2026-11-21). File-defined
 `cwd`/`auth_file` paths resolve against their defining file; env/CLI paths use
 the invocation directory.
 

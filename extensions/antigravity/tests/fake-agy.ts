@@ -4,10 +4,12 @@
 //                        which agy would spawn), then answer `got: <result text>`
 //   BUILTIN              ask permission for a built-in tool and an MCP tool, answer
 //                        with the outcomes
-//   HANG                 never finish (until session/cancel)
+//   TIMEOUT <tool> <json>  call that tool but give up on it (end the turn) after 300 ms, like
+//                        agy does when a call stays parked too long
+//   HANG                never finish (until session/cancel)
 //   DIE                  exit the process
 //   anything else        answer `echo`
-// The directive is looked for after "Current user input:" when the prompt is a seed.
+// The directive is looked for after "Current user input:" when the prompt is a seed (none when the seed has no input).
 // Every message the fake receives goes to the file named by FAKE_AGY_LOG.
 
 import { spawn, type ChildProcess } from "node:child_process";
@@ -79,12 +81,21 @@ async function prompt(id: number, params: any): Promise<void> {
 	const sessionId: string = params.sessionId;
 	const s = sessions.get(sessionId)!;
 	const text: string = params.prompt.map((p: any) => p.text ?? "").join("");
-	const directive = text.includes("Current user input:") ? text.slice(text.lastIndexOf("Current user input:")) : text;
+	const directive = text.includes("Current user input:") ? text.slice(text.lastIndexOf("Current user input:")) : text.includes("<conversation_so_far>") ? "" : text;
 	const finish = (stopReason = "end_turn") => send({ jsonrpc: "2.0", id, result: { stopReason, usage } });
 	if (/\bDIE\b/.test(directive)) process.exit(1);
 	if (/\bHANG\b/.test(directive)) {
 		await new Promise<void>((resolve) => (s.release = resolve));
 		return finish("cancelled");
+	}
+	const timeout = directive.match(/TIMEOUT (\w+) (\{.*\})/);
+	if (timeout) {
+		await askClient("session/request_permission", { sessionId, toolCall: { name: `mcp_bubblepaw_${timeout[1]}` }, options: [{ optionId: "allow", kind: "allow_once" }] });
+		await startShim(s);
+		void shimRequest(s, "tools/call", { name: timeout[1], arguments: JSON.parse(timeout[2]) });
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		chunk(sessionId, "gave up");
+		return finish();
 	}
 	const call = directive.match(/CALL (\w+) (\{.*\})/);
 	if (call) {

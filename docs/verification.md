@@ -18,7 +18,7 @@ Two CI setups run the same gates:
   whose behaviour can differ by platform (processes and shells, paths and locking,
   PTY, codemode exec, local transports, the remote relay); pure-logic groups run on
   Linux only (2026-11-13, selection by `--test` in `ci.yml`). A `claude-code extension` job runs `bun run typecheck` and `bun test` in
-  `extensions/claude-code`. `.github/workflows/release.yml` builds `bubblepaw` for
+  `extensions/claude-code`. An `antigravity extension` job does the same in `extensions/antigravity`, against a scripted fake `agy acp` (no real agy in CI). `.github/workflows/release.yml` builds `bubblepaw` for
   Linux and Windows, with default features and with `web`, on every `v*` tag and
   attaches the archives and a `SHA256SUMS` file to a GitHub release.
 - **Private development repo.** `ci.yml` runs on every pushed branch on a

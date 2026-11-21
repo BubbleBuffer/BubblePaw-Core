@@ -91,6 +91,20 @@ describe("deny built-in tools", () => {
 });
 
 describe("cancel and interruption", () => {
+	test("a turn that ended while its call was parked cannot take the result: the next step reseeds with the result in the seed", async () => {
+		const { provider, calls } = setup(100); // the step returns before the fake gives up after 300 ms
+		const first = await provider.step(request([user('TIMEOUT lookup {"name":"a"}')]), 1, () => {});
+		await Bun.sleep(500); // by now the turn has ended
+		const messages = [user('TIMEOUT lookup {"name":"a"}'), stored(first), tool(first.tool_calls[0].id, "4417")];
+		const second = await provider.step(request(messages), 2, () => {});
+		expect(first.tool_calls).toHaveLength(1);
+		expect(calls("session/new")).toHaveLength(2);
+		const seed: string = calls("session/prompt")[1].params.prompt[0].text;
+		expect(seed).toContain("tool result");
+		expect(seed).toContain("4417");
+		expect(second.text).toBe("echo");
+	});
+
 	test("cancel releases the parked call, cancels agy's turn and fails the step as cancelled", async () => {
 		const { provider, calls, received } = setup(5000); // a long settle window keeps the step waiting with the call parked
 		const running = provider.step(request([user('CALL lookup {"name":"a"}')]), 7, () => {});
