@@ -1,0 +1,17 @@
+{
+  "name": "bubblepaw-antigravity",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BubblePaw provider extension that drives Antigravity (agy acp) one model round at a time.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4",
+    "typescript": "7.0.2"
+  }
+}
