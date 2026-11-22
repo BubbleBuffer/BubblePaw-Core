@@ -81,6 +81,21 @@ interface Parked {
 	name: string;
 	args: unknown;
 	resolve: (result: McpResult) => void;
+	/** Retries of this call by the model (agy times a call out and the model asks again), answered with the same result. */
+	retries: Array<(result: McpResult) => void>;
+}
+
+/** Give a parked call and its retries the one result. */
+function answer(call: Parked, result: McpResult): void {
+	call.resolve(result);
+	for (const retry of call.retries) retry(result);
+}
+
+/** Same arguments, whatever the key order. */
+function canonical(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+	if (value && typeof value === "object") return `{${Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(",")}}`;
+	return JSON.stringify(value) ?? "null";
 }
 
 interface Turn {
@@ -201,7 +216,17 @@ export class AntigravityProvider {
 		if (!turn || turn.done || turn.cancelled) return Promise.resolve({ content: [{ type: "text", text: "This tool call is no longer wanted." }], isError: true });
 		const id = `agy_${Date.now().toString(36)}_${++sess.seq}`;
 		return new Promise<McpResult>((resolve) => {
-			const call: Parked = { id, name, args, resolve };
+			// agy gives up on a call after about 180 s and the model may ask again. While the original is still
+			// outstanding the retry is the same call: it waits for the original's result and never reaches the host.
+			const key = canonical(args);
+			for (const original of sess.parked.values()) {
+				if (original.name === name && canonical(original.args) === key) {
+					original.retries.push(resolve);
+					this.opts.log(`retry of ${name} attached to ${original.id}`);
+					return;
+				}
+			}
+			const call: Parked = { id, name, args, resolve, retries: [] };
 			sess.parked.set(id, call);
 			turn.fresh.push(call);
 			if (turn.timer) clearTimeout(turn.timer);
@@ -216,7 +241,7 @@ export class AntigravityProvider {
 	/** Answer every parked call with `reason`. Resolved, never rejected: an error
 	 *  reply is still a reply, and a call left waiting keeps agy's tools/call open. */
 	private releaseAll(sess: Sess, reason: string): void {
-		for (const call of sess.parked.values()) call.resolve({ content: [{ type: "text", text: reason }], isError: true });
+		for (const call of sess.parked.values()) answer(call, { content: [{ type: "text", text: reason }], isError: true });
 		sess.parked.clear();
 	}
 
@@ -383,7 +408,7 @@ export class AntigravityProvider {
 					const body = i === last && notes ? `${m.content}\n\n<system-note>\n${notes}\n</system-note>` : m.content;
 					const call = sess.parked.get(m.tool_call_id ?? "");
 					sess.parked.delete(m.tool_call_id ?? "");
-					call?.resolve({ content: [{ type: "text", text: body }], isError: Boolean(m.is_error) });
+					if (call) answer(call, { content: [{ type: "text", text: body }], isError: Boolean(m.is_error) });
 				});
 				sess.mirror.lastCallIds = [];
 			} else if (decision.kind === "reuse" && prior) {
