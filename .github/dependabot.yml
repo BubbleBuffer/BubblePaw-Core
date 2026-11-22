@@ -30,3 +30,13 @@ updates:
       bun:
         patterns:
           - "*"
+  - package-ecosystem: bun
+    directory: "/extensions/antigravity"
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      bun:
+        patterns:
+          - "*"

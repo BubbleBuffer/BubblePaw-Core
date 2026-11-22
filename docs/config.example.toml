@@ -126,6 +126,13 @@ max_wait_seconds = 21600 # Maximum automatic quota wait; 0 fails exhaustion imme
 # args = ["run", "src/main.ts"]
 # cwd = "../extensions/claude-code"
 # env = { CLAUDE_CONFIG_DIR = "/home/user/.claude-b", BUBBLEPAW_CC_SYSTEM_PROMPT = "replace" }
+# Antigravity (agy) on the cached `agy` login (docs/providers.md, "Antigravity provider"; not
+# officially supported by Google). Log in once by running `agy` in a terminal.
+# [extensions.antigravity]
+# command = "bun"
+# args = ["run", "src/main.ts"]
+# cwd = "../extensions/antigravity" # Relative to this config file.
+# env = { BUBBLEPAW_AGY_BIN = "/home/user/.local/bin/agy" } # Optional; default `agy` on PATH.
 # Inherited ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN never reach Claude Code unless an
 # instance's env sets them. Native quota handling waits for exhausted windows;
 # configured model fallbacks remain available for other eligible failures.

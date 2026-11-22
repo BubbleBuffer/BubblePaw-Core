@@ -18,7 +18,7 @@ Two CI setups run the same gates:
   whose behaviour can differ by platform (processes and shells, paths and locking,
   PTY, codemode exec, local transports, the remote relay); pure-logic groups run on
   Linux only (2026-11-13, selection by `--test` in `ci.yml`). A `claude-code extension` job runs `bun run typecheck` and `bun test` in
-  `extensions/claude-code`. `.github/workflows/release.yml` builds `bubblepaw` for
+  `extensions/claude-code`. An `antigravity extension` job does the same in `extensions/antigravity`, against a scripted fake `agy acp` (no real agy in CI). Live acceptance (2026-11-22): the v0.14.0 Windows release binary, `[extensions.antigravity]` pointing at the worktree extension, an isolated `--data-dir`, five headless `run` prompts on gemini-3.8-flash-low (plain answer, `read` tool call, a `write` denied with no client to approve, the same `write` allowed with `--approve-all`). Tool-call steps send `usage: null`, which the host records as a zero-token request; the turn total is recorded once on the final step. `.github/workflows/release.yml` builds `bubblepaw` for
   Linux and Windows, with default features and with `web`, on every `v*` tag and
   attaches the archives and a `SHA256SUMS` file to a GitHub release.
 - **Private development repo.** `ci.yml` runs on every pushed branch on a
