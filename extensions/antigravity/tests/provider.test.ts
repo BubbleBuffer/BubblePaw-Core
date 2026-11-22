@@ -90,6 +90,19 @@ describe("deny built-in tools", () => {
 	});
 });
 
+describe("a retried tool call", () => {
+	test("the model's retry of a parked call is attached to it: one tool call reaches the host and both calls get its result", async () => {
+		const { provider } = setup(100); // the step returns before the fake retries at 400 ms
+		const messages = [user('RETRY lookup {"name":"a"}')];
+		const first = await provider.step(request(messages), 1, () => {});
+		await Bun.sleep(700); // the retry has arrived while the original is still parked
+		const second = await provider.step(request([...messages, stored(first), tool(first.tool_calls[0].id, "4417")]), 2, () => {});
+		expect(first.tool_calls).toHaveLength(1);
+		expect(second.tool_calls ?? []).toHaveLength(0);
+		expect(second.text).toContain("got: 4417 | 4417");
+	});
+});
+
 describe("cancel and interruption", () => {
 	test("a turn that ended while its call was parked cannot take the result: the next step reseeds with the result in the seed", async () => {
 		const { provider, calls } = setup(100); // the step returns before the fake gives up after 300 ms

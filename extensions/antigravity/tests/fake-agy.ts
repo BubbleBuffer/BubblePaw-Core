@@ -6,6 +6,8 @@
 //                        with the outcomes
 //   TIMEOUT <tool> <json>  call that tool but give up on it (end the turn) after 300 ms, like
 //                        agy does when a call stays parked too long
+//   RETRY <tool> <json>  call that tool, then after 400 ms call it again with the same arguments (the model retrying
+//                        a call it thinks timed out) and answer with both results
 //   HANG                never finish (until session/cancel)
 //   DIE                  exit the process
 //   anything else        answer `echo`
@@ -95,6 +97,18 @@ async function prompt(id: number, params: any): Promise<void> {
 		void shimRequest(s, "tools/call", { name: timeout[1], arguments: JSON.parse(timeout[2]) });
 		await new Promise((resolve) => setTimeout(resolve, 300));
 		chunk(sessionId, "gave up");
+		return finish();
+	}
+	const retry = directive.match(/RETRY (\w+) (\{.*\})/);
+	if (retry) {
+		await askClient("session/request_permission", { sessionId, toolCall: { name: `mcp_bubblepaw_${retry[1]}` }, options: [{ optionId: "allow", kind: "allow_once" }] });
+		await startShim(s);
+		const args = JSON.parse(retry[2]);
+		const first = shimRequest(s, "tools/call", { name: retry[1], arguments: args });
+		await new Promise((resolve) => setTimeout(resolve, 400));
+		const again = shimRequest(s, "tools/call", { name: retry[1], arguments: args });
+		const [a, b] = await Promise.all([first, again]);
+		chunk(sessionId, `got: ${a.result?.content?.[0]?.text} | ${b.result?.content?.[0]?.text}`);
 		return finish();
 	}
 	const call = directive.match(/CALL (\w+) (\{.*\})/);
