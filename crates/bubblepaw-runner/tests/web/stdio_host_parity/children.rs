@@ -172,6 +172,11 @@ async fn child_cancel_stops_running_child_and_grandchild_and_keeps_parent_usable
                 effects.len() <= 2
                     && effects
                         .iter()
+                        .filter(|effect| effect["call"]["name"] == "agent")
+                        .count()
+                        <= 1
+                    && effects
+                        .iter()
                         .filter(|effect| effect["call"].is_null())
                         .count()
                         <= 1

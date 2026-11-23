@@ -100,7 +100,16 @@ async fn timeout_awaits_descendant_cleanup_and_all_spawn_effects_settle() -> Res
         // unknown before descendant cleanup finishes. Confirmed cleanup must
         // preserve those historical states; no dispatched effect may remain.
         assert!(
-            diagnostics.len() <= 2
+            diagnostics
+                .iter()
+                .filter(|effect| effect["name"] == "js")
+                .count()
+                <= 1
+                && diagnostics
+                    .iter()
+                    .filter(|effect| effect["name"] == "agent")
+                    .count()
+                    <= 1
                 && diagnostics.iter().all(|effect| {
                     effect["state"] == "unknown"
                         && matches!(effect["name"].as_str(), Some("js" | "agent"))
