@@ -6,6 +6,7 @@
 //! It does not model every shell.
 
 use crate::ApprovalPolicy;
+use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -24,11 +25,8 @@ const WRAPPERS: &[&str] = &[
     "xargs",
     "start",
     "cmd",
-    "cmd.exe",
     "powershell",
-    "powershell.exe",
     "pwsh",
-    "pwsh.exe",
     "sh",
     "bash",
     "zsh",
@@ -48,14 +46,31 @@ const CD_COMMANDS: &[&str] = &[
 /// Options that take no directory, so the directory is the next word.
 const CD_OPTIONS: &[&str] = &["/d", "-path", "-literalpath"];
 
+/// Selects the first string among `cwd` and `workdir`, with `.` as the default.
+/// The second tuple element validates both arguments and returns `workdir`
+/// when both were supplied, so exec can compare the resolved paths.
+/// The hardline matcher uses the selected string even if validation fails.
+pub fn exec_working_directory(arguments: &Value) -> (&str, Result<Option<&str>>) {
+    let cwd_value = arguments.get("cwd");
+    let workdir_value = arguments.get("workdir");
+    let cwd = cwd_value.and_then(Value::as_str);
+    let workdir = workdir_value.and_then(Value::as_str);
+    let alias = match (cwd_value, workdir_value) {
+        (Some(_), _) if cwd.is_none() => Err(anyhow!("cwd must be a string")),
+        (_, Some(_)) if workdir.is_none() => Err(anyhow!("workdir must be a string")),
+        _ => Ok(cwd.and(workdir)),
+    };
+    (cwd.or(workdir).unwrap_or("."), alias)
+}
+
 impl ApprovalPolicy {
     /// The hardline pattern this call matches. None when the floor is off or
     /// the call is not an `exec` command on the list.
     ///
-    /// `workspaces` lists the roots this call's session may touch. The first is
-    /// the directory the exec tool runs in: its `cwd` argument resolves against
-    /// it, and `cd` inside the command moves from there. Every listed root is
-    /// protected. Without roots, only the literal workspace forms (`.`) match.
+    /// `workspaces` lists the protected roots this session may touch. The first
+    /// is the exec tool's default directory and the base for relative `cwd` and
+    /// `workdir` arguments. A `cd` can move the directory for later segments.
+    /// Without roots, only the literal workspace forms (`.`) match.
     pub fn hardline_match(
         &self,
         tool: &str,
@@ -66,14 +81,14 @@ impl ApprovalPolicy {
             return None;
         }
         let command = command_text(arguments.get("command")?)?;
+        let (directory, _) = exec_working_directory(arguments);
         let roots: Vec<Place> = workspaces
             .iter()
             .map(|path| Place::new(&path.to_string_lossy()))
             .collect();
-        let start = roots.first().and_then(|root| {
-            let cwd = arguments.get("cwd").and_then(Value::as_str).unwrap_or(".");
-            resolve(&Place::new(cwd), Some(root))
-        });
+        let start = roots
+            .first()
+            .and_then(|root| resolve(&Place::new(directory), Some(root)));
         segment_readings(&command).iter().find_map(|segments| {
             let mut cwd = start.clone();
             segments.iter().find_map(|words| {
@@ -182,21 +197,20 @@ fn end_word(words: &mut Vec<String>, word: &mut String) {
 /// assignments and numeric arguments that stand before the command word.
 fn command_word(words: &[String]) -> Option<(&str, &[String])> {
     let mut words = words;
-    while let Some(first) = words.first() {
-        let first = first.as_str();
-        let skip = WRAPPERS.contains(&first)
+    while let Some((head, args)) = words.split_first() {
+        let first = head.as_str();
+        let name = first.rsplit(['/', '\\']).next()?.trim_end_matches(".exe");
+        let skip = WRAPPERS.contains(&name)
             || SWITCHES.contains(&first)
             || first.starts_with('-')
             || first.contains('=')
             || first.chars().all(|c| c.is_ascii_digit() || c == '.');
         if !skip {
-            break;
+            return Some((name, args));
         }
-        words = &words[1..];
+        words = args;
     }
-    let (head, args) = words.split_first()?;
-    let name = head.rsplit(['/', '\\']).next()?.trim_end_matches(".exe");
-    Some((name, args))
+    None
 }
 
 fn segment_match(words: &[String], roots: &[Place], cwd: Option<&Place>) -> Option<String> {

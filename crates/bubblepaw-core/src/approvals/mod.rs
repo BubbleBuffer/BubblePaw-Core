@@ -21,7 +21,7 @@ use tokio::sync::oneshot;
 mod blocklist;
 mod modes;
 mod rules;
-
+pub use blocklist::exec_working_directory;
 use blocklist::hardline_message;
 pub(crate) use modes::AutoApprovalContext;
 use modes::auto_reason_logged;
