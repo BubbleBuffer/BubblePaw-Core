@@ -2,6 +2,13 @@
 
 Status: decision log, dated; current through 2026-11-23.
 
+## Fork depth and effect routing (2026-11-23)
+
+Subagent depth counts spawned child edges; forks retain their source's depth.
+Effect lookup leaves archived chats packed, and known sessions route
+directly to their chat. The Antigravity bridge ignores non-object messages and
+disconnects a shim whose line exceeds 16 MiB.
+
 ## Native by default; JavaScript wraps native calls (2026-10-22)
 
 New chats default to native tools. JavaScript is an explicit `execution_mode =

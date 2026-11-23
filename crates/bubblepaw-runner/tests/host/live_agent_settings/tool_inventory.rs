@@ -112,3 +112,38 @@ async fn default_depth_cap_refuses_spawn_from_depth_three_only() -> Result<()> {
     fixture.manager.shutdown().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn session_forks_preserve_subagent_depth() -> Result<()> {
+    let fixture = Fixture::new(Some(1))?;
+    let first_fork = fixture
+        .store
+        .fork(&fixture.owner.session_id, "first fork")?;
+    let second_fork = fixture.store.fork(&first_fork.id, "second fork")?;
+    let fork_owner = ToolContext {
+        session_id: second_fork.id,
+        ..fixture.owner.clone()
+    };
+    // Forking a root chat twice still leaves its first child at depth one.
+    let child = fixture
+        .manager
+        .start(&fork_owner, json!({"task":"first child of a fork"}))?;
+    fixture.settle(&fork_owner.session_id, &child).await?;
+
+    // Forking that child retains its depth; it cannot bypass the cap.
+    let child_fork = fixture
+        .store
+        .fork(child["sessionId"].as_str().unwrap(), "child fork")?;
+    let child_owner = ToolContext {
+        session_id: child_fork.id,
+        ..fixture.owner.clone()
+    };
+    let refused = fixture
+        .manager
+        .start(&child_owner, json!({"task":"too deep"}))
+        .unwrap_err()
+        .to_string();
+    assert_eq!(refused, "subagent depth limit 1 reached");
+    fixture.manager.shutdown().await?;
+    Ok(())
+}

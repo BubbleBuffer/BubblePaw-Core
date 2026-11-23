@@ -653,7 +653,10 @@ trust_workspace = false              # trust this run's workspace (--trust-works
 `max_retained` are unset by default, meaning no limit. Research stays restricted
 to web tools and file reads. The caps are available against runaway recursion.
 
-The root is depth zero and its children are depth 1. With the default `max_depth = 3`
+The root is depth zero and its children are depth 1. Forks retain their source's
+depth: fork ancestry does not consume nesting capacity, and a fork of a child
+keeps that child's depth. Only child-session edges add a nesting level.
+With the default `max_depth = 3`
 a depth-3 agent cannot spawn: its `agent` call returns the tool error
 "subagent depth limit 3 reached" and nothing is started. `max_depth = 0` disables
 spawning; there is no unlimited setting, so set a larger number for deeper nesting. There is no cap on rounds per turn. Active caps count running

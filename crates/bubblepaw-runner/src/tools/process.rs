@@ -1549,12 +1549,12 @@ impl Tool for ProcessTool {
         if starting && running {
             let handle = string(&value, "handle")?.to_owned();
             let session = self.processes.session(&handle, &context.session_id)?;
-            // The background wait ends with its owner: a cancelled session must
-            // not leave a waiter holding the effect boundary open.
+            // Cancellation ends the background wait without leaving an effect boundary open.
             let cancellation = context.cancellation.clone();
             tokio::spawn(async move {
                 if await_session(&session, None, &cancellation).await.is_ok()
-                    && let Err(error) = dispatcher.complete_effect(&context.invocation_id)
+                    && let Err(error) = dispatcher
+                        .complete_effect_for_session(&context.session_id, &context.invocation_id)
                 {
                     tracing::warn!(
                         target: "bubblepaw::effects",

@@ -196,6 +196,9 @@ impl Store {
             ["runs", "effects", "approvals"].contains(&table),
             "Invalid record table"
         );
+        if table == "effects" {
+            return self.find_active_effect(key);
+        }
         if table != "effects" {
             let session: Option<String> = self.read(|conn| {
                 Ok(conn
@@ -240,6 +243,62 @@ impl Store {
             }
         }
         bail!("Unknown {table} record: {key}")
+    }
+    fn find_active_effect(&self, key: &str) -> Result<Self> {
+        let layout = self.0.layout.as_ref().unwrap();
+        let mut roots: HashMap<String, String> = {
+            let catalog = layout.catalog.lock().unwrap();
+            let mut statement = catalog.prepare(
+                "SELECT id,file FROM sessions WHERE id=root_id AND storage_state='active'",
+            )?;
+            statement
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        // New roots already have a cached canonical handle even before their
+        // catalog projection flushes. This also avoids racing a pending flush.
+        for root in layout.chats.lock().unwrap().keys() {
+            roots
+                .entry(root.clone())
+                .or_insert_with(|| format!("chats/{root}.db"));
+        }
+        for (root, file) in roots {
+            let Some(chat) = self.open_active_chat_file(&root, &file)? else {
+                continue;
+            };
+            let exists = chat.read(|conn| {
+                Ok(conn.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM effects WHERE id=?1)",
+                    [key],
+                    |row| row.get::<_, bool>(0),
+                )?)
+            })?;
+            if exists {
+                return Ok(chat);
+            }
+        }
+        bail!("Unknown effects record: {key}")
+    }
+    pub(in crate::store) fn active_effect_store(&self, session: &str) -> Result<Self> {
+        let Some(layout) = &self.0.layout else {
+            return Ok(self.clone());
+        };
+        if let Some(chat) = layout.cached_chat(session) {
+            return Ok(chat);
+        }
+        let placement: Option<(String, String)> = layout
+            .catalog
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT root_id,file FROM sessions WHERE id=?1 AND storage_state='active'",
+                [session],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let (root, file) = placement.context("Effect session is not active")?;
+        self.open_active_chat_file(&root, &file)?
+            .context("Effect session is not active")
     }
     pub(crate) fn run_row(&self, run_id: &str) -> Result<(String, Option<String>)> {
         let row = self.read(|conn| {

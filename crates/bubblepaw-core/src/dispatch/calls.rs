@@ -280,7 +280,8 @@ impl ToolDispatcher {
             Ok(result) => result,
             Err(error) => {
                 if let Some(invocation) = &invocation {
-                    self.store.effect_unknown(invocation)?;
+                    self.store
+                        .effect_unknown_for_session(&prepared.context.session_id, invocation)?;
                 }
                 return Err(error);
             }
@@ -289,7 +290,8 @@ impl ToolDispatcher {
             if let Some(invocation) = &invocation
                 && !result.pending
             {
-                self.store.effect_completed(invocation)?;
+                self.store
+                    .effect_completed_for_session(&prepared.context.session_id, invocation)?;
             }
             self.log.transient(
                 &prepared.context.session_id,

@@ -74,6 +74,19 @@ Question recovery admits accepted generated answer input, deduplicated by a
 question ID marker. Unknown external effects are retained and never replayed.
 Scripted recovery checks are listed in [verification](verification.md).
 
+Directory-store callbacks route directly to their known owning session. The
+invocation-only completion API searches once per active root chat, including
+child-session effects in that file. Neither path restores archived chats while
+searching. The opener rechecks active placement under the same cache mutex that
+protects archive transitions, so a chat archived after the initial scan remains
+packed. Dispatched effects already block archival. A callback for an archived
+owner returns the ordinary missing-effect error without changing its packed file.
+These rules require no new schema, index or persistent effect projection.
+
+`store_effect_tests.rs` covers child ownership, missing lookups and unchanged
+archive bytes. These are scripted storage checks; live model and transport
+acceptance are separate.
+
 ## Transient worker histories (2026-10-14)
 
 Internal workers are ordinary hidden child sessions in their root chat file.
