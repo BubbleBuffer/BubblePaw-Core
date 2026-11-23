@@ -228,7 +228,10 @@ The layered [`[agents]` configuration](config.md#child-session-limits) leaves
 research profile; workspace profiles retain their own capability ceiling. The caps
 are available against runaway recursion.
 
-Root depth is zero, counted along the catalog parent chain. The depth cap rejects
+Root depth is zero. Count child-session edges along the catalog parent chain;
+forks retain their source's depth, including forks of children. Forking a root
+does not consume nesting capacity, and forking a child does not reset its depth.
+The depth cap rejects
 deeper starts with the tool error "subagent depth limit N reached": with the default
 3, a depth-3 agent cannot spawn. Zero disables spawning; there is no unlimited setting. Workspace profiles retain
 weak child controls at every depth, so raising a live cap allows deeper children

@@ -111,9 +111,13 @@ impl AgentTools {
         let mut seen = std::collections::HashSet::new();
         while let Some(parent) = current.parent_session_id {
             ensure!(seen.insert(parent.clone()), "session ancestry cycle");
-            depth = depth
-                .checked_add(1)
-                .ok_or_else(|| anyhow!("session depth overflow"))?;
+            // Forks keep their source's subagent depth. Only a child-session
+            // edge (which has no copied-history cutoff) adds a nesting level.
+            if current.parent_cutoff.is_none() {
+                depth = depth
+                    .checked_add(1)
+                    .ok_or_else(|| anyhow!("session depth overflow"))?;
+            }
             current = self.store.session(&parent)?;
         }
         Ok(depth)

@@ -233,13 +233,39 @@ impl Store {
                 .find_record("effects", invocation)?
                 .effect_completed(invocation);
         }
-        self.write(|tx| {
-            tx.execute(
-                "UPDATE effects SET state='completed' WHERE id=?1",
+        self.write(|tx| Self::effect_completed_tx(tx, invocation))
+    }
+    pub(crate) fn effect_completed_for_session(
+        &self,
+        session: &str,
+        invocation: &str,
+    ) -> Result<()> {
+        self.active_effect_store(session)?
+            .effect_completed(invocation)
+    }
+    pub(crate) fn effect_unknown_for_session(&self, session: &str, invocation: &str) -> Result<()> {
+        self.active_effect_store(session)?
+            .effect_unknown(invocation)
+    }
+    pub(super) fn effect_completed_tx(tx: &Connection, invocation: &str) -> Result<()> {
+        let changed = tx.execute(
+            "UPDATE effects SET state='completed' WHERE id=?1 AND state='dispatched'",
+            [invocation],
+        )?;
+        if changed == 0 {
+            let unknown: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM effects WHERE id=?1 AND state='unknown')",
                 [invocation],
+                |row| row.get(0),
             )?;
-            Ok(())
-        })
+            if unknown {
+                tracing::warn!(
+                    invocation,
+                    "Ignoring late effect completion; unknown outcome requires explicit host resolution"
+                );
+            }
+        }
+        Ok(())
     }
     pub(crate) fn effect_unknown(&self, invocation: &str) -> Result<()> {
         if self.0.layout.is_some() {

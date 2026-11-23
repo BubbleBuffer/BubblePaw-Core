@@ -11,6 +11,7 @@ impl AgentTools {
     ) {
         let parent_cancel = context.cancellation.clone();
         let invocation = context.invocation_id.clone();
+        let effect_session = context.session_id.clone();
         let repl = child
             .runtime
             .as_ref()
@@ -237,7 +238,8 @@ impl AgentTools {
             if canonical_terminal
                 && cleanup_error.is_none()
                 && let Some(dispatcher) = dispatcher
-                && let Err(error) = dispatcher.complete_effect(&invocation)
+                && let Err(error) =
+                    dispatcher.complete_effect_for_session(&effect_session, &invocation)
             {
                 tracing::warn!(
                     target: "bubblepaw::effects",

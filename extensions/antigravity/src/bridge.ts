@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { McpResult, ToolDefinition } from "./types.js";
 
+const MAX_LINE_BYTES = 16 * 1024 * 1024;
+
 export interface BridgeSession {
 	tools(): ToolDefinition[];
 	/** A tools/call from agy: resolves when BubblePaw delivered the result. */
@@ -59,15 +61,28 @@ export class Bridge {
 
 	private serve(socket: net.Socket): void {
 		let buffer = "";
+		let bufferBytes = 0;
 		socket.setEncoding("utf8");
 		socket.on("error", () => {});
 		socket.on("data", (chunk: string) => {
-			buffer += chunk;
-			let i: number;
-			while ((i = buffer.indexOf("\n")) >= 0) {
-				const line = buffer.slice(0, i);
-				buffer = buffer.slice(i + 1);
+			if (socket.destroyed) return;
+			let start = 0;
+			while (start < chunk.length) {
+				const end = chunk.indexOf("\n", start);
+				const part = chunk.slice(start, end < 0 ? chunk.length : end);
+				bufferBytes += Buffer.byteLength(part, "utf8");
+				if (bufferBytes > MAX_LINE_BYTES) {
+					buffer = "";
+					socket.destroy();
+					return;
+				}
+				buffer += part;
+				if (end < 0) return;
+				const line = buffer;
+				buffer = "";
+				bufferBytes = 0;
 				if (line.trim()) this.onLine(socket, line);
+				start = end + 1;
 			}
 		});
 	}
@@ -79,6 +94,7 @@ export class Bridge {
 		} catch {
 			return;
 		}
+		if (!m || typeof m !== "object" || Array.isArray(m)) return;
 		const reply = (body: unknown) => {
 			if (!socket.destroyed) socket.write(`${JSON.stringify({ id: m.id, ...(body as object) })}\n`);
 		};
