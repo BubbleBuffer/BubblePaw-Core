@@ -49,7 +49,7 @@ pub mod transcript;
 use anyhow::{Context, Result, ensure};
 pub use approvals::{
     Approval, ApprovalMode, ApprovalPolicy, ApprovalRecord, ApprovalState, AutoApprovalConfig,
-    DEFAULT_AUTO_PROMPT, Decision, track_approval_waits,
+    DEFAULT_AUTO_PROMPT, Decision, exec_working_directory, track_approval_waits,
 };
 use async_trait::async_trait;
 pub use cache_accounting::{

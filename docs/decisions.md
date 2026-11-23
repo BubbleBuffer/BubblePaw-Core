@@ -845,3 +845,9 @@ A request must not reach the provider when it plainly exceeds the model's contex
 ## Antigravity provider extension over ACP (2026-11-21)
 
 `extensions/antigravity` makes `agy acp` a provider extension without touching the Core loop: one `step` is one model round, BubblePaw's tools reach agy as an MCP server (`bubblepaw`, a stdio shim connected back over a pipe or unix socket), a tool call is parked until the next step delivers its result, and BubblePaw owns the history (an append-only request sends only the new part; anything else seeds a new agy session with the messages as text). agy's built-in tools are denied by rejecting their permission requests and by a PreToolUse hook installed in a workspace the extension owns, never in the user's project. Only the official binary and its cached login are used; Google does not officially support this on a consumer login. See [providers](providers.md#antigravity-provider-2026-11-21).
+
+## Hardline exec checks share working-directory arguments (2026-11-23)
+
+The hardline floor recognizes shell wrappers by executable basename, including Windows
+`.exe` names, and uses exec's shared `cwd` and `workdir` argument parser. Path-qualified
+shells and either directory spelling receive the same checks. See [approvals](approvals.md#hardline-floor).
