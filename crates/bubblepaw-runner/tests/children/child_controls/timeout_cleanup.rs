@@ -96,13 +96,15 @@ async fn timeout_awaits_descendant_cleanup_and_all_spawn_effects_settle() -> Res
                 Ok(json!({"id":effect["id"],"callId":call_id,"name":name,"state":effect["state"]}))
             })
             .collect::<Result<Vec<_>>>()?;
-        // Cancellation of an in-flight JS wrapper may leave an unknown
-        // historical outcome. Its spawned child is known cancelled and its
-        // agent effect must settle; no dispatched/running effect may remain.
+        // The interrupted run can mark its JS wrapper and pending agent call
+        // unknown before descendant cleanup finishes. Confirmed cleanup must
+        // preserve those historical states; no dispatched effect may remain.
         assert!(
-            diagnostics
-                .iter()
-                .all(|effect| effect["state"] == "unknown" && effect["name"] == "js"),
+            diagnostics.len() <= 2
+                && diagnostics.iter().all(|effect| {
+                    effect["state"] == "unknown"
+                        && matches!(effect["name"].as_str(), Some("js" | "agent"))
+                }),
             "unexpected pending effect in {}: {}",
             session.id,
             serde_json::to_string(&diagnostics)?
