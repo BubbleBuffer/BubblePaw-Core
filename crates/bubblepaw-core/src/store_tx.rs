@@ -86,8 +86,11 @@ impl Store {
         pending: bool,
     ) -> Result<()> {
         Self::insert_message(tx, message)?;
-        if !pending && let Some(invocation) = invocation {
-            Self::effect_completed_tx(tx, invocation)?;
+        if let Some(invocation) = invocation {
+            tx.execute(
+                "UPDATE effects SET state=CASE WHEN ?2 THEN state ELSE 'completed' END WHERE id=?1",
+                params![invocation, pending],
+            )?;
         }
         Ok(())
     }

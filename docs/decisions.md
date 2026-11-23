@@ -2,11 +2,10 @@
 
 Status: decision log, dated; current through 2026-11-23.
 
-## Fork depth and effect safety (2026-11-23)
+## Fork depth and effect routing (2026-11-23)
 
 Subagent depth counts spawned child edges; forks retain their source's depth.
-Late completions leave unknown effects unknown, including when a tool result is
-recorded. Effect lookup leaves archived chats packed, and known sessions route
+Effect lookup leaves archived chats packed, and known sessions route
 directly to their chat. The Antigravity bridge ignores non-object messages and
 disconnects a shim whose line exceeds 16 MiB.
 

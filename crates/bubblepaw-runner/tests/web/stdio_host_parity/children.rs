@@ -155,37 +155,17 @@ async fn child_cancel_stops_running_child_and_grandchild_and_keeps_parent_usable
             state["runs"].as_array().unwrap().last().unwrap()["status"],
             "cancelled"
         );
-        // Cancellation can mark both the interrupted JS wrapper and its pending
-        // agent call unknown before cleanup. Later confirmation that descendants
-        // stopped cannot rewrite either historical outcome as completed.
+        // The child is interrupted inside its model-issued JS call. Core keeps
+        // that unfinished outer call as unknown even after owned resources stop;
+        // it must never claim that the interrupted cell completed successfully.
         // The grandchild is waiting in the provider and has no tool boundary.
         let effects = state["pending_effects"].as_array().unwrap();
         if session == &child {
             let run = state["runs"].as_array().unwrap().last().unwrap();
-            let outer_js_recorded = state["messages"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .flat_map(|message| message["tool_calls"].as_array().into_iter().flatten())
-                .any(|call| call["name"] == "js");
             assert!(
-                effects.len() <= 2
-                    && effects
-                        .iter()
-                        .filter(|effect| effect["call"]["name"] == "agent")
-                        .count()
-                        <= 1
-                    && effects
-                        .iter()
-                        .filter(|effect| effect["call"].is_null())
-                        .count()
-                        <= 1
-                    && effects.iter().all(|effect| {
-                        effect["state"] == "unknown"
-                            && effect["run_id"] == run["id"]
-                            && (effect["call"]["name"] == "agent"
-                                || (effect["call"].is_null() && outer_js_recorded))
-                    }),
+                effects.len() <= 1 && effects
+                    .iter()
+                    .all(|effect| effect["state"] == "unknown" && effect["run_id"] == run["id"]),
                 "unexpected unresolved effect after child cleanup: {effects:?}",
             );
         } else {

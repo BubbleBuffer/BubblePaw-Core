@@ -197,17 +197,9 @@ default child timeouts.
 Spawn and an idle-child send are non-read-only tool calls returning `pending`.
 Each started turn's parent effect settles through
 `ToolDispatcher::complete_effect_for_session` only after the canonical turn ends
-and cleanup succeeds, while its state is still `dispatched`. Cleanup uncertainty
-leaves the effect unresolved. Admission rejection returns an ordinary error
+and cleanup succeeds. Cleanup uncertainty leaves the effect unresolved.
+Admission rejection returns an ordinary error
 result, so it completes the dispatch row without claiming an external outcome.
-
-Cancellation can mark an interrupted JS wrapper and its pending nested agent
-effect `unknown` before descendant cleanup finishes. A later callback confirming
-that the child stopped logs a warning and preserves that unknown state; resource
-cleanup does not resolve the historical invocation. The child run still reports
-its confirmed terminal status. No dispatched effect or running descendant should
-remain after successful subtree cleanup. Retained unknown effects continue to
-block automatic deletion and require explicit host resolution.
 
 A steer into a running turn settles immediately and is accepted child input,
 without another long-lived effect. Restart recovery marks interrupted effects
