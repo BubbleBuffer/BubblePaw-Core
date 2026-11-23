@@ -25,22 +25,25 @@ fn late_effect_completion_preserves_unknown_after_reopen() -> Result<()> {
     let path = directory.path().join("store.db");
     let store = Store::open(&path)?;
     let session = store.create_session("late completion")?;
+    let owner = store.scoped(&session.id)?.unwrap();
     let uncertain = store.dispatch_nested(&session.id, "run", &call())?;
     store.effect_unknown(&uncertain)?;
 
     // A surviving background callback is not explicit resolution by the host.
     store.effect_completed(&uncertain)?;
-    assert_eq!(state(&store, &uncertain)?, "unknown");
+    assert_eq!(state(&owner, &uncertain)?, "unknown");
     let completed = store.dispatch_nested(&session.id, "run", &call())?;
     store.effect_completed(&completed)?;
     store.effect_completed(&completed)?;
-    assert_eq!(state(&store, &completed)?, "completed");
+    assert_eq!(state(&owner, &completed)?, "completed");
+    drop(owner);
     drop(store);
 
     let reopened = Store::open(&path)?;
-    assert_eq!(state(&reopened, &uncertain)?, "unknown");
+    let owner = reopened.scoped(&session.id)?.unwrap();
+    assert_eq!(state(&owner, &uncertain)?, "unknown");
     assert_eq!(reopened.pending_effects(&session.id)?.len(), 1);
-    assert_eq!(state(&reopened, &completed)?, "completed");
+    assert_eq!(state(&owner, &completed)?, "completed");
     Ok(())
 }
 
@@ -49,6 +52,7 @@ fn late_tool_result_preserves_unknown_and_pending_effects() -> Result<()> {
     let directory = tempfile::tempdir()?;
     let store = Store::open(directory.path().join("store.db"))?;
     let session = store.create_session("late tool result")?;
+    let owner = store.scoped(&session.id)?.unwrap();
     let uncertain = store.dispatch_nested(&session.id, "run", &call())?;
     store.effect_unknown(&uncertain)?;
     let pending = store.dispatch_nested(&session.id, "run", &call())?;
@@ -58,13 +62,13 @@ fn late_tool_result_preserves_unknown_and_pending_effects() -> Result<()> {
         [(&uncertain, false), (&pending, true), (&completed, false)]
     {
         let message = Store::message(&session.id, Role::Tool, "late result".into());
-        store.write(|tx| {
+        owner.write(|tx| {
             Store::tool_completed_tx(tx, &message, Some(invocation), remains_pending)
         })?;
     }
-    assert_eq!(state(&store, &uncertain)?, "unknown");
-    assert_eq!(state(&store, &pending)?, "dispatched");
-    assert_eq!(state(&store, &completed)?, "completed");
+    assert_eq!(state(&owner, &uncertain)?, "unknown");
+    assert_eq!(state(&owner, &pending)?, "dispatched");
+    assert_eq!(state(&owner, &completed)?, "completed");
     assert_eq!(store.messages(&session.id)?.len(), 3);
     Ok(())
 }
