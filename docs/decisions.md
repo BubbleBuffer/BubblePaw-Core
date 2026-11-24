@@ -1,13 +1,13 @@
 # V0 decisions
 
-Status: decision log, dated; current through 2026-11-23.
+Status: decision log, dated; current through 2026-11-24.
 
 ## Fork depth and effect routing (2026-11-23)
 
 Subagent depth counts spawned child edges; forks retain their source's depth.
 Effect lookup leaves archived chats packed, and known sessions route
-directly to their chat. The Antigravity bridge ignores non-object messages and
-disconnects a shim whose line exceeds 16 MiB.
+directly to their chat. (The bridge fix for non-object messages and oversized shim lines went
+away with the Antigravity extension, removed 2026-11-24.)
 
 ## Native by default; JavaScript wraps native calls (2026-10-22)
 
@@ -841,7 +841,9 @@ After the relay stopped closing a host's connection for a slow client's full dat
 
 A request must not reach the provider when it plainly exceeds the model's context window. (1) With `auto_summarize = false` the final admission check still refuses a prepared request whose estimate plus the output reserve exceeds a known window, with an error naming the estimate and the window and suggesting manual compaction; it never summarizes on its own, and with no known window nothing is refused. The compaction cap is not a window, so it does not apply here. (2) Image attachments count toward the estimate: when the provider has no estimate of its own, each distinct image costs a fixed `IMAGE_ATTACHMENT_TOKENS` (6,000) for an image-capable model. (3) With no known window, neither the main request nor a summary or chapter fork gets a token check, only the 2 MiB byte cap: the compaction cap is a policy threshold, not the model window, and forks do not inherit it. No cap on rounds per turn was added, and the 2 MiB byte cap is unchanged.
 
-## Antigravity provider extension over ACP (2026-11-21)
+## Antigravity provider extension over ACP (2026-11-21; superseded 2026-11-24)
+
+Superseded: the extension was removed on 2026-11-24, see below.
 
 `extensions/antigravity` makes `agy acp` a provider extension without touching the Core loop: one `step` is one model round, BubblePaw's tools reach agy as an MCP server (`bubblepaw`, a stdio shim connected back over a pipe or unix socket), a tool call is parked until the next step delivers its result, and BubblePaw owns the history (an append-only request sends only the new part; anything else seeds a new agy session with the messages as text). agy's built-in tools are denied by rejecting their permission requests and by a PreToolUse hook installed in a workspace the extension owns, never in the user's project. Only the official binary and its cached login are used; Google does not officially support this on a consumer login. See [providers](providers.md#antigravity-provider-2026-11-21).
 
@@ -849,4 +851,8 @@ A request must not reach the provider when it plainly exceeds the model's contex
 
 The hardline floor recognizes shell wrappers by executable basename, including Windows
 `.exe` names, and uses exec's shared `cwd` and `workdir` argument parser. Path-qualified
-shells and either directory spelling receive the same checks. See [approvals](approvals.md#hardline-floor).
+shells and either directory spelling receive the same checks. See [approvals](approvals.md#hardline-floor).
+
+## Antigravity support dropped (2026-11-24)
+
+Antigravity (`agy`) support is dropped and `extensions/antigravity` was removed. Google is strict about ACP, the experience was mostly poor, and there is no hope of a consistently good experience with `agy` without risking locked accounts. v0.15.0 is the only release whose source tree contains the extension.

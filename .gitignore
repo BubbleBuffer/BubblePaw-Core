@@ -6,7 +6,6 @@
 *.sqlite.lock
 /.impeccable/
 /extensions/claude-code/node_modules/
-/extensions/antigravity/node_modules/
 __pycache__/
 
 /.claude/
