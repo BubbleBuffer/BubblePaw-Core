@@ -851,7 +851,7 @@ Superseded: the extension was removed on 2026-11-24, see below.
 
 The hardline floor recognizes shell wrappers by executable basename, including Windows
 `.exe` names, and uses exec's shared `cwd` and `workdir` argument parser. Path-qualified
-shells and either directory spelling receive the same checks. See [approvals](approvals.md#hardline-floor).
+shells and either directory spelling receive the same checks. See [approvals](approvals.md#hardline-floor).
 
 ## Antigravity support dropped (2026-11-24)
 
