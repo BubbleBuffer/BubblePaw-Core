@@ -70,14 +70,6 @@ reviews:
         environment unless the instance sets them. Keep built-in tools and
         auto-compaction off.
 
-    - path: "extensions/antigravity/src/**"
-      instructions: >-
-        Stdout carries only newline-delimited JSON-RPC. Keep tool-call and
-        result pairing through parked calls, and never replay a parked call.
-        Keep agy's built-in tools denied (permission requests and the
-        PreToolUse hook). Never read, copy or proxy agy's credentials, and keep
-        API-key variables out of the child environment unless the instance
-        sets them.
 knowledge_base:
   code_guidelines:
     enabled: true
