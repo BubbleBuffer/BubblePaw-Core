@@ -57,8 +57,8 @@ impl Tool for WorkspaceTool {
                 vec!["query"],
             ),
             "edit" => (
-                "Replace literal text in an existing workspace file or an absolute path in the chat or project scratchpad. Copy old_string exactly from a fresh read, including indentation, with enough surrounding lines to match once; use replace_all only to replace every occurrence. Matching ignores CRLF/LF and a BOM; the file keeps its line endings. No regex. For several edits pass edits (same fields) instead of old_string/new_string; applied in order, all or nothing. Use write to create a file.",
-                json!({"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"},"edits":{"type":"array","items":{"type":"object","properties":{"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}}}}}),
+                "Replace literal text in an existing workspace file or an absolute path in the chat or project scratchpad. Copy old_string exactly from a fresh read, including indentation, with enough surrounding lines to match once; use replace_all only to replace every occurrence. Ignores CRLF/LF and BOM differences; keeps line endings. No regex. For several edits use edits (same fields) instead of old_string/new_string: in order, all or nothing. Use write to create a file.",
+                json!({"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"},"edits":{"type":"array","items":{"type":"object","properties":{"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["old_string","new_string"]}}}),
                 vec!["path"],
             ),
             "write" => (
