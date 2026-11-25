@@ -309,9 +309,8 @@ async fn depth_limit_can_grow_from_zero_and_shrink_without_removing_profiles() -
 mod tool_inventory;
 
 #[tokio::test]
-async fn running_child_inherits_live_parent_approval_but_keeps_explicit_parent_override()
--> Result<()> {
-    for pinned in [false, true] {
+async fn running_child_inherits_live_parent_denial_with_and_without_run_options() -> Result<()> {
+    for with_approval in [false, true] {
         let mut fixture = Fixture::new(None)?;
         fixture
             .parent
@@ -323,7 +322,7 @@ async fn running_child_inherits_live_parent_approval_but_keeps_explicit_parent_o
                         "return await tools.agent({task:'gated effect',profile:'workspace'});"
                             .into(),
                     ),
-                    approval: pinned.then(allow),
+                    approval: with_approval.then(allow),
                     ..Default::default()
                 },
             )
@@ -342,7 +341,7 @@ async fn running_child_inherits_live_parent_approval_but_keeps_explicit_parent_o
             .manager
             .wait(&fixture.owner.session_id, &child, Some(5000))
             .await?;
-        assert_eq!(fixture.effects.load(Ordering::SeqCst), usize::from(pinned));
+        assert_eq!(fixture.effects.load(Ordering::SeqCst), 0);
         let messages = fixture.store.messages(&child)?;
         assert!(messages.iter().any(|message| message.role == Role::Tool));
         fixture.manager.shutdown().await?;
