@@ -95,10 +95,7 @@ async fn file_tools_read_write_and_edit_both_scratchpads_through_the_dispatcher(
         );
         let result = fixture.call("read", json!({"path":path})).await?;
         assert!(!result.is_error, "{}", result.content);
-        assert_eq!(
-            serde_json::from_str::<Value>(&result.content)?["content"],
-            "new\r\n"
-        );
+        assert_eq!(result.content, "new\r\n");
         assert_eq!(fs::read(&path)?, b"new\r\n");
     }
     assert!(
@@ -261,10 +258,7 @@ async fn file_tools_accept_ordinary_windows_absolute_scratch_paths() -> Result<(
         assert!(!result.is_error, "{}", result.content);
         let result = fixture.call("read", json!({"path":path})).await?;
         assert!(!result.is_error, "{}", result.content);
-        assert_eq!(
-            serde_json::from_str::<Value>(&result.content)?["content"],
-            "after"
-        );
+        assert_eq!(result.content, "after");
         assert_eq!(fs::read_to_string(target)?, "after");
     }
     Ok(())

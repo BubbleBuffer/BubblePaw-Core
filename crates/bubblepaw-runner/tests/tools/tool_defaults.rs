@@ -2,8 +2,8 @@
 use anyhow::{Context, Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, Harness, HarnessConfig, Role, RunOptions, Store, Tool, ToolCall,
-    ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    CancellationToken, ExecutionMode, Harness, HarnessConfig, Role, RunOptions, Store, Tool,
+    ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
     provider::{ScriptedProvider, ScriptedStep},
@@ -86,24 +86,79 @@ async fn dispatched(
 }
 
 #[tokio::test]
-async fn read_defaults_to_one_thousand_lines_and_keeps_explicit_limit_and_cap() -> Result<()> {
+async fn read_returns_file_text_with_a_final_note_only_when_partial() -> Result<()> {
     let root = tempfile::tempdir()?;
     let text: String = (1..=2200).map(|line| format!("{line}\n")).collect();
-    fs::write(root.path().join("lines.txt"), &text)?;
-    let registry = registry(root.path())?;
-    for (input, expected, truncated) in [
-        (json!({"path":"lines.txt"}), 1000, true),
-        (json!({"path":"lines.txt","lineCount":17}), 17, true),
-        (json!({"path":"lines.txt","lineCount":3000}), 2000, true),
-        (json!({"path":"lines.txt","startLine":2001}), 200, false),
+    let wide: String = (1..=200)
+        .map(|line| format!("{line:04} {}\n", "x".repeat(595)))
+        .collect();
+    for (name, body) in [
+        ("lines.txt", text.as_str()),
+        ("small.txt", "one\ntwo\n"),
+        ("empty.txt", ""),
+        ("wide.txt", wide.as_str()),
     ] {
-        let result = dispatched(&registry, "read", input).await?;
-        assert!(!result.is_error, "{}", result.content);
-        let value: Value = serde_json::from_str(&result.content)?;
-        assert_eq!(value["returnedLines"], expected);
-        assert_eq!(value["totalLines"], 2200);
-        assert_eq!(value["truncated"], truncated);
+        fs::write(root.path().join(name), body)?;
     }
+    let registry = registry(root.path())?;
+    let first_1000: String = (1..=1000).map(|line| format!("{line}\n")).collect();
+    for (input, expected) in [
+        (json!({"path":"small.txt"}), "one\ntwo\n".to_owned()),
+        (json!({"path":"empty.txt"}), "[empty file]".to_owned()),
+        (
+            json!({"path":"small.txt","startLine":2,"lineCount":1}),
+            "two\n[lines 2-2 of 2]".to_owned(),
+        ),
+        (
+            json!({"path":"small.txt","startLine":3}),
+            "[no lines: file has 2 lines]".to_owned(),
+        ),
+        (
+            json!({"path":"lines.txt"}),
+            format!("{first_1000}[lines 1-1000 of 2200; continue with startLine=1001]"),
+        ),
+        (
+            json!({"path":"lines.txt","lineCount":3000}),
+            format!(
+                "{}[lines 1-2000 of 2200; continue with startLine=2001]",
+                (1..=2000)
+                    .map(|line| format!("{line}\n"))
+                    .collect::<String>()
+            ),
+        ),
+        (
+            json!({"path":"lines.txt","startLine":2001,"lineCount":3000}),
+            format!(
+                "{}[lines 2001-2200 of 2200]",
+                (2001..=2200)
+                    .map(|line| format!("{line}\n"))
+                    .collect::<String>()
+            ),
+        ),
+    ] {
+        let result = dispatched(&registry, "read", input.clone()).await?;
+        assert!(!result.is_error, "{}", result.content);
+        assert_eq!(result.content, expected, "{input}");
+    }
+    // A model call through call_tool gets the same text.
+    let native = registry.with_execution_mode(ExecutionMode::Native);
+    let wrapped = json!({"name":"read","arguments":{"path":"small.txt"}});
+    let result = dispatched(&native, "call_tool", wrapped).await?;
+    assert_eq!(result.content, "one\ntwo\n");
+    // Over the result limit the text stops at a line boundary and the note names
+    // the last returned line.
+    let result = dispatched(&registry, "read", json!({"path":"wide.txt"})).await?;
+    let (body, note) = result.content.rsplit_once('\n').context("missing note")?;
+    let returned = body.lines().count();
+    assert!(returned > 50 && returned < 200 && result.content.len() < 60 * 1024);
+    assert!(body.ends_with(&"x".repeat(595)));
+    assert_eq!(
+        note,
+        format!(
+            "[lines 1-{returned} of 200; continue with startLine={}]",
+            returned + 1
+        )
+    );
     Ok(())
 }
 

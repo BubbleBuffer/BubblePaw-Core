@@ -10,6 +10,7 @@ impl WorkspaceTool {
         context: ToolContext,
         input: Value,
         read_path: Option<(PathBuf, bool)>,
+        plain: bool,
     ) -> Result<ToolResult> {
         ensure!(!context.cancellation.is_cancelled(), "cancelled");
         let workspace = self.workspace.clone();
@@ -24,6 +25,9 @@ impl WorkspaceTool {
             )
         })
         .await??;
+        if plain {
+            return Ok(ToolResult::text(read_text::render(&value)));
+        }
         // Keep text pages bounded; oversized listings/searches flow through the
         // dispatcher's spill policy instead of losing entries before dispatch.
         if serde_json::to_vec(&value)?.len() > MAX_RESULT
@@ -47,7 +51,7 @@ impl Tool for WorkspaceTool {
                 vec![],
             ),
             "read" => (
-                "Read UTF-8 lines or attach a PNG, JPEG, GIF or WebP image to the model. Images are limited to 5 MB without resizing. startLine is 1-based; lineCount defaults to 1000 (maximum 2000). Text previews are bounded to 64 KiB. Absolute paths in the chat and project scratchpads are also allowed. This chat's spill directory and listed skill folders are read-only exceptions; spill files support line ranges up to the 256 MiB retention cap.",
+                "Read UTF-8 text (a partial read ends with a [lines a-b of n] note) or attach a PNG, JPEG, GIF or WebP image. Images are limited to 5 MB without resizing. startLine is 1-based; lineCount defaults to 1000 (maximum 2000). Absolute paths in the chat and project scratchpads are also allowed. This chat's spill directory and listed skill folders are read-only exceptions; spill files support line ranges up to the 256 MiB retention cap.",
                 json!({"path":{"type":"string"},"startLine":{"type":"integer","minimum":1},"lineCount":{"type":"integer","minimum":1}}),
                 vec!["path"],
             ),
@@ -146,7 +150,9 @@ impl Tool for WorkspaceTool {
             {
                 return Ok(ToolResult::text(content));
             }
-            return self.invoke_resolved(context, input, Some(read_path)).await;
+            return self
+                .invoke_resolved(context, input, Some(read_path), dispatcher.origin() != "js")
+                .await;
         }
         self.invoke(context, input).await
     }
@@ -156,6 +162,6 @@ impl Tool for WorkspaceTool {
             "{} requires the tool dispatcher to persist file checkpoints",
             self.name
         );
-        self.invoke_resolved(context, input, None).await
+        self.invoke_resolved(context, input, None, false).await
     }
 }

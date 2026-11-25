@@ -393,9 +393,11 @@ impl ToolDispatcher {
         let cancellation: CancellationToken = context.cancellation.clone();
         let mut child = self.clone();
         // Origin is diagnostic only; all targets still pass the same gates.
+        // Once a script is in the call chain the origin stays script.
+        let script = "js";
         child.origin = match name {
-            "js" => "js",
-            "call_tool" => "call_tool",
+            _ if name == script => script,
+            "call_tool" if self.origin != script => "call_tool",
             _ => self.origin,
         };
         let result = tokio::select! {biased;_=cancellation.cancelled()=>return Err(anyhow!("Cancelled during tool; outcome unknown")), result=tool.invoke_with_dispatcher(context,input,child)=>match result{Ok(value)=>value,Err(error)=>ToolResult::error(error.to_string())}};

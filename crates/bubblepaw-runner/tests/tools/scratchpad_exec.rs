@@ -119,10 +119,7 @@ async fn scratch_scripts_execute_with_literal_argv_in_chat_and_project_workdirs(
             .call("read", json!({"path":ordinary_path(&script)}))
             .await?;
         assert!(!read.is_error, "{}", read.content);
-        assert_eq!(
-            serde_json::from_str::<Value>(&read.content)?["content"],
-            SCRIPT
-        );
+        assert_eq!(read.content, SCRIPT);
         // One argument with spaces and shell syntax proves this is a literal
         // argv invocation of the file, rather than source concatenation.
         let argument = "literal value & no-shell-effect";

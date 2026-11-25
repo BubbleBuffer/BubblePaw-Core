@@ -117,10 +117,7 @@ async fn three_native_reads_return_together_in_one_tool_result_turn() {
         .filter(|m| m.role == Role::Tool)
         .collect();
     for (result, expected) in results.iter().zip(["one", "two", "three"]) {
-        assert_eq!(
-            serde_json::from_str::<Value>(&result.content).unwrap()["content"],
-            expected
-        );
+        assert_eq!(result.content, expected);
     }
 }
 
@@ -154,8 +151,5 @@ async fn effectful_native_batch_runs_in_message_order() {
         .iter()
         .find(|m| m.tool_call_id.as_deref() == Some("read"))
         .unwrap();
-    assert_eq!(
-        serde_json::from_str::<Value>(&read.content).unwrap()["content"],
-        "after"
-    );
+    assert_eq!(read.content, "after");
 }
