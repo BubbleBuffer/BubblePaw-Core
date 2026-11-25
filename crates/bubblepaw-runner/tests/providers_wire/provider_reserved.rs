@@ -181,7 +181,7 @@ async fn reserved_submission_reaches_runtime_without_or_with_stale_declarations(
     }
 }
 #[tokio::test]
-async fn other_undeclared_names_remain_rejected_in_every_transport() {
+async fn other_undeclared_names_reach_core_as_calls_in_every_transport() {
     for adapter in [
         Adapter::Chat,
         Adapter::Messages,
@@ -190,13 +190,12 @@ async fn other_undeclared_names_remain_rejected_in_every_transport() {
     ] {
         for streamed in [false, true] {
             let (provider, _, server) = fixture(adapter, streamed, "unknown").await;
-            assert!(
-                provider
-                    .generate(request(1), Arc::new(|_| {}), CancellationToken::new())
-                    .await
-                    .is_err(),
-                "{adapter:?}"
-            );
+            let result = provider
+                .generate(request(1), Arc::new(|_| {}), CancellationToken::new())
+                .await
+                .unwrap_or_else(|error| panic!("{adapter:?} streamed={streamed}: {error}"));
+            assert_eq!(result.tool_calls.len(), 1, "{adapter:?}");
+            assert_eq!(result.tool_calls[0].name, "unknown", "{adapter:?}");
             server.abort();
         }
     }

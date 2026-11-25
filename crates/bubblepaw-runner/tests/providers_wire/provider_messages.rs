@@ -938,7 +938,7 @@ async fn continuation_failure_keeps_publication_usage_and_retry_metadata() {
     ] {
         let second = if status == StatusCode::OK {
             payload(
-                json!([{"type":"tool_use","id":"bad","name":"read","input":"bad"}]),
+                json!([{"type":"tool_use","id":"","name":"read","input":{}}]),
                 "tool_use",
             )
         } else {
@@ -1002,30 +1002,30 @@ async fn continuation_failure_keeps_publication_usage_and_retry_metadata() {
     }
 }
 
+#[path = "provider_messages/malformed.rs"]
+mod malformed;
+
 #[tokio::test]
 async fn malformed_tool_calls_are_metered_and_do_not_publish_text() {
-    for content in [
-        json!([{"type":"tool_use","id":"a","name":"read","input":"bad"}]),
-        json!([{"type":"tool_use","id":"a","name":"read","input":{}},{"type":"tool_use","id":"a","name":"read","input":{}}]),
-        json!([{"type":"tool_use","id":"a","name":"not-offered","input":{}}]),
-    ] {
-        let (base, _, server) = serve(vec![(StatusCode::OK, payload(content, "tool_use"))]).await;
-        let provider = MessagesProvider::api_key("synthetic-key", base).unwrap();
-        let error = provider
-            .generate(
-                request(),
-                Arc::new(|_| panic!("invalid response published text")),
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(
-            ProviderError::of(&error).unwrap().kind,
-            ProviderErrorKind::Fatal
-        );
-        assert_eq!(decision_error_usage(&error).unwrap().input_tokens, 60);
-        server.abort();
-    }
+    let duplicate = json!([{"type":"tool_use","id":"a","name":"read","input":{}},{"type":"tool_use","id":"a","name":"read","input":{}}]);
+    let (base, _, server) = serve(vec![(StatusCode::OK, payload(duplicate, "tool_use"))]).await;
+    let provider = MessagesProvider::api_key("synthetic-key", base).unwrap();
+    let error = provider
+        .generate(
+            request(),
+            Arc::new(|_| panic!("invalid response published text")),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        ProviderError::of(&error).unwrap().kind,
+        ProviderErrorKind::Fatal
+    );
+    assert!(error.to_string().contains("duplicate tool_use id"));
+    assert_eq!(decision_error_usage(&error).unwrap().input_tokens, 60);
+    server.abort();
+    malformed::assert_call_recovery().await;
 }
 
 #[tokio::test]

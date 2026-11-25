@@ -4,6 +4,16 @@ use crate::ToolDefinition;
 use crate::store::tool_surface::ChatToolSurface;
 use std::collections::BTreeMap;
 
+pub(super) fn check_malformed_reply_limit(streak: &mut usize, all_malformed: bool) -> Result<()> {
+    const MAX_MALFORMED_REPLIES: usize = 3;
+    *streak = if all_malformed { *streak + 1 } else { 0 };
+    ensure!(
+        *streak < MAX_MALFORMED_REPLIES,
+        "Three consecutive model replies contained only malformed tool calls"
+    );
+    Ok(())
+}
+
 pub(super) struct RunToolSurface {
     saved: ChatToolSurface,
 }

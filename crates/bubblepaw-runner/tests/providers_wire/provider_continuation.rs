@@ -403,7 +403,7 @@ async fn malformed_continuation_retains_every_reported_physical_response() {
         messages_reply("partial", "max_tokens", 50),
         sse(&[
             json!({"type":"message_start","message":{"usage":{"input_tokens":20,"output_tokens":1,"cache_read_input_tokens":3,"cache_creation_input_tokens":2}}}),
-            json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"bad","name":"unavailable","input":{}}}),
+            json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"","name":"workspace_read","input":{}}}),
             json!({"type":"content_block_stop","index":0}),
             json!({"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":5,"reasoning_tokens":1}}),
             json!({"type":"message_stop"}),
@@ -411,12 +411,12 @@ async fn malformed_continuation_retains_every_reported_physical_response() {
     ]).await;
     let (responses_base, responses_mock) = start(vec![
         responses_cut("partial", json!([])),
-        sse(&[json!({"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call","call_id":"bad","name":"unavailable","arguments":"{}"}],"usage":{"input_tokens":6,"output_tokens":4,"input_tokens_details":{"cached_tokens":3,"cache_creation_tokens":2},"output_tokens_details":{"reasoning_tokens":1}}}})]),
+        sse(&[json!({"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call","call_id":"","name":"workspace_read","arguments":"{}"}],"usage":{"input_tokens":6,"output_tokens":4,"input_tokens_details":{"cached_tokens":3,"cache_creation_tokens":2},"output_tokens_details":{"reasoning_tokens":1}}}})]),
     ]).await;
     let (chat_base, chat_mock) = start(vec![
         chat_cut("partial"),
         chat_sse(&[
-            json!({"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"bad","type":"function","function":{"name":"unavailable","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}),
+            json!({"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"","type":"function","function":{"name":"workspace_read","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}),
             json!({"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":3,"prompt_tokens_details":{"cached_tokens":4,"cache_creation_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}),
         ]),
     ]).await;

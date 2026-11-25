@@ -169,6 +169,10 @@ are recorded in [provider qualification](provider-qualification.md).
 | `extensions/claude-code/src/provider.ts:459`, `:717` | Consumes the SDK query and parks host tool calls until the next harness step delivers results; the one-off path consumes a tool-free query. | Stateful provider adapter, no host-side agent/tool execution loop. Left unchanged. |
 
 The authoritative model/tool loop is `crates/bubblepaw-core/src/runtime.rs`.
+The harness persists an error tool result with a correction hint when a call uses an unknown or undeclared tool, contains invalid JSON or non-object arguments, or fails argument validation.
+The harness skips approval and execution for that call, runs the other calls in the reply as usual, and sends the results back to the model.
+After three consecutive replies whose calls are all malformed, the run ends with an error.
+
 The recorded-corpus replay loop in `runner/src/replay.rs` (its phases in the
 `replay_*.rs` modules) imports recorded messages and evaluates context; it does not execute a live research agent loop.
 
