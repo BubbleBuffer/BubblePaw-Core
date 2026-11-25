@@ -152,6 +152,46 @@ pub async fn capture_request_usage_with_store<F: Future>(
     )
 }
 
+/// The record for a main request whose provider reported no usage of its own:
+/// the response's totals, or those carried by the error. Ids of requests that
+/// reported output are appended to `request_ids`.
+pub(crate) fn fallback_usage(
+    mut fallback: RequestUsage,
+    result: &anyhow::Result<crate::ModelResponse>,
+    request_ids: &mut Vec<String>,
+) -> RequestUsage {
+    match result {
+        Ok(response) => {
+            fallback.usage = response.usage.clone().unwrap_or_default();
+            let output_reported = match &response.last_request_usage {
+                Some(usage) => usage.output_tokens.is_some(),
+                None => response.usage.is_some(),
+            };
+            if output_reported {
+                request_ids.push(fallback.request_id.clone());
+            }
+            if let Some((provider, model)) = response
+                .provider_state
+                .as_ref()
+                .and_then(|state| state.get("_bubblepaw_selected_model"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(|selected| selected.split_once('/'))
+            {
+                fallback.provider = provider.to_owned();
+                fallback.account = provider.to_owned();
+                fallback.model = model.to_owned();
+            }
+        }
+        Err(error) => {
+            fallback.failed = true;
+            fallback.usage = crate::ProviderError::of(error)
+                .and_then(|error| error.usage.clone())
+                .unwrap_or_default();
+        }
+    }
+    fallback
+}
+
 /// Main runtime capture retains attribution privately; public billing APIs do not change.
 pub(crate) async fn capture_message_request_usage<F: Future>(
     store: &Store,

@@ -7,9 +7,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextBudgetExceeded, ContextPreparation, Harness, HarnessConfig, Message,
-    ModelRequest, ModelResponse, PrepareCall, PrepareMode, PreparedContext, Provider, Role, Run,
-    RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry,
-    ToolResult, Usage,
+    ModelRequest, ModelResponse, PrepareCall, PrepareMode, PreparedContext, Provider,
+    ProviderError, ProviderErrorKind, Role, Run, RunOptions, Store, TextCallback, Tool, ToolCall,
+    ToolContext, ToolDefinition, ToolRegistry, ToolResult, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -32,6 +32,8 @@ use tokio::{sync::Notify, time::timeout};
 
 #[path = "context_budget_recovery/fixture.rs"]
 mod fixture;
+#[path = "context_budget_recovery/overflow_retry.rs"]
+mod overflow_retry;
 
 const PHYSICAL_CAP: usize = 60_000;
 const OUTPUT_RESERVE: usize = 16_000;
@@ -88,6 +90,8 @@ fn sized(policy: &SummarizingContext, tokens: usize) -> String {
 #[derive(Default)]
 struct Scripted {
     requests: Mutex<Vec<ModelRequest>>,
+    /// Upcoming calls the provider rejects as too long for its window.
+    overflows: AtomicUsize,
 }
 #[async_trait]
 impl Provider for Scripted {
@@ -99,6 +103,12 @@ impl Provider for Scripted {
     ) -> Result<ModelResponse> {
         let answered = request.messages.iter().any(|m| m.role == Role::Tool);
         self.requests.lock().unwrap().push(request);
+        if self.overflows.load(Ordering::SeqCst) > 0 {
+            self.overflows.fetch_sub(1, Ordering::SeqCst);
+            return Err(
+                ProviderError::new(ProviderErrorKind::Context, "prompt is too long").into(),
+            );
+        }
         if answered {
             return Ok(ModelResponse {
                 text: "Finished.".into(),
