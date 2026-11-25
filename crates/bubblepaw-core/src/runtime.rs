@@ -86,9 +86,9 @@ pub struct HarnessConfig {
     pub context: Arc<dyn ContextPreparation>,
     /// Disabled by default. Observations are disposable and never stored in the archive.
     pub observation: Option<Observation>,
-    /// Which tool calls wait for a person; RunOptions may replace it per run.
+    /// Baseline approval policy for tool calls.
     pub approval: crate::ApprovalPolicy,
-    /// Explicit RunOptions approval overrides remain pinned for the whole run.
+    /// Run approval restrictions are combined with this policy at each tool call.
     pub approval_resolver: Option<ApprovalResolver>,
     /// Host-resolved exec directory per session, for the hardline workspace checks.
     pub workspace_resolver: Option<WorkspaceResolver>,
@@ -1010,30 +1010,11 @@ impl Harness {
             self.config.max_tool_result_bytes,
             self.config.observation.clone(),
         )
-        .with_approval(
-            options
-                .approval
-                .clone()
-                .unwrap_or_else(|| self.config.approval.clone()),
+        .with_approval(self.config.approval.clone())
+        .with_approval_resolver(
+            self.config
+                .run_approval_resolver(options.approval.clone(), single_tool.is_some()),
         )
-        .with_approval_resolver(match options.approval.clone() {
-            None => self.config.approval_resolver.clone(),
-            Some(override_policy) => {
-                let resolve = self.config.approval_resolver.clone();
-                let baseline = self.config.approval.clone();
-                Some(Arc::new(move |session: &str| {
-                    let current = resolve
-                        .as_ref()
-                        .map(|resolve| resolve(session))
-                        .unwrap_or_else(|| baseline.clone());
-                    // The host keeps its denies and hardline setting; the run keeps its modes.
-                    override_policy
-                        .clone()
-                        .with_inherited_denies(&current)
-                        .with_inherited_hardline(&current)
-                }) as crate::ApprovalResolver)
-            }
-        })
         .with_workspace_resolver(self.config.workspace_resolver.clone())
         .with_tool_budget(options.max_tool_calls)
         .with_interactive_approval(single_tool.is_none());

@@ -1,7 +1,8 @@
-use super::ApprovalPolicy;
-use crate::Store;
+use super::{Approval, ApprovalMode, ApprovalPolicy};
+use crate::{ApprovalResolver, HarnessConfig, Store};
 use anyhow::Result;
 use rusqlite::params;
+use std::sync::Arc;
 
 impl ApprovalPolicy {
     /// Same grammar as session allowances: one exact tool name, without globs
@@ -21,6 +22,72 @@ impl ApprovalPolicy {
             }
         }
         self
+    }
+
+    /// Combine approval rules with a run or child restriction.
+    pub fn tightened_by(&self, restriction: &Self) -> Self {
+        let tools = self
+            .tools
+            .keys()
+            .chain(restriction.tools.keys())
+            .map(|name| {
+                // A named rule can override the default for confirming tools.
+                let mode = stricter(
+                    self.mode(name, Approval::Confirm),
+                    restriction.mode(name, Approval::Confirm),
+                );
+                (name.clone(), mode)
+            })
+            .collect();
+        Self {
+            confirm: stricter(self.confirm, restriction.confirm),
+            tools,
+            deny: restriction.clone().with_inherited_denies(self).deny,
+            timeout_secs: self.timeout_secs,
+            hardline: self.hardline,
+        }
+    }
+}
+
+fn stricter(a: ApprovalMode, b: ApprovalMode) -> ApprovalMode {
+    fn rank(mode: ApprovalMode) -> u8 {
+        match mode {
+            ApprovalMode::Deny => 0,
+            ApprovalMode::Ask => 1,
+            ApprovalMode::Auto => 2,
+            ApprovalMode::Allow => 3,
+        }
+    }
+    if rank(a) <= rank(b) { a } else { b }
+}
+
+impl HarnessConfig {
+    pub(crate) fn run_approval_resolver(
+        &self,
+        requested: Option<ApprovalPolicy>,
+        single_tool: bool,
+    ) -> Option<ApprovalResolver> {
+        let resolve = self.approval_resolver.clone();
+        let Some(requested) = requested else {
+            return resolve;
+        };
+        let baseline = self.approval.clone();
+        Some(Arc::new(move |session: &str| {
+            let current = resolve
+                .as_ref()
+                .map_or_else(|| baseline.clone(), |resolve| resolve(session));
+            if single_tool {
+                // The model-free call_tool API accepts explicit authorization.
+                return requested
+                    .clone()
+                    .with_inherited_denies(&current)
+                    .with_inherited_hardline(&current);
+            }
+            ApprovalPolicy {
+                timeout_secs: requested.timeout_secs,
+                ..current.tightened_by(&requested)
+            }
+        }))
     }
 }
 

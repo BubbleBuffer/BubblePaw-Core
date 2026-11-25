@@ -790,7 +790,7 @@ pub struct RunOptions {
     /// Run this `js` code as the run's single tool round instead of calling a model.
     #[serde(default)]
     pub script: Option<String>,
-    /// Replaces the harness approval policy for this run.
+    /// Run approval restrictions, or explicit authorization for `Harness::call_tool`.
     #[serde(default)]
     pub approval: Option<ApprovalPolicy>,
     /// The client starting the run; its RunStarted carries it as `origin`.
