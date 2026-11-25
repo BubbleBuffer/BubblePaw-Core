@@ -506,7 +506,7 @@ bubblepaw/
 - **`serving.db`** is cleaned continuously. The user can wipe it at any time; its tables are rebuildable from chat files or acceptable to lose. It holds tiers 3–5. Only what is needed to serve stays there.
 - **Derived summaries** live in the chat file, next to the messages they cover. LCM summaries are small and cost money to recreate.
 - **Blobs:** tool outputs and attachments over 4 KiB go to a content-hash blob table in the chat file, zstd-compressed.
-- **One schema per store.** Every store file is created at its final schema and opens only at exactly that version (see below); there is no upgrade path from other layouts.
+- **One schema per store.** Every store file is created at its final schema; an older file is upgraded step by step when it is opened writable (see below).
 - **JSONL** is an export format only; SQLite stays authoritative (AGENTS.md).
 
 ### Ownership release
@@ -576,8 +576,9 @@ Each store file has one schema: chat records at version 12, `catalog.db` and
 `serving.db` at 2, and the delegation ledger at 1. A missing file is created
 directly at its final version: the DDL, the application id and `PRAGMA
 user_version` are written in one transaction. An existing file opens only if its
-version is exactly the one the binary writes. Any other version, older or newer,
-fails with `StoreSchemaError { store, found, expected }` (re-exported from
+version is the one the binary writes, or older with an unbroken chain of upgrade
+steps to it (below). Otherwise the open fails with `StoreSchemaError { store,
+found, expected }` (re-exported from
 `bubblepaw_core`; the ledger's error is the same type), wrapped in `anyhow` so a
 caller reaches it with `err.downcast_ref::<StoreSchemaError>()`. The check runs
 before any pragma touches the file, so a refused open changes nothing. A file
@@ -587,10 +588,20 @@ state, reminder metadata, dictionaries; the request log in `serving.db`) are
 `CREATE ... IF NOT EXISTS` statements in the open path, not part of the
 version.
 
-To change a schema later, put the new shape in the file's creation DDL, raise its
-version constant, and add a numbered step that upgrades the previous version in a
-single transaction with its version bump. Until then, a store written by an
-earlier layout has no path forward: create a new data directory.
+Each store kind (chat, catalog, serving) has an ordered table of upgrade steps in
+`store_upgrade.rs`: step `N` is a function over a transaction that turns version
+`N` into `N + 1`. A writable open of an older file takes the write lock
+(`BEGIN IMMEDIATE`), re-reads the version inside it and runs the steps in order,
+each with its version bump in one transaction. A crash between steps leaves a
+consistent file at an intermediate version that the next open continues, and two
+processes opening the same old file serialize on the lock, so the second finds
+it already upgraded. A file older than the oldest step is refused as before, a
+file newer than the binary is refused as newer and never downgraded, and a
+read-only open of an older file is refused with a request for a writable open.
+Fresh files are created directly at the current schema and never run a step.
+The tables hold no steps yet. A schema change comes with a step and a version
+bump: put the new shape in the creation DDL, raise the version constant, and add
+the step for the previous version.
 
 `serving.db` owns journal references, pointer views, resolved input/approval
 metadata, completed runs, and summary usage/internal reasoning telemetry. Reads

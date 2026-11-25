@@ -216,6 +216,7 @@ impl Store {
                 SERVING_SCHEMA,
                 "serving",
                 schema::SERVING_VERSION,
+                upgrade::SERVING_STEPS,
             )?;
             let tx = connection.transaction()?;
             tx.execute(
