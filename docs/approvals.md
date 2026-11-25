@@ -16,7 +16,8 @@ A tool call can wait for a person's decision. This works for direct model calls 
 ## Tool metadata and policy
 
 - `ToolDefinition.approval` is `none` (default) or `confirm`. No built-in tool declares `confirm` yet.
-- `ApprovalPolicy { confirm, tools, deny, timeout_secs, hardline }` lives in `HarnessConfig.approval`. `RunOptions.approval` replaces modes and timeout for one run and can add denies; the host's configured denies still apply. The default is `confirm: ask`, no per-tool entries or denies, no timeout, and the [hardline floor](#hardline-floor) on.
+- `ApprovalPolicy { confirm, tools, deny, timeout_secs, hardline }` lives in `HarnessConfig.approval`. The default is `confirm: ask`, no per-tool entries or denies, no timeout, and the [hardline floor](#hardline-floor) on.
+- `run.start` options can only tighten the session's approval rules. The run inherits its `confirm` mode and per-tool rules and can add restrictions. For overlapping modes, `deny` is strictest, followed by `ask`, `auto`, and `allow`. The configured `deny` list and the host's hardline setting still apply.
 - Each mode is `ask`, `allow`, `deny` or `auto`. Before any of these, the
   [hardline floor](#hardline-floor) is checked for `exec` commands. The
   effective mode for a call is, in order:
@@ -51,9 +52,9 @@ and nested calls inside `js`. The ordinary denial record and events contain
 starts and no effect boundary is written for it. An existing session allowance
 is preserved and can apply again after the configured deny is removed.
 
-Deny changes reload with the other approval settings: next turn or explicit
-`reload`, with a one-time policy diff notice. A run override keeps its modes
-while resolving the current host deny list at each subsequent gate. Calls that
+Deny changes reload with the other approval settings on the next turn or on
+explicit `reload`, with a one-time policy diff notice. Each subsequent gate
+combines the run's restrictions with the current inherited policy. Calls that
 already crossed their approval gate retain their admitted decision.
 
 The split keeps gate/persistence code in `mod.rs`, modes and the existing Auto

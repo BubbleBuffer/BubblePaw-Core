@@ -187,9 +187,8 @@ async fn approval_updates_apply_to_next_direct_and_nested_call() -> Result<()> {
 }
 
 #[tokio::test]
-async fn live_approval_is_not_bypassed_by_single_call_and_run_override_stays_pinned() -> Result<()>
-{
-    for pinned in [false, true] {
+async fn single_call_applies_live_denial_with_and_without_run_options() -> Result<()> {
+    for with_approval in [false, true] {
         let store = Store::in_memory()?;
         let session = store.create_session("single approval")?;
         let effect = Arc::new(ValueTool {
@@ -215,13 +214,13 @@ async fn live_approval_is_not_bypassed_by_single_call_and_run_override_stays_pin
                 &session.id,
                 "go",
                 RunOptions {
-                    approval: pinned.then(|| policy(ApprovalMode::Allow)),
+                    approval: with_approval.then(|| policy(ApprovalMode::Allow)),
                     ..Default::default()
                 },
             )
             .await?;
         assert_eq!(run.status, "completed");
-        assert_eq!(effect.calls.load(Ordering::SeqCst), usize::from(pinned));
+        assert_eq!(effect.calls.load(Ordering::SeqCst), 0);
     }
     Ok(())
 }

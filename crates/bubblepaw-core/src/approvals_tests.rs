@@ -932,7 +932,6 @@ async fn policy_allow_deny_and_overrides_need_no_person() -> Result<()> {
     let policy = |confirm, tools: &[(&str, ApprovalMode)]| ApprovalPolicy {
         confirm,
         tools: tools.iter().map(|(n, m)| (n.to_string(), *m)).collect(),
-        timeout_secs: None,
         ..Default::default()
     };
     let confirm = Approval::Confirm;
@@ -983,8 +982,8 @@ async fn policy_allow_deny_and_overrides_need_no_person() -> Result<()> {
             Some(policy(ApprovalMode::Allow, &[])),
             "write",
             confirm,
-            true,
-            None,
+            false,
+            Some("denied"),
         ),
     ];
     for (index, (config, run_policy, name, declared, runs, record)) in cases.into_iter().enumerate()
@@ -1335,7 +1334,11 @@ impl Tool for DenyFlip {
 async fn live_deny_add_remove_applies_inside_a_run_override() -> Result<()> {
     let store = Store::in_memory()?;
     let session = store.create_session("live deny override")?;
-    let current = Arc::new(Mutex::new(ApprovalPolicy::default()));
+    let policy = ApprovalPolicy {
+        confirm: ApprovalMode::Allow,
+        ..Default::default()
+    };
+    let current = Arc::new(Mutex::new(policy.clone()));
     let tool = effect("write", Approval::Confirm);
     let mut tools = ToolRegistry::new();
     tools.register(Arc::new(DenyFlip(current.clone())))?;
@@ -1354,10 +1357,7 @@ async fn live_deny_add_remove_applies_inside_a_run_override() -> Result<()> {
             &session.id,
             "go",
             RunOptions {
-                approval: Some(ApprovalPolicy {
-                    confirm: ApprovalMode::Allow,
-                    ..Default::default()
-                }),
+                approval: Some(policy),
                 ..Default::default()
             },
         )

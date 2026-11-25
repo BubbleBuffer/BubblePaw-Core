@@ -57,7 +57,7 @@ impl Tool for Inspect {
 }
 
 #[tokio::test]
-async fn tools_receive_run_override_or_harness_approval_policy() -> Result<()> {
+async fn tools_receive_effective_run_approval_policy() -> Result<()> {
     let store = Store::in_memory()?;
     let session = store.create_session("approval context")?.id;
     let tool = Arc::new(Inspect::default());
@@ -97,9 +97,13 @@ async fn tools_receive_run_override_or_harness_approval_policy() -> Result<()> {
             .await?;
         assert_eq!(run.status, "completed", "{:?}", run.error);
     }
+    let merged_policy = ApprovalPolicy {
+        confirm: ApprovalMode::Deny,
+        ..override_policy
+    };
     assert_eq!(
         *tool.0.lock().unwrap(),
-        vec![default_policy.clone(), override_policy, default_policy]
+        vec![default_policy.clone(), merged_policy, default_policy]
     );
     Ok(())
 }
