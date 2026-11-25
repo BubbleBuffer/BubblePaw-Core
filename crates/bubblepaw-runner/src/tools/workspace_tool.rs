@@ -151,12 +151,7 @@ impl Tool for WorkspaceTool {
                 return Ok(ToolResult::text(content));
             }
             return self
-                .invoke_resolved(
-                    context,
-                    input,
-                    Some(read_path),
-                    !matches!(dispatcher.origin(), "js" | "call_tool"),
-                )
+                .invoke_resolved(context, input, Some(read_path), dispatcher.origin() != "js")
                 .await;
         }
         self.invoke(context, input).await

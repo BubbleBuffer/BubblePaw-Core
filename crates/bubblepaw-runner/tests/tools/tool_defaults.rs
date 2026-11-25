@@ -2,8 +2,8 @@
 use anyhow::{Context, Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, Harness, HarnessConfig, Role, RunOptions, Store, Tool, ToolCall,
-    ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    CancellationToken, ExecutionMode, Harness, HarnessConfig, Role, RunOptions, Store, Tool,
+    ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
     provider::{ScriptedProvider, ScriptedStep},
@@ -140,6 +140,16 @@ async fn read_returns_file_text_with_a_final_note_only_when_partial() -> Result<
         assert!(!result.is_error, "{}", result.content);
         assert_eq!(result.content, expected, "{input}");
     }
+    // A model call through call_tool gets the same text.
+    let native = registry.with_execution_mode(ExecutionMode::Native);
+    let wrapped = json!({"name":"read","arguments":{"path":"small.txt"}});
+    let result = dispatched(&native, "call_tool", wrapped).await?;
+    assert_eq!(
+        result.content,
+        "one
+two
+"
+    );
     // Over the result limit the text stops at a line boundary and the note names
     // the last returned line.
     let result = dispatched(&registry, "read", json!({"path":"wide.txt"})).await?;
