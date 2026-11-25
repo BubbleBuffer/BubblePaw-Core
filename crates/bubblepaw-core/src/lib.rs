@@ -112,7 +112,7 @@ pub use store::{
     ContextDecision, ContextEpisode, ContextSubjectChapter, ContextView, DecisionKind,
     EpisodeBatch, InputKind, QueuedInput, RelatedEvidence, RootStoragePolicy, SearchHit,
     SearchIndexProgress, SessionCleanup, SessionRecord, SessionSnapshot, StorageStats, Store,
-    StoreOptions, StoreSchemaError, SubjectChapterStatus,
+    StoreError, StoreOptions, StoreSchemaError, SubjectChapterStatus,
 };
 use tokio::sync::watch;
 pub use transcript::{
