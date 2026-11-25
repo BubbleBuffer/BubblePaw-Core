@@ -191,10 +191,7 @@ async fn native_model_calls_existing_workspace_tool_without_js() {
     assert_eq!(call.name, "read");
     let tool = messages.iter().find(|m| m.role == Role::Tool).unwrap();
     assert!(!tool.is_error, "{}", tool.content);
-    assert_eq!(
-        serde_json::from_str::<Value>(&tool.content).unwrap()["content"],
-        "native and js\n"
-    );
+    assert_eq!(tool.content, "native and js\n");
     assert!(f.store.pending_effects(&f.session).unwrap().is_empty());
     f.shutdown().await;
 }
