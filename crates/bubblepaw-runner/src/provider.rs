@@ -363,8 +363,8 @@ impl ResponsesProvider {
         let mut seen = HashSet::new();
         let mut final_text = String::new();
         let mut provider_state = Some(json!({"adapter":"responses","items":final_items}));
-        for item in provider_state.as_ref().unwrap()["items"]
-            .as_array()
+        for item in provider_state.as_mut().unwrap()["items"]
+            .as_array_mut()
             .unwrap()
         {
             match item["type"].as_str().unwrap_or("") {
@@ -372,39 +372,39 @@ impl ResponsesProvider {
                     let id = item["call_id"]
                         .as_str()
                         .filter(|id| !id.is_empty())
-                        .ok_or_else(|| malformed_call("function call missing call_id"))?;
+                        .ok_or_else(|| malformed_call("function call missing call_id"))?
+                        .to_owned();
                     let name = item["name"]
                         .as_str()
                         .filter(|name| !name.is_empty())
-                        .ok_or_else(|| malformed_call("function call missing name"))?;
-                    if !seen.insert(id.to_owned()) {
+                        .ok_or_else(|| malformed_call("function call missing name"))?
+                        .to_owned();
+                    if !seen.insert(id.clone()) {
                         return Err(malformed_call("duplicate provider call_id"));
                     }
-                    // Declarations on a tools-off request are inactive: tool_choice is none.
-                    if !tool_wire::accepts_call(name, body["tool_choice"] != "none" && body["tools"]
-                        .as_array()
-                        .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == name)))
-                    {
-                        return Err(malformed_call("provider returned an unavailable tool"));
+                    // Enforce tools-off rounds before passing unknown names to core.
+                    if !tool_wire::accepts_call(&name, body["tool_choice"] != "none") {
+                        return Err(malformed_call("provider returned a tool with tools disabled"));
                     }
-                    let arguments = match serde_json::from_str::<Value>(
-                        item["arguments"]
-                            .as_str()
-                            .ok_or_else(|| malformed_call("invalid function call arguments"))?,
-                    ) {
+                    // The wire envelope requires a string field. Core handles
+                    // errors in the JSON text that field carries.
+                    let raw = item["arguments"]
+                        .as_str()
+                        .ok_or_else(|| malformed_call("invalid function call arguments"))?;
+                    let arguments = match serde_json::from_str::<Value>(raw) {
                         Ok(arguments) => arguments,
-                        // A length stop can cut a call's arguments; that call is dropped.
                         Err(_) if cut => continue,
                         Err(_) => {
-                            return Err(malformed_call("invalid function call arguments"));
+                            let arguments = tool_wire::raw_arguments(raw);
+                            // Keep the replay item aligned with the bounded canonical argument.
+                            // Its wire field contains the JSON encoding of that value.
+                            item["arguments"] = Value::String(arguments.to_string());
+                            arguments
                         }
                     };
-                    if !arguments.is_object() {
-                        return Err(malformed_call("function call arguments must be an object"));
-                    }
                     calls.push(ToolCall {
-                        id: id.into(),
-                        name: name.into(),
+                        id,
+                        name,
                         arguments,
                     });
                 }
@@ -562,7 +562,7 @@ impl Provider for ResponsesProvider {
         request: ModelRequest,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
-        self.generate(request, Arc::new(|_| {}), cancellation).await
+        tool_wire::generate_summary_fork(self, request, cancellation).await
     }
     fn estimate_input_tokens(
         &self,

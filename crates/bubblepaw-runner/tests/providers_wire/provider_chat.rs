@@ -394,15 +394,18 @@ impl Tool for CountingTools {
         Ok(ToolResult::text("executed"))
     }
 }
+#[path = "provider_chat/malformed.rs"]
+mod malformed;
+
 #[tokio::test]
 async fn malformed_calls_are_metered_and_never_executed_by_the_host() {
-    for calls in [
-        json!([wire_call("a", "read", "{bad")]),
-        json!([wire_call("a", "read", "[]")]),
-        json!([wire_call("a", "read", "{}"), wire_call("a", "read", "{}")]),
-        json!([wire_call("a", "unavailable", "{}")]),
-        json!([wire_call("", "read", "{}")]),
-        json!("not an array"),
+    for (calls, structural_error) in [
+        (
+            json!([wire_call("a", "read", "{}"), wire_call("a", "read", "{}")]),
+            "duplicate tool call id",
+        ),
+        (json!([wire_call("", "read", "{}")]), "tool call lacks id"),
+        (json!("not an array"), "tool_calls must be an array"),
     ] {
         let malformed = reply(
             json!({"content":"must not publish","tool_calls":calls}),
@@ -418,6 +421,7 @@ async fn malformed_calls_are_metered_and_never_executed_by_the_host() {
             )
             .await
             .unwrap_err();
+        assert!(error.to_string().contains(structural_error), "{error}");
         assert_eq!(
             ProviderError::of(&error).unwrap().kind,
             ProviderErrorKind::Fatal
@@ -441,36 +445,32 @@ async fn malformed_calls_are_metered_and_never_executed_by_the_host() {
         assert_eq!(requests.lock().unwrap().len(), 2);
         server.abort();
     }
-}
-
-#[tokio::test]
-async fn malformed_stream_arguments_keep_usage_and_a_typed_error() {
-    let events = [
-        json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"read","arguments":"{bad"}}]},"finish_reason":"tool_calls"}]}),
-        json!({"choices":[],"usage":{"prompt_tokens":11,"completion_tokens":3,"prompt_tokens_details":{"cached_tokens":4,"cache_creation_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}),
-    ];
-    let (base, _, server) = serve(vec![sse(&events)]).await;
-    let error = ChatCompletionsProvider::api_key("key", base)
-        .unwrap()
-        .generate(
-            tool_request(),
-            Arc::new(|_| panic!("no text")),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap_err();
-    assert_eq!(
-        ProviderError::of(&error).unwrap().kind,
-        ProviderErrorKind::Fatal
-    );
-    assert_eq!(decision_error_usage(&error).unwrap().input_tokens, 11);
-    let usage = ProviderError::of(&error).unwrap().usage.as_ref().unwrap();
-    assert_eq!(usage.input_tokens, 11);
-    assert_eq!(usage.output_tokens, 3);
-    assert_eq!(usage.cache_read_tokens, 4);
-    assert_eq!(usage.cache_creation_tokens, 2);
-    assert_eq!(usage.reasoning_tokens, Some(1));
-    server.abort();
+    for (call, diagnostics) in [
+        (
+            wire_call("a", "read", "{bad"),
+            &["not valid JSON", "line 1 column 2"][..],
+        ),
+        (
+            wire_call("a", "read", "[]"),
+            &["expected a JSON object"][..],
+        ),
+        (
+            wire_call("a", "read", "{}"),
+            &["Expected parameters: path", "Required: path"][..],
+        ),
+        (
+            wire_call("a", "raed", "{}"),
+            &["Unknown tool", "Closest available tools: read"][..],
+        ),
+    ] {
+        malformed::assert_call_recovery(call, diagnostics, false).await;
+    }
+    malformed::assert_call_recovery(
+        wire_call("a", "read", r#"{"path":"README.md"}"#),
+        &["was not declared for this request"],
+        true,
+    )
+    .await;
 }
 
 #[tokio::test]

@@ -160,6 +160,47 @@ impl Tool for Counter {
 }
 
 #[tokio::test]
+async fn three_consecutive_malformed_tool_replies_fail_the_run() -> Result<()> {
+    let counter = Arc::new(Counter::default());
+    let mut tools = ToolRegistry::new();
+    tools.register(counter.clone())?;
+    let mut mixed = calls("count", 1);
+    mixed.tool_calls.extend(calls("cont", 1).tool_calls);
+    let mut non_object = calls("count", 1);
+    non_object.tool_calls[0].arguments = json!([]);
+    let mut invalid_json = calls("count", 1);
+    invalid_json.tool_calls[0].arguments = json!("{bad");
+    let provider = Scripted::new(vec![
+        calls("cont", 1),
+        calls("cont", 1),
+        mixed,
+        non_object,
+        invalid_json,
+        calls("cont", 1),
+        reply("should not be requested"),
+    ]);
+    let (harness, store, session) = harness(provider.clone(), tools)?;
+    let run = harness
+        .prompt(&session, "work", RunOptions::default())
+        .await?;
+    assert_eq!(run.status, "failed", "{:?}", run.error);
+    assert!(
+        run.error.as_deref().unwrap().contains("Three consecutive"),
+        "{:?}",
+        run.error
+    );
+    assert_eq!(counter.0.load(Ordering::Relaxed), 1);
+    assert_eq!(provider.requests.lock().unwrap().len(), 6);
+    let messages = store.messages(&session)?;
+    let errors: Vec<_> = messages.iter().filter(|message| message.is_error).collect();
+    assert_eq!(errors.len(), 6);
+    assert!(errors[3].content.contains("expected a JSON object"));
+    assert!(errors[4].content.contains("line 1 column 2"));
+    assert!(errors[5].content.contains("Closest available tools: count"));
+    Ok(())
+}
+
+#[tokio::test]
 async fn batch_excess_is_denied_and_exhaustion_gets_final_request_at_round_limit() -> Result<()> {
     let counter = Arc::new(Counter::default());
     let mut tools = ToolRegistry::new();

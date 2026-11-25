@@ -1027,7 +1027,7 @@ impl Harness {
         let extra_rounds = usize::from(options.output_schema.is_some())
             + usize::from(options.max_tool_calls.is_some())
             + 1;
-        let mut rounds = 0usize;
+        let (mut rounds, mut malformed_replies) = (0usize, 0);
         let mut reminders = runtime_reminders::RunReminders::default();
         loop {
             let round = rounds;
@@ -1057,6 +1057,7 @@ impl Harness {
                 .clone()
                 .with_auto_approval(self.config.auto_approval.clone(), user_request.clone());
             let mut tools_round = runtime_reminders::ToolsRound::Open;
+            let mut declarations = None;
             let (response, dispatcher, request_ids) = if let Some(execution) = single_tool {
                 (
                     ModelResponse {
@@ -1306,6 +1307,14 @@ impl Harness {
                     &request,
                     request_provider.clone(),
                 );
+                // Check direct calls against the declarations actually sent this round.
+                declarations = Some(
+                    request
+                        .tools
+                        .iter()
+                        .map(|tool| tool.name.clone())
+                        .collect::<Vec<_>>(),
+                );
                 let (mut response_result, mut captured_usage, mut request_ids) = crate::request_usage::capture_message_request_usage(
                     &self.store, &run.session_id, &run.id,
                     async { tokio::select! {biased; _=cancellation.cancelled()=>Err(anyhow!("Cancelled during provider request")), result=request_provider.generate(request,callback,cancellation.clone())=>result} },
@@ -1430,6 +1439,7 @@ impl Harness {
                 && response.tool_calls.is_empty()
                 && options.output_schema.is_some()
             {
+                malformed_replies = 0;
                 user_request = self
                     .nudge_required_result(
                         run,
@@ -1452,38 +1462,34 @@ impl Harness {
             {
                 return Ok(runtime_result::text_outcome(message, true, request_ids));
             }
-            // The dispatcher admits every route. A sole Allow call can still
-            // batch its assistant reply and dispatch marker in one transaction.
-            let make_context = || ToolContext {
-                session_id: run.session_id.clone(),
-                run_id: run.id.clone(),
-                invocation_id: String::new(),
-                cancellation: cancellation.clone(),
-                approval: Default::default(),
-            };
-            let mut single_prepared = if response.tool_calls.len() == 1 {
-                Some(dispatcher.prepare_call(
-                    make_context(),
-                    response.tool_calls[0].clone(),
+            // A sole Allow call batches its reply and dispatch marker.
+            let prepare = |call: &ToolCall| {
+                dispatcher.prepare_call(
+                    ToolContext {
+                        session_id: run.session_id.clone(),
+                        run_id: run.id.clone(),
+                        invocation_id: String::new(),
+                        cancellation: cancellation.clone(),
+                        approval: Default::default(),
+                    },
+                    call.clone(),
                     tools_round.is_open(),
-                )?)
-            } else {
-                None
+                    declarations.as_deref(),
+                )
             };
-            let single_allowed = if options.script.is_none() {
-                match &mut single_prepared {
-                    Some(prepared) => dispatcher.admit_fast_path(prepared)?,
-                    None => false,
-                }
-            } else {
-                false
+            let mut single_prepared = match response.tool_calls.as_slice() {
+                [call] => Some(prepare(call)?),
+                _ => None,
             };
-            let mut prepared_invocation = if single_allowed {
+            let mut prepared_invocation = if options.script.is_none()
+                && let Some(prepared) = &mut single_prepared
+                && dispatcher.admit_fast_path(prepared)?
+            {
                 Some(dispatcher.commit_reply_dispatch(
                     &message,
                     request_usage,
                     &request_ids,
-                    single_prepared.as_ref().expect("single prepared call"),
+                    prepared,
                 )?)
             } else {
                 self.state.log.settle_text(&run.session_id, || {
@@ -1495,25 +1501,18 @@ impl Harness {
             request_usage.clear();
             // Native submissions settle last. Calls retain their provider order
             // in history; unrelated effects run before accepting the result.
-            let ordered_calls = response
-                .tool_calls
+            let calls = &response.tool_calls;
+            let ordered_calls = calls
                 .iter()
                 .filter(|call| !is_submission(call))
-                .chain(
-                    response
-                        .tool_calls
-                        .iter()
-                        .filter(|call| is_submission(call)),
-                );
+                .chain(calls.iter().filter(|call| is_submission(call)));
+            let mut all_malformed = !calls.is_empty();
             for call in ordered_calls {
                 let prepared = match single_prepared.take() {
                     Some(prepared) => prepared,
-                    None => dispatcher.prepare_call(
-                        make_context(),
-                        call.clone(),
-                        tools_round.is_open(),
-                    )?,
+                    None => prepare(call)?,
                 };
+                all_malformed &= prepared.malformed;
                 let dispatched = dispatcher
                     .invoke_direct(prepared, &message.id, prepared_invocation.take())
                     .await?;
@@ -1551,6 +1550,7 @@ impl Harness {
                     *execution.result.lock().unwrap() = Some(result);
                 }
             }
+            runtime_tools::check_malformed_reply_limit(&mut malformed_replies, all_malformed)?;
             if let Some(value) = dispatcher.take_submitted_result() {
                 return runtime_result::outcome(run, value);
             }

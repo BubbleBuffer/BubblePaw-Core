@@ -10,6 +10,7 @@ pub(crate) struct PreparedToolCall {
     rejection: Option<ToolResult>,
     approved: bool,
     validation_rejected: bool,
+    pub(crate) malformed: bool,
 }
 
 pub(crate) struct DispatchedToolCall {
@@ -33,10 +34,19 @@ impl ToolDispatcher {
         mut context: ToolContext,
         call: ToolCall,
         tools_open: bool,
+        declarations: Option<&[String]>,
     ) -> Result<PreparedToolCall> {
         ensure!(!context.cancellation.is_cancelled(), "Execution cancelled");
         context.approval = self.approval_policy(&context.session_id);
-        let validation = self.tools.validate_model_call(&call).and_then(|()| {
+        let validation = match declarations {
+            Some(declarations) => self.tools.validate_direct_model_call(&call, declarations),
+            None => self
+                .tools
+                .validate_model_call(&call)
+                .map_err(|error| (error, false)),
+        };
+        let malformed = validation.as_ref().is_err_and(|(_, malformed)| *malformed);
+        let validation = validation.map_err(|(error, _)| error).and_then(|()| {
             ensure!(
                 serde_json::to_vec(&call.arguments)?.len() <= 2 * 1024 * 1024,
                 "Tool input exceeds size limit"
@@ -72,6 +82,7 @@ impl ToolDispatcher {
             rejection,
             approved: false,
             validation_rejected,
+            malformed: budget_allowed && malformed,
         })
     }
     /// Admit an unconditional Allow call without an intervening approval write,
@@ -152,6 +163,7 @@ impl ToolDispatcher {
                 arguments: input,
             },
             true,
+            None,
         )?;
         Ok(self
             .invoke_prepared(prepared, CallJournal::Nested)
