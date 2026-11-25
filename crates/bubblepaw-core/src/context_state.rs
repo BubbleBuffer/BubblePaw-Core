@@ -354,7 +354,7 @@ fn frozen_value(request: &ModelRequest) -> Value {
 /// Provider replay state is prompt-affecting and remains in the hash.
 fn message_value(message: &crate::Message) -> Value {
     json!({
-        "role":message.role,"content":message.content,
+        "role":message.role,"content":message.text(),
         "tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id,
         "is_error":message.is_error,"provider_state":message.provider_state,
     })

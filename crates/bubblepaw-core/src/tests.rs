@@ -51,7 +51,7 @@ fn context_view_masks_and_clips_only_canonical_raw_tool_records() -> Result<()> 
         session_id: session.id.clone(),
         role: Role::Assistant,
         origin: None,
-        content: String::new(),
+        content: crate::text_blocks(String::new()),
         tool_calls: vec![call("raw-call")],
         tool_call_id: None,
         provider_state: None,
@@ -63,7 +63,7 @@ fn context_view_masks_and_clips_only_canonical_raw_tool_records() -> Result<()> 
         role: Role::Tool,
         tool_calls: Vec::new(),
         tool_call_id: Some("raw-call".into()),
-        content: "complete tool output".into(),
+        content: crate::text_blocks("complete tool output"),
         ..assistant.clone()
     };
     store.append(&assistant)?;
@@ -180,7 +180,7 @@ fn context_view_masks_and_clips_only_canonical_raw_tool_records() -> Result<()> 
     };
     store.save_context_view(&legacy_view)?;
     assert_eq!(
-        store.messages(&session.id)?[1].content,
+        store.messages(&session.id)?[1].text(),
         "complete tool output"
     );
     Ok(())
@@ -353,7 +353,7 @@ async fn direct_schema_failure_never_invokes_tool() -> Result<()> {
     assert_eq!(calls.load(Ordering::Relaxed), 0);
     let rejected = &store.messages(&session.id)?[2];
     assert!(rejected.is_error);
-    assert!(rejected.content.contains("guarded at /count"));
+    assert!(rejected.text().contains("guarded at /count"));
     Ok(())
 }
 
@@ -475,9 +475,9 @@ async fn union_argument_error_names_field_and_types_then_allows_correction() -> 
     assert_eq!(calls.load(Ordering::Relaxed), 1);
     let messages = store.messages(&session.id)?;
     assert!(messages[2].is_error);
-    assert!(messages[2].content.contains("command_input at /command"));
-    assert!(messages[2].content.contains("string or object"));
-    assert_eq!(messages[4].content, "accepted");
+    assert!(messages[2].text().contains("command_input at /command"));
+    assert!(messages[2].text().contains("string or object"));
+    assert_eq!(messages[4].text(), "accepted");
     assert!(!messages[4].is_error);
     assert!(store.pending_effects(&session.id)?.is_empty());
     Ok(())
@@ -510,7 +510,7 @@ async fn bounded_snapshots_preserve_counts_and_never_write() -> Result<()> {
         snapshot
             .messages
             .iter()
-            .map(|message| message.content.as_str())
+            .map(|message| message.text().into_owned())
             .collect::<Vec<_>>(),
         ["third", "three"]
     );
@@ -522,7 +522,7 @@ async fn bounded_snapshots_preserve_counts_and_never_write() -> Result<()> {
     assert_eq!(empty.message_count, 6);
     let summaries = store.session_summaries(1)?;
     assert_eq!(summaries.len(), 1);
-    assert_eq!(summaries[0].last_message.as_ref().unwrap().content, "three");
+    assert_eq!(summaries[0].last_message.as_ref().unwrap().text(), "three");
     assert_eq!(
         summaries[0].latest_run.as_ref().unwrap().status,
         "completed"
@@ -679,7 +679,7 @@ async fn native_tool_loop_persists_provider_state_and_bound_result_after_reopen(
     let requests = provider.requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
     assert!(requests[1].messages[1].provider_state.is_some());
-    assert!(requests[1].messages[2].content.len() <= 101);
+    assert!(requests[1].messages[2].text().len() <= 101);
     drop(requests);
     assert_eq!(native.contexts.lock().unwrap()[0].session_id, session.id);
     drop(agent);
@@ -958,8 +958,8 @@ async fn actual_process_style_restart_closes_unknown_and_undispatched_effects_wi
     assert_eq!(reopened.run(&run.id)?.status, "interrupted");
     let messages = reopened.messages(&session.id)?;
     assert_eq!(messages.len(), 3);
-    assert!(messages[1].content.contains("outcome unknown"));
-    assert!(messages[2].content.contains("not dispatched"));
+    assert!(messages[1].text().contains("outcome unknown"));
+    assert!(messages[2].text().contains("not dispatched"));
     let native = Arc::new(Native {
         contexts: Mutex::default(),
         result: "unexpected".into(),
@@ -1085,9 +1085,9 @@ async fn steering_and_followups_are_durable_and_obey_round_boundaries() -> Resul
     assert_eq!(final_run.status, "completed");
     let requests = provider.requests.lock().unwrap();
     assert_eq!(requests.len(), 3);
-    assert_eq!(requests[0].messages.last().unwrap().content, "initial");
-    assert_eq!(requests[1].messages.last().unwrap().content, "steer");
-    assert_eq!(requests[2].messages.last().unwrap().content, "followup");
+    assert_eq!(requests[0].messages.last().unwrap().text(), "initial");
+    assert_eq!(requests[1].messages.last().unwrap().text(), "steer");
+    assert_eq!(requests[2].messages.last().unwrap().text(), "followup");
     drop(requests);
     let mut finished = 0;
     let mut settled = 0;
@@ -1126,8 +1126,8 @@ async fn queued_input_survives_close_and_reopen_before_execution() -> Result<()>
         Some("b")
     );
     let requests = provider.requests.lock().unwrap();
-    assert_eq!(requests[0].messages[0].content, "first");
-    assert_eq!(requests[1].messages.last().unwrap().content, "second");
+    assert_eq!(requests[0].messages[0].text(), "first");
+    assert_eq!(requests[1].messages.last().unwrap().text(), "second");
     Ok(())
 }
 
@@ -1220,7 +1220,7 @@ async fn ordinary_steers_do_not_release_foreground_waits_or_add_a_generation() -
     assert_eq!(
         messages[tool_position + 1..]
             .iter()
-            .map(|m| m.content.as_str())
+            .map(|m| m.text().into_owned())
             .collect::<Vec<_>>(),
         vec!["first", "second"]
     );
@@ -1248,7 +1248,7 @@ impl ContextPreparation for PausedPreparation {
             request
                 .messages
                 .iter()
-                .map(|m| m.content.len())
+                .map(|m| m.text().len())
                 .sum::<usize>()
         };
         if let Some(budget) = self.fit_budget {
@@ -1257,9 +1257,9 @@ impl ContextPreparation for PausedPreparation {
                 // Model a context policy that compresses an older prefix while
                 // retaining both newly admitted user instructions unchanged.
                 let excess = total - budget;
-                anyhow::ensure!(request.messages[0].content.len() >= excess);
-                let retained = request.messages[0].content.len() - excess;
-                request.messages[0].content.truncate(retained);
+                anyhow::ensure!(request.messages[0].text().len() >= excess);
+                let text = request.messages[0].text().into_owned();
+                request.messages[0].set_text(&text[..text.len() - excess]);
                 self.compressions.fetch_add(1, Ordering::SeqCst);
             }
         }
@@ -1362,7 +1362,7 @@ async fn steers_accepted_during_preparation_join_imminent_main_request_once_in_o
         requests[0]
             .messages
             .iter()
-            .map(|m| m.content.as_str())
+            .map(|m| m.text().into_owned())
             .collect::<Vec<_>>(),
         vec!["initial", "first steer", "second steer"]
     );
@@ -1375,7 +1375,7 @@ async fn steers_accepted_during_preparation_join_imminent_main_request_once_in_o
         requests[1]
             .messages
             .iter()
-            .filter(|m| m.content == "first steer")
+            .filter(|m| m.text() == "first steer")
             .count(),
         1
     );
@@ -1383,11 +1383,11 @@ async fn steers_accepted_during_preparation_join_imminent_main_request_once_in_o
         requests[1]
             .messages
             .iter()
-            .filter(|m| m.content == "second steer")
+            .filter(|m| m.text() == "second steer")
             .count(),
         1
     );
-    assert_eq!(requests[1].messages.last().unwrap().content, "followup");
+    assert_eq!(requests[1].messages.last().unwrap().text(), "followup");
     assert_eq!(store.queued_inputs(&other.id)?[0].state, "pending");
     let mut accepted_by = Vec::new();
     while let Ok(event) = events.try_recv() {
@@ -1451,7 +1451,7 @@ async fn late_steering_is_reprepared_from_canonical_history_for_fit_and_usage_ca
         prepared[1]
             .messages
             .iter()
-            .map(|m| m.content.as_str())
+            .map(|m| m.text().into_owned())
             .collect::<Vec<_>>(),
         vec![initial.as_str(), first.as_str(), second.as_str()]
     );
@@ -1461,16 +1461,16 @@ async fn late_steering_is_reprepared_from_canonical_history_for_fit_and_usage_ca
         requests[0]
             .messages
             .iter()
-            .map(|m| m.content.len())
+            .map(|m| m.text().len())
             .sum::<usize>(),
         120
     );
-    assert_eq!(requests[0].messages[1].content, first);
-    assert_eq!(requests[0].messages[2].content, second);
+    assert_eq!(requests[0].messages[1].text(), first);
+    assert_eq!(requests[0].messages[2].text(), second);
     assert_eq!(context.compressions.load(Ordering::SeqCst), 1);
     assert_eq!(*context.observed_estimates.lock().unwrap(), vec![120]);
     assert_eq!(
-        store.messages(&session.id)?[0].content,
+        store.messages(&session.id)?[0].text(),
         initial,
         "context projection must not rewrite canonical history"
     );
@@ -1683,7 +1683,7 @@ impl Provider for PerSession {
         _: TextCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
-        if request.messages[0].content == "wait" {
+        if request.messages[0].text() == "wait" {
             self.entered.notify_one();
             std::future::pending().await
         } else {
@@ -1894,7 +1894,7 @@ fn legacy_session_and_checkpoint_default_without_rewriting_archive() -> Result<(
     assert_eq!(after, originals);
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        12
+        13
     );
     Ok(())
 }

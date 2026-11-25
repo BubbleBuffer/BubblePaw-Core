@@ -35,7 +35,7 @@ async fn pending_tool_cancellation_records_unknown_and_preserves_followup() -> R
     agent.shutdown(Duration::from_secs(1)).await?;
     assert_eq!(agent.wait_for_idle(&session.id).await?.status, "cancelled");
     let messages = store.messages(&session.id)?;
-    assert!(messages[2].content.contains("outcome unknown"));
+    assert!(messages[2].text().contains("outcome unknown"));
     drop(agent);
     drop(store);
     let reopened = Store::open(path)?;
@@ -46,8 +46,8 @@ async fn pending_tool_cancellation_records_unknown_and_preserves_followup() -> R
     let requests = provider.requests.lock().unwrap();
     assert_eq!(requests[0].messages.len(), 5);
     assert_eq!(requests[0].messages[2].role, Role::Tool);
-    assert_eq!(requests[0].messages[3].content, "later");
-    assert!(requests[0].messages[4].content.contains("tools_reloaded"));
-    assert!(requests[0].messages[4].content.contains("native"));
+    assert_eq!(requests[0].messages[3].text(), "later");
+    assert!(requests[0].messages[4].text().contains("tools_reloaded"));
+    assert!(requests[0].messages[4].text().contains("native"));
     Ok(())
 }

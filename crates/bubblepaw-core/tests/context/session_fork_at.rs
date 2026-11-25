@@ -15,7 +15,7 @@ fn message(session: &str, id: &str, role: Role) -> Message {
         session_id: session.into(),
         role,
         origin: None,
-        content: format!("content of {id}"),
+        content: bubblepaw_core::text_blocks(format!("content of {id}")),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,

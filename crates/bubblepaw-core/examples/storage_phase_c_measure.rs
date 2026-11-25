@@ -202,7 +202,7 @@ fn main() -> Result<()> {
     let mut text_bytes = 0u64;
     let full_history_messages =
         store.for_each_message_range(session, 0, i64::MAX, |_, message| {
-            text_bytes += message.content.len() as u64;
+            text_bytes += message.text().len() as u64;
             for call in &message.tool_calls {
                 text_bytes +=
                     call.name.len() as u64 + serde_json::to_vec(&call.arguments)?.len() as u64;

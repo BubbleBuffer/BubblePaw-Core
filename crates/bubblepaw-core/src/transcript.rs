@@ -578,7 +578,7 @@ impl Normalizer<'_> {
             session_id: self.session.into(),
             origin: (role == Role::User).then_some(MessageOrigin::Typed),
             role: role.clone(),
-            content,
+            content: crate::text_blocks(content),
             tool_calls: calls,
             tool_call_id: call_id,
             is_error: error,
@@ -597,7 +597,7 @@ impl Normalizer<'_> {
         self.hash("message", &normalized_message(&message))?;
         self.pending_bytes = self
             .pending_bytes
-            .saturating_add(serde_json::to_vec(&message)?.len());
+            .saturating_add(crate::plain_content(|| serde_json::to_vec(&message))?.len());
         self.last_message = Some(message.id.clone());
         self.messages.push(message);
         Ok(())
@@ -1094,7 +1094,7 @@ fn normalize(
 /// Stable content projection used to compare preflight normalization with export.
 /// Generated store/session IDs are intentionally excluded.
 pub fn normalized_message(message: &Message) -> Value {
-    json!({"role":message.role,"origin":message.origin,"content":message.content,"tool_calls":message.tool_calls,
+    json!({"role":message.role,"origin":message.origin,"content":message.text(),"tool_calls":message.tool_calls,
         "tool_call_id":message.tool_call_id,"provider_state":message.provider_state,"is_error":message.is_error,"created_at":message.created_at})
 }
 

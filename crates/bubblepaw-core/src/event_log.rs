@@ -387,7 +387,7 @@ fn hydrate(
         }
         ContentRef::ToolResult { message_id } => {
             value["result"]["content"] = Store::read_message(conn, &session_id, &message_id)?
-                .content
+                .text()
                 .into();
         }
         ContentRef::Input { input_id: _ } => {
@@ -399,7 +399,7 @@ fn hydrate(
             let content_blob = operations["content_blob"].as_str().map(str::to_owned);
             let content_format = operations["content_format"].as_str().map(str::to_owned);
             value["text"] = match message_id {
-                Some(message_id) => Store::read_message(conn, &session_id, &message_id)?.content,
+                Some(id) => Store::read_message(conn, &session_id, &id)?.into_text(),
                 None => Store::input_text(
                     conn,
                     &text,
@@ -441,7 +441,7 @@ fn hydrate(
             let run = Store::run_from_data(conn, &data)?;
             let text = match message_id {
                 Some(message_id) => {
-                    Some(Store::read_message(conn, &session_id, &message_id)?.content)
+                    Some(Store::read_message(conn, &session_id, &message_id)?.into_text())
                 }
                 None => run.text,
             };

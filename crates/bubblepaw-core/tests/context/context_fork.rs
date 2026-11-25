@@ -27,7 +27,7 @@ fn parent(contents: &[&str]) -> ModelRequest {
 }
 fn wire(request: &ModelRequest) -> serde_json::Value {
     json!({"system":request.system_prompt,"tools":request.tools.iter().map(|t| &t.name).collect::<Vec<_>>(),
-        "messages":request.messages.iter().map(|m| json!([m.role,m.content])).collect::<Vec<_>>()})
+        "messages":request.messages.iter().map(|m| json!([m.role, m.text()])).collect::<Vec<_>>()})
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn fork_sends_the_parent_prefix_then_the_task_reminder_and_reads_its_cache() {
     assert_eq!(own[0].role, Role::User);
     assert_eq!(own[0].origin, Some(MessageOrigin::Generated));
     assert_eq!(
-        own[0].content,
+        own[0].text(),
         "<harness kind=\"chapter_task\">Close the chapter in text.</harness>"
     );
     assert_eq!(forked.record.classification, Class::Append);

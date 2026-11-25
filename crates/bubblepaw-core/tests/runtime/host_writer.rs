@@ -159,7 +159,7 @@ async fn hook_reminders_land_at_the_tail_and_are_sent_only_when_changed() -> Res
     f.prompt("three").await?;
     let requests = f.provider.0.lock().unwrap();
     assert_eq!(requests.len(), 3);
-    let tail = |index: usize| requests[index].messages.last().unwrap().content.clone();
+    let tail = |index: usize| requests[index].messages.last().unwrap().text().into_owned();
     assert_eq!(
         tail(0),
         "<harness kind=\"project\">Current project: alpha</harness>"
@@ -280,7 +280,7 @@ async fn compaction_focus_written_by_the_hook_reaches_the_next_request_tail() ->
     let requests = f.provider.0.lock().unwrap();
     assert_eq!(requests.len(), 1);
     assert_eq!(
-        requests[0].messages.last().unwrap().content,
+        requests[0].messages.last().unwrap().text(),
         "<harness kind=\"compaction_focus\">Keep the schema decisions</harness>"
     );
     Ok(())
@@ -360,6 +360,6 @@ async fn budget_recovery_without_frontier_progress_stops_without_delivering_remi
     );
     let history = f.harness.store().messages(&f.session)?;
     assert_eq!(history.len(), 1);
-    assert_eq!(history[0].content, "stay bounded");
+    assert_eq!(history[0].text(), "stay bounded");
     Ok(())
 }

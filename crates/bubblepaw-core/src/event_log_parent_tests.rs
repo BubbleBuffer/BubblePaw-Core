@@ -18,14 +18,14 @@ impl Provider for Model {
         if request
             .messages
             .iter()
-            .any(|message| message.content == "fail")
+            .any(|message| message.text() == "fail")
         {
             anyhow::bail!("scripted failure");
         }
         if request
             .messages
             .iter()
-            .any(|message| message.content == "hang")
+            .any(|message| message.text() == "hang")
         {
             cancellation.cancelled().await;
             anyhow::bail!("cancelled");

@@ -58,7 +58,7 @@ async fn context_views_replace_atomically_freeze_restart_and_start_empty_on_fork
         [&session.id],
         |row| row.get(0),
     )?;
-    assert!(!data.contains(&history[0].content));
+    assert!(!data.contains(&*history[0].text()));
     drop(conn);
     let baseline = serde_json::to_value(&saved)?;
     for _ in 0..4 {
@@ -106,7 +106,7 @@ async fn context_views_replace_atomically_freeze_restart_and_start_empty_on_fork
     store.flush_serving()?;
     let before = store.storage_stats()?.serving_transaction_count;
     saved.frontier = Some(store.message_seq(&session.id, &history[3].id)?);
-    saved.prefix[0].content = "replacement summary".into();
+    saved.prefix[0].content = bubblepaw_core::text_blocks("replacement summary");
     saved.system_prompt = "Replacement instructions".into();
     saved.created_at = "2026-10-08T01:00:00Z".into();
     saved.tokens = 30_000;
@@ -184,7 +184,7 @@ async fn scripted_two_hundred_episodes_and_twenty_views_have_bounded_storage() -
         store.save_episode_batch(&next)?;
         if ordinal % 10 == 0 {
             let mut prefix = history[0].clone();
-            prefix.content = "P".repeat(96_000);
+            prefix.content = bubblepaw_core::text_blocks("P".repeat(96_000));
             let saved = view(
                 &session.id,
                 Some(store.message_seq(&session.id, &history[start + 1].id)?),
@@ -310,7 +310,7 @@ async fn missing_origin_counts_as_typed_regardless_of_text() -> Result<()> {
     assert!(json.get("origin").is_none());
     let restored: Message = serde_json::from_value(json)?;
     assert!(is_typed_user(&restored));
-    message.content = "Task:\nlooks like a wrapper".into();
+    message.content = bubblepaw_core::text_blocks("Task:\nlooks like a wrapper");
     assert!(is_typed_user(&message));
     message.role = Role::Assistant;
     message.origin = Some(MessageOrigin::Typed);

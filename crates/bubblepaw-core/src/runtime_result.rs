@@ -144,7 +144,7 @@ pub(super) fn outcome(run: &Run, value: serde_json::Value) -> Result<TurnOutcome
 /// A tool result asked to end the run: the run completes with that tool message.
 pub(super) fn terminated(message: &Message) -> TurnOutcome {
     TurnOutcome {
-        text: message.content.clone(),
+        text: message.text().into_owned(),
         result_message_id: message.id.clone(),
         final_message: None,
         request_ids: Vec::new(),
@@ -157,7 +157,7 @@ pub(super) fn text_outcome(
     request_ids: Vec<String>,
 ) -> TurnOutcome {
     TurnOutcome {
-        text: message.content.clone(),
+        text: message.text().into_owned(),
         result_message_id: message.id.clone(),
         final_message: needs_commit.then_some(message),
         request_ids,

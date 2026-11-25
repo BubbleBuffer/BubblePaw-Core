@@ -20,7 +20,7 @@ async fn completion_survives_exhaustion_while_ordinary_calls_keep_the_shared_bud
             .iter()
             .any(|message| message.role == Role::Tool
                 && message.is_error
-                && message.content.contains("budget exhausted"))
+                && message.text().contains("budget exhausted"))
     );
     Ok(())
 }
@@ -59,7 +59,7 @@ async fn approval_denial_still_applies_to_terminal_submission() -> Result<()> {
             .iter()
             .any(|message| message.role == Role::Tool
                 && message.is_error
-                && message.content.to_lowercase().contains("denied"))
+                && message.text().to_lowercase().contains("denied"))
     );
     Ok(())
 }
@@ -172,11 +172,11 @@ async fn newly_required_result_survives_projection_reload_and_apply_with_the_ori
         .iter()
         .find_map(|message| {
             message
-                .content
+                .text()
                 .split_once(&marker)?
                 .1
                 .split_once("</harness>")
-                .map(|(body, _)| body)
+                .map(|(body, _)| body.to_owned())
         })
         .expect("the current result contract is supplied in a run-start notice");
     let definition = current
@@ -266,13 +266,13 @@ async fn text_only_responses_with_pending_steering_still_get_exactly_one_nudge()
         requests[1]
             .messages
             .iter()
-            .any(|message| message.content == "steering 0")
+            .any(|message| message.text() == "steering 0")
     );
     assert_eq!(
         store
             .messages(&session)?
             .iter()
-            .filter(|message| message.content.contains("<harness kind=\"result_required:"))
+            .filter(|message| message.text().contains("<harness kind=\"result_required:"))
             .count(),
         1
     );
@@ -318,14 +318,14 @@ async fn steering_during_submission_is_serviced_in_a_fresh_run() -> Result<()> {
         requests[1]
             .messages
             .iter()
-            .any(|message| message.content == "follow up after completion")
+            .any(|message| message.text() == "follow up after completion")
     );
     let history = store.messages(&session)?;
     let budget_starts = history
         .iter()
         .filter(|message| {
             message
-                .content
+                .text()
                 .contains("You have 1 tool calls for this run")
         })
         .count();
@@ -340,8 +340,8 @@ async fn steering_during_submission_is_serviced_in_a_fresh_run() -> Result<()> {
         })
         .collect();
     assert_eq!(finals.len(), 2);
-    assert_eq!(finals[0].content, r#"{"answer":1}"#);
-    assert_eq!(finals[1].content, r#"{"answer":2}"#);
+    assert_eq!(finals[0].text(), r#"{"answer":1}"#);
+    assert_eq!(finals[1].text(), r#"{"answer":2}"#);
     Ok(())
 }
 
@@ -367,13 +367,13 @@ async fn repeated_required_result_runs_each_receive_a_fresh_nudge() -> Result<()
     assert_eq!(requests.len(), 4);
     for (run, request) in runs.iter().zip([&requests[1], &requests[3]]) {
         let kind = format!("<harness kind=\"result_required:{}\"", run.id);
-        assert!(request.messages.last().unwrap().content.contains(&kind));
+        assert!(request.messages.last().unwrap().text().contains(&kind));
     }
     assert_eq!(
         f.store
             .messages(&f.session)?
             .iter()
-            .filter(|message| message.content.contains("<harness kind=\"result_required:"))
+            .filter(|message| message.text().contains("<harness kind=\"result_required:"))
             .count(),
         2
     );

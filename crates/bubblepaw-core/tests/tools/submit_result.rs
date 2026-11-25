@@ -144,7 +144,7 @@ async fn native_result_is_declared_from_first_request_with_exact_schema_and_fini
     assert!(requests[0].output_schema.is_none());
     let history = f.store.messages(&f.session)?;
     let final_message = history.last().unwrap();
-    assert_eq!(final_message.content, run.text.unwrap());
+    assert_eq!(final_message.text(), run.text.unwrap());
     assert_eq!(final_message.origin, Some(MessageOrigin::Generated));
     assert!(
         history
@@ -169,7 +169,7 @@ async fn invalid_submission_is_a_tool_error_and_valid_retry_finishes() -> Result
         message.role == Role::Tool
             && message.is_error
             && message
-                .content
+                .text()
                 .contains("Invalid arguments for submit_result")
     }));
     assert_eq!(
@@ -216,9 +216,9 @@ async fn native_result_runs_after_other_calls_and_first_submission_wins() -> Res
         .filter(|message| message.role == Role::Tool)
         .collect();
     assert_eq!(tools.len(), 3);
-    assert_eq!(tools[0].content, "done");
+    assert_eq!(tools[0].text(), "done");
     assert!(!tools[1].is_error);
-    assert!(tools[2].is_error && tools[2].content.contains("already accepted"));
+    assert!(tools[2].is_error && tools[2].text().contains("already accepted"));
     Ok(())
 }
 
@@ -242,7 +242,7 @@ async fn nudge_is_total_per_run_and_unrelated_calls_do_not_reset_it() -> Result<
         f.store
             .messages(&f.session)?
             .iter()
-            .filter(|message| message.content.contains("<harness kind=\"result_required:"))
+            .filter(|message| message.text().contains("<harness kind=\"result_required:"))
             .count(),
         1
     );
@@ -266,7 +266,7 @@ async fn host_lcm_completion_tools_stay_unknown_to_main_call_tool() -> Result<()
             .iter()
             .filter(|message| message.role == Role::Tool
                 && message.is_error
-                && message.content.contains("Unknown tool"))
+                && message.text().contains("Unknown tool"))
             .count(),
         2
     );

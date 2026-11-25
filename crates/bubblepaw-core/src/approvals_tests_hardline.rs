@@ -130,7 +130,7 @@ async fn hardline_precedes_every_mode_session_allowance_and_run_override() -> Re
                     );
                     assert!(
                         tool_message(&store, &session.id, "c1")
-                            .content
+                            .text()
                             .contains("Blocked by hardline rule rm -rf of the filesystem root"),
                         "{case}"
                     );

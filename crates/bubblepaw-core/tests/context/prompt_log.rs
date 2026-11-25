@@ -17,7 +17,7 @@ fn request(system: &str, contents: &[&str]) -> ModelRequest {
                 session_id: "s".into(),
                 role: Role::User,
                 origin: None,
-                content: (*content).into(),
+                content: bubblepaw_core::text_blocks(*content),
                 tool_calls: Vec::new(),
                 tool_call_id: None,
                 provider_state: None,

@@ -109,28 +109,25 @@ async fn applied_catalog_retains_updated_definition_of_an_initial_core_tool() ->
         .iter()
         .find_map(|message| {
             message
-                .content
+                .text()
                 .split_once("<harness kind=\"tool_catalog\">")?
                 .1
                 .split_once("</harness>")
-                .map(|(body, _)| body)
+                .map(|(body, _)| body.to_owned())
         })
         .unwrap();
     assert_eq!(
-        serde_json::from_str::<Value>(encoded)?["updated"],
+        serde_json::from_str::<Value>(&encoded)?["updated"],
         json!([VersionedTool("new_field").definition()])
     );
     // The catalog is staged through the same writer as the hook's notes, after them.
     let cold = rendered
         .messages
         .iter()
-        .find(|message| message.content.contains("<harness kind=\"tool_catalog\">"))
+        .find(|message| message.text().contains("<harness kind=\"tool_catalog\">"))
         .unwrap();
-    let host = cold.content.find("<harness kind=\"host_note\">").unwrap();
-    let catalog = cold
-        .content
-        .find("<harness kind=\"tool_catalog\">")
-        .unwrap();
+    let host = cold.text().find("<harness kind=\"host_note\">").unwrap();
+    let catalog = cold.text().find("<harness kind=\"tool_catalog\">").unwrap();
     assert!(host < catalog, "tool_catalog follows the hook's cold notes");
     Ok(())
 }

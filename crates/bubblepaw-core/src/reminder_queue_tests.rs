@@ -36,7 +36,7 @@ fn snapshot_discards_only_unsent_host_facts_in_its_families() -> Result<()> {
         &store,
         |_| Ok(()),
     )?;
-    let text = &built.request.messages[0].content;
+    let text = &built.request.messages[0].text();
     assert!(!text.contains("superseded"));
     assert!(text.contains("accepted input"));
     assert!(text.contains("config remains"));
@@ -64,7 +64,7 @@ fn replayed_staged_sources_cannot_overwrite_a_newer_direct_fact() -> Result<()> 
         let preview = context
             .preview_reminder_message(&session, "root", &store)?
             .unwrap();
-        assert!(preview.content.contains("current direct fact"));
+        assert!(preview.text().contains("current direct fact"));
         let built = context.build_persisted(
             ModelRequest::default(),
             &session,
@@ -76,7 +76,7 @@ fn replayed_staged_sources_cannot_overwrite_a_newer_direct_fact() -> Result<()> 
         assert_eq!(built.request.messages[0].content, preview.content);
         assert!(
             !built.request.messages[0]
-                .content
+                .text()
                 .contains("old accepted snapshot")
         );
         assert_eq!(store.queued_inputs(&session)?[0].state, "consumed");
@@ -128,7 +128,7 @@ fn coalesced_sources_are_all_acknowledged_only_with_durable_tail() -> Result<()>
     )?;
     assert_eq!(built.request.messages.len(), 1);
     assert_eq!(
-        built.request.messages[0].content,
+        built.request.messages[0].text(),
         "<harness kind=\"inventory\">last</harness>"
     );
     assert!(

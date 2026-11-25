@@ -22,7 +22,7 @@ impl Provider for Recording {
         let call = request
             .messages
             .last()
-            .filter(|m| m.role == Role::User && m.content == "use a tool")
+            .filter(|m| m.role == Role::User && m.text() == "use a tool")
             .map(|_| ToolCall {
                 id: uuid::Uuid::new_v4().to_string(),
                 name: "noop".into(),
@@ -74,7 +74,7 @@ impl ContextPreparation for Strategy {
                     session_id: history[0].session_id.clone(),
                     role: Role::User,
                     origin: None,
-                    content: "summary".into(),
+                    content: bubblepaw_core::text_blocks("summary"),
                     tool_calls: vec![],
                     tool_call_id: None,
                     provider_state: None,

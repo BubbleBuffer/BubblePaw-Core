@@ -166,11 +166,12 @@ impl Observation {
         wire: Option<WireShape>,
     ) {
         // Capturable content explicitly excludes provider continuation state.
-        let messages: Vec<_> = request.messages.iter().map(|m| json!({"id":m.id,"role":m.role,"content":m.content,"tool_calls":m.tool_calls,"tool_call_id":m.tool_call_id,"is_error":m.is_error})).collect();
+        let messages: Vec<_> = request.messages.iter().map(|m| json!({"id":m.id,"role":m.role,"content":m.text(),"tool_calls":m.tool_calls,"tool_call_id":m.tool_call_id,"is_error":m.is_error})).collect();
         let safe = json!({"model":request.model,"system_prompt":request.system_prompt,"messages":messages,"tools":request.tools,"max_output_tokens":request.max_output_tokens});
         let bytes = safe.to_string();
         let definitions = serde_json::to_vec(&request.tools).unwrap_or_default();
-        let prepared_bytes = serde_json::to_vec(request).map_or(0, |v| v.len());
+        let prepared_bytes =
+            crate::plain_content(|| serde_json::to_vec(request)).map_or(0, |v| v.len());
         let mut metrics = json!({"model":request.model,"message_count":request.messages.len(),"tool_count":request.tools.len(),"tool_definitions_bytes":definitions.len(),"tool_definitions_fingerprint":fingerprint(&definitions),"prepared_bytes":prepared_bytes,"capturable_bytes":bytes.len(),"system_prompt_bytes":request.system_prompt.len(),"fingerprint":fingerprint(bytes.as_bytes())});
         if let (Some(shape), Some(id)) = (wire, &scope.model_request_id) {
             let cache = ledger.start(
