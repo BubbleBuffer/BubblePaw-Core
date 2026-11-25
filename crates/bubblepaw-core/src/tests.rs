@@ -55,8 +55,8 @@ fn context_view_masks_and_clips_only_canonical_raw_tool_records() -> Result<()> 
         tool_calls: vec![call("raw-call")],
         tool_call_id: None,
         provider_state: None,
-        is_error: false,
         created_at: now(),
+        ..Default::default()
     };
     let output = Message {
         id: id(),

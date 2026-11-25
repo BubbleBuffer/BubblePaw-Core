@@ -123,6 +123,7 @@ pub(super) fn fork(provider: Arc<Script>, native: bool) -> EpisodeFork {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     };
     let user = message("source-u", Role::User, "Fix the parser");

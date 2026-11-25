@@ -610,7 +610,7 @@ mod tests {
                 result: ToolResult {
                     content: content.to_string(),
                     is_error,
-                    pending: false,
+                    ..ToolResult::text("")
                 },
             }),
         );

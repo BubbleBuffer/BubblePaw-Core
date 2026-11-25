@@ -87,6 +87,7 @@ impl ToolDispatcher {
         }
         *result = Some(input);
         ToolResult::text("Structured result accepted; completing after this tool batch.")
+            .with_terminate()
     }
 
     pub(crate) fn take_submitted_result(&self) -> Option<Value> {

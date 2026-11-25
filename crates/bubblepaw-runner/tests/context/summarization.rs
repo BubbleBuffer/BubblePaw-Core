@@ -152,8 +152,8 @@ impl Fixture {
             tool_call_id: None,
             origin: None,
             provider_state: None,
-            is_error: false,
             created_at: now(),
+            ..Default::default()
         }
     }
     fn turns(&self, count: usize, tokens: usize) -> Vec<Message> {

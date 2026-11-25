@@ -97,6 +97,7 @@ fn message(session: &str, role: Role, text: &str) -> Message {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: "2026-10-12T12:00:00Z".into(),
     }
 }

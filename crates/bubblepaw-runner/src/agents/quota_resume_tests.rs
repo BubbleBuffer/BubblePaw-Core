@@ -79,6 +79,7 @@ fn restored_wait(
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: "2026-10-20T12:00:00Z".into(),
     }])?;
     let run = Run {

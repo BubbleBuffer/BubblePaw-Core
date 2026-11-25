@@ -303,8 +303,8 @@ async fn recovered_answer_is_accepted_once_without_replaying_unknown_effect() ->
             ],
             tool_call_id: None,
             provider_state: None,
-            is_error: false,
             created_at: "2026-10-15T00:00:00Z".into(),
+            ..Default::default()
         }])?;
         store.update_host_state(&session, "interrupted-run", "question", |_| Ok(json!({"id":"saved-question","status":"pending","text":"Keep which?","options":null,"run_id":"interrupted-run","parent_session_id":null})))?;
         let chat = store.chat_path(&session)?.expect("canonical question chat");

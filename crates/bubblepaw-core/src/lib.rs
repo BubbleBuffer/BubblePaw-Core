@@ -43,6 +43,8 @@ mod script;
 mod store;
 mod stream;
 mod submit_result;
+mod tool_result;
+pub use tool_result::ToolResult;
 mod tool_notices;
 mod tool_views;
 pub mod transcript;
@@ -149,10 +151,11 @@ impl CancellationToken {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
     System,
+    #[default]
     User,
     Assistant,
     Tool,
@@ -185,7 +188,7 @@ pub fn is_typed_user(message: &Message) -> bool {
         }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Message {
     pub id: String,
     pub session_id: String,
@@ -201,6 +204,9 @@ pub struct Message {
     pub provider_state: Option<Value>,
     #[serde(default)]
     pub is_error: bool,
+    /// Data for user interfaces; never sent to a model (docs/thinking-tool-loop.md).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<Value>,
     pub created_at: String,
 }
 
@@ -260,16 +266,6 @@ pub struct ToolDefinition {
     #[serde(default)]
     pub approval: Approval,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolResult {
-    pub content: String,
-    #[serde(default)]
-    pub is_error: bool,
-    /// The effect has started but is still owned by the host. Its implementation
-    /// settles the boundary when the asynchronous operation actually terminates.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub pending: bool,
-}
 /// Explicit presentation output. The core stores data, never frontend code or binary payloads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputRecord {
@@ -279,29 +275,6 @@ pub struct OutputRecord {
     pub execution_id: String,
     pub created_at: String,
     pub output: Value,
-}
-impl ToolResult {
-    pub fn text(content: impl Into<String>) -> Self {
-        Self {
-            content: content.into(),
-            is_error: false,
-            pending: false,
-        }
-    }
-    pub fn error(content: impl Into<String>) -> Self {
-        Self {
-            content: content.into(),
-            is_error: true,
-            pending: false,
-        }
-    }
-    pub fn pending(content: impl Into<String>) -> Self {
-        Self {
-            content: content.into(),
-            is_error: false,
-            pending: true,
-        }
-    }
 }
 #[derive(Clone, Debug)]
 pub struct ToolContext {

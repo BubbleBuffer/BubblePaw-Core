@@ -272,8 +272,8 @@ impl Fixture {
                 tool_call_id: None,
                 origin: None,
                 provider_state: None,
-                is_error: false,
                 created_at: "2026-10-01T00:00:00Z".into(),
+                ..Default::default()
             })
             .collect();
         self.store.append_batch(&messages)?;

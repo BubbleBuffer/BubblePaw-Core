@@ -202,7 +202,8 @@ impl ChatCompletionsProvider {
                     image_sources.push(mapping.len());
                 }
                 pending_images.extend(images);
-                messages.last_mut().unwrap()["content"] = json!(text);
+                messages.last_mut().unwrap()["content"] =
+                    json!(tool_wire::error_text(message, text));
                 messages.last_mut().unwrap()["tool_call_id"] = json!(
                     message
                         .tool_call_id
@@ -1039,10 +1040,9 @@ mod prepared_accounting_tests {
             origin: None,
             content: "visible".into(),
             tool_calls: vec![],
-            tool_call_id: None,
             provider_state: Some(state),
-            is_error: false,
             created_at: "now".into(),
+            ..Default::default()
         };
         let mut request = ModelRequest {
             model: "test".into(),
@@ -1078,10 +1078,8 @@ mod prepared_accounting_tests {
             origin: None,
             content: content.into(),
             tool_calls: vec![],
-            tool_call_id: None,
-            provider_state: None,
-            is_error: false,
             created_at: "now".into(),
+            ..Default::default()
         };
         let first_request = ModelRequest {
             model: "test".into(),

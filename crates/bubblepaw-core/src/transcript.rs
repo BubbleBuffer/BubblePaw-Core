@@ -582,6 +582,7 @@ impl Normalizer<'_> {
             tool_calls: calls,
             tool_call_id: call_id,
             is_error: error,
+            details: None,
             provider_state: Some(state),
             created_at: timestamp(event),
         };
@@ -593,8 +594,7 @@ impl Normalizer<'_> {
             Role::Tool => self.stats.tool_messages += 1,
             Role::System => {}
         }
-        let normalized = normalized_message(&message);
-        self.hash("message", &normalized)?;
+        self.hash("message", &normalized_message(&message))?;
         self.pending_bytes = self
             .pending_bytes
             .saturating_add(serde_json::to_vec(&message)?.len());

@@ -115,6 +115,7 @@ async fn scripted_probe_reads_history_even_when_frozen_view_has_recorded_tool_re
         origin: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     });
     let model = Arc::new(ReplayProbeModel {

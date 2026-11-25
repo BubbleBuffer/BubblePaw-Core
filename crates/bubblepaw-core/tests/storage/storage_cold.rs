@@ -110,8 +110,8 @@ fn message(session: &str, index: usize) -> Message {
         } else {
             None
         },
-        is_error: false,
         created_at: "2026-10-12T00:00:00Z".into(),
+        ..Default::default()
     }
 }
 fn state(dir: &Path, id: &str) -> Result<String> {

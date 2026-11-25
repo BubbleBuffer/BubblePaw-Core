@@ -19,6 +19,7 @@ fn checkpoint_guard_rejects_frontier_drift_with_covered_or_empty_common_lists() 
             tool_call_id: None,
             provider_state: None,
             is_error: false,
+            details: None,
             created_at: String::new(),
         })
         .collect();
@@ -95,6 +96,7 @@ async fn common_plan_consumers_keep_identical_lists_and_record_frontier_drift_wi
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     };
     let corpus = ReplayCorpus {

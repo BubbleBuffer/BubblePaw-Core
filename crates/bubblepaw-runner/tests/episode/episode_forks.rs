@@ -85,6 +85,7 @@ impl Fixture {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
+            details: None,
             created_at: "2026-10-18T00:00:00Z".into(),
         }
     }

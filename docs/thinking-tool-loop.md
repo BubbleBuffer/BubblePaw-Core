@@ -250,3 +250,12 @@ its replacement; absent route tags inherit the current compatible route. A reque
 keeps its old snapshot; the next model request or tool round uses the applied
 configuration. These guards do not establish live signed-thinking acceptance for
 arbitrary provider switches; the recorded/live evidence above retains its scope.
+
+## Tool results
+
+A tool returns a `ToolResult`:
+
+- `content` is the text the model reads. It is stored as the tool message's content.
+- `is_error` marks a failure. Anthropic requests carry it as the tool result's error flag. Chat Completions and Responses have no such field, so their requests send an error result as `Error: <content>` (left alone when it already starts with "error" in any case); the stored content is unchanged.
+- `details` is optional JSON for user interfaces. It is stored on the tool message (`Message.details`) and returned with the message by the host API, but it is dropped from the model-facing history, so no provider request carries it. The `edit` tool puts `{path, replacements}` there.
+- `terminate` ends the run once every tool result of the model reply is recorded; no further model request is made. If results in one reply disagree, any `terminate` ends the run after the whole batch has run. `submit_result` sets it; its structured value still comes from the call's arguments.

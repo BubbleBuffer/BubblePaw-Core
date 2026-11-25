@@ -52,6 +52,8 @@ impl Tool for Named {
         Ok(ToolResult {
             content: "ok".into(),
             is_error: false,
+            details: None,
+            terminate: false,
             pending: false,
         })
     }

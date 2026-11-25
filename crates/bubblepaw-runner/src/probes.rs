@@ -524,6 +524,7 @@ pub(crate) fn provider_request(
                 .cloned()
                 .filter(|state| !state.is_null()),
             is_error: item["is_error"].as_bool().unwrap_or(false),
+            details: None,
             created_at: String::new(),
         });
     }
@@ -986,10 +987,8 @@ mod tests {
             origin: None,
             content: "Garden colour was blue".into(),
             tool_calls: vec![],
-            tool_call_id: None,
-            provider_state: None,
-            is_error: false,
             created_at: "2026-10-09T00:00:00Z".into(),
+            ..Default::default()
         }
     }
     struct FakeModel {

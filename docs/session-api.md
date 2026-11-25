@@ -554,7 +554,8 @@ result shown; errors are JSON-RPC errors. Host commands typed as the text of
 - `session.state {session_id}`: the session, `messages`, `runs`, `inputs`, `outputs`,
   `pending_effects`, `todo`, `question`, `usage`, `repl`, plus `seq` and
   `streaming_text`. Unlike the web view, `messages` are returned as stored, so
-  `provider_state` appears when a message has one.
+  `provider_state` appears when a message has one, and `details` appears on a tool
+  message whose tool returned it (data for interfaces; additive, never sent to a model).
 - `events.after {after?, session_id?, limit?}`: `{events, last_seq, resync}`, at most
   1000 events per call (see Catching up).
 - `environment.inspect {session_id}` and `environment.control {session_id, control}`

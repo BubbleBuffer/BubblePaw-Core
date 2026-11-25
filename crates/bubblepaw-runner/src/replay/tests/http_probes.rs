@@ -41,6 +41,7 @@ async fn local_http_probes_use_metered_history_tools_record_bad_judge_and_block_
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     };
     store.append_batch(std::slice::from_ref(&original))?;

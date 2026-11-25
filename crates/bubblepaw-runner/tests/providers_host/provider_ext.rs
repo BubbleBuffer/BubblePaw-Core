@@ -300,8 +300,8 @@ fn user(content: &str) -> Message {
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
-        is_error: false,
         created_at: "2026-10-08T00:00:00Z".into(),
+        ..Default::default()
     }
 }
 fn ext_step(model: &str, content: &str, epoch: &str, rewritten: Option<&str>) -> ModelRequest {

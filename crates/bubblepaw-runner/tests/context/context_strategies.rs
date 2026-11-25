@@ -126,8 +126,8 @@ impl Fixture {
             tool_call_id: None,
             origin: None,
             provider_state: None,
-            is_error: false,
             created_at: "2026-10-09T12:00:00Z".into(),
+            ..Default::default()
         }
     }
     fn seed(&self, messages: &[Message]) -> Result<()> {

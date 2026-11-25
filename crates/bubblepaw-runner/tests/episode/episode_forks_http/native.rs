@@ -269,7 +269,7 @@ async fn js_fork_refuses_main_result_and_synthetic_memory_attempts_inside_js() -
         assert_eq!(&retried[..initial.len()], initial);
         assert_eq!(
             retried.last().unwrap()["content"],
-            "No tools in this task; answer in text."
+            "Error: No tools in this task; answer in text."
         );
     }
     Ok(())

@@ -333,8 +333,8 @@ async fn messages_before_pages_older_history_and_validates_cursors_and_limits() 
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: Some(json!({"private":"history-provider-state"})),
-        is_error: false,
         created_at: "2026-10-13T00:00:00Z".into(),
+        ..Default::default()
     };
     let mut history: Vec<_> = (0..450).map(|index| seed(&id, index)).collect();
     let foreign = seed(&foreign_id, 0);

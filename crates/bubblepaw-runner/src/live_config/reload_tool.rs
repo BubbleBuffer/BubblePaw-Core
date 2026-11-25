@@ -39,6 +39,8 @@ impl Tool for ReloadTool {
         Ok(bubblepaw_core::ToolResult {
             content: serde_json::to_string(&report)?,
             is_error: !report.applied || !report.errors.is_empty(),
+            details: None,
+            terminate: false,
             pending: false,
         })
     }
