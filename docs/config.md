@@ -772,8 +772,7 @@ Apply consumes ready complete coverage under pressure, waiting for needed memory
 before publishing. It serves complete chapter/open-episode memory and the exact
 uncovered raw suffix; title-only replacement is not accepted. The saved prefix
 then stays frozen until the next apply. Legacy per-body/raw-tail allowances must
-not silently omit prepared memory. The
-LCM worker record in the project notes covers implementation and verification.
+not silently omit prepared memory.
 
 ### Background worker retention
 

@@ -49,11 +49,10 @@ Details pinned while building:
   every other decider keeps three samples and ≥ 0.8, including LLM fallbacks
   when Luna's key is missing. Explicit role repeat and threshold overrides win
   independently over these defaults. Live replay:
-  the 2026-10-09 episode replay with Luna as decider, kept in the project notes.
+  the 2026-10-09 episode replay with Luna as decider.
 - Chapter decisions consume the bounded accumulated open-chapter state and the
   newly completed episode summary. They choose whether that episode starts a new
-  subject, rather than splitting inside an episode at a user turn. The exact
-  prompt and options are recorded in the LCM worker record in the project notes.
+  subject, rather than splitting inside an episode at a user turn.
   Native Jev uses a `state` and typed question/criteria map. OpenRouter carries
   `session_id` in JSON; OpenCode uses its header instead. Jev remains selectable
   with `--decider openrouter/typesafe/jev-1.13`. The local profile explicitly sets
@@ -200,5 +199,5 @@ address `opencode-messages/claude-haiku-5-5` without the `llm/` prefix.
 
 ## Comparison
 
-An earlier comparison, kept in the project notes, covers Luna against Jev
+An earlier comparison covers Luna against Jev
 on the frozen boundary, pipeline, routing and approval sets.
