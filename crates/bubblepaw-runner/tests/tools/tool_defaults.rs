@@ -144,12 +144,7 @@ async fn read_returns_file_text_with_a_final_note_only_when_partial() -> Result<
     let native = registry.with_execution_mode(ExecutionMode::Native);
     let wrapped = json!({"name":"read","arguments":{"path":"small.txt"}});
     let result = dispatched(&native, "call_tool", wrapped).await?;
-    assert_eq!(
-        result.content,
-        "one
-two
-"
-    );
+    assert_eq!(result.content, "one\ntwo\n");
     // Over the result limit the text stops at a line boundary and the note names
     // the last returned line.
     let result = dispatched(&registry, "read", json!({"path":"wide.txt"})).await?;
