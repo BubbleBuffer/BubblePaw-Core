@@ -79,14 +79,22 @@ await tools.edit({
 return await tools.write({path: "nested/new.txt", content: "new file\n"});
 ```
 
-`tools.edit({path, old_string, new_string, replace_all?})` replaces literal text
-in an existing UTF-8 file. `old_string` must be nonempty and differ from
-`new_string`. Matching preserves every byte of whitespace, Unicode and line
-endings: there is no regex, fuzzy matching or normalization. LF and CRLF differ.
-Exactly one match is required unless `replace_all: true` selects every
+`tools.edit({path, old_string, new_string, replace_all?})` or
+`tools.edit({path, edits})` replaces literal text in an existing UTF-8 file.
+`old_string` must be nonempty and differ from `new_string`. Matching ignores the
+difference between CRLF and LF, in the file and in `old_string`, and ignores a
+leading UTF-8 BOM; there is no regex, fuzzy matching or other normalization. The
+write keeps the file's bytes otherwise intact: the BOM stays, untouched lines keep
+their endings, and inserted text uses the file's majority line ending (LF on a
+tie). Exactly one match is required unless `replace_all: true` selects every
 non-overlapping occurrence. The result is exactly `{path, replacements}`.
-For several edits, call `edit` several times; each call has its own commit and
-checkpoint boundary.
+
+`edits` is an array of `{old_string, new_string, replace_all?}` applied in order,
+each to the result of the previous one, with the same rules per edit. The call is
+all or nothing: if any edit fails, the file is not written and the error names the
+failing edit by its zero-based index (`edits[1]: ...`). `replacements` is the total
+across edits, and the call has one commit and checkpoint boundary. Giving `edits`
+together with `old_string`, `new_string` or `replace_all` is an error.
 
 A zero-match error names the file, shows up to three nearest numbered file lines
 based on the first line of `old_string`, adds a difference hint when available and

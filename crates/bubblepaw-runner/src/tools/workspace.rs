@@ -134,7 +134,7 @@ impl WorkspaceTools {
             "list" => &["path", "limit"],
             "read" => &["path", "startLine", "lineCount"],
             "search" => &["path", "query", "regex", "maxResults"],
-            "edit" => &["path", "old_string", "new_string", "replace_all"],
+            "edit" => &["path", "old_string", "new_string", "replace_all", "edits"],
             "write" => &["path", "content"],
             _ => bail!("unknown workspace tool"),
         };
