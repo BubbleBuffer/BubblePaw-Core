@@ -112,8 +112,10 @@ fn root_prompt_override_replaces_instructions_and_keeps_execution_metadata() {
 
 #[test]
 fn native_root_prompt_uses_available_tools_and_preserves_custom_instructions() {
-    let root = tempfile::tempdir().unwrap();
-    let prompt = root_system_prompt(root.path(), None, ExecutionMode::Native);
+    // The prompt embeds the workspace path, so a random tempdir name could
+    // contain "js" by chance; a fixed path keeps the negative checks exact.
+    let root = std::path::Path::new("/workspace");
+    let prompt = root_system_prompt(root, None, ExecutionMode::Native);
     assert!(prompt.contains("using the available tools"));
     assert!(prompt.contains("multiple tool calls in one message"));
     assert!(!prompt.contains("js"));
@@ -122,11 +124,7 @@ fn native_root_prompt_uses_available_tools_and_preserves_custom_instructions() {
     assert!(prompt.contains("track multi-step work with todo."));
     assert_runtime_notes_once(&prompt, "read");
     assert!(!prompt.contains("tools.read"));
-    let custom = root_system_prompt(
-        root.path(),
-        Some("Custom instructions."),
-        ExecutionMode::Native,
-    );
+    let custom = root_system_prompt(root, Some("Custom instructions."), ExecutionMode::Native);
     assert!(custom.contains(" Custom instructions.\n\n"));
     assert!(!custom.contains("When these tools are available"));
     assert_runtime_notes_once(&custom, "read");
