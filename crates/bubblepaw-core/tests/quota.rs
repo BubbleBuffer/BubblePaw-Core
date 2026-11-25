@@ -272,7 +272,7 @@ async fn quota_wait_keeps_one_live_run_and_clears_on_success_failure_and_cancel(
             store
                 .messages(&session.id)?
                 .iter()
-                .filter(|m| m.content == "accepted input")
+                .filter(|m| m.text() == "accepted input")
                 .count(),
             1
         );
@@ -442,7 +442,7 @@ fn successful_cancel_survives_process_exit_before_run_finalization() -> Result<(
         store
             .messages(&session.id)?
             .iter()
-            .filter(|message| message.content == "accepted input")
+            .filter(|message| message.text() == "accepted input")
             .count(),
         1
     );
@@ -500,7 +500,7 @@ fn unique_active_run_index_includes_parked_runs() -> Result<()> {
         let connection = Connection::open(&chat)?;
         assert_eq!(
             connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-            12
+            13
         );
         let second = Run {
             id: uuid::Uuid::new_v4().to_string(),
@@ -617,7 +617,7 @@ impl Provider for Done {
             request
                 .messages
                 .iter()
-                .filter(|message| message.content == "original accepted input")
+                .filter(|message| message.text() == "original accepted input")
                 .count(),
             1
         );
@@ -654,7 +654,7 @@ async fn restart_retains_hint_until_explicit_new_run_or_cancel() -> Result<()> {
             store
                 .messages(&session.id)?
                 .iter()
-                .filter(|message| message.content == "original accepted input")
+                .filter(|message| message.text() == "original accepted input")
                 .count(),
             1
         );

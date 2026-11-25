@@ -8,7 +8,7 @@ fn message(session: &str, id: &str, content: &str) -> Message {
         session_id: session.into(),
         role: Role::User,
         origin: None,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
@@ -46,7 +46,7 @@ fn scoped_re_resolves_after_archive_and_delete() -> Result<()> {
     assert!(store.archive_chat(&session.id)?);
     // Archiving closed the chat; the next read restores it through the catalog.
     let after_archive = store.catalog_lookups();
-    assert_eq!(store.messages(&session.id)?[0].content, "kept");
+    assert_eq!(store.messages(&session.id)?[0].text(), "kept");
     assert!(store.catalog_lookups() > after_archive);
     store.delete_session(&session.id)?;
     let error = store.messages(&session.id).unwrap_err().to_string();

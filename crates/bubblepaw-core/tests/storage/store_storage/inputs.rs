@@ -34,7 +34,7 @@ async fn accepted_input_transfers_one_blob_from_pending_queue_to_canonical_messa
         |row| row.get(0),
     )?;
     let value: serde_json::Value = serde_json::from_str(&data)?;
-    assert_eq!(value["content"], "");
+    assert_eq!(value["content"], json!([]));
     assert_eq!(value["_content_blob"], hash);
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get::<_, i64>(0))?,
@@ -52,9 +52,9 @@ async fn accepted_input_transfers_one_blob_from_pending_queue_to_canonical_messa
             .is_none()
     );
     assert!(store.queued_inputs(&session.id)?[0].text.is_empty());
-    assert_eq!(store.messages(&session.id)?[0].content, text);
+    assert_eq!(store.messages(&session.id)?[0].text(), text);
     drop(conn);
     drop(store);
-    assert_eq!(Store::open(&path)?.messages(&session.id)?[0].content, text);
+    assert_eq!(Store::open(&path)?.messages(&session.id)?[0].text(), text);
     Ok(())
 }

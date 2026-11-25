@@ -12,7 +12,7 @@ fn message(session: &str) -> Message {
         session_id: session.into(),
         role: Role::User,
         origin: None,
-        content: "kept across restart".into(),
+        content: bubblepaw_core::text_blocks("kept across restart"),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
@@ -42,7 +42,7 @@ fn populated(dir: &Path) -> Result<(String, [StoreFile; 3])> {
     Ok((
         session.id,
         [
-            ("chat", chat, 12),
+            ("chat", chat, 13),
             ("catalog", dir.join("catalog.db"), 2),
             ("serving", dir.join("serving.db"), 2),
         ],
@@ -77,7 +77,7 @@ fn a_fresh_store_reopens_with_its_data_and_the_same_versions() -> Result<()> {
     let store = Store::open_data_dir(dir.path())?;
     let messages = store.messages(&session)?;
     assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0].content, "kept across restart");
+    assert_eq!(messages[0].text(), "kept across restart");
     drop(store);
 
     let after: Vec<(i64, i64)> = files
@@ -96,7 +96,8 @@ fn a_fresh_store_reopens_with_its_data_and_the_same_versions() -> Result<()> {
 #[test]
 fn a_store_at_another_version_fails_with_a_typed_error_and_is_not_modified() -> Result<()> {
     for (index, name) in ["chat", "catalog", "serving"].into_iter().enumerate() {
-        for shift in [-1_i64, 1] {
+        // The chat store has an upgrade step from 12, so its older case is 11.
+        for shift in [if name == "chat" { -2_i64 } else { -1 }, 1] {
             let dir = tempfile::tempdir()?;
             let (session, files) = populated(dir.path())?;
             let (_, path, expected) = &files[index];
@@ -141,5 +142,25 @@ fn a_foreign_database_is_still_refused_as_foreign() -> Result<()> {
         error.downcast_ref::<StoreSchemaError>().is_none(),
         "{error:#}"
     );
+    Ok(())
+}
+
+#[test]
+fn a_version_12_chat_store_with_a_string_message_opens_at_13() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let (session, files) = populated(dir.path())?;
+    let chat = &files[0].1;
+    let conn = Connection::open(chat)?;
+    let data: String = conn.query_row("SELECT data FROM messages", [], |row| row.get(0))?;
+    let mut data: serde_json::Value = serde_json::from_str(&data)?;
+    data["content"] = "kept across restart".into();
+    conn.execute("UPDATE messages SET data=?1", [data.to_string()])?;
+    drop(conn);
+    set_version(chat, 12)?;
+
+    let store = Store::open_data_dir(dir.path())?;
+    assert_eq!(store.messages(&session)?[0].text(), "kept across restart");
+    drop(store);
+    assert_eq!(pragma(chat, "user_version")?, 13);
     Ok(())
 }

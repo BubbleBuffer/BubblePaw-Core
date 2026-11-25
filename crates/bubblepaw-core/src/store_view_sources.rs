@@ -12,7 +12,7 @@ impl Store {
         for message in prefix {
             let value = serde_json::to_value(message)?;
             for text in [
-                message.content.clone(),
+                message.text().into_owned(),
                 serde_json::to_string(&value["tool_calls"])?,
                 serde_json::to_string(&value["provider_state"])?,
             ] {
@@ -95,21 +95,21 @@ impl Store {
                 "imported_derived",
                 id,
                 "summary",
-                &summary.content,
+                &summary.text(),
             );
         }
         // Supported canonical provenance is an actual prefix message ID or a
         // host-rendered typed-user header: [id | date] / [id]. Older-ID-only
         // indexes do not select bodies. Anonymous custom template text remains
         // literal; it must never cause a whole-history body search.
-        let mut selected = std::collections::BTreeSet::new();
+        let mut selected: std::collections::BTreeSet<String> = Default::default();
         for message in prefix {
-            selected.insert(message.id.as_str());
-            for candidate in message.content.split('[').skip(1) {
+            selected.insert(message.id.clone());
+            for candidate in message.text().split('[').skip(1) {
                 if let Some((header, _)) = candidate.split_once(']') {
                     let id = header.split_once(" | ").map_or(header, |(id, _)| id);
                     if !id.is_empty() {
-                        selected.insert(id);
+                        selected.insert(id.to_owned());
                     }
                 }
             }
@@ -127,7 +127,7 @@ impl Store {
             };
             let original = Self::message_from_data(conn, &data)?;
             let id = seq.to_string();
-            Self::match_view_source(&mut sources, "messages", &id, "content", &original.content);
+            Self::match_view_source(&mut sources, "messages", &id, "content", &original.text());
             let value = serde_json::to_value(original)?;
             for field in ["tool_calls", "provider_state"] {
                 if let Some(value) = value.get(field) {

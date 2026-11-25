@@ -11,10 +11,10 @@ fn message(session: &str, index: usize, role: Role) -> Message {
         session_id: session.into(),
         role,
         origin: None,
-        content: format!(
+        content: bubblepaw_core::text_blocks(format!(
             "Synthetic message {index}: {}",
             "Repeated exact text 猫\n".repeat(48)
-        ),
+        )),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,
@@ -136,10 +136,10 @@ fn headers_preserve_typed_classification_without_original_body_reads() -> Result
     let store = Store::in_memory()?;
     let session = store.create_session("header provenance")?;
     let mut typed = message(&session.id, 0, Role::User);
-    typed.content = "A real user request".into();
+    typed.content = bubblepaw_core::text_blocks("A real user request");
     let mut generated = message(&session.id, 1, Role::User);
     generated.origin = Some(bubblepaw_core::MessageOrigin::ChildTask);
-    generated.content = "Task:\nSynthetic child task".into();
+    generated.content = bubblepaw_core::text_blocks("Task:\nSynthetic child task");
     store.append_batch(&[typed, generated])?;
     let mut flags = Vec::new();
     store.for_each_message_header(&session.id, |_, message| {
@@ -221,7 +221,7 @@ fn imported_summary_seeds_coverage_without_inventing_outcomes_or_copying_summary
     let serving = rusqlite::Connection::open(directory.path().join("serving.db"))?;
     let encoded: String =
         serving.query_row("SELECT data FROM context_views", [], |row| row.get(0))?;
-    assert!(!encoded.contains(&view.prefix[0].content));
+    assert!(!encoded.contains(&*view.prefix[0].text()));
     assert!(encoded.contains("imported_derived"));
     drop(serving);
     let connection = rusqlite::Connection::open(store.chat_path(&session.id)?.unwrap())?;

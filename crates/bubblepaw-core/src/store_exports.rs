@@ -27,7 +27,7 @@ impl Store {
             while let Some(row) = rows.next()? {
             let message = Self::message_from_data(conn, &row.get::<_, String>(0)?)?;
             let reminder = Self::reminder_metadata_tx(conn, session, &message.id)?;
-            let mut record = serde_json::json!({"session_id":session,"parent_session_id":metadata.parent_session_id,"root_id":root_id,"child_session_ids":child_session_ids,"message":message});
+            let mut record = crate::plain_content(|| serde_json::json!({"session_id":session,"parent_session_id":metadata.parent_session_id,"root_id":root_id,"child_session_ids":child_session_ids,"message":message}));
             if let Some(reminder) = reminder { record["reminder_metadata"] = serde_json::to_value(reminder)?; }
             if index == 0 && !attachments.is_empty() {
                 record["attachments"] = attachments.clone().into();
@@ -161,7 +161,9 @@ impl Store {
             .transpose()?;
         for row in statement.query_map([session], |row| row.get::<_, String>(0))? {
             let message = Self::message_from_data(&conn, &row?)?;
-            let mut record = serde_json::json!({"session_id":session,"parent_session_id":metadata.parent_session_id,"root_id":root_id,"child_session_ids":child_session_ids,"message":message});
+            let mut record = crate::plain_content(
+                || serde_json::json!({"session_id":session,"parent_session_id":metadata.parent_session_id,"root_id":root_id,"child_session_ids":child_session_ids,"message":message}),
+            );
             let has_reminders: bool = conn.query_row(
                 "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='reminder_metadata')",
                 [],

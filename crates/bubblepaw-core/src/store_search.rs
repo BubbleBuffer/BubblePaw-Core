@@ -317,7 +317,7 @@ impl Store {
 }
 
 fn searchable_text(message: &Message) -> Result<String> {
-    let mut body = message.content.clone();
+    let mut body = message.text().into_owned();
     for call in &message.tool_calls {
         body.push('\n');
         body.push_str(&call.name);

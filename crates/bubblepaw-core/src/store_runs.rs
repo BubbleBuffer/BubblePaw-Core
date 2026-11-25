@@ -40,7 +40,11 @@ impl Store {
             let (_, result) = self.run_row(&run.id)?;
             let conn = self.0.connection.lock().unwrap();
             if let Some(message_id) = result {
-                run.text = Some(Self::read_message(&conn, &run.session_id, &message_id)?.content);
+                run.text = Some(
+                    Self::read_message(&conn, &run.session_id, &message_id)?
+                        .text()
+                        .into_owned(),
+                );
                 return Ok(run);
             }
         }
@@ -66,7 +70,7 @@ impl Store {
                 let result = message.role == Role::Assistant
                     || (run.model == crate::SCRIPT_MODEL && message.role == Role::Tool);
                 if created <= end && result {
-                    run.text = Some(message.content);
+                    run.text = Some(message.text().into_owned());
                     break;
                 }
             }
@@ -110,7 +114,7 @@ impl Store {
             session_id: session_id.into(),
             role,
             origin: None,
-            content,
+            content: crate::text_blocks(content),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,
@@ -129,6 +133,7 @@ impl Store {
         blob_large_all_roles: bool,
     ) -> Result<()> {
         let mut data = serde_json::to_value(message)?;
+        let text = message.text();
         if let Some(state) = &message.provider_state {
             let opaque = serde_json::to_vec(state)?;
             if opaque.len() > 4096 {
@@ -139,28 +144,28 @@ impl Store {
         }
         // Failed script runs expose this same body as Run.error. Blob-back
         // even a small error so the terminal record can share its exact hash.
-        if let Some(parts) = Self::attachment_content_parts(tx, &message.content)? {
-            data["content"] = serde_json::Value::String(String::new());
+        if let Some(parts) = Self::attachment_content_parts(tx, &text)? {
+            data["content"] = serde_json::json!([]);
             let hash = Self::blob_put(tx, &serde_json::to_vec(&parts)?)?;
             data["_content_parts_blob"] = serde_json::Value::String(hash);
         } else if (message.role == Role::Tool && message.is_error)
-            || (message.content.len() > 4096
+            || (text.len() > 4096
                 && (blob_large_all_roles
                     || message.role == Role::Tool
-                    || message.content.contains("<BubblePawAttachments>")))
+                    || text.contains("<BubblePawAttachments>")))
         {
-            let hash = Self::blob_put(tx, message.content.as_bytes())?;
-            data["content"] = serde_json::Value::String(String::new());
+            let hash = Self::blob_put(tx, text.as_bytes())?;
+            data["content"] = serde_json::json!([]);
             data["_content_blob"] = serde_json::Value::String(hash);
         } else if message.role == Role::User {
-            let hash = crate::fingerprint(message.content.as_bytes());
+            let hash = crate::fingerprint(text.as_bytes());
             let exists: bool = tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM blobs WHERE hash=?1)",
                 [&hash],
                 |row| row.get(0),
             )?;
             if exists {
-                data["content"] = serde_json::Value::String(String::new());
+                data["content"] = serde_json::json!([]);
                 data["_content_blob"] = serde_json::Value::String(hash);
             }
         }

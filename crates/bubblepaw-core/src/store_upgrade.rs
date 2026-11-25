@@ -18,7 +18,17 @@ pub(super) struct Step {
 
 /// Upgrade steps for the chat store. A schema change adds one here and raises
 /// `CHAT_VERSION` in the same change.
-pub(super) const CHAT_STEPS: &[Step] = &[];
+pub(super) const CHAT_STEPS: &[Step] = &[Step {
+    from: 12,
+    run: message_content_list,
+}];
+/// Version 13 stores new message rows with `content` as a list of blocks. Old
+/// rows keep the string form and stay readable, so no data changes; only the
+/// version bump matters, because a program that predates the list form must
+/// refuse a store that may hold such rows.
+fn message_content_list(_tx: &Transaction) -> Result<()> {
+    Ok(())
+}
 /// Upgrade steps for `catalog.db`.
 pub(super) const CATALOG_STEPS: &[Step] = &[];
 /// Upgrade steps for `serving.db`.

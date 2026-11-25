@@ -54,7 +54,7 @@ fn large_content_is_deduplicated_and_every_history_read_reconstructs_it() -> Res
     assert!(!stored.contains(&content));
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&stored)?["content"],
-        ""
+        json!([])
     );
     let boundary_json: String = conn.query_row(
         "SELECT data FROM messages WHERE message_id='boundary'",
@@ -63,7 +63,7 @@ fn large_content_is_deduplicated_and_every_history_read_reconstructs_it() -> Res
     )?;
     assert_eq!(
         serde_json::from_str::<serde_json::Value>(&boundary_json)?["content"],
-        boundary.content
+        json!([{"type":"text","text":&*boundary.text()}])
     );
 
     let expected = serde_json::to_value([tool, duplicate, attachment, boundary])?;
@@ -91,11 +91,11 @@ fn large_content_is_deduplicated_and_every_history_read_reconstructs_it() -> Res
             .last_message
             .as_ref()
             .unwrap()
-            .content,
+            .text(),
         "x".repeat(4096)
     );
     let fork = store.fork(&session.id, "fork")?;
-    assert_eq!(store.messages(&fork.id)?[0].content, content);
+    assert_eq!(store.messages(&fork.id)?[0].text(), content);
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get::<_, i64>(0))?,
         1
@@ -151,7 +151,7 @@ fn view_uses_ranges_and_immutable_summary_refs_with_exact_roundtrip() -> Result<
                 &format!(
                     "Summary:\n{}\nUser excerpt:\n{}",
                     checkpoint.summary,
-                    &first.content[10..]
+                    &first.text()[10..]
                 ),
             ),
         ],
@@ -179,7 +179,7 @@ fn view_uses_ranges_and_immutable_summary_refs_with_exact_roundtrip() -> Result<
     assert!(pointers.get("prefix").is_none());
     assert_eq!(pointers["prefix_refs"][0]["kind"], "messages");
     assert!(!data.contains(&checkpoint.summary));
-    assert!(!data.contains(&first.content));
+    assert!(!data.contains(&*first.text()));
     assert!(data.contains("summary-old"));
     assert_eq!(
         serde_json::to_value(store.context_view(&session.id)?.unwrap())?,
@@ -215,7 +215,7 @@ fn projected_canonical_prefix_preserves_clipped_arguments_and_provider_metadata(
     original.provider_state = Some(json!({"signature":"provider-owned byte-exact signature"}));
     store.append_batch(&[original.clone()])?;
     let mut projected = original.clone();
-    projected.content = content[..100].into();
+    projected.content = bubblepaw_core::text_blocks(&content[..100]);
     projected.tool_calls[0].arguments = json!({"clipped":true,"preview":&arguments[..200]});
     let view = ContextView {
         session_id: session.id.clone(),
@@ -457,5 +457,7 @@ fn input_harness(store: &Store) -> bubblepaw_core::Harness {
 
 #[path = "store_storage/inputs.rs"]
 mod inputs;
+#[path = "store_storage/row_forms.rs"]
+mod row_forms;
 #[path = "store_storage/script_failures.rs"]
 mod script_failures;
