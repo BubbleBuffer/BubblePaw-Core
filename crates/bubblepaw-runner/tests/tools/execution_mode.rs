@@ -12,7 +12,7 @@ use bubblepaw_runner::{
     profiles::workspace_profiles,
     tools::{ProcessTools, register_native_tools},
 };
-use serde_json::{Value, json};
+use serde_json::json;
 use std::sync::{Arc, Mutex};
 
 struct Probe {
