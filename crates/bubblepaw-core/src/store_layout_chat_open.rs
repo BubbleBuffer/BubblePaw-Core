@@ -140,7 +140,7 @@ impl Store {
             "Chat record file is missing: {}",
             path.display()
         );
-        let connection = open_record(&path, false, false)?.into_connection();
+        let mut connection = open_record(&path, false, false)?.into_connection();
         let split: bool = connection.query_row(
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='metadata')",
             [],
@@ -150,9 +150,13 @@ impl Store {
         let temporary = if split {
             let application: i64 =
                 connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
-            let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
             anyhow::ensure!(application == 0x42504230, "Unsupported chat record schema");
-            StoreSchemaError::ensure("chat", version, schema::CHAT_VERSION)?;
+            upgrade::upgrade(
+                &mut connection,
+                "chat",
+                schema::CHAT_VERSION,
+                upgrade::CHAT_STEPS,
+            )?;
             connection.busy_timeout(std::time::Duration::from_secs(2))?;
             connection.execute_batch("PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA wal_autocheckpoint=256; PRAGMA journal_size_limit=1048576;")?;
             Self::initialize_reminders(&connection)?; // existing chat-v1 records skip initialize

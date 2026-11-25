@@ -776,9 +776,9 @@ and retry protocol, and the delegation ledger merge. Earlier entries on import
 are historical. `--db <file>` remains only as a path selecting the sibling
 `<stem>.data` directory; it reads nothing from the file.
 
-## One schema per store (2026-10-30)
+## One schema per store, upgraded by steps (2026-10-30, revised 2026-11-25)
 
-Stores are created directly at their final schema (chat 12, catalog 2, serving 2, delegation ledger 1) and open only at exactly that version. Any other version, older or newer, fails with the typed `StoreSchemaError` and the file is left untouched. The step-by-step upgrade chains and their fixtures were removed. A future migration is added as a numbered step before the version check; see [storage model](storage-model.md).
+Stores are created directly at their final schema (chat 12, catalog 2, serving 2, delegation ledger 1). Since 2026-11-25 an older chat, catalog or serving file is upgraded step by step on a writable open: step `N` turns version `N` into `N + 1`, each step and its version bump in one transaction under the write lock. A file with no chain of steps, a file newer than the binary, and a read-only open of an older file fail with the typed `StoreSchemaError` and the file is left untouched. A schema change comes with a step and a version bump; see [storage model](storage-model.md). This replaces the earlier rule that stores had no migrations.
 
 ## A host starts without a provider (2026-10-30)
 

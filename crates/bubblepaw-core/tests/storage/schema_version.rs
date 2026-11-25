@@ -1,6 +1,6 @@
-//! Each store file is created at its final schema and opens only at exactly that
-//! version. A file at any other version fails with `StoreSchemaError` and is left
-//! as it was.
+//! Each store file is created at its final schema. A file with no chain of
+//! upgrade steps to the current version (older), or written by a newer build,
+//! fails with `StoreSchemaError` and is left as it was.
 use anyhow::Result;
 use bubblepaw_core::{Message, Role, Store, StoreSchemaError};
 use rusqlite::Connection;
@@ -114,9 +114,14 @@ fn a_store_at_another_version_fails_with_a_typed_error_and_is_not_modified() -> 
                 (name, found, *expected),
                 "{error:#}"
             );
+            let wording = if shift > 0 {
+                "newer"
+            } else {
+                "no upgrade path"
+            };
             assert!(
-                error.to_string().contains("no upgrade path"),
-                "the message says there is no upgrade path: {error}"
+                error.to_string().contains(wording),
+                "the message says {wording}: {error}"
             );
             assert_eq!(pragma(path, "user_version")?, found, "{name} version kept");
             assert_eq!(std::fs::read(path)?, bytes, "{name} file not modified");

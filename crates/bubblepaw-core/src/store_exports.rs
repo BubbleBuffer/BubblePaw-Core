@@ -81,7 +81,12 @@ impl Store {
                 catalog.query_row("PRAGMA application_id", [], |row| row.get(0))?;
             let version: i64 = catalog.query_row("PRAGMA user_version", [], |row| row.get(0))?;
             anyhow::ensure!(application == 0x42504231, "Unsupported catalog schema");
-            StoreSchemaError::ensure("catalog", version, schema::CATALOG_VERSION)?;
+            upgrade::ensure_read_only(
+                "catalog",
+                version,
+                schema::CATALOG_VERSION,
+                upgrade::CATALOG_STEPS,
+            )?;
             let catalog = Mutex::new(catalog);
             if let Some((conn, root)) =
                 open_session_record(&catalog, data_dir.as_ref(), session, |_, path| {
