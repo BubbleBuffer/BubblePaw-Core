@@ -28,6 +28,8 @@ pub use runtime_context::FullHistory;
 mod runtime_catalog;
 #[path = "runtime_compact.rs"]
 mod runtime_compact;
+#[path = "runtime_overflow.rs"]
+mod runtime_overflow;
 #[path = "runtime_preparation.rs"]
 mod runtime_preparation;
 pub use runtime_preparation::{
@@ -1029,6 +1031,7 @@ impl Harness {
             + 1;
         let (mut rounds, mut malformed_replies) = (0usize, 0);
         let mut reminders = runtime_reminders::RunReminders::default();
+        let mut overflow = runtime_overflow::OverflowRetry::default();
         loop {
             let round = rounds;
             rounds = rounds.saturating_add(1);
@@ -1090,7 +1093,7 @@ impl Harness {
                 let mut late_steering = false;
                 let mut steering_batch = Vec::<Message>::new();
                 let mut context_notices = Vec::<String>::new();
-                let mut preparation_mode = PrepareMode::Request;
+                let mut preparation_mode = overflow.mode();
                 let mut rejected_frontier = None;
                 let prepared = async {
                     loop {
@@ -1183,6 +1186,7 @@ impl Harness {
                             continue;
                         }
                     };
+                    overflow.check_smaller(&prepared.request)?;
                     if !context_notices.is_empty() {
                         prepared.notice = Some(context_notices.join("\n"));
                     }
@@ -1200,7 +1204,7 @@ impl Harness {
                         &error.to_string(),
                     );
                 }
-                let prepared = prepared?;
+                let prepared = prepared.map_err(|error| overflow.failed(error))?;
                 if late_steering && self.config.auto_approval.is_some() {
                     user_request = self.latest_user_request(&run.session_id)?;
                     dispatcher = dispatcher.with_auto_approval(
@@ -1315,41 +1319,17 @@ impl Harness {
                         .map(|tool| tool.name.clone())
                         .collect::<Vec<_>>(),
                 );
+                overflow.sent(&request);
                 let (mut response_result, mut captured_usage, mut request_ids) = crate::request_usage::capture_message_request_usage(
                     &self.store, &run.session_id, &run.id,
                     async { tokio::select! {biased; _=cancellation.cancelled()=>Err(anyhow!("Cancelled during provider request")), result=request_provider.generate(request,callback,cancellation.clone())=>result} },
                 ).await;
                 if captured_usage.is_empty() {
-                    match &response_result {
-                        Ok(response) => {
-                            fallback_usage.usage = response.usage.clone().unwrap_or_default();
-                            let output_reported = match &response.last_request_usage {
-                                Some(usage) => usage.output_tokens.is_some(),
-                                None => response.usage.is_some(),
-                            };
-                            if output_reported {
-                                request_ids.push(fallback_usage.request_id.clone());
-                            }
-                            if let Some((provider, model)) = response
-                                .provider_state
-                                .as_ref()
-                                .and_then(|state| state.get("_bubblepaw_selected_model"))
-                                .and_then(serde_json::Value::as_str)
-                                .and_then(|selected| selected.split_once('/'))
-                            {
-                                fallback_usage.provider = provider.to_owned();
-                                fallback_usage.account = provider.to_owned();
-                                fallback_usage.model = model.to_owned();
-                            }
-                        }
-                        Err(error) => {
-                            fallback_usage.failed = true;
-                            fallback_usage.usage = crate::ProviderError::of(error)
-                                .and_then(|error| error.usage.clone())
-                                .unwrap_or_default();
-                        }
-                    }
-                    captured_usage.push(fallback_usage);
+                    captured_usage.push(crate::request_usage::fallback_usage(
+                        fallback_usage,
+                        &response_result,
+                        &mut request_ids,
+                    ));
                 }
                 drop(callback_lifetime);
                 self.observe_model_result(
@@ -1380,9 +1360,12 @@ impl Harness {
                         {
                             usage.get_or_insert_with(Usage::default).add(value);
                         }
-                        return Err(error);
+                        overflow.arm(error)?;
+                        rounds = round;
+                        continue;
                     }
                 };
+                overflow.reset();
                 result_retry_pending = false;
                 reminders.observe_tool_calls(tools_round, response.tool_calls.len());
                 self.config
