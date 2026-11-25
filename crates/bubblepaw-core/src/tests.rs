@@ -12,6 +12,8 @@ use tokio::sync::Notify;
 
 #[path = "tests_policy.rs"]
 mod policy;
+#[path = "tests_round_limit.rs"]
+mod round_limit;
 
 fn harness(store: Store, provider: Arc<dyn Provider>, tools: ToolRegistry) -> Harness {
     Harness::new(store, provider, tools, HarnessConfig::default())
@@ -541,37 +543,6 @@ async fn bounded_snapshots_preserve_counts_and_never_write() -> Result<()> {
 struct Script {
     responses: Mutex<VecDeque<ModelResponse>>,
     requests: Mutex<Vec<ModelRequest>>,
-}
-
-#[tokio::test]
-async fn default_round_limit_allows_more_than_thirty_two_requests() -> Result<()> {
-    let store = Store::in_memory()?;
-    let session = store.create_session("long root run")?;
-    let mut responses = (0..40)
-        .map(|round| ModelResponse {
-            tool_calls: vec![call(&format!("round-{round}"))],
-            ..Default::default()
-        })
-        .collect::<Vec<_>>();
-    responses.push(answer("finished naturally"));
-    let provider = Arc::new(Script::new(responses));
-    let agent = harness(store.clone(), provider.clone(), ToolRegistry::new());
-    assert_eq!(agent.max_rounds(), None);
-    let run = agent
-        .prompt(&session.id, "start", RunOptions::default())
-        .await?;
-    assert_eq!(run.status, "completed", "{:?}", run.error);
-    assert_eq!(run.text.as_deref(), Some("finished naturally"));
-    assert_eq!(provider.requests.lock().unwrap().len(), 41);
-    assert_eq!(
-        store
-            .messages(&session.id)?
-            .iter()
-            .filter(|m| m.role == Role::Tool)
-            .count(),
-        40
-    );
-    Ok(())
 }
 
 #[tokio::test]
