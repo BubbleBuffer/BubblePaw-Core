@@ -1,10 +1,11 @@
-//! Store schema versions. Each store file is created at its final schema in one
-//! transaction and opens only at exactly that version. No earlier layout is
-//! upgraded: a file at any other version fails with [`StoreSchemaError`].
+//! Store schema versions. A new store file is created at its final schema in one
+//! transaction. An older file is upgraded step by step on a writable open (see
+//! `store_upgrade`); a file with no unbroken chain of steps to the current
+//! version, or one written by a newer build, fails with [`StoreSchemaError`].
 //!
-//! To change a schema later, add the new DDL to the file's creation step, raise
-//! its version constant, and write the upgrade for the old version as a numbered
-//! step that runs before the version check passes. Until then there is none.
+//! A schema change comes with a step and a version bump: add the new DDL to the
+//! file's creation step, raise its version constant, and add the step for the
+//! old version to that store's table in `store_upgrade`.
 
 use anyhow::Result;
 
@@ -15,15 +16,17 @@ pub(super) const CATALOG_VERSION: i64 = 2;
 /// Version of `serving.db`.
 pub(super) const SERVING_VERSION: i64 = 2;
 
-/// A store file whose schema version is not the one this build creates. The
-/// file is left as it was; this build has no upgrade path for any other version,
-/// older or newer.
+/// A store file whose schema version this build cannot open: older with no
+/// chain of upgrade steps (or only a read-only open), or newer than this build.
+/// The file is left as it was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StoreSchemaError {
     /// Which store: `chat`, `catalog`, `serving` or `delegation ledger`.
     pub store: &'static str,
     pub found: i64,
     pub expected: i64,
+    /// The file is older and upgradable, but this open is read-only.
+    pub needs_writable_open: bool,
 }
 
 impl StoreSchemaError {
@@ -37,17 +40,32 @@ impl StoreSchemaError {
             store,
             found,
             expected,
+            needs_writable_open: false,
         }))
     }
 }
 
 impl std::fmt::Display for StoreSchemaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "The {} store is at schema version {}, but this build requires version {}; no upgrade path exists, so the store cannot be opened",
-            self.store, self.found, self.expected
-        )
+        if self.found > self.expected {
+            write!(
+                f,
+                "The {} store is at schema version {}, which is newer than version {} that this build supports; open it with a newer build",
+                self.store, self.found, self.expected
+            )
+        } else if self.needs_writable_open {
+            write!(
+                f,
+                "The {} store is at schema version {} and needs an upgrade to version {}; open it writable once to upgrade it",
+                self.store, self.found, self.expected
+            )
+        } else {
+            write!(
+                f,
+                "The {} store is at schema version {}, but this build requires version {}; no upgrade path exists, so the store cannot be opened",
+                self.store, self.found, self.expected
+            )
+        }
     }
 }
 

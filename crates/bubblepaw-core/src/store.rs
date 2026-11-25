@@ -44,6 +44,8 @@ pub use layout::{RootStoragePolicy, StoreOptions};
 mod quota;
 #[path = "store_schema.rs"]
 mod schema;
+#[path = "store_upgrade.rs"]
+mod upgrade;
 pub use schema::{StoreError, StoreSchemaError};
 #[path = "store_search.rs"]
 mod search;
@@ -258,8 +260,12 @@ impl Store {
         let fresh = application == 0;
         if !fresh {
             // Checked before any pragma touches the file, so a refused open changes nothing.
-            let version: i64 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-            StoreSchemaError::ensure("chat", version, schema::CHAT_VERSION)?;
+            upgrade::upgrade(
+                &mut connection,
+                "chat",
+                schema::CHAT_VERSION,
+                upgrade::CHAT_STEPS,
+            )?;
         } else {
             connection.execute_batch("PRAGMA auto_vacuum=INCREMENTAL;")?;
         }

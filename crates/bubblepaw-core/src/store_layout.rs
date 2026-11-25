@@ -163,10 +163,10 @@ fn projection(
     schema: &str,
     store: &'static str,
     expected: i64,
+    steps: &[upgrade::Step],
 ) -> Result<Connection> {
     let mut conn = Connection::open(path)?;
     let current: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     let tables: i64 = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
         [],
@@ -180,7 +180,7 @@ fn projection(
     let fresh = current == 0;
     if !fresh {
         // Checked before any pragma touches the file, so a refused open changes nothing.
-        StoreSchemaError::ensure(store, version, expected)?;
+        upgrade::upgrade(&mut conn, store, expected, steps)?;
     }
     conn.busy_timeout(std::time::Duration::from_secs(2))?;
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA wal_autocheckpoint=256; PRAGMA journal_size_limit=1048576;")?;
@@ -276,7 +276,7 @@ pub(super) fn open_record(
     let application: i64 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     anyhow::ensure!(application == 0x42504230, "Unsupported chat record schema");
-    StoreSchemaError::ensure("chat", version, schema::CHAT_VERSION)?;
+    upgrade::ensure_read_only("chat", version, schema::CHAT_VERSION, upgrade::CHAT_STEPS)?;
     record.dictionary_pins = cold::pin_dictionaries(&record)?;
     Ok(record)
 }

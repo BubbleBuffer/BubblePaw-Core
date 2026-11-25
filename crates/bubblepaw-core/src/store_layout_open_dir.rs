@@ -70,6 +70,7 @@ impl Store {
             CATALOG_SCHEMA,
             "catalog",
             schema::CATALOG_VERSION,
+            upgrade::CATALOG_STEPS,
         )?;
         let serving = projection(
             &data_dir.join("serving.db"),
@@ -77,6 +78,7 @@ impl Store {
             SERVING_SCHEMA,
             "serving",
             schema::SERVING_VERSION,
+            upgrade::SERVING_STEPS,
         )?;
         let (last, pruned) = crate::event_log::bounds(&serving)?;
         let store = Self(Arc::new(Inner {
