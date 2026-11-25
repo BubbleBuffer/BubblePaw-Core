@@ -386,13 +386,12 @@ not execute tools and remain at their existing boundaries. Chat titles currently
 come from literal caller/task text and require no model worker.
 
 The broader context proposal is recorded in
-retrievable session compaction (an earlier proposal, kept in the project notes). Its approved first layer
-is specified in the earlier context chapters design, kept in the project notes.
+retrievable session compaction.
 
 ## Readable automatic summarization (2026-10-06)
 
 The single rolling checkpoint described below was superseded for new compactions
-on 2026-10-06 by context chapters (an earlier design, kept in the project notes). Existing checkpoints
+on 2026-10-06 by context chapters. Existing checkpoints
 remain frozen legacy summaries; new compactions append immutable chapters.
 
 BubblePaw owns readable checkpoints instead of relying on provider-native opaque

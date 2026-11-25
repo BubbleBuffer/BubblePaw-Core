@@ -219,7 +219,7 @@ before pagination; the host-wide title scan does not require that step. Reading
 an archived result's workspace may temporarily decompress its archive without
 restoring the canonical chat file. No search index was added.
 
-Measured 2026-11-04 on linux01 with an unoptimized Rust test build: **10,000 real
+Measured 2026-11-04 on a Linux machine with an unoptimized Rust test build: **10,000 real
 active root SQLite chat files**, created through the normal store API, with
 10,000 catalog rows. The verified root files total 3,358,720,000 bytes (3.36 GB).
 These are empty chats with saved titles, without message histories. Fixture

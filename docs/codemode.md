@@ -325,8 +325,7 @@ requested window is capped at 30 seconds; omitted or zero `yieldMs` inspects
 immediately. For completion without repeated polls, use `wait({handle})` and
 then inspect output. Cancellation remains active throughout either wait.
 The history methods are read-only, scoped to the calling session, and address
-canonical messages by 0-based index. For their arguments and result limits, see the earlier chapter design
-kept in the project notes.
+canonical messages by 0-based index.
 `Object.keys(tools)` shows the methods actually available under host policy.
 `wait` is a cell helper backed by a Rust capability. Each nested call uses the
 shared dispatcher, validates its schema,

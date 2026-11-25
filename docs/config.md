@@ -772,8 +772,7 @@ Apply consumes ready complete coverage under pressure, waiting for needed memory
 before publishing. It serves complete chapter/open-episode memory and the exact
 uncovered raw suffix; title-only replacement is not accepted. The saved prefix
 then stays frozen until the next apply. Legacy per-body/raw-tail allowances must
-not silently omit prepared memory. The
-LCM worker record in the project notes covers implementation and verification.
+not silently omit prepared memory.
 
 ### Background worker retention
 
@@ -970,6 +969,11 @@ refused (the cap is a compaction threshold, not a window). Each distinct image
 attachment counts as at least 6,000 tokens when the provider has no estimate.
 With no known window neither the main request nor a summary or chapter fork
 gets a token check, only the 2 MiB byte cap.
+Token estimates are approximate, so a provider can still reject a main request as
+too long for its window. With `auto_summarize = true` the run then compacts once,
+whatever the threshold, and sends the request again; if the compaction fails,
+changes nothing, or the retried request is rejected too, the run ends with the
+provider's context error. With `auto_summarize = false` the run ends with that error.
 Compaction remains
 `min(window, compact_threshold_tokens) - output_reserve_tokens` (defaults: 16k reserve, 200k root physical cap; omitted window uses the cap); classical retains the default 20,000-token
 user-message budget. Only strategy is persisted per session; explicit strategy
