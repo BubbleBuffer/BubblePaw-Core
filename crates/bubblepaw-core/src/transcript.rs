@@ -594,9 +594,10 @@ impl Normalizer<'_> {
             Role::Tool => self.stats.tool_messages += 1,
             Role::System => {}
         }
-        let normalized = normalized_message(&message);
-        self.hash("message", &normalized)?;
-        self.pending_bytes += serde_json::to_vec(&message)?.len();
+        self.hash("message", &normalized_message(&message))?;
+        self.pending_bytes = self
+            .pending_bytes
+            .saturating_add(serde_json::to_vec(&message)?.len());
         self.last_message = Some(message.id.clone());
         self.messages.push(message);
         Ok(())
