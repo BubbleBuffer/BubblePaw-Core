@@ -4,7 +4,7 @@
 dep bubblepaw-client-check bubblepaw-sdk
 word bubblepaw-core episode 221
 word bubblepaw-core chapter 275
-word bubblepaw-core child 197
+word bubblepaw-core child 198
 word bubblepaw-core opencode 3
 word bubblepaw-core quota 194
 word bubblepaw-core "js" 33
