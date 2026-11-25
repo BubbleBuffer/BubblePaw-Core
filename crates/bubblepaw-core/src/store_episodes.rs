@@ -105,7 +105,7 @@ impl Store {
             |row| row.get(0),
         )
         .optional()?
-        .context("Message does not belong to the session")
+        .ok_or_else(|| anyhow::Error::new(StoreError::MessageNotInSession))
     }
 
     fn save_episode_chapter_change(tx: &Connection, batch: &EpisodeBatch) -> Result<()> {

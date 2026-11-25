@@ -53,6 +53,24 @@ impl std::fmt::Display for StoreSchemaError {
 
 impl std::error::Error for StoreSchemaError {}
 
+/// Store failures that callers tell apart by type rather than by message text.
+/// Wrapped in `anyhow`; match with `err.downcast_ref::<StoreError>()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StoreError {
+    /// The message id is not in the session.
+    MessageNotInSession,
+}
+
+impl std::fmt::Display for StoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MessageNotInSession => write!(f, "Message does not belong to the session"),
+        }
+    }
+}
+
+impl std::error::Error for StoreError {}
+
 /// Create the chat store at `CHAT_VERSION`, with its application id and version
 /// set in the same transaction as the tables. `conn` must be an empty database.
 pub(super) fn create_chat(conn: &mut rusqlite::Connection) -> Result<()> {

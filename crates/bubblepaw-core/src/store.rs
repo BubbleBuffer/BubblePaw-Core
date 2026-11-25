@@ -44,7 +44,7 @@ pub use layout::{RootStoragePolicy, StoreOptions};
 mod quota;
 #[path = "store_schema.rs"]
 mod schema;
-pub use schema::StoreSchemaError;
+pub use schema::{StoreError, StoreSchemaError};
 #[path = "store_search.rs"]
 mod search;
 #[path = "store_serving.rs"]

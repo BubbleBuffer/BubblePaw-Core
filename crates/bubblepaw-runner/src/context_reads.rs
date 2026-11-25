@@ -2,7 +2,7 @@
 use crate::summarization::canonical_message_tokens;
 use anyhow::{Context, Result, bail, ensure};
 use bubblepaw_core::{
-    ContextEvent, ContextView, Message, MessageTokenSource, MessageTokens, Store,
+    ContextEvent, ContextView, Message, MessageTokenSource, MessageTokens, Store, StoreError,
     SubjectChapterStatus,
 };
 use serde::{Deserialize, Serialize};
@@ -278,7 +278,7 @@ impl HistoryRange {
 
 fn range_message_seq(store: &Store, session: &str, id: &str, field: &str) -> Result<i64> {
     store.message_seq(session, id).map_err(|error| {
-        if error.to_string() == "Message does not belong to the session"
+        if error.downcast_ref::<StoreError>() == Some(&StoreError::MessageNotInSession)
             || error
                 .downcast_ref::<rusqlite::Error>()
                 .is_some_and(|error| matches!(error, rusqlite::Error::QueryReturnedNoRows))

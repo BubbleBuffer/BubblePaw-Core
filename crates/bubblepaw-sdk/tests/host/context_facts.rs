@@ -174,3 +174,24 @@ async fn context_view_and_token_reads_need_no_core_escape_hatch() -> Result<()> 
     assert_eq!(store.storage_stats()?.transaction_count, before_reads);
     Ok(())
 }
+
+#[test]
+fn history_range_reports_a_foreign_message_id_as_an_invalid_read() -> Result<()> {
+    let store = Store::in_memory()?;
+    let session = store.create_session("Foreign id")?;
+    let error = history_range(
+        &store,
+        &session.id,
+        &HistoryRange {
+            first_message_id: Some("not-in-session".into()),
+            last_message_id: Some("not-in-session".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "first_message_id does not belong to this session"
+    );
+    Ok(())
+}
