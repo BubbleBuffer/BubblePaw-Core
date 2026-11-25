@@ -49,7 +49,7 @@ impl Provider for Script {
             .iter()
             .rev()
             .find(|m| m.role == Role::User && m.origin != Some(MessageOrigin::Generated))
-            .map(|m| m.content.clone())
+            .map(|m| m.text().into_owned())
             .unwrap_or_default();
         self.requests.lock().unwrap().push(request);
         let code = self.scripts.lock().unwrap().remove(&prompt);
@@ -223,7 +223,7 @@ impl Fixture {
             assert!(
                 !message.is_error,
                 "scripted tool failed during {prompt:?}: {}",
-                message.content
+                message.text()
             );
         }
     }
@@ -238,9 +238,9 @@ impl Fixture {
             .unwrap()
             .into_iter()
             .filter(|m| {
-                m.origin == Some(MessageOrigin::Generated) && m.content.starts_with("<harness ")
+                m.origin == Some(MessageOrigin::Generated) && m.text().starts_with("<harness ")
             })
-            .map(|m| m.content)
+            .map(|m| m.text().into_owned())
             .collect()
     }
 }
@@ -420,7 +420,7 @@ async fn memory_files_ten_kib_scripted_session_storage_measurement() {
             .messages(&fixture.session)
             .unwrap()
             .iter()
-            .all(|message| !message.content.contains(&instructions))
+            .all(|message| !message.text().contains(&instructions))
     );
     {
         let requests = fixture.script.requests.lock().unwrap();
@@ -464,9 +464,9 @@ async fn memory_files_freeze_root_and_children_and_deliver_each_edit_once() {
         assert_eq!(request.system_prompt, frozen);
         assert!(request.messages.iter().any(|message| {
             message.origin == Some(MessageOrigin::Generated)
-                && message.content.contains("Memory files changed")
-                && message.content.contains("ROOT-MEMORY-V2")
-                && message.content.contains("AGENTS.md")
+                && message.text().contains("Memory files changed")
+                && message.text().contains("ROOT-MEMORY-V2")
+                && message.text().contains("AGENTS.md")
         }));
     }
     assert_eq!(fixture.notices().len(), 1);

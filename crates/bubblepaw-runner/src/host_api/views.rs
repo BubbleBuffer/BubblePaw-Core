@@ -82,7 +82,7 @@ fn summary(
             .unwrap_or_else(|| "idle".into()),
         message_count: count,
         last_message_preview: last
-            .map(|message| message.content.chars().take(160).collect())
+            .map(|message| message.text().chars().take(160).collect())
             .unwrap_or_default(),
     }
 }

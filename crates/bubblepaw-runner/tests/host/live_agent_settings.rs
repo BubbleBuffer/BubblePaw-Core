@@ -46,8 +46,8 @@ impl Provider for Probe {
                     && message.origin != Some(bubblepaw_core::MessageOrigin::Generated)
             })
             .unwrap();
-        let effect = input.content == "gated effect";
-        let list_inventory = input.content == "next";
+        let effect = input.text() == "gated effect";
+        let list_inventory = input.text() == "next";
         let finished = request.messages[index + 1..]
             .iter()
             .any(|message| message.role == Role::Tool);

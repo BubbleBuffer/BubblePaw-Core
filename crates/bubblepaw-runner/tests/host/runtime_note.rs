@@ -29,11 +29,11 @@ impl Provider for Cells {
             .last()
             .filter(|message| message.role == Role::User)
         {
-            if last.content == "block-private-task" {
+            if last.text() == "block-private-task" {
                 cancellation.cancelled().await;
                 bail!("cancelled");
             }
-            if let Ok(arguments) = serde_json::from_str::<Value>(&last.content) {
+            if let Ok(arguments) = serde_json::from_str::<Value>(&last.text()) {
                 return Ok(ModelResponse {
                     tool_calls: vec![ToolCall {
                         id: uuid::Uuid::new_v4().to_string(),

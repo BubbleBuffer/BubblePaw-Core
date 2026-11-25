@@ -91,8 +91,8 @@ async fn completion_wake_keeps_exec_output_and_stream_fragments_out_of_sqlite() 
     assert!(wal_growth < 512 * 1024, "unbounded wake WAL: {wal_growth}");
     assert!(after.database_bytes < 512 * 1024);
     let messages = store.messages(&parent.id)?;
-    assert!(messages[0].content.contains("stdout 2097152 bytes"));
-    assert_eq!(messages[1].content, "stream ".repeat(1000));
+    assert!(messages[0].text().contains("stdout 2097152 bytes"));
+    assert_eq!(messages[1].text(), "stream ".repeat(1000));
     processes.shutdown().await;
     harness.shutdown(Duration::from_secs(2)).await?;
     Ok(())

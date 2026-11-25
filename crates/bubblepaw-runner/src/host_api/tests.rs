@@ -88,6 +88,7 @@ async fn session_aliases_pagination_history_context_and_fork_use_same_store() ->
     let messages = call(&ctx, "history.messages", json!({"session_id":id,"limit":1})).await?;
     assert_eq!(messages["messages"].as_array().unwrap().len(), 1);
     assert_eq!(messages["has_more"], true);
+    assert!(messages["messages"][0]["content"].is_array());
     assert!(
         call(&ctx, "context.structure", json!({"session_id":id}))
             .await?

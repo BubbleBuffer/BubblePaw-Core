@@ -38,15 +38,11 @@ async fn reload_tool_refreshes_next_round_and_diff_is_one_durable_message() {
         let notice = last
             .messages
             .iter()
-            .find(|message| {
-                message
-                    .content
-                    .contains("<harness kind=\"tools_reloaded\">")
-            })
+            .find(|message| message.text().contains("<harness kind=\"tools_reloaded\">"))
             .expect("reload appends a separate inventory notice");
         let delta: serde_json::Value = serde_json::from_str(
             notice
-                .content
+                .text()
                 .lines()
                 .find(|line| line.starts_with('{'))
                 .unwrap(),
@@ -61,13 +57,10 @@ async fn reload_tool_refreshes_next_round_and_diff_is_one_durable_message() {
                     && tool["deferred"] == true
                     && tool["server"] == "late")
         );
-        assert!(!notice.content.contains("input_schema"));
-        assert!(
-            last.messages
-                .iter()
-                .any(|m| m.content.contains("Config changed:")
-                    && m.content.contains("+ mcp__late__echo"))
-        );
+        assert!(!notice.text().contains("input_schema"));
+        assert!(last.messages.iter().any(
+            |m| m.text().contains("Config changed:") && m.text().contains("+ mcp__late__echo")
+        ));
     }
     let notes = fixture.notices();
     assert_eq!(notes.len(), 1);
@@ -87,7 +80,7 @@ async fn reload_tool_refreshes_next_round_and_diff_is_one_durable_message() {
             .messages(&second.id)
             .unwrap()
             .iter()
-            .filter(|m| m.content.contains("<harness kind=\"live_config:"))
+            .filter(|m| m.text().contains("<harness kind=\"live_config:"))
             .count(),
         0,
         "new chats bind current configuration without replaying historical reload notices"

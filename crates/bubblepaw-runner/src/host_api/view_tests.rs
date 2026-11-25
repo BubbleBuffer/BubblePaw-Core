@@ -28,7 +28,7 @@ async fn bounded_view_strips_private_provider_state_and_reuses_disposable_cache(
             session_id: session.id.clone(),
             role: bubblepaw_core::Role::Assistant,
             origin: None,
-            content: format!("message {index}"),
+            content: bubblepaw_core::text_blocks(format!("message {index}")),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: Some(json!({"private":"provider-only"})),

@@ -328,24 +328,24 @@ async fn native_reload_connects_and_removes_mcp_mid_run_with_frozen_declarations
             delta["added"],
             json!([{"name":"mcp__late__echo","server":"late","deferred":true}])
         );
-        assert!(added_notice.content.contains("call_tool"));
-        assert!(!added_notice.content.contains("input_schema"));
-        assert!(!added_notice.content.contains("inputSchema"));
-        assert!(!added_notice.content.contains("fake echo"));
+        assert!(added_notice.text().contains("call_tool"));
+        assert!(!added_notice.text().contains("input_schema"));
+        assert!(!added_notice.text().contains("inputSchema"));
+        assert!(!added_notice.text().contains("fake echo"));
         let discovered = requests[2]
             .messages
             .iter()
             .rev()
             .find(|message| message.role == Role::Tool)
             .unwrap();
-        assert!(!discovered.is_error, "{}", discovered.content);
-        let discovered: Value = serde_json::from_str(&discovered.content).unwrap();
+        assert!(!discovered.is_error, "{}", discovered.text());
+        let discovered: Value = serde_json::from_str(&discovered.text()).unwrap();
         assert_eq!(discovered["tools"][0]["name"], "mcp__late__echo");
         assert_eq!(discovered["tools"][0]["inputSchema"]["type"], "object");
         assert_eq!(discovered["tools"][0]["server"], "late");
         assert!(
             !added_notice
-                .content
+                .text()
                 .contains(&serde_json::to_string(&discovered["tools"][0]["inputSchema"]).unwrap())
         );
         assert!(
@@ -366,18 +366,18 @@ async fn native_reload_connects_and_removes_mcp_mid_run_with_frozen_declarations
             .rev()
             .find(|message| message.role == Role::Tool)
             .unwrap();
-        let missing: Value = serde_json::from_str(&missing.content).unwrap();
+        let missing: Value = serde_json::from_str(&missing.text()).unwrap();
         assert!(missing["tools"].as_array().unwrap().is_empty());
         assert_eq!(missing["unknown"], json!(["mcp__late__echo"]));
     }
     let messages = fixture.store.messages(&fixture.session).unwrap();
     assert!(messages.iter().any(|message| message.role == Role::Tool
         && !message.is_error
-        && message.content == "native late MCP transport proof"));
+        && message.text() == "native late MCP transport proof"));
     assert!(messages.iter().any(|message| message.role == Role::Tool
         && message.is_error
-        && message.content.contains("mcp__late__echo")
-        && message.content.contains("unavailable")));
+        && message.text().contains("mcp__late__echo")
+        && message.text().contains("unavailable")));
     assert!(fixture.mcp.tools().is_empty());
     assert!(
         fixture
@@ -450,11 +450,9 @@ async fn republished_tools_report_inventory_change_once_without_declaring_a_pref
 
 fn inventory_delta(message: &bubblepaw_core::Message) -> Option<Value> {
     if message.origin != Some(MessageOrigin::Generated)
-        || !message
-            .content
-            .contains("<harness kind=\"tools_reloaded\">")
+        || !message.text().contains("<harness kind=\"tools_reloaded\">")
     {
         return None;
     }
-    serde_json::from_str(message.content.lines().find(|line| line.starts_with('{'))?).ok()
+    serde_json::from_str(message.text().lines().find(|line| line.starts_with('{'))?).ok()
 }

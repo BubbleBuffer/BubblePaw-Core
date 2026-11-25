@@ -149,8 +149,8 @@ fn host_notices(fixture: &Fixture) -> Vec<bubblepaw_core::Message> {
         .into_iter()
         .filter(|message| {
             message.origin == Some(MessageOrigin::Generated)
-                && (message.content.contains("Memory files changed")
-                    || message.content.contains("Skills changed"))
+                && (message.text().contains("Memory files changed")
+                    || message.text().contains("Skills changed"))
         })
         .collect()
 }
@@ -213,7 +213,7 @@ async fn lcm_apply_rebinds_current_host_prefix_and_reopen_preserves_latest_snaps
         host_notices(&fixture)
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("newly-added")
     );
     skill(&fixture, "roundtrip", "CATALOG-ROUNDTRIP-ABSENT-AT-APPLY");
@@ -222,13 +222,13 @@ async fn lcm_apply_rebinds_current_host_prefix_and_reopen_preserves_latest_snaps
         host_notices(&fixture)
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("roundtrip")
     );
     std::fs::remove_dir_all(fixture._root.path().join(".agents/skills/roundtrip")).unwrap();
     fixture.turn("announce removed roundtrip skill").await;
     let removed = host_notices(&fixture).pop().unwrap();
-    assert!(removed.content.contains("roundtrip") && removed.content.contains("removed"));
+    assert!(removed.text().contains("roundtrip") && removed.text().contains("removed"));
     fixture.turn("retain turn after every change notice").await;
     let covered_notices = host_notices(&fixture);
     assert_eq!(covered_notices.len(), 3);
@@ -321,8 +321,8 @@ async fn lcm_apply_rebinds_current_host_prefix_and_reopen_preserves_latest_snaps
                     .iter()
                     .any(|covered| covered.id == message.id)
             );
-            assert!(!message.content.contains("Memory files changed"));
-            assert!(!message.content.contains("Skills changed"));
+            assert!(!message.text().contains("Memory files changed"));
+            assert!(!message.text().contains("Skills changed"));
         }
     }
     assert_eq!(
@@ -440,7 +440,7 @@ async fn lcm_apply_rebinds_current_host_prefix_and_reopen_preserves_latest_snaps
         host_notices(&fixture)
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("MEMORY-PENDING-V4")
     );
     assert_eq!(

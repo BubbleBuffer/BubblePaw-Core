@@ -117,7 +117,7 @@ async fn host_user_answers_a_live_child_question_through_stable_sdk_paths() -> R
     assert_eq!(run.status, "completed", "{:?}", run.error);
     assert!(host.pending_child_question(&child.id)?.is_none());
     assert!(store.messages(&child.id)?.iter().any(|message| {
-        message.role == Role::Tool && message.content.contains("Green with stripes")
+        message.role == Role::Tool && message.text().contains("Green with stripes")
     }));
     assert_eq!(store.runs(&child.id)?.len(), 1);
     assert!(store.runs(&parent.id)?.is_empty());
