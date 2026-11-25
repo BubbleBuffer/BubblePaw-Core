@@ -40,7 +40,7 @@ startup, child completion and live-config turn boundaries. Dirty worktrees,
 including untracked or ignored files, stay in place. A parent workspace needed by
 a retained or active descendant stays too. Branches with commits absent
 from the direct parent's HEAD also stay in place. Cleanup reports each outcome;
-git removal and branch deletion never use force.
+git removal and branch deletion never use force. Each git command runs in its own process tree with stdin closed and a 120-second limit, after which the tree is killed and the command reported as timed out.
 
 SQLite attachments retain the authoritative workspace binding without a schema
 change. A small JSON lifecycle mirror beside the worktrees permits cleanup after

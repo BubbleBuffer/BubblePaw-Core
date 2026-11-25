@@ -43,7 +43,7 @@ crates/bubblepaw-runner/src/tools/process.rs 1689
 crates/bubblepaw-runner/src/trace.rs 833
 crates/bubblepaw-runner/src/usage_report.rs 601
 crates/bubblepaw-runner/src/web.rs 722
-crates/bubblepaw-runner/src/worktrees.rs 1418
+crates/bubblepaw-runner/src/worktrees.rs 1413
 crates/bubblepaw-runner/tests/children/agents.rs 528
 crates/bubblepaw-runner/tests/children/auto_wake.rs 938
 crates/bubblepaw-runner/tests/children/child_context.rs 550

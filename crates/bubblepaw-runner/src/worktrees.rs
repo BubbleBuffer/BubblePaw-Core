@@ -14,8 +14,9 @@ use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
-    process::{Command, Output},
+    process::Output,
     sync::{Mutex, MutexGuard},
+    time::Duration,
 };
 
 const ATTACHMENT: &str = "bubblepaw-worktree-v1";
@@ -945,18 +946,12 @@ fn utf8(path: &Path) -> Result<&str> {
         .ok_or_else(|| anyhow!("path {} is not valid UTF-8", path.display()))
 }
 
+/// The longest a single git command may run (a worktree add on a large repo is
+/// the slow case) before its process tree is killed.
+const GIT_LIMIT: Duration = Duration::from_secs(120);
+
 fn run(dir: &Path, args: &[&str]) -> Result<Output> {
-    Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .output()
-        .with_context(|| {
-            format!(
-                "could not start git in {}; is git installed?",
-                dir.display()
-            )
-        })
+    crate::process_output::git_output("git", dir, args, GIT_LIMIT)
 }
 
 /// Runs git and returns stdout; a nonzero exit is an error that carries stderr.
