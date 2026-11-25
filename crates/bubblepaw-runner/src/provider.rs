@@ -356,7 +356,7 @@ impl ResponsesProvider {
                     || item["arguments"]
                         .as_str()
                         .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
-                        .is_some()
+                        .is_some_and(|arguments| arguments.is_object())
             });
         }
         let mut calls = Vec::new();
@@ -379,7 +379,6 @@ impl ResponsesProvider {
                         .filter(|name| !name.is_empty())
                         .ok_or_else(|| malformed_call("function call missing name"))?
                         .to_owned();
-                    // Every result needs an unambiguous call ID to answer.
                     if !seen.insert(id.clone()) {
                         return Err(malformed_call("duplicate provider call_id"));
                     }
@@ -394,6 +393,7 @@ impl ResponsesProvider {
                         .ok_or_else(|| malformed_call("invalid function call arguments"))?;
                     let arguments = match serde_json::from_str::<Value>(raw) {
                         Ok(arguments) => arguments,
+                        Err(_) if cut => continue,
                         Err(_) => {
                             let arguments = tool_wire::raw_arguments(raw);
                             // Keep the replay item aligned with the bounded canonical argument.

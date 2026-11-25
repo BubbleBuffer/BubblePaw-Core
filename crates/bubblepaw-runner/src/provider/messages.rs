@@ -404,7 +404,7 @@ impl MessagesProvider {
                         block.get("input").is_some(),
                         "Messages tool_use lacks input"
                     );
-                    if cut && block["invalid_input"] == true {
+                    if cut && (block["invalid_input"] == true || !block["input"].is_object()) {
                         continue;
                     }
                 }

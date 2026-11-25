@@ -124,7 +124,7 @@ async fn malformed_tool_calls_are_metered_and_do_not_publish_text() {
 }
 
 #[tokio::test]
-async fn length_stop_drops_incomplete_calls_before_continuing() {
+async fn length_stop_drops_scalar_and_array_calls_before_continuing() {
     let observed = Arc::new(Mutex::new(Vec::<Value>::new()));
     let requests = observed.clone();
     let app = Router::new().route("/responses", post(move |Json(body): Json<Value>| {
@@ -138,8 +138,8 @@ async fn length_stop_drops_incomplete_calls_before_continuing() {
             let response = if first {
                 json!({"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[
                     {"type":"message","role":"assistant","content":[{"type":"output_text","text":"Part "}]},
-                    {"type":"function_call","call_id":"object","name":"workspace_read","arguments":"{\"path\":"},
-                    {"type":"function_call","call_id":"array","name":"workspace_read","arguments":"[1,"}
+                    {"type":"function_call","call_id":"scalar","name":"workspace_read","arguments":"true"},
+                    {"type":"function_call","call_id":"array","name":"workspace_read","arguments":"[]"}
                 ]})
             } else {
                 json!({"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done."}]}]})
