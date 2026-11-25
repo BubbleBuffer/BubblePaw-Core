@@ -11,14 +11,14 @@ use bubblepaw_runner::{
 use serde_json::{Value, json};
 use std::{fs, sync::Arc};
 
-struct Fixture {
-    root: tempfile::TempDir,
+pub(super) struct Fixture {
+    pub(super) root: tempfile::TempDir,
     store: Store,
     session: String,
 }
 
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let root = tempfile::tempdir().unwrap();
         let store = Store::in_memory().unwrap();
         let session = store.create_session("literal file tools").unwrap().id;
@@ -38,7 +38,7 @@ impl Fixture {
         registry
     }
 
-    async fn call(&self, name: &str, input: Value) -> Result<Value> {
+    pub(super) async fn call(&self, name: &str, input: Value) -> Result<Value> {
         // The file tools are host capabilities. The model declares all of them
         // in the session's first request, so every call here sees the same set.
         let tools = self.registry(false);
@@ -246,27 +246,27 @@ async fn write_creates_parents_then_overwrites_with_exact_utf8_byte_count() {
 }
 
 #[tokio::test]
-async fn crlf_unicode_backticks_and_dollars_remain_literal() {
+async fn unicode_backticks_and_dollars_remain_literal() {
     let f = Fixture::new();
-    let original = "head\r\n  hé 🐱 `$value`\r\ntail";
-    fs::write(f.root.path().join("a.txt"), original).unwrap();
-    // LF does not match CRLF, and a decomposed accent does not match composed é.
-    for old in ["  hé 🐱 `$value`\n", "  he\u{301} 🐱 `$value`\r\n"] {
-        let error = f
-            .call(
-                "edit",
-                json!({"path":"a.txt","old_string":old,"new_string":"wrong"}),
-            )
-            .await
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("no exact match"), "{error}");
-    }
-    let result = f.call("edit", json!({"path":"a.txt","old_string":"  hé 🐱 `$value`\r\n","new_string":"  hé 🐶 `${other}`\r\n"})).await.unwrap();
-    assert_eq!(result["replacements"], 1);
+    fs::write(f.root.path().join("a.txt"), "  hé 🐱 `$value`\n").unwrap();
+    let error = f
+        .call(
+            "edit",
+            json!({"path":"a.txt","old_string":"  he\u{301} 🐱","new_string":"wrong"}),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("no exact match"), "{error}");
+    f.call(
+        "edit",
+        json!({"path":"a.txt","old_string":"🐱 `$value`","new_string":"🐶 `${other}`"}),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         fs::read(f.root.path().join("a.txt")).unwrap(),
-        "head\r\n  hé 🐶 `${other}`\r\ntail".as_bytes()
+        "  hé 🐶 `${other}`\n".as_bytes()
     );
 }
 

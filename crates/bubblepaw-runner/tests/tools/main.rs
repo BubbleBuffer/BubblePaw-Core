@@ -41,3 +41,4 @@ mod tool_defaults;
 mod tool_search;
 mod tools_native;
 mod workspace_edit;
+mod workspace_edit_endings;

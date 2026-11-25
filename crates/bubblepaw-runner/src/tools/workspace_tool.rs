@@ -57,9 +57,9 @@ impl Tool for WorkspaceTool {
                 vec!["query"],
             ),
             "edit" => (
-                "Replace literal text in an existing workspace file or an absolute path in the chat or project scratchpad. Copy old_string exactly from a fresh read, including indentation, with enough surrounding lines to match once; use replace_all only to replace every occurrence. No regex or whitespace normalization. For several edits, call edit several times. Use write to create a file.",
-                json!({"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}}),
-                vec!["path", "old_string", "new_string"],
+                "Replace literal text in an existing workspace file or an absolute path in the chat or project scratchpad. Copy old_string exactly from a fresh read, including indentation, with enough surrounding lines to match once; use replace_all only to replace every occurrence. Ignores CRLF/LF and BOM differences; keeps line endings. No regex. For several edits use edits (same fields) instead of old_string/new_string: in order, all or nothing. Use write to create a file.",
+                json!({"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"},"edits":{"type":"array","items":{"type":"object","properties":{"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean"}},"required":["old_string","new_string"]}}}),
+                vec!["path"],
             ),
             "write" => (
                 "Create or overwrite a workspace file or an absolute path in the chat or project scratchpad, creating missing parent directories. Supply complete UTF-8 content; use edit for targeted changes to an existing file.",

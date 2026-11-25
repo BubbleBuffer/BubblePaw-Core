@@ -16,7 +16,7 @@ impl WorkspaceTools {
         validate_fields(
             input,
             if name == "edit" {
-                &["path", "old_string", "new_string", "replace_all"]
+                &["path", "old_string", "new_string", "replace_all", "edits"]
             } else {
                 &["path", "content"]
             },
@@ -29,29 +29,12 @@ impl WorkspaceTools {
             );
             let mut change = self.prepare_file_change(path)?;
             let result = if name == "edit" {
-                let old = string(input, "old_string")?;
-                let new = string(input, "new_string")?;
-                ensure!(
-                    !old.is_empty(),
-                    "old_string must not be empty; use write to create a file"
-                );
-                ensure!(old != new, "old_string and new_string must differ");
-                let replace_all = input
-                    .get("replace_all")
-                    .map(|value| {
-                        value
-                            .as_bool()
-                            .ok_or_else(|| anyhow!("replace_all must be a boolean"))
-                    })
-                    .transpose()?
-                    .unwrap_or(false);
                 let previous = change
                     .previous
                     .as_deref()
                     .ok_or_else(|| anyhow!("file does not exist; use write to create it"))?;
                 let source = std::str::from_utf8(previous).context("file is not UTF-8")?;
-                let (content, replacements) =
-                    replace_exact(source, old, new, replace_all, &context.cancellation)?;
+                let (content, replacements) = apply_edits(source, input, &context.cancellation)?;
                 change.content = Some(content.into_bytes());
                 json!({"path":change.relative,"replacements":replacements})
             } else {
@@ -75,6 +58,68 @@ impl WorkspaceTools {
     }
 }
 
+/// Applies the single-edit arguments or the `edits` array to `source`. Matching
+/// ignores CRLF versus LF and a leading BOM; the write keeps both.
+fn apply_edits(
+    source: &str,
+    input: &Value,
+    cancellation: &CancellationToken,
+) -> Result<(String, usize)> {
+    let (bom, mut text) = match source.strip_prefix('\u{feff}') {
+        Some(rest) => ("\u{feff}", rest.to_owned()),
+        None => ("", source.to_owned()),
+    };
+    let mut total = 0;
+    if let Some(edits) = input.get("edits") {
+        ensure!(
+            ["old_string", "new_string", "replace_all"]
+                .iter()
+                .all(|key| input.get(key).is_none()),
+            "give either edits or old_string/new_string, not both"
+        );
+        let edits = edits
+            .as_array()
+            .filter(|edits| !edits.is_empty())
+            .ok_or_else(|| anyhow!("edits must be a nonempty array"))?;
+        for (index, edit) in edits.iter().enumerate() {
+            let step = validate_fields(edit, &["old_string", "new_string", "replace_all"])
+                .and_then(|()| apply_one(&text, edit, cancellation));
+            let (next, count) = step.map_err(|error| anyhow!("edits[{index}]: {error:#}"))?;
+            text = next;
+            total += count;
+        }
+    } else {
+        (text, total) = apply_one(&text, input, cancellation)?;
+    }
+    Ok((format!("{bom}{text}"), total))
+}
+
+fn apply_one(
+    source: &str,
+    edit: &Value,
+    cancellation: &CancellationToken,
+) -> Result<(String, usize)> {
+    let old = string(edit, "old_string")?;
+    let new = string(edit, "new_string")?;
+    ensure!(
+        !old.is_empty(),
+        "old_string must not be empty; use write to create a file"
+    );
+    ensure!(old != new, "old_string and new_string must differ");
+    let replace_all = edit
+        .get("replace_all")
+        .map(|value| {
+            value
+                .as_bool()
+                .ok_or_else(|| anyhow!("replace_all must be a boolean"))
+        })
+        .transpose()?
+        .unwrap_or(false);
+    replace_exact(source, old, new, replace_all, cancellation)
+}
+
+/// Replaces in `source` matching on an LF view of it. Untouched text keeps its
+/// bytes; inserted text takes the file's majority line ending.
 fn replace_exact(
     source: &str,
     old: &str,
@@ -82,6 +127,68 @@ fn replace_exact(
     replace_all: bool,
     cancellation: &CancellationToken,
 ) -> Result<(String, usize)> {
+    // `dropped` holds the LF-view index of each `\n` that had a `\r` before it.
+    let mut dropped = Vec::new();
+    let mut lf = String::with_capacity(source.len());
+    let (mut crlf, mut bare) = (0usize, 0usize);
+    let mut rest = source;
+    while let Some(position) = rest.find('\n') {
+        let (line, tail) = rest.split_at(position);
+        if let Some(line) = line.strip_suffix('\r') {
+            crlf += 1;
+            lf.push_str(line);
+            dropped.push(lf.len());
+        } else {
+            bare += 1;
+            lf.push_str(line);
+        }
+        lf.push('\n');
+        rest = &tail[1..];
+    }
+    lf.push_str(rest);
+    let old = old.replace("\r\n", "\n");
+    let new = new.replace("\r\n", "\n");
+    let positions = find_matches(&lf, &old, replace_all, cancellation)?;
+    let count = positions.len();
+    let new = if crlf > bare {
+        new.replace('\n', "\r\n")
+    } else {
+        new
+    };
+    // Both the original and final content fit the same 64 MiB combined bound
+    // used by the atomic file preparation, before allocating the replacement.
+    let output_bytes = source
+        .len()
+        .checked_sub(count * old.len())
+        .and_then(|remaining| new.len().checked_mul(count)?.checked_add(remaining))
+        .ok_or_else(|| anyhow!("replacement exceeds 32 MiB file limit"))?;
+    ensure!(
+        output_bytes as u64 <= MAX_MUTATION_FILE,
+        "replacement exceeds 32 MiB file limit"
+    );
+    ensure!(!cancellation.is_cancelled(), "cancelled");
+    // A LF-view index maps to the source by adding the CRs dropped before it.
+    let original = |index: usize| index + dropped.partition_point(|&line| line < index);
+    let mut output = String::with_capacity(output_bytes);
+    let mut cursor = 0;
+    for position in positions {
+        let (start, end) = (original(position), original(position + old.len()));
+        output.push_str(&source[cursor..start]);
+        output.push_str(&new);
+        cursor = end;
+    }
+    output.push_str(&source[cursor..]);
+    Ok((output, count))
+}
+
+/// Byte positions in the LF view; exactly one unless `replace_all`.
+fn find_matches(
+    source: &str,
+    old: &str,
+    replace_all: bool,
+    cancellation: &CancellationToken,
+) -> Result<Vec<usize>> {
+    let mut positions = Vec::new();
     let mut count = 0usize;
     let mut first_lines = Vec::new();
     let mut line = 1usize;
@@ -89,6 +196,7 @@ fn replace_exact(
     for (position, _) in source.match_indices(old) {
         ensure!(!cancellation.is_cancelled(), "cancelled");
         count += 1;
+        positions.push(position);
         if first_lines.len() < 5 {
             line += source.as_bytes()[cursor..position]
                 .iter()
@@ -113,19 +221,7 @@ fn replace_exact(
             .collect::<Vec<_>>()
             .join(", ")
     );
-    // Both the original and final content fit the same 64 MiB combined bound
-    // used by the atomic file preparation, before allocating the replacement.
-    let output_bytes = source
-        .len()
-        .checked_sub(count * old.len())
-        .and_then(|remaining| new.len().checked_mul(count)?.checked_add(remaining))
-        .ok_or_else(|| anyhow!("replacement exceeds 32 MiB file limit"))?;
-    ensure!(
-        output_bytes as u64 <= MAX_MUTATION_FILE,
-        "replacement exceeds 32 MiB file limit"
-    );
-    ensure!(!cancellation.is_cancelled(), "cancelled");
-    Ok((source.replace(old, new), count))
+    Ok(positions)
 }
 
 // Diagnostics never influence replacement. A cheap linear scan of the whole
