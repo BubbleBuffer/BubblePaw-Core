@@ -76,6 +76,8 @@ impl Tool for Echo {
         Ok(ToolResult {
             content: input.to_string(),
             is_error: false,
+            details: None,
+            terminate: false,
             pending: false,
         })
     }

@@ -350,8 +350,8 @@ async fn complete_reasoning_and_calls_are_replayed_intact_in_next_round() {
             origin: None,
             provider_state: response.provider_state,
             tool_call_id: None,
-            is_error: false,
             created_at: String::new(),
+            ..Default::default()
         },
         Message {
             id: "tool".into(),
@@ -362,8 +362,8 @@ async fn complete_reasoning_and_calls_are_replayed_intact_in_next_round() {
             origin: None,
             provider_state: None,
             tool_call_id: Some("call-1".into()),
-            is_error: false,
             created_at: String::new(),
+            ..Default::default()
         },
     ];
     provider
@@ -434,8 +434,8 @@ async fn slim_and_legacy_state_replay_byte_exact_mixed_output_over_http() {
         tool_calls: response.tool_calls,
         tool_call_id: None,
         provider_state: response.provider_state,
-        is_error: false,
         created_at: String::new(),
+        ..Default::default()
     };
     // Exercise the durable JSON representation, rather than only live object reuse.
     let mut restored: Message =
@@ -837,8 +837,8 @@ async fn parallel_streamed_function_calls_round_trip_both_results() {
         tool_calls: first.tool_calls,
         tool_call_id: None,
         provider_state: first.provider_state,
-        is_error: false,
         created_at: String::new(),
+        ..Default::default()
     };
     let restored: Message =
         serde_json::from_slice(&serde_json::to_vec(&assistant).unwrap()).unwrap();
@@ -854,8 +854,8 @@ async fn parallel_streamed_function_calls_round_trip_both_results() {
             tool_calls: vec![],
             tool_call_id: Some(id.into()),
             provider_state: None,
-            is_error: false,
             created_at: String::new(),
+            ..Default::default()
         });
     }
     let second = provider

@@ -12,4 +12,5 @@ mod submit_result;
 mod tool_context_approval;
 mod tool_discovery;
 mod tool_restriction;
+mod tool_result_details;
 mod tools_off;

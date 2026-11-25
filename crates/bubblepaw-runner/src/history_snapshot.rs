@@ -288,6 +288,7 @@ mod tests {
                 tool_call_id: None,
                 provider_state: None,
                 is_error: false,
+                details: None,
                 created_at: "2026-10-12T00:00:00Z".into(),
             });
         }
@@ -357,6 +358,7 @@ mod tests {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
+            details: None,
             created_at: "2026-10-12T00:00:00Z".into(),
         }];
         history.push(Message {

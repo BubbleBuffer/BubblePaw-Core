@@ -237,6 +237,7 @@ fn automatic_cold_compression_uses_each_roots_thresholds() -> Result<()> {
                 tool_call_id: None,
                 provider_state: None,
                 is_error: false,
+                details: None,
                 created_at: chrono::Utc::now().to_rfc3339(),
             })
             .collect();

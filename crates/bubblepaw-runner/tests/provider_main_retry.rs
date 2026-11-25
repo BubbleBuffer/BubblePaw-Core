@@ -33,6 +33,7 @@ fn request() -> ModelRequest {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
+            details: None,
             created_at: String::new(),
         }],
         ..Default::default()

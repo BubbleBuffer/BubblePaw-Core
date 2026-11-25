@@ -14,6 +14,7 @@ async fn replay_waits_for_a_complete_episode_before_accepting_a_subject_transiti
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: "2026-10-08T00:00:00Z".into(),
     };
     let mut corpus = ReplayCorpus {

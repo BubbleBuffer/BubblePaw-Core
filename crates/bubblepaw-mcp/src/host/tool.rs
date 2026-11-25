@@ -175,6 +175,8 @@ fn convert_result(result: Value) -> ToolResult {
     ToolResult {
         content: blocks.join("\n"),
         is_error: result["isError"].as_bool().unwrap_or(false),
+        details: None,
+        terminate: false,
         pending: false,
     }
 }

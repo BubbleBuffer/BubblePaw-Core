@@ -76,6 +76,31 @@ impl Harness {
         }
         Ok(())
     }
+    /// Bound a tool result to the configured size and append the budget footer.
+    pub(super) fn bound_tool_result(
+        &self,
+        result: ToolResult,
+        dispatcher: &crate::ToolDispatcher,
+    ) -> ToolResult {
+        let footer = dispatcher
+            .remaining_tool_calls()
+            .map(|remaining| {
+                format!(
+                    "
+
+{remaining} tool calls left"
+                )
+            })
+            .unwrap_or_default();
+        let limit = self
+            .config
+            .max_tool_result_bytes
+            .saturating_sub(footer.len());
+        ToolResult {
+            content: format!("{}{}", bounded(&result.content, limit), footer),
+            ..result
+        }
+    }
     pub(super) fn nudge_required_result(
         &self,
         run: &Run,
@@ -114,6 +139,16 @@ pub(super) fn outcome(run: &Run, value: serde_json::Value) -> Result<TurnOutcome
         final_message: Some(final_message),
         request_ids: Vec::new(),
     })
+}
+
+/// A tool result asked to end the run: the run completes with that tool message.
+pub(super) fn terminated(message: &Message) -> TurnOutcome {
+    TurnOutcome {
+        text: message.content.clone(),
+        result_message_id: message.id.clone(),
+        final_message: None,
+        request_ids: Vec::new(),
+    }
 }
 
 pub(super) fn text_outcome(

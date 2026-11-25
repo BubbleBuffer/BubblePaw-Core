@@ -35,6 +35,7 @@ fn message(session: &str, index: usize) -> Message {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: DATE.into(),
     }
 }

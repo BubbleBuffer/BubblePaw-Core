@@ -305,6 +305,7 @@ mod tests {
                 tool_calls: Vec::new(),
                 tool_call_id: None,
                 is_error: false,
+                details: None,
                 created_at: String::new(),
             }],
             ..Default::default()

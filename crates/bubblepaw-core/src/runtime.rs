@@ -155,7 +155,7 @@ impl ParsedHistory {
     fn refresh(&mut self, store: &Store, session_id: &str) -> Result<()> {
         for (seq, message) in store.messages_after(session_id, self.through)? {
             self.through = seq;
-            self.messages.push(message);
+            self.messages.push(message.without_details());
         }
         Ok(())
     }
@@ -1490,6 +1490,7 @@ impl Harness {
                 .filter(|call| !is_submission(call))
                 .chain(calls.iter().filter(|call| is_submission(call)));
             let mut all_malformed = !calls.is_empty();
+            let mut terminated = None;
             for call in ordered_calls {
                 let prepared = match single_prepared.take() {
                     Some(prepared) => prepared,
@@ -1499,29 +1500,16 @@ impl Harness {
                 let dispatched = dispatcher
                     .invoke_direct(prepared, &message.id, prepared_invocation.take())
                     .await?;
-                let result = dispatched.result;
-                let footer = dispatcher
-                    .remaining_tool_calls()
-                    .map(|remaining| format!("\n\n{remaining} tool calls left"))
-                    .unwrap_or_default();
-                let result = ToolResult {
-                    content: format!(
-                        "{}{}",
-                        bounded(
-                            &result.content,
-                            self.config
-                                .max_tool_result_bytes
-                                .saturating_sub(footer.len())
-                        ),
-                        footer
-                    ),
-                    ..result
-                };
+                let result = self.bound_tool_result(dispatched.result, &dispatcher);
                 let mut result_message =
                     Store::message(&run.session_id, Role::Tool, result.content.clone());
                 let captured_result = single_tool.map(|_| result.clone());
                 result_message.tool_call_id = Some(call.id.clone());
                 result_message.is_error = result.is_error;
+                result_message.details = result.details.clone();
+                if result.terminate && terminated.is_none() {
+                    terminated = Some(runtime_result::terminated(&result_message));
+                }
                 dispatcher.record_direct_result(
                     &run.id,
                     &result_message,
@@ -1536,6 +1524,9 @@ impl Harness {
             runtime_tools::check_malformed_reply_limit(&mut malformed_replies, all_malformed)?;
             if let Some(value) = dispatcher.take_submitted_result() {
                 return runtime_result::outcome(run, value);
+            }
+            if let Some(outcome) = terminated {
+                return Ok(outcome);
             }
             if options.script.is_some() || single_tool.is_some() {
                 if single_tool.is_none() {

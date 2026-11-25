@@ -776,8 +776,8 @@ mod tests {
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,
-            is_error: false,
             created_at: String::new(),
+            ..Default::default()
         }
     }
 

@@ -22,6 +22,20 @@ pub(super) fn insert_tools(
     }
 }
 
+/// Wire text of a tool result for adapters with no error field: an error
+/// result reads `Error: ...` unless it already starts with "error". Only the
+/// request changes; the stored message keeps its content.
+pub(super) fn error_text(message: &bubblepaw_core::Message, text: &str) -> String {
+    let marked = text
+        .get(..5)
+        .is_some_and(|start| start.eq_ignore_ascii_case("error"));
+    if message.is_error && !marked {
+        format!("Error: {text}")
+    } else {
+        text.to_owned()
+    }
+}
+
 /// Chat completions nests the declaration under `function`.
 pub(super) fn chat_declaration(tool: &ToolDefinition) -> Value {
     json!({"type":"function","function":{"name":tool.name,"description":tool.description,"parameters":tool.input_schema}})

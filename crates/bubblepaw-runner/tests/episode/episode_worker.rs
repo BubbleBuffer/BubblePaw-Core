@@ -58,8 +58,8 @@ async fn imported_compaction_advances_without_decoding_covered_tool_bodies() -> 
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,
-        is_error: false,
         created_at: "2026-10-12T00:00:00Z".into(),
+        ..Default::default()
     };
     let old_call = format!("old-{}", "identifier".repeat(80));
     let dangling = "source-call-with-unknown-outcome";
@@ -260,8 +260,8 @@ async fn completed_episode_background_planning_skips_unrelated_cold_bodies() -> 
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,
-        is_error: false,
         created_at: "2026-10-12T00:00:00Z".into(),
+        ..Default::default()
     };
     let history: Vec<_> = (0..12).map(make).collect();
     store.append_batch(&history)?;
@@ -1034,8 +1034,8 @@ async fn explicit_lossy_summary_budget_preserves_archive_and_continuation_contex
         tool_call_id: None,
         origin: None,
         provider_state: None,
-        is_error: false,
         created_at: "2026-10-08T00:00:00Z".into(),
+        ..Default::default()
     };
     let request = "literal current request\n".repeat(150);
     let arguments = serde_json::json!({"code":"serialized call argument ".repeat(200)});

@@ -51,8 +51,8 @@ impl Fixture {
             tool_call_id: link.map(str::to_owned),
             origin: None,
             provider_state: None,
-            is_error: false,
             created_at: "2026-10-06T00:00:00Z".into(),
+            ..Default::default()
         };
         self.store
             .append_batch(std::slice::from_ref(&message))

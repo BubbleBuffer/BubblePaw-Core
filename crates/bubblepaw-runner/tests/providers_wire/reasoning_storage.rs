@@ -207,8 +207,8 @@ fn message(session: &str, index: usize) -> Message {
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
-        is_error: false,
         created_at: DATE.into(),
+        ..Default::default()
     }
 }
 async fn history(fixture: &Fixture, kind: Kind, session: &str) -> Result<Vec<Message>> {

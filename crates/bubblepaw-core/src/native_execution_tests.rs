@@ -81,6 +81,8 @@ impl Tool for Capability {
         Ok(ToolResult {
             content: input["value"].as_str().unwrap().into(),
             is_error: false,
+            details: None,
+            terminate: false,
             pending: self.pending,
         })
     }

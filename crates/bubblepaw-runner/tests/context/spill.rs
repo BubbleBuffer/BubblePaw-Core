@@ -132,6 +132,8 @@ impl Fixture {
         ToolResult {
             content: message.content,
             is_error: message.is_error,
+            details: None,
+            terminate: false,
             pending: false,
         }
     }

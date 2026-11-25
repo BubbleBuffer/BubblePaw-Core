@@ -124,6 +124,7 @@ fn convert(value: Value, path: &Path, bytes: &[u8]) -> Result<ReplayCorpus> {
             tool_call_id: None,
             provider_state: None,
             is_error: record.is_error,
+            details: None,
             created_at: "2026-10-08T00:00:00Z".into(),
         };
         if matches!(record.kind.as_str(), "function_call" | "custom_tool_call") {

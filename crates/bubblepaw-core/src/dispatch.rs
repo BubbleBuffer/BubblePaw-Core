@@ -339,6 +339,8 @@ impl ToolDispatcher {
             return Ok(ToolResult {
                 content: summary.to_string(),
                 is_error: true,
+                details: None,
+                terminate: result.terminate,
                 pending: result.pending,
             });
         }

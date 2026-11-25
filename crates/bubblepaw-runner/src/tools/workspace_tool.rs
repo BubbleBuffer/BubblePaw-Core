@@ -118,7 +118,13 @@ impl Tool for WorkspaceTool {
             if let Some(path) = scratch_path {
                 value["path"] = json!(path);
             }
-            return Ok(ToolResult::text(serde_json::to_string(&value)?));
+            let result = ToolResult::text(serde_json::to_string(&value)?);
+            // The edit summary (path, replacements) is also data for interfaces.
+            return Ok(if name == "edit" {
+                result.with_details(value)
+            } else {
+                result
+            });
         }
         if self.name == "read" {
             validate_fields(&input, &["path", "startLine", "lineCount"])?;

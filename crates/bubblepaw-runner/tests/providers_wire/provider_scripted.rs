@@ -13,6 +13,7 @@ fn tool_message(call_id: &str, content: &str, is_error: bool) -> Message {
         origin: None,
         provider_state: None,
         is_error,
+        details: None,
         created_at: String::new(),
     }
 }

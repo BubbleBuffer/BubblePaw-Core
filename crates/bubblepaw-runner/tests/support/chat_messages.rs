@@ -14,6 +14,7 @@ pub fn fixture_message(role: Role, content: &str) -> Message {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     }
 }
@@ -30,6 +31,7 @@ pub fn root_message(id: &str, content: &str) -> Message {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     }
 }
@@ -46,6 +48,7 @@ pub fn uuid_message(session: &str, role: Role, content: impl Into<String>) -> Me
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     }
 }

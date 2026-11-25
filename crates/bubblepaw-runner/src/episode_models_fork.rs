@@ -112,6 +112,7 @@ pub(super) async fn summarize_fork_attempt(
             tool_call_id: None,
             provider_state: None,
             is_error: false,
+            details: None,
             created_at: String::new(),
         });
     }
@@ -370,6 +371,7 @@ fn refuse_tool_calls(
         tool_call_id: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: String::new(),
     };
     request.messages.push(Message {
@@ -381,6 +383,7 @@ fn refuse_tool_calls(
         request.messages.push(Message {
             tool_call_id: Some(call.id),
             is_error: true,
+            details: None,
             ..message(Role::Tool, refusal.into())
         });
     }

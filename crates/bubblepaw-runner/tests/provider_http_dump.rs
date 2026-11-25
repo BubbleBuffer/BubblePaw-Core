@@ -232,6 +232,7 @@ fn request(model: &str) -> ModelRequest {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
+            details: None,
             created_at: String::new(),
         }],
         session_id: "synthetic-session-header".into(),

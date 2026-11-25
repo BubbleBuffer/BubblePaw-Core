@@ -378,6 +378,7 @@ mod projection_tests {
                 json!({"adapter":"chat-completions","message_fields":{"reasoning_content":"native reasoning"}}),
             ),
             is_error: false,
+            details: None,
             created_at: "2026-10-18T00:00:00Z".into(),
         };
         let request = ModelRequest {

@@ -66,6 +66,7 @@ async fn classical_automatic_apply_rebinds_current_prefix_and_discards_stale_pen
         origin: None,
         provider_state: None,
         is_error: false,
+        details: None,
         created_at: "2026-10-30T12:00:00Z".into(),
     };
     // The Classical worker independently retains a 32k source tail even when
