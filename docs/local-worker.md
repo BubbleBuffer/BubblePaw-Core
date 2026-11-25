@@ -131,8 +131,7 @@ root physical context cap and a 100k child cap, including the configured respons
 reserve (16k by default). Root/native/hidden workers gather episodes
 as source work grows and keep the serving prefix frozen until apply. Episode,
 chapter, evidence and serving allocations are configurable in `[context.lcm]`.
-See the approved [LCM contract](lcm-contract.md) and
-LCM worker record in the project notes for implementation and verification.
+See the approved [LCM contract](lcm-contract.md) for implementation and verification.
 The live smoke results above are historical and predate this change.
 The launcher writes a separate metadata-only trace under the worker data directory's
 `traces/` folder for each invocation; `-TraceFile` selects another path. This records

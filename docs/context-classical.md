@@ -1,8 +1,7 @@
 # Classical summarization (rolling summary)
 
 Status: built 2026-10-09. A second summarization strategy next to episodes and
-chapters (the earlier episode design, kept in the project notes), so the two can be swapped and
-compared on the same replay. The raw research notes, with sources, are kept in the project notes (literature, industry, evaluation, prompts).
+chapters, so the two can be swapped and compared on the same replay.
 
 ## Built (2026-10-09)
 
