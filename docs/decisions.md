@@ -856,3 +856,5 @@ shells and either directory spelling receive the same checks. See [approvals](ap
 ## Antigravity support dropped (2026-11-24)
 
 Antigravity (`agy`) support is dropped and `extensions/antigravity` was removed. Google is strict about ACP, the experience was mostly poor, and there is no hope of a consistently good experience with `agy` without risking locked accounts. v0.15.0 is the only release whose source tree contains the extension.
+
+2026-11-25 (user decision): `run.start` approval options can only tighten inherited rules. The strictest mode wins, and the run inherits configured denies and the hardline setting. See [Tool-call approvals](approvals.md#tool-metadata-and-policy).

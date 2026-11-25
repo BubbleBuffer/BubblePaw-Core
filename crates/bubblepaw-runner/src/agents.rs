@@ -11,9 +11,9 @@ use crate::{
 use anyhow::{Result, anyhow, bail, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    Approval, ApprovalMode, ApprovalPolicy, ApprovalResolver, CancellationToken, EventKind,
-    Harness, HarnessConfig, HarnessEvent, JsonSchema, MessageOrigin, Role, Run, RunOptions,
-    Session, Store, Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    ApprovalMode, ApprovalPolicy, ApprovalResolver, CancellationToken, EventKind, Harness,
+    HarnessConfig, HarnessEvent, JsonSchema, MessageOrigin, Role, Run, RunOptions, Session, Store,
+    Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

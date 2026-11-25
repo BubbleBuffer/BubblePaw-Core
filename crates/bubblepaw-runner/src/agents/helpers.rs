@@ -18,40 +18,7 @@ pub(super) fn run_options(
 }
 /// Deny < Ask < Auto < Allow, applied to default Confirm and every named rule.
 pub fn clamp_approval(parent: &ApprovalPolicy, profile: Option<&ApprovalPolicy>) -> ApprovalPolicy {
-    let Some(profile) = profile else {
-        return parent.clone();
-    };
-    let mut policy = ApprovalPolicy {
-        confirm: stricter(parent.confirm, profile.confirm),
-        tools: Default::default(),
-        deny: profile.clone().with_inherited_denies(parent).deny,
-        timeout_secs: parent.timeout_secs,
-        // Children inherit the host's hardline floor; a profile cannot turn it off.
-        hardline: parent.hardline,
-    };
-    for name in parent.tools.keys().chain(profile.tools.keys()) {
-        // A named override may address a confirming capability. Clamp against
-        // that default too, conservatively tightening non-confirming tools.
-        policy.tools.insert(
-            name.clone(),
-            stricter(
-                parent.mode(name, Approval::Confirm),
-                profile.mode(name, Approval::Confirm),
-            ),
-        );
-    }
-    policy
-}
-fn stricter(a: ApprovalMode, b: ApprovalMode) -> ApprovalMode {
-    fn rank(m: ApprovalMode) -> u8 {
-        match m {
-            ApprovalMode::Deny => 0,
-            ApprovalMode::Ask => 1,
-            ApprovalMode::Auto => 2,
-            ApprovalMode::Allow => 3,
-        }
-    }
-    if rank(a) <= rank(b) { a } else { b }
+    profile.map_or_else(|| parent.clone(), |profile| parent.tightened_by(profile))
 }
 impl AgentTools {
     pub(super) fn profile_summaries(&self) -> Vec<(String, String)> {

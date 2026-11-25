@@ -4,7 +4,7 @@ crates/bubblepaw-core/src/approvals_tests.rs 1376
 crates/bubblepaw-core/src/event_log.rs 661
 crates/bubblepaw-core/src/event_log_tests.rs 900
 crates/bubblepaw-core/src/lib.rs 813
-crates/bubblepaw-core/src/runtime.rs 1614
+crates/bubblepaw-core/src/runtime.rs 1595
 crates/bubblepaw-core/src/store_cold.rs 573
 crates/bubblepaw-core/src/tests.rs 2007
 crates/bubblepaw-core/src/transcript.rs 1314
@@ -68,7 +68,7 @@ crates/bubblepaw-runner/tests/host/config_cli.rs 579
 crates/bubblepaw-runner/tests/host/config_runtime.rs 506
 crates/bubblepaw-runner/tests/host/host_attach.rs 779
 crates/bubblepaw-runner/tests/host/host_attach_mcp.rs 600
-crates/bubblepaw-runner/tests/host/live_agent_settings.rs 560
+crates/bubblepaw-runner/tests/host/live_agent_settings.rs 559
 crates/bubblepaw-runner/tests/host/live_config/mod.rs 674
 crates/bubblepaw-runner/tests/host/live_config_routes.rs 689
 crates/bubblepaw-runner/tests/provider_reload.rs 529

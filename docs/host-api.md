@@ -140,6 +140,14 @@ names, so an added entry is visible to callers. Existing stdio method names and
 result shapes are preserved. New methods expose capabilities previously limited
 to HTTP, the CLI or the SDK.
 
+### Run options
+
+`run.start` accepts `options.approval` to tighten approval rules for that run.
+The effective policy retains inherited per-tool denies, confirmation rules, the
+`deny` list, and the hardline setting. Run options can add denies or require
+confirmation. For overlapping rules, the strictest mode applies as described in
+[Tool-call approvals](approvals.md#tool-metadata-and-policy).
+
 ### Settings methods
 
 **Workspace trust.** `workspace_trust.list {}` returns `{workspaces: [{path, trusted_at}], workspace}`
