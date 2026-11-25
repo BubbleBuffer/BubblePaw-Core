@@ -1,4 +1,4 @@
-use super::workspace::{WorkspaceTools, optional_string, string, unsigned, validate_fields};
+use super::workspace::{WorkspaceTools, string, unsigned, validate_fields};
 use crate::command_template::{CommandExecution, prepare};
 use crate::config::ExecConfig;
 use crate::wake::WakeCoordinator;
@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow, bail, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Store, Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry,
-    ToolResult,
+    ToolResult, exec_working_directory,
 };
 use serde_json::{Value, json};
 use std::{
@@ -619,10 +619,10 @@ impl ProcessTools {
         config: &ExecConfig,
     ) -> Result<(String, Arc<ProcessSession>)> {
         ensure!(!context.cancellation.is_cancelled(), "cancelled");
-        let cwd_arg = optional_string(input, "cwd")?;
-        let workdir_arg = optional_string(input, "workdir")?;
-        let cwd = self.workdir(context, cwd_arg.or(workdir_arg).unwrap_or("."))?;
-        if let (Some(_), Some(workdir)) = (cwd_arg, workdir_arg) {
+        let (directory, alias) = exec_working_directory(input);
+        let alias = alias?;
+        let cwd = self.workdir(context, directory)?;
+        if let Some(workdir) = alias {
             ensure!(
                 cwd == self.workdir(context, workdir)?,
                 "cwd and workdir must refer to the same directory"
@@ -1549,12 +1549,12 @@ impl Tool for ProcessTool {
         if starting && running {
             let handle = string(&value, "handle")?.to_owned();
             let session = self.processes.session(&handle, &context.session_id)?;
-            // The background wait ends with its owner: a cancelled session must
-            // not leave a waiter holding the effect boundary open.
+            // Cancellation ends the background wait without leaving an effect boundary open.
             let cancellation = context.cancellation.clone();
             tokio::spawn(async move {
                 if await_session(&session, None, &cancellation).await.is_ok()
-                    && let Err(error) = dispatcher.complete_effect(&context.invocation_id)
+                    && let Err(error) = dispatcher
+                        .complete_effect_for_session(&context.session_id, &context.invocation_id)
                 {
                     tracing::warn!(
                         target: "bubblepaw::effects",

@@ -69,6 +69,20 @@ impl Store {
         self.open_chat_file(root, &format!("chats/{root}.db"), create)
     }
     pub(super) fn open_chat_file(&self, root: &str, file: &str, create: bool) -> Result<Self> {
+        self.open_chat_file_mode(root, file, create, true)?
+            .context("Chat is not active")
+    }
+    /// Callback routing must not restore a chat archived since its placement scan.
+    pub(super) fn open_active_chat_file(&self, root: &str, file: &str) -> Result<Option<Self>> {
+        self.open_chat_file_mode(root, file, false, false)
+    }
+    fn open_chat_file_mode(
+        &self,
+        root: &str,
+        file: &str,
+        create: bool,
+        restore_archived: bool,
+    ) -> Result<Option<Self>> {
         let layout = self.0.layout.as_ref().context("Not a directory store")?;
         anyhow::ensure!(
             !root.is_empty()
@@ -85,20 +99,32 @@ impl Store {
                 .starts_with(&layout.data_dir),
             "Chat path escapes data directory"
         );
+        let mut chats = layout.chats.lock().unwrap();
+        release::ensure_not_deleting(layout, root)?;
         if path.exists() {
             anyhow::ensure!(
                 path.canonicalize()?.starts_with(&layout.data_dir),
                 "Chat path escapes data directory"
             );
         }
-        let mut chats = layout.chats.lock().unwrap();
-        release::ensure_not_deleting(layout, root)?;
         if let Some(store) = chats.get(root) {
             anyhow::ensure!(
                 store.0.path.as_ref() == Some(&path),
                 "Catalog placement changed while chat was open"
             );
-            return Ok(store.clone());
+            return Ok(Some(store.clone()));
+        }
+        // Archive holds this same mutex through its placement and file changes.
+        // Recheck after acquiring it rather than trusting an earlier root scan.
+        if !restore_archived {
+            let active: bool = layout.catalog.lock().unwrap().query_row(
+                "SELECT EXISTS(SELECT 1 FROM sessions WHERE id=?1 AND root_id=?1 AND storage_state='active')",
+                [root],
+                |row| row.get(0),
+            )?;
+            if !active || !path.is_file() {
+                return Ok(None);
+            }
         }
         if !path.is_file() && cold::archive_path(&path).is_file() {
             anyhow::ensure!(
@@ -180,7 +206,7 @@ impl Store {
         chats.insert(root.into(), store.clone());
         drop(chats);
         store.finish_chat_open_recovery(split)?;
-        Ok(store)
+        Ok(Some(store))
     }
 
     pub fn chat_path(&self, session: &str) -> Result<Option<PathBuf>> {

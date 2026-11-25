@@ -69,6 +69,7 @@ reviews:
         ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN out of the child
         environment unless the instance sets them. Keep built-in tools and
         auto-compaction off.
+
 knowledge_base:
   code_guidelines:
     enabled: true

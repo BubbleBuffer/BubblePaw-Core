@@ -241,6 +241,18 @@ impl Store {
             Ok(())
         })
     }
+    pub(crate) fn effect_completed_for_session(
+        &self,
+        session: &str,
+        invocation: &str,
+    ) -> Result<()> {
+        self.active_effect_store(session)?
+            .effect_completed(invocation)
+    }
+    pub(crate) fn effect_unknown_for_session(&self, session: &str, invocation: &str) -> Result<()> {
+        self.active_effect_store(session)?
+            .effect_unknown(invocation)
+    }
     pub(crate) fn effect_unknown(&self, invocation: &str) -> Result<()> {
         if self.0.layout.is_some() {
             return self
@@ -322,3 +334,7 @@ impl Store {
         self.write(|tx|{for call in pending {let dispatched:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM effects WHERE run_id=?1 AND call_id=?2)",params![run_id,call.id],|r|r.get(0))?;let result=ToolResult::error(if dispatched {"Tool outcome unknown after interruption; effect may have occurred. Do not replay automatically."} else {"Tool was not dispatched because the run was interrupted."});let mut msg=Self::message(session_id,Role::Tool,result.content);msg.tool_call_id=Some(call.id);msg.is_error=true;Self::insert_message(tx,&msg)?;}tx.execute("UPDATE effects SET state='unknown' WHERE run_id=?1 AND state='dispatched'",[run_id])?;Ok(())})
     }
 }
+
+#[cfg(test)]
+#[path = "store_effect_tests.rs"]
+mod tests;

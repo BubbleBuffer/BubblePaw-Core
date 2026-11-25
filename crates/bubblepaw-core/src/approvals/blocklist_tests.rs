@@ -7,6 +7,35 @@ fn matched(tool: &str, command: &str) -> Option<String> {
     ApprovalPolicy::default().hardline_match(tool, &json!({ "command": command }), &[])
 }
 
+#[test]
+fn path_qualified_shell_wrapper_keeps_the_hardline_floor() {
+    for command in [
+        r#"/bin/sh -c "mkfs.bubblepaw-fixture /fictional/device""#,
+        r#"C:\fictional\bubblepaw\bin\bash.exe -c "mkfs.bubblepaw-fixture /fictional/device""#,
+    ] {
+        assert_eq!(
+            matched("exec", command).as_deref(),
+            Some("mkfs"),
+            "{command}"
+        );
+    }
+}
+
+#[test]
+fn workdir_alias_protects_the_same_synthetic_root_as_cwd() {
+    let policy = ApprovalPolicy::default();
+    let roots = [PathBuf::from("/fictional/bubblepaw/workspace")];
+    for key in ["cwd", "workdir"] {
+        let mut arguments = json!({"command": "rm -rf .."});
+        arguments[key] = json!("child");
+        assert_eq!(
+            policy.hardline_match("exec", &arguments, &roots).as_deref(),
+            Some("rm -rf of the workspace root"),
+            "{key}"
+        );
+    }
+}
+
 /// Matches `command` run with `cwd` inside a session bound to `roots`.
 fn in_dir(command: &str, cwd: &str, roots: &[&str]) -> Option<String> {
     let roots: Vec<PathBuf> = roots.iter().map(|root| PathBuf::from(*root)).collect();

@@ -642,6 +642,7 @@ Built 2026-10-19; live qualification pending (the limit error itself was seen li
 - **Native quota (2026-10-20).** The extension forwards both successful and rejected SDK rate-limit events, preserving utilization, status, type, reset and unified/overage fields. Provider and extension entries accept an `account` identity, defaulting to their entry name. The host also reads the subscription usage endpoint on demand using the existing credentials file; it never refreshes or writes that token. Exhausted windows wait in place within `[quota] max_wait_seconds`; a small durable marker lets a restarted host schedule the existing new-run resume path. Spend/billing failures and waits beyond the maximum fail immediately. See [quota](quota.md) for source evidence, timing, storage and restart semantics.
 - **Configured failover.** Explicit `model.fallbacks` remain available for eligible failures after quota policy. Quota does not rotate or select accounts. Existing fallback provenance and sticky-route behavior remain; switching to another extension resets its cursor and rebuilds its Claude Code session from history.
 
+
 ## Open
 
 - Steering mid-generation (outside a parked tool call) is not done; steering reaches Claude Code at the harness's tool-round boundary, through the prompt stream (above).

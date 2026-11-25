@@ -312,6 +312,10 @@ impl ToolDispatcher {
     pub fn complete_effect(&self, invocation: &str) -> Result<()> {
         self.store.effect_completed(invocation)
     }
+    /// Complete a background effect using its known session without restoring archives.
+    pub fn complete_effect_for_session(&self, session: &str, invocation: &str) -> Result<()> {
+        self.store.effect_completed_for_session(session, invocation)
+    }
     fn limit_model_result(&self, context: &ToolContext, result: ToolResult) -> Result<ToolResult> {
         let result = if let Some(limit) = &self.tools.result_limiter {
             limit(&self.store, context, result, self.max_result_bytes)?

@@ -2,6 +2,9 @@
 
 **Status:** built through 2026-10-15. Code: `crates/bubblepaw-core/src/approvals/{mod,modes,rules,blocklist}.rs`. Configured deny rules and the hardline exec floor use scripted acceptance; Auto is retained without new work or live acceptance.
 
+Updated 2026-11-23: the hardline matcher normalizes executable paths before
+recognizing shell wrappers, and shares exec's `cwd`/`workdir` argument selection.
+
 Approval modes apply live from config at the next turn, or immediately through
 [reload](live-config.md). Every nested call resolves the current host policy;
 explicit run overrides and child profile restrictions retain their scope. An
@@ -117,11 +120,15 @@ Protected places for the two delete patterns:
   host's bound workspace is protected too. It is the directory itself, not its
   contents.
 
-The workspace checks resolve each target against the exec directory: the `cwd`
-argument (default: the root), moved by any `cd`, `chdir`, `pushd` or `Set-Location`
-earlier in the same command. A `cd` to a home path, a variable or `-` makes the
-directory unknown; then `.` is still taken as the root, so the check fails closed.
-Without a bound workspace, only the literal `.`, `./` and `.\` forms match.
+The workspace checks resolve each target against the exec directory. The `cwd`
+argument takes precedence over its `workdir` alias, and the default is the
+workspace root. Both arguments accept strings. When both are supplied, exec
+resolves both and requires them to name the same directory.
+
+A preceding `cd`, `chdir`, `pushd` or `Set-Location` moves the directory within
+the command. A `cd` to a home path, a variable or `-` makes it unknown, so the
+check treats `.` as the root. Without a bound workspace, only the literal `.`,
+`./` and `.\` forms match.
 
 `git push --force-with-lease` and `--force-if-includes` are allowed. Words inside
 other commands' arguments do not match, so `echo "rm -rf /"` and
@@ -134,7 +141,8 @@ one word, and one where quotes only vanish.
 Before each command word it skips wrappers (`sudo`, `doas`, `env`, `nohup`,
 `time`, `timeout 5`, `xargs`, `cmd /c`, `sh -c`, `powershell -Command`, and
 similar) and `NAME=value` assignments. It ignores the directory part and a
-`.exe` suffix.
+`.exe` suffix before recognizing wrappers too, including `/bin/sh` and a
+Windows path to `bash.exe`.
 
 This is insurance, not a sandbox. It reads command text only, so it does not
 catch:
