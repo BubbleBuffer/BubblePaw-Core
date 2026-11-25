@@ -15,7 +15,15 @@ or read hash is required. In JS mode, call them as `tools.NAME(...)`.
 to `.`, and the limit defaults to 200, with a maximum of 1000. Entries identify
 files, directories and symlinks; truncation is explicit.
 
-`tools.read({path, startLine?, lineCount?})` returns bounded UTF-8 text with
+When the model calls `read` directly, the result is the file text for the range,
+exactly as in the file. If it does not cover the whole file, a final line such as
+`[lines 1-1000 of 2200; continue with startLine=1001]` says what was returned. An
+empty file returns `[empty file]`; a `startLine` past the end returns
+`[no lines: file has N lines]`. Text over the result limit is cut at a line
+boundary and the note names the last line returned; a single over-long line is cut
+at a character boundary (`[line N cut at B bytes; ...]`).
+
+`tools.read({path, startLine?, lineCount?})` in JS keeps returning an object with
 `content`, `startLine`, `totalLines`, `returnedLines`, and `truncated`. Line
 numbers start at 1. The default is 1000 lines, with a maximum of 2000; the text
 preview is limited to 64 KiB, and the serialized result has a separate 60 KiB

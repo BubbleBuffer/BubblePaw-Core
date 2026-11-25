@@ -63,6 +63,11 @@ impl ToolDispatcher {
             submitted_result: Arc::default(),
         }
     }
+    /// Who is calling: `model` for a model tool call, `js` or `call_tool` for
+    /// nested calls. Tools may pick a result shape for their caller.
+    pub fn origin(&self) -> &'static str {
+        self.origin
+    }
     pub(crate) fn with_tool_budget(mut self, limit: Option<usize>) -> Self {
         self.remaining_calls = limit.map(|limit| Arc::new(AtomicUsize::new(limit)));
         self

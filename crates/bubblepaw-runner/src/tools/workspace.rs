@@ -17,6 +17,8 @@ mod edit;
 mod files;
 #[path = "workspace_paths.rs"]
 mod paths;
+#[path = "read_text.rs"]
+mod read_text;
 #[path = "scratch_access.rs"]
 mod scratch_access;
 #[path = "workspace_tool.rs"]
