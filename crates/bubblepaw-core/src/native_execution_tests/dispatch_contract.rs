@@ -245,11 +245,15 @@ async fn model_and_embedder_routes_share_the_same_rejection_contract() -> Result
                 )
                 .await?;
             assert!(embedder.is_error);
-            assert_eq!(model_error.content, embedder.content, "{case}/{route}");
+            // The model route may append a correction hint to the shared text.
+            assert!(
+                model_error.content.starts_with(&embedder.content),
+                "{case}/{route}"
+            );
             if let Some(expected) = &expected {
-                assert_eq!(expected, &model_error.content, "{case}/{route}");
+                assert_eq!(expected, &embedder.content, "{case}/{route}");
             } else {
-                expected = Some(model_error.content);
+                expected = Some(embedder.content);
             }
             assert_eq!(capability.calls.load(Ordering::SeqCst), 0);
         }

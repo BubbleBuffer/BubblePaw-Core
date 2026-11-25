@@ -122,7 +122,7 @@ impl MessagesProvider {
                         "Messages current thinking tool loop needs compatible replay state for assistant message {}: {cause}",
                         message.id,
                     );
-                    let stored = if let Some(state) = &message.provider_state
+                    let mut stored = if let Some(state) = &message.provider_state
                         && compatible
                     {
                         super::replay_state::hydrate(state, &message.content, &message.tool_calls)?
@@ -136,6 +136,7 @@ impl MessagesProvider {
                         }
                         blocks
                     };
+                    super::tool_wire::project_messages_inputs(&mut stored);
                     // Withheld blocks stay in storage only; they are never sent.
                     let stored_count = stored.len();
                     let content: Vec<Value> = stored
@@ -292,15 +293,15 @@ impl MessagesProvider {
                         let index = event["index"].as_u64().unwrap_or(0);
                         if let Some(block) = blocks.get_mut(&index) {
                             if block["type"] == "tool_use" {
-                                // Invalid input is marked, not failed here: a length stop
-                                // cuts tool input, and parse decides once the stop is known.
+                                // Preserve the start block when there are no argument deltas.
+                                // Parsing handles invalid text after the stop reason is known.
                                 let raw = partial_input.remove(&index).unwrap_or_default();
                                 let input = if raw.is_empty() {
-                                    Some(json!({}))
+                                    Some(block.get("input").cloned().unwrap_or_else(|| json!({})))
                                 } else {
                                     serde_json::from_str(&raw).ok()
                                 };
-                                mark_input(block, input);
+                                mark_input(block, input, &raw);
                             }
                             if block["type"] == "text" {
                                 batch.flush();
@@ -353,9 +354,10 @@ impl MessagesProvider {
             return Err(with_usage(stream::stopped(error, published), reported));
         }
         // A tool input still open at message_stop was cut mid-stream.
-        for (index, _) in partial_input {
+        for (index, raw) in partial_input {
             if let Some(block) = blocks.get_mut(&index) {
-                mark_input(block, None);
+                mark_input(block, None, &raw);
+                block["unfinished_input"] = json!(true);
             }
         }
         Ok(json!({
@@ -393,21 +395,26 @@ impl MessagesProvider {
             let mut ids = HashSet::new();
             let mut kept = Vec::new();
             for block in blocks {
-                if block["type"] == "tool_use"
-                    && (block["invalid_input"] == true || !block["input"].is_object())
-                {
-                    // A cut tool call is dropped; a complete one with bad input is an error.
-                    if !cut {
-                        return Err(classify(
-                            ProviderErrorKind::Fatal,
-                            anyhow!("Messages tool input is not JSON"),
-                        ));
+                if block["type"] == "tool_use" {
+                    ensure!(
+                        cut || block["unfinished_input"] != true,
+                        "Messages tool input was not closed"
+                    );
+                    ensure!(
+                        block.get("input").is_some(),
+                        "Messages tool_use lacks input"
+                    );
+                    if cut && (block["invalid_input"] == true || !block["input"].is_object()) {
+                        continue;
                     }
-                    continue;
                 }
-                // A thinking block cut before its signature is incomplete reasoning.
-                // It is stored with the reply, marked so no request sends it back.
+                // Keep assembly markers off the replay wire.
                 let mut stored = block.clone();
+                if let Some(object) = stored.as_object_mut() {
+                    object.remove("invalid_input");
+                    object.remove("unfinished_input");
+                }
+                // Unsigned reasoning at the output limit stays in storage only.
                 if cut
                     && block["type"] == "thinking"
                     && block["signature"].as_str().is_none_or(str::is_empty)
@@ -432,12 +439,8 @@ impl MessagesProvider {
                             .ok_or_else(|| anyhow!("Messages tool_use lacks name"))?;
                         ensure!(ids.insert(id.to_owned()), "Messages duplicate tool_use id");
                         ensure!(
-                            super::tool_wire::accepts_request_call(request, name),
-                            "Messages model returned an unavailable tool"
-                        );
-                        ensure!(
-                            block["input"].is_object(),
-                            "Messages tool_use input must be an object"
+                            super::tool_wire::accepts_call(name, !request.tools.is_empty()),
+                            "Messages model returned a tool with tools disabled"
                         );
                         calls.push(ToolCall {
                             id: id.into(),
@@ -589,14 +592,9 @@ impl JoinedRounds {
 }
 
 /// Stores a tool block's parsed input, or marks the block when the input is not JSON.
-fn mark_input(block: &mut Value, input: Option<Value>) {
-    match input {
-        Some(input) => block["input"] = input,
-        None => {
-            block["input"] = Value::Null;
-            block["invalid_input"] = json!(true);
-        }
-    }
+fn mark_input(block: &mut Value, input: Option<Value>, raw: &str) {
+    block["invalid_input"] = json!(input.is_none());
+    block["input"] = input.unwrap_or_else(|| super::tool_wire::raw_arguments(raw));
 }
 
 /// Appends a streamed fragment to a string field, creating the field when absent.
@@ -629,8 +627,7 @@ impl Provider for MessagesProvider {
         request: ModelRequest,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
-        self.generate(request, std::sync::Arc::new(|_| {}), cancellation)
-            .await
+        super::tool_wire::generate_summary_fork(self, request, cancellation).await
     }
     fn estimate_input_tokens(
         &self,

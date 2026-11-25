@@ -737,10 +737,9 @@ impl ChatCompletionsProvider {
                         let name = call["function"]["name"]
                             .as_str()
                             .filter(|value| !value.is_empty());
-                        let arguments = call["function"]["arguments"]
-                            .as_str()
-                            .and_then(|value| serde_json::from_str::<Value>(value).ok())
-                            .filter(Value::is_object);
+                        let raw = call["function"]["arguments"].as_str();
+                        let arguments =
+                            raw.and_then(|value| serde_json::from_str::<Value>(value).ok());
                         // A length stop may split identifiers or JSON. It carries
                         // no executable call; continue the surviving text instead.
                         if length && (id.is_none() || name.is_none() || arguments.is_none()) {
@@ -762,16 +761,15 @@ impl ChatCompletionsProvider {
                             ids.insert(id.to_owned()),
                             "Chat completions duplicate tool call id"
                         );
-                        ensure!(
-                            tool_wire::accepts_request_call(request, name),
-                            "Chat completions returned an unavailable tool"
-                        );
+                        // A missing wire field breaks the call envelope. Malformed
+                        // text still reaches core with its call ID.
+                        let raw = raw.ok_or_else(|| {
+                            anyhow!("Chat completions tool arguments must be a string")
+                        })?;
                         calls.push(ToolCall {
                             id: id.into(),
                             name: name.into(),
-                            arguments: arguments.ok_or_else(|| {
-                                anyhow!("Chat completions tool arguments must be a JSON object")
-                            })?,
+                            arguments: arguments.unwrap_or_else(|| tool_wire::raw_arguments(raw)),
                         });
                     }
                 }
@@ -848,8 +846,7 @@ impl Provider for ChatCompletionsProvider {
         request: ModelRequest,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
-        self.generate(request, std::sync::Arc::new(|_| {}), cancellation)
-            .await
+        tool_wire::generate_summary_fork(self, request, cancellation).await
     }
     fn estimate_input_tokens(
         &self,

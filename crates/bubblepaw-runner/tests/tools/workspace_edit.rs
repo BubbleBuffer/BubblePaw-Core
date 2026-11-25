@@ -39,15 +39,10 @@ impl Fixture {
     }
 
     pub(super) async fn call(&self, name: &str, input: Value) -> Result<Value> {
-        // Production keeps file tools host-only under js. This fixture exposes
-        // one existing capability so the real dispatcher supplies its Store
-        // and durable effect identity, just as it does for nested js calls.
-        let mut tools = ToolRegistry::new();
-        tools.register(
-            self.registry(false)
-                .get(name)
-                .context("missing file tool")?,
-        )?;
+        // The file tools are host capabilities. The model declares all of them
+        // in the session's first request, so every call here sees the same set.
+        let tools = self.registry(false);
+        ensure!(tools.get(name).is_some(), "missing file tool");
         let call_id = uuid::Uuid::new_v4().to_string();
         let provider = ScriptedProvider::with_steps(
             vec![ScriptedStep::Calls {

@@ -176,18 +176,124 @@ impl ToolRegistry {
         if self.get(&call.name).is_none() {
             return Err(self.unavailable_error(&call.name, "Unknown tool"));
         }
+        self.check_model_allowlist(&call.name)?;
+        self.validate(&call.name, &call.arguments)
+    }
+    fn check_model_allowlist(&self, name: &str) -> anyhow::Result<()> {
         if let Some(allowed) = &self.model_allowlist
-            && !is_access_wrapper(&call.name)
-            && !allowed.contains(&call.name)
+            && !is_access_wrapper(name)
+            && !allowed.iter().any(|allowed| allowed == name)
         {
             anyhow::bail!(
-                "Tool `{}` is not available in this run. Allowed tools: {}.",
-                call.name,
+                "Tool `{name}` is not available in this run. Allowed tools: {}.",
                 allowed_tools_phrase(allowed)
             );
         }
-        self.validate(&call.name, &call.arguments)
+        Ok(())
     }
+    pub(crate) fn validate_direct_model_call(
+        &self,
+        call: &ToolCall,
+        declarations: &[String],
+    ) -> Result<(), (anyhow::Error, bool)> {
+        let Some(tool) = self.get(&call.name) else {
+            let error = self.unavailable_error(&call.name, "Unknown tool");
+            return Err((
+                self.with_tool_suggestions(error, &call.name, declarations),
+                true,
+            ));
+        };
+        self.check_model_allowlist(&call.name)
+            .map_err(|error| (error, false))?;
+        if call.name != crate::submit_result::NAME && !declarations.contains(&call.name) {
+            let error = anyhow::anyhow!("Tool `{}` was not declared for this request.", call.name);
+            return Err((
+                self.with_tool_suggestions(error, &call.name, declarations),
+                true,
+            ));
+        }
+        let result = if call.arguments.is_object() {
+            self.validate(&call.name, &call.arguments)
+        } else if let Some(raw) = call.arguments.as_str()
+            && let Err(error) = serde_json::from_str::<serde_json::Value>(raw)
+        {
+            Err(anyhow::anyhow!(
+                "Invalid arguments for {}: arguments were not valid JSON ({error}).",
+                call.name
+            ))
+        } else {
+            Err(anyhow::anyhow!(
+                "Invalid arguments for {}: expected a JSON object.",
+                call.name
+            ))
+        };
+        result.map_err(|error| {
+            let schema = tool.definition().input_schema;
+            let parameters = schema["properties"]
+                .as_object()
+                .map(|properties| properties.keys().cloned().collect::<Vec<_>>())
+                .unwrap_or_default();
+            let required = schema["required"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(serde_json::Value::as_str)
+                .collect::<Vec<_>>();
+            let error = if parameters.is_empty() {
+                error
+            } else {
+                anyhow::anyhow!(
+                    "{error} Expected parameters: {}. Required: {}.",
+                    parameters.join(", "),
+                    if required.is_empty() {
+                        "none".into()
+                    } else {
+                        required.join(", ")
+                    }
+                )
+            };
+            (error, true)
+        })
+    }
+    fn with_tool_suggestions(
+        &self,
+        error: anyhow::Error,
+        name: &str,
+        declarations: &[String],
+    ) -> anyhow::Error {
+        let name: Vec<_> = name.chars().take(128).collect();
+        let mut candidates: Vec<_> = declarations
+            .iter()
+            .filter(|name| self.get(name).is_some() && self.check_model_allowlist(name).is_ok())
+            .map(|candidate| (tool_name_distance(&name, candidate), candidate.as_str()))
+            .collect();
+        candidates.sort_unstable();
+        let closest: Vec<_> = candidates
+            .into_iter()
+            .take(3)
+            .map(|(_, name)| name)
+            .collect();
+        if closest.is_empty() {
+            error
+        } else {
+            anyhow::anyhow!("{error} Closest available tools: {}.", closest.join(", "))
+        }
+    }
+}
+
+fn tool_name_distance(name: &[char], candidate: &str) -> usize {
+    let mut costs: Vec<_> = (0..=name.len()).collect();
+    for (row, candidate_char) in candidate.chars().take(128).enumerate() {
+        let mut diagonal = costs[0];
+        costs[0] = row + 1;
+        for (column, &name_char) in name.iter().enumerate() {
+            let above = costs[column + 1];
+            costs[column + 1] = (diagonal + usize::from(name_char != candidate_char))
+                .min(1 + above.min(costs[column]));
+            diagonal = above;
+        }
+    }
+    costs[name.len()]
 }
 /// Access wrappers compose or discover targets; each target retains the run gate.
 pub(crate) fn is_access_wrapper(name: &str) -> bool {

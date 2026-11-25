@@ -46,11 +46,13 @@ fn sse() -> String {
     [json!({"type":"response.output_text.delta","delta":"Reading."}),json!({"type":"response.output_item.done","output_index":0,"item":call}),json!({"type":"response.completed","response":{"output":[{"type":"reasoning","encrypted_content":"synthetic-encrypted"},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Reading."}]},call],"usage":{"input_tokens":12,"output_tokens":4}}})].iter().map(|event|format!("data: {event}\r\n\r\n")).collect()
 }
 
+#[path = "provider_responses/malformed.rs"]
+mod malformed;
+
 #[tokio::test]
 async fn malformed_tool_calls_are_metered_and_do_not_publish_text() {
     let valid = json!({"type":"function_call","call_id":"call-1","name":"workspace_read","arguments":"{\"path\":\"README.md\"}"});
     for malformed in [
-        json!({"type":"function_call","call_id":"call-2","name":"workspace_read","arguments":"{bad-json"}),
         json!({"type":"function_call","call_id":"call-2","name":"workspace_read"}),
         json!({"type":"function_call","call_id":"call-2","name":"workspace_read","arguments":42}),
         json!({"type":"function_call","call_id":"call-2","name":"workspace_read","arguments":null}),
@@ -59,12 +61,9 @@ async fn malformed_tool_calls_are_metered_and_do_not_publish_text() {
         json!({"type":"function_call","call_id":"call-2","arguments":"{}"}),
         json!({"type":"function_call","call_id":"","name":"workspace_read","arguments":"{}"}),
         json!({"type":"function_call","call_id":"call-2","name":"","arguments":"{}"}),
-        json!({"type":"function_call","call_id":"call-2","name":"not-offered","arguments":"{}"}),
-        json!({"type":"function_call","call_id":"call-2","name":"workspace_read","arguments":"true"}),
-        json!({"type":"function_call","call_id":"call-2","name":"workspace_read","arguments":"[]"}),
-        json!({"type":"function_call","call_id":"call-2","name":"workspace_read","arguments":"null"}),
     ] {
         for reported in [false, true] {
+            // Structural damage invalidates the reply even alongside a valid call.
             let output = json!([
                 {"type":"message","role":"assistant","content":[{"type":"output_text","text":"Must not publish."}]},
                 valid.clone(),
@@ -121,6 +120,7 @@ async fn malformed_tool_calls_are_metered_and_do_not_publish_text() {
             server.abort();
         }
     }
+    malformed::assert_call_recovery().await;
 }
 
 #[tokio::test]
@@ -1050,7 +1050,7 @@ async fn continuation_failure_after_delivery_is_marked_and_never_retried() {
                 if counter.fetch_add(1, Ordering::SeqCst) == 0 {
                     ([("content-type", "text/event-stream")], format!("data: {}\n\n", json!({"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[{"type":"message","content":[{"type":"output_text","text":"Part "}]}]}}))).into_response()
                 } else if status == StatusCode::OK {
-                    ([("content-type", "text/event-stream")], format!("data: {}\n\n", json!({"type":"response.completed","response":{"output":[{"type":"function_call","call_id":"bad","name":"workspace_read","arguments":"bad JSON"}],"usage":{"input_tokens":12,"output_tokens":4}}}))).into_response()
+                    ([("content-type", "text/event-stream")], format!("data: {}\n\n", json!({"type":"response.completed","response":{"output":[{"type":"function_call","call_id":"","name":"workspace_read","arguments":"{}"}],"usage":{"input_tokens":12,"output_tokens":4}}}))).into_response()
                 } else {
                     (status, [("retry-after", "3")], Json(json!({"error":{
                         "message":"continuation temporarily unavailable",
