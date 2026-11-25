@@ -1,0 +1,10 @@
+# Existing dependency violations and forbidden-word ceilings for the layering guard.
+# Numbers only go down.
+# See docs/layering.md.
+dep bubblepaw-client-check bubblepaw-sdk
+word bubblepaw-core episode 221
+word bubblepaw-core chapter 275
+word bubblepaw-core child 198
+word bubblepaw-core opencode 3
+word bubblepaw-core quota 194
+word bubblepaw-core "js" 33
