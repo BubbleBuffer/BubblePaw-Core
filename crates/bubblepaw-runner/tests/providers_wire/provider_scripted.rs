@@ -7,7 +7,7 @@ fn tool_message(call_id: &str, content: &str, is_error: bool) -> Message {
         id: format!("result-{call_id}"),
         session_id: "resumed-session".into(),
         role: Role::Tool,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: Some(call_id.into()),
         origin: None,

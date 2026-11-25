@@ -80,7 +80,7 @@ impl Fixture {
             } else {
                 MessageOrigin::Generated
             }),
-            content: content.into(),
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,
@@ -180,10 +180,10 @@ fn old_capture_appends_exact_suffix_with_full_middle_tool_evidence() -> Result<(
         .episode_fork(&f.session, &source[1].id, &source[3].id)?
         .unwrap();
     assert_eq!(fork.request.messages, source[..4]);
-    assert!(fork.request.messages[2].content.len() > 4000);
+    assert!(fork.request.messages[2].text().len() > 4000);
     assert!(
         fork.request.messages[2]
-            .content
+            .text()
             .contains("UNIQUE MIDDLE EVIDENCE")
     );
     assert_eq!(f.store.messages(&f.session)?, source);
@@ -214,7 +214,7 @@ fn projected_or_missing_raw_and_incomplete_tool_groups_fall_back() -> Result<()>
             .is_none()
     );
     let mut projected = output.clone();
-    projected.content = "[Tool output masked]".into();
+    projected.content = bubblepaw_core::text_blocks("[Tool output masked]");
     f.capture(&f.request(vec![call.clone(), projected]));
     assert!(
         f.context

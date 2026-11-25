@@ -443,7 +443,7 @@ fn wire(message: &Message) -> Value {
         Role::Assistant => "assistant",
         Role::Tool => "tool",
     };
-    let mut item = json!({"role":role,"content":message.content,"id":message.id,"session_id":message.session_id,"origin":message.origin,"is_error":message.is_error});
+    let mut item = json!({"role":role,"content":message.text(),"id":message.id,"session_id":message.session_id,"origin":message.origin,"is_error":message.is_error});
     if !message.tool_calls.is_empty() {
         item["tool_calls"] = json!(message.tool_calls.iter().map(|call| json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":call.arguments.to_string()}})).collect::<Vec<_>>());
     }
@@ -516,7 +516,7 @@ pub(crate) fn provider_request(
                 .filter(|v| !v.is_null())
                 .map(serde_json::from_value)
                 .transpose()?,
-            content: item["content"].as_str().unwrap_or_default().into(),
+            content: bubblepaw_core::text_blocks(item["content"].as_str().unwrap_or_default()),
             tool_calls: calls,
             tool_call_id: item["tool_call_id"].as_str().map(str::to_owned),
             provider_state: item
@@ -837,14 +837,14 @@ pub async fn answer_with_policy(
                 round += 1;
                 for call in &message.tool_calls {
                     if let Some(result) = history[index + 1..].iter().find(|m| m.tool_call_id.as_ref() == Some(&call.id)) {
-                        tool_calls.push(json!({"round":round,"id":call.id,"name":call.name,"arguments":call.arguments,"is_error":result.is_error,"result":result.content}));
+                        tool_calls.push(json!({"round":round,"id":call.id,"name":call.name,"arguments":call.arguments,"is_error":result.is_error,"result":result.text()}));
                     }
                 }
             }
         }
         ensure!(completed["status"] == "completed", "Probe worker did not complete");
         history.into_iter().rev().find(|m| m.role == Role::Assistant && m.tool_calls.is_empty())
-            .map(|m| m.content).filter(|text| !text.is_empty()).context("Probe worker answer has no text")
+            .map(|m| m.text().into_owned()).filter(|text| !text.is_empty()).context("Probe worker answer has no text")
     }.await;
     let calls = calls.lock().unwrap().clone();
     let worker_session_id = worker.as_ref().map(|(_, _, session, _)| session.clone());
@@ -985,7 +985,7 @@ mod tests {
             session_id: session.into(),
             role: Role::User,
             origin: None,
-            content: "Garden colour was blue".into(),
+            content: bubblepaw_core::text_blocks("Garden colour was blue"),
             tool_calls: vec![],
             created_at: "2026-10-09T00:00:00Z".into(),
             ..Default::default()
@@ -1072,7 +1072,7 @@ mod tests {
         let _server = StopServer(server);
         let mut assistant = message("assistant", "child");
         assistant.role = Role::Assistant;
-        assistant.content.clear();
+        assistant.set_text("");
         assistant.tool_calls.push(ToolCall {
             id: "lookup".into(),
             name: "history_read".into(),
@@ -1086,7 +1086,7 @@ mod tests {
         result.is_error = true;
         let mut notice = message("notice", "child");
         notice.origin = Some(MessageOrigin::Generated);
-        notice.content = "[host notice]\nSynthetic observation.".into();
+        notice.set_text("[host notice]\nSynthetic observation.");
         let messages = [message("user", "child"), assistant, result, notice];
         let cursor = HistoryCursor {
             epoch: "worker-epoch".into(),
@@ -1291,7 +1291,7 @@ mod tests {
         let worker_id = answer.worker_session_id().unwrap().to_owned();
         answer.acknowledge().await?;
         assert!(store.session(&worker_id)?.hidden);
-        assert_eq!(store.messages(&worker_id)?.last().unwrap().content, "Blue.");
+        assert_eq!(store.messages(&worker_id)?.last().unwrap().text(), "Blue.");
         assert_eq!(store.runs(&worker_id)?.last().unwrap().status, "completed");
         Ok(())
     }

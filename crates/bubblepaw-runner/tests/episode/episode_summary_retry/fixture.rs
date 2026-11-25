@@ -29,11 +29,7 @@ impl Provider for Script {
         // A deterministic synthetic physical size makes the retry's admission
         // observable without depending on a tokenizer implementation.
         Ok(Some(
-            if request
-                .messages
-                .iter()
-                .any(|m| m.content.starts_with(RETRY))
-            {
+            if request.messages.iter().any(|m| m.text().starts_with(RETRY)) {
                 101
             } else {
                 100
@@ -118,7 +114,7 @@ pub(super) fn fork(provider: Arc<Script>, native: bool) -> EpisodeFork {
         session_id: "session".into(),
         role,
         origin: None,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,
@@ -175,12 +171,8 @@ pub(super) fn assert_nudge(first: &ModelRequest, retry: &ModelRequest) {
     let nudge = retry.messages.last().unwrap();
     assert_eq!(nudge.role, Role::User);
     assert_eq!(nudge.origin, Some(MessageOrigin::Generated));
-    assert!(nudge.content.starts_with(RETRY));
-    assert!(nudge.content.contains("Write the requested summary now"));
-    assert!(
-        nudge
-            .content
-            .contains("not a source event or human request")
-    );
-    assert!(nudge.content.len() < 200);
+    assert!(nudge.text().starts_with(RETRY));
+    assert!(nudge.text().contains("Write the requested summary now"));
+    assert!(nudge.text().contains("not a source event or human request"));
+    assert!(nudge.text().len() < 200);
 }

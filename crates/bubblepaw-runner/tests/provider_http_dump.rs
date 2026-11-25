@@ -227,7 +227,7 @@ fn request(model: &str) -> ModelRequest {
             session_id: "synthetic-session-header".into(),
             role: Role::User,
             origin: None,
-            content: "Return the synthetic fixture response.".into(),
+            content: bubblepaw_core::text_blocks("Return the synthetic fixture response."),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,

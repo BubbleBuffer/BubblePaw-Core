@@ -20,8 +20,8 @@ impl SummarizingContext {
             .then(|| bubblepaw_core::ContextState::harness_user_message(message));
         let wrapper_bytes = sent.as_ref().map_or(0, |sent| {
             json!(
-                &sent.content[..sent.content.len()
-                    - message.content.len()
+                &sent.text()[..sent.text().len()
+                    - message.text().len()
                     - "
 </harness>"
                         .len()]
@@ -31,7 +31,8 @@ impl SummarizingContext {
                 - 2
         });
         let wire = sent.as_ref().unwrap_or(message);
-        let body = json!({"role":wire.role,"content":wire.content,
+        let text = message.text();
+        let body = json!({"role":wire.role,"content":wire.text(),
             "tool_calls":wire.tool_calls,"tool_call_id":wire.tool_call_id})
         .to_string();
         let content_start =
@@ -57,7 +58,7 @@ impl SummarizingContext {
             .enumerate()
             .map(|(index, (end, mut block))| {
                 let end = heading_bytes + end;
-                let escaped = json!(&message.content[previous_content..end]).to_string();
+                let escaped = json!(&text[previous_content..end]).to_string();
                 escaped_bytes += escaped.len() - 2;
                 previous_content = end;
                 let through = if index + 1 == span_count {
@@ -142,7 +143,7 @@ impl SummarizingContext {
             if view
                 .prefix
                 .iter()
-                .any(|message| message.content.contains(&heading))
+                .any(|message| message.text().contains(&heading))
             {
                 // A chapter may close after publication. Its frozen open
                 // representation remains the oracle's source of truth.
@@ -240,7 +241,7 @@ impl SummarizingContext {
         }
         let mut tokens_after = legacy
             .iter()
-            .map(|message| self.tokens(&message.content) as u64)
+            .map(|message| self.tokens(&message.text()) as u64)
             .sum::<u64>();
         let mut summaries = Vec::new();
         for chapter in self.store.context_subject_chapters(session)? {

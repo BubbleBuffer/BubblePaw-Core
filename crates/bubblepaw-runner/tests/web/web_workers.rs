@@ -181,7 +181,7 @@ async fn hidden_workers_are_omitted_from_sidebar_and_live_and_replayed_sse() -> 
             store
                 .messages(id)?
                 .iter()
-                .any(|message| message.content.contains("synthetic hidden-worker marker"))
+                .any(|message| message.text().contains("synthetic hidden-worker marker"))
         );
         manager.acknowledge_worker(&owner.session_id, id).await?;
     }

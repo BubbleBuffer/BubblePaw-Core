@@ -41,7 +41,7 @@ fn request() -> ModelRequest {
             session_id: "quota-session".into(),
             role: Role::User,
             origin: None,
-            content: "hello".into(),
+            content: bubblepaw_core::text_blocks("hello"),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,

@@ -92,7 +92,7 @@ async fn imported_and_native_apply_keeps_full_range_and_unknown_source_count() -
             .request
             .messages
             .iter()
-            .any(|message| message.content == "Unchanged imported memory.")
+            .any(|message| message.text() == "Unchanged imported memory.")
     );
     assert!(f.store.messages(&f.session).is_err());
     let view = f.store.context_view(&f.session)?.unwrap();

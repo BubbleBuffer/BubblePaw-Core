@@ -313,19 +313,15 @@ async fn classical_uses_summary_role_low_reasoning_and_keeps_long_output_without
     assert!(requests[0].session_id.is_empty());
     assert!(
         requests[0].messages[0]
-            .content
+            .text()
             .contains("anchored earlier details")
     );
     assert!(
         requests[0].messages[0]
-            .content
+            .text()
             .contains("please keep this EXACT")
     );
-    assert!(
-        requests[0].messages[0]
-            .content
-            .contains("only the new span")
-    );
+    assert!(requests[0].messages[0].text().contains("only the new span"));
     assert!(
         requests[0]
             .system_prompt
@@ -499,7 +495,7 @@ async fn summaries_and_chapters_send_reasoning_context_and_record_trace() {
     assert_eq!(closed.reasoning.as_deref(), Some("trace"));
     let requests = server.requests.lock().unwrap();
     assert!(requests.iter().all(|request| request.tools.is_empty()));
-    let user = &requests[0].messages[0].content;
+    let user = &requests[0].messages[0].text();
     assert!(user.contains("TASK ANCHOR (read-only, may be a child task):\ndo original task"));
     assert!(user.contains("PREVIOUS EPISODE (read-only):\n# Earlier\nPrior facts"));
     assert!(user.contains("CURRENT EPISODE:\nagent work"));
@@ -509,7 +505,7 @@ async fn summaries_and_chapters_send_reasoning_context_and_record_trace() {
     ));
     let system = &requests[0].system_prompt;
     assert!(system.contains("about 2000 tokens (model tokens, not words), at most 2000 tokens"));
-    let chapter_user = &requests[1].messages[0].content;
+    let chapter_user = &requests[1].messages[0].text();
     assert!(chapter_user.contains("A:\n# Old work"));
     assert_eq!(chapter_user.matches(labeled_episode.as_str()).count(), 1);
     assert_eq!(chapter_user.matches(plain_episode).count(), 1);
@@ -555,7 +551,7 @@ async fn chapter_continuity_uses_actual_child_instructions_and_preserves_source_
     );
     assert_eq!(result.related_evidence[0].related_quote_matched, Some(true));
     let requests = server.requests.lock().unwrap();
-    let input = &requests[0].messages[0].content;
+    let input = &requests[0].messages[0].text();
     assert!(input.contains("TYPED REQUEST:\nHuman request"));
     assert!(input.contains("DELEGATED CHILD TASK (not a human statement):\nPlease resume child"));
     assert!(input.contains("[source-m2] [call-c2]"));

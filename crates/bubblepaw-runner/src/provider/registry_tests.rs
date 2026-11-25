@@ -231,7 +231,7 @@ fn request() -> ModelRequest {
             session_id: "fixture".into(),
             role: bubblepaw_core::Role::User,
             origin: None,
-            content: "summarize".into(),
+            content: bubblepaw_core::text_blocks("summarize"),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,

@@ -26,7 +26,7 @@ impl Provider for RejectionProvider {
             .rev()
             .find(|(_, message)| message.role == Role::User)
             .unwrap();
-        if user.content == "block" {
+        if user.text() == "block" {
             cancellation.cancelled().await;
             anyhow::bail!("scripted cancellation");
         }
@@ -38,7 +38,7 @@ impl Provider for RejectionProvider {
                 tool_calls: vec![ToolCall {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: "bridge".into(),
-                    arguments: serde_json::from_str(&user.content)?,
+                    arguments: serde_json::from_str(&user.text())?,
                 }],
                 ..Default::default()
             });
@@ -126,7 +126,7 @@ async fn rejected_spawn(input: Value, fill_slots: bool) -> Result<()> {
     assert!(
         rejected.is_error,
         "ordinary rejection must reach the provider as an error: {}",
-        rejected.content
+        rejected.text()
     );
     agents.shutdown().await?;
     let unresolved = store.pending_effects(&parent.id)?;

@@ -50,7 +50,7 @@ impl Provider for Cells {
                 tool_calls: vec![ToolCall {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: "js".into(),
-                    arguments: json!({"code":last.content}),
+                    arguments: json!({"code": last.text()}),
                 }],
                 ..Default::default()
             });
@@ -142,8 +142,8 @@ impl Fixture {
             .rev()
             .find(|m| m.role == Role::Tool)
             .unwrap();
-        assert!(!last.is_error, "{}", last.content);
-        serde_json::from_str(last.content.split("\n[---]\n").next().unwrap()).unwrap()
+        assert!(!last.is_error, "{}", last.text());
+        serde_json::from_str(last.text().split("\n[---]\n").next().unwrap()).unwrap()
     }
 }
 

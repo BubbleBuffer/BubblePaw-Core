@@ -36,7 +36,7 @@ fn message(session: &str, id: &str, text: &str) -> Message {
         session_id: session.into(),
         role: Role::User,
         origin: Some(MessageOrigin::Generated),
-        content: text.into(),
+        content: bubblepaw_core::text_blocks(text),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
@@ -112,7 +112,7 @@ async fn queued_staged_and_combined_reminders_recover_exact_identities_once() ->
         2,
         "one combined reminder and one completed model reply"
     );
-    assert!(messages[0].content.starts_with("<harness kind="));
+    assert!(messages[0].text().starts_with("<harness kind="));
     assert_eq!(
         store
             .reminder_metadata(&session, &messages[0].id)?

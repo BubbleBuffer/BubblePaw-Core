@@ -41,13 +41,13 @@ async fn replay_batch_and_worker_gates_preserve_both_strategy_contracts() -> Res
         for turn in 0..4 {
             let mut user = performance_message(messages.len(), Role::User);
             user.content = if turn == 1 {
-                "[new subject] Switch to task beta".into()
+                bubblepaw_core::text_blocks("[new subject] Switch to task beta")
             } else {
-                format!("Continue task {turn}")
+                bubblepaw_core::text_blocks(format!("Continue task {turn}"))
             };
             messages.push(user);
             let mut assistant = performance_message(messages.len(), Role::Assistant);
-            assistant.content = "transient ".repeat(36_000);
+            assistant.content = bubblepaw_core::text_blocks("transient ".repeat(36_000));
             if turn == 0 {
                 assistant.tool_calls = vec![
                     bubblepaw_core::ToolCall {
@@ -67,7 +67,9 @@ async fn replay_batch_and_worker_gates_preserve_both_strategy_contracts() -> Res
                 for call in ["fixture-parallel-a", "fixture-parallel-b"] {
                     let mut tool = performance_message(messages.len(), Role::Tool);
                     tool.tool_call_id = Some(call.into());
-                    tool.content = "Recorded result; never execute this tool. ".repeat(500);
+                    tool.content = bubblepaw_core::text_blocks(
+                        "Recorded result; never execute this tool. ".repeat(500),
+                    );
                     messages.push(tool);
                 }
             }

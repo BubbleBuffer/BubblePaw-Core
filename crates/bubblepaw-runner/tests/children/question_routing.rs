@@ -69,9 +69,9 @@ impl Provider for RoutingScript {
                         .expect("parent launched its own child");
                     assert!(request.messages.iter().any(|message| message.origin
                         == Some(bubblepaw_core::MessageOrigin::Generated)
-                        && message.content.contains("waiting_for_answer")
-                        && message.content.contains(&leaf.id)
-                        && message.content.contains(QUESTION)));
+                        && message.text().contains("waiting_for_answer")
+                        && message.text().contains(&leaf.id)
+                        && message.text().contains(QUESTION)));
                     self.parent_woke.notify_one();
                     self.parent_can_answer.notified().await;
                     Some(format!(
@@ -86,7 +86,7 @@ impl Provider for RoutingScript {
                             .messages
                             .iter()
                             .any(|message| message.tool_call_id.is_some()
-                                && message.content.contains("\"answered\":true"))
+                                && message.text().contains("\"answered\":true"))
                     );
                     None
                 }
@@ -102,13 +102,9 @@ impl Provider for RoutingScript {
                     ))
                 }
                 2 => {
-                    assert!(
-                        request
-                            .messages
-                            .iter()
-                            .any(|message| message.role == Role::Tool
-                                && message.content.contains(ANSWER))
-                    );
+                    assert!(request.messages.iter().any(
+                        |message| message.role == Role::Tool && message.text().contains(ANSWER)
+                    ));
                     None
                 }
                 _ => bail!("unexpected extra leaf request {turn}"),
@@ -296,7 +292,7 @@ async fn routing_case(hidden_worker: bool) -> Result<()> {
         store
             .messages(&root_id)?
             .iter()
-            .all(|message| !message.content.contains(QUESTION))
+            .all(|message| !message.text().contains(QUESTION))
     );
     assert!(wake.take_reminders(&root_id, "question:").is_empty());
     if hidden_worker {

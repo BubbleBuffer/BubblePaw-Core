@@ -101,7 +101,7 @@ impl HistorySnapshot {
 
     /// Keep identities, roles, dates and call boundaries, never body/argument payloads.
     fn strip(mut message: Message) -> Message {
-        message.content = String::new();
+        message.content = bubblepaw_core::text_blocks(String::new());
         message.provider_state = None;
         for call in &mut message.tool_calls {
             call.name = String::new();
@@ -279,9 +279,13 @@ mod tests {
                 session_id: session.id.clone(),
                 role: role.clone(),
                 content: if role == Role::User {
-                    format!("request {index}")
+                    bubblepaw_core::text_blocks(format!("request {index}"))
                 } else {
-                    " datum".repeat(if index == 1 { 17_000 } else { 33_000 })
+                    bubblepaw_core::text_blocks(" datum".repeat(if index == 1 {
+                        17_000
+                    } else {
+                        33_000
+                    }))
                 },
                 origin: None,
                 tool_calls: Vec::new(),
@@ -292,7 +296,7 @@ mod tests {
                 created_at: "2026-10-12T00:00:00Z".into(),
             });
         }
-        history[2].content = "Task:\nGenerated child task".into();
+        history[2].content = bubblepaw_core::text_blocks("Task:\nGenerated child task");
         history[2].origin = Some(MessageOrigin::ChildTask);
         history[3].id = history[1].id.clone();
         history[3].tool_calls.push(ToolCall {
@@ -348,7 +352,7 @@ mod tests {
             id: "call-message".into(),
             session_id: session.id.clone(),
             role: Role::Assistant,
-            content: "old call".into(),
+            content: bubblepaw_core::text_blocks("old call"),
             origin: None,
             tool_calls: vec![ToolCall {
                 id: "unknown-effect".into(),
@@ -364,7 +368,7 @@ mod tests {
         history.push(Message {
             id: "interrupt".into(),
             role: Role::User,
-            content: "new task".into(),
+            content: bubblepaw_core::text_blocks("new task"),
             tool_calls: Vec::new(),
             ..history[0].clone()
         });

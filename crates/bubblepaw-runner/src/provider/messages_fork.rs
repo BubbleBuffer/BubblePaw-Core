@@ -18,7 +18,7 @@ pub(super) fn unfinished_tool_loop(messages: &[bubblepaw_core::Message]) -> Opti
                 start.get_or_insert(index);
                 has_calls = true;
             }
-            Role::Assistant if !message.content.is_empty() => {
+            Role::Assistant if !message.text().is_empty() => {
                 start = None;
                 has_calls = false;
             }

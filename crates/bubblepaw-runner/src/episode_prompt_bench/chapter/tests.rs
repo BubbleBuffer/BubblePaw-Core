@@ -78,7 +78,7 @@ async fn production_arms_send_identical_fixture_evidence_and_parse_both_formats(
         for request in requests.iter() {
             assert!(request.tools.is_empty());
             for episode in &fixture.episodes {
-                assert!(request.messages[0].content.contains(episode));
+                assert!(request.messages[0].text().contains(episode));
             }
         }
     }

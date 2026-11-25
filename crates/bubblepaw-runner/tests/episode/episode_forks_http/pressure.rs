@@ -201,8 +201,8 @@ async fn delegated_native_result_tool_run_crosses_pressure_and_completes_after_a
     assert!(
         !messages
             .iter()
-            .any(|message| message.content.contains("EPISODE MEMORY BRANCH")
-                || message.content.contains("submit_summary"))
+            .any(|message| message.text().contains("EPISODE MEMORY BRANCH")
+                || message.text().contains("submit_summary"))
     );
     let requests = wire.requests.lock().unwrap();
     assert!(

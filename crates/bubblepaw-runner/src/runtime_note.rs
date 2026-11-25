@@ -354,7 +354,7 @@ mod durable_inventory_tests {
             messages
                 .iter()
                 .filter(|message| {
-                    message.content.contains(
+                    message.text().contains(
                         "<harness kind=\"runtime_inventory\">Current volatile runtime facts",
                     )
                 })
@@ -373,10 +373,10 @@ mod durable_inventory_tests {
             && message.origin == Some(MessageOrigin::Generated)));
         assert!(
             notices[0]
-                .content
+                .text()
                 .contains("Runtime: no running commands, cells or agents.")
         );
-        assert!(!notices[0].content.contains("\"saved\""));
+        assert!(!notices[0].text().contains("\"saved\""));
         harness.release_idle_resources(&session).await?;
         assert_eq!(
             harness
@@ -430,10 +430,10 @@ mod durable_inventory_tests {
         assert_eq!(child_notices.len(), 1);
         assert!(
             child_notices[0]
-                .content
+                .text()
                 .contains("Runtime: no running commands, cells or agents.")
         );
-        assert!(!child_notices[0].content.contains("\"saved\""));
+        assert!(!child_notices[0].text().contains("\"saved\""));
         repl.shutdown().await;
         let fresh_repl = Arc::new(CodeMode::new(
             directory.path().to_owned(),
@@ -483,10 +483,10 @@ mod durable_inventory_tests {
             notices
                 .last()
                 .unwrap()
-                .content
+                .text()
                 .contains("Runtime: no running commands, cells or agents.")
         );
-        assert!(!notices.last().unwrap().content.contains("\"saved\""));
+        assert!(!notices.last().unwrap().text().contains("\"saved\""));
         fresh_repl.shutdown().await;
         server.abort();
         Ok(())

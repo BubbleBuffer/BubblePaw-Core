@@ -121,7 +121,7 @@ impl Fixture {
             id: uuid::Uuid::new_v4().to_string(),
             session_id: self.session.clone(),
             role,
-            content: content.into(),
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: vec![],
             tool_call_id: None,
             origin: None,
@@ -204,7 +204,7 @@ async fn classical_rebuilds_compacted_view_after_serving_wipe_without_a_worker()
         (&after.id, &after.summary, &after.through_message_id)
     );
     let content = |request: &ModelRequest| {
-        request.messages.iter().map(|message| json!({"role":message.role,"content":message.content,"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id,"provider_state":message.provider_state,"is_error":message.is_error})).collect::<Vec<_>>()
+        request.messages.iter().map(|message| json!({"role":message.role,"content":message.text(),"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id,"provider_state":message.provider_state,"is_error":message.is_error})).collect::<Vec<_>>()
     };
     assert_eq!(content(&first.request), content(&recovered.request));
     assert_eq!(first.request.system_prompt, recovered.request.system_prompt);
@@ -249,10 +249,10 @@ async fn classical_updates_previous_plus_new_span_and_merges_recorded_files() ->
     assert!(
         fixture.models.inputs.lock().unwrap()[0]
             .span_text
-            .contains(&output.content)
+            .contains(&*output.text())
     );
     let mut next = fixture.turns(1);
-    next[0].content = "new request exactly".into();
+    next[0].content = bubblepaw_core::text_blocks("new request exactly");
     next[0].tool_calls.push(ToolCall {
         id: "edit-call".into(),
         name: "tools.write".into(),
@@ -318,15 +318,15 @@ async fn classical_precompute_stays_invisible_then_uses_ready_checkpoint() -> Re
             .request
             .messages
             .iter()
-            .any(|message| message.content.contains("anchored summary 1"))
+            .any(|message| message.text().contains("anchored summary 1"))
     );
     let typed = prepared
         .request
         .messages
         .iter()
-        .find(|message| message.content.starts_with("Typed user messages ("))
+        .find(|message| message.text().starts_with("Typed user messages ("))
         .unwrap();
-    assert!(typed.content.contains(&first[0].content));
+    assert!(typed.text().contains(&*first[0].text()));
     assert!(fixture.store.context_view(&fixture.session)?.is_some());
     Ok(())
 }
@@ -440,7 +440,7 @@ async fn ready_checkpoint_does_not_wait_for_inflight_background_refresh() -> Res
             .request
             .messages
             .iter()
-            .any(|message| message.content.contains("anchored summary 1"))
+            .any(|message| message.text().contains("anchored summary 1"))
     );
     let frozen = serde_json::to_value(fixture.store.context_view(&fixture.session)?)?;
     fixture.models.release.notify_one();
@@ -464,7 +464,7 @@ async fn ready_checkpoint_does_not_wait_for_inflight_background_refresh() -> Res
             .request
             .messages
             .iter()
-            .any(|message| message.content.contains("anchored summary 1"))
+            .any(|message| message.text().contains("anchored summary 1"))
     );
     Ok(())
 }
@@ -649,10 +649,10 @@ fn typed_users_are_newest_first_whole_and_production_token_bounded_with_all_olde
     users.push(synthetic);
     let block = typed_user_block(&users, tokenizer);
     assert!(tokenizer.encode_ordinary(&block).len() <= TYPED_USER_TOKENS);
-    assert!(block.contains(&users[4].content));
-    assert!(block.contains(&users[3].content));
-    assert!(block.contains(&users[2].content));
-    assert!(!block.contains(&users[1].content));
+    assert!(block.contains(&*users[4].text()));
+    assert!(block.contains(&*users[3].text()));
+    assert!(block.contains(&*users[2].text()));
+    assert!(!block.contains(&*users[1].text()));
     for message in &users[..2] {
         assert!(block.contains(&message.id));
     }

@@ -168,23 +168,25 @@ async fn user_answer_resumes_child_neutrally_and_rejects_late_parent_answer() ->
         .iter()
         .filter(|message| {
             message.origin == Some(MessageOrigin::Generated)
-                && message.content.contains("question_answer:")
+                && message.text().contains("question_answer:")
         })
         .collect::<Vec<_>>();
     assert_eq!(neutral.len(), 1);
     assert!(
         neutral[0]
-            .content
+            .text()
             .contains("Question: Which colour?\nAnswer: Blue with stripes")
     );
-    assert!(!neutral[0].content.contains("by the user"));
-    assert!(!neutral[0].content.contains("Parent message"));
-    assert!(messages.iter().any(|message| message.role == Role::Tool
-        && message.content.contains("\"answered_by\":\"user\"")));
+    assert!(!neutral[0].text().contains("by the user"));
+    assert!(!neutral[0].text().contains("Parent message"));
+    assert!(
+        messages.iter().any(|message| message.role == Role::Tool
+            && message.text().contains("\"answered_by\":\"user\""))
+    );
     assert!(
         !messages
             .iter()
-            .any(|message| message.content == "Red" || message.content == "Unauthorized")
+            .any(|message| message.text() == "Red" || message.text() == "Unauthorized")
     );
     // Register the idle parent only after the user resolves the question. Its
     // waiting notice must be replaced before the required wake is admitted,
@@ -221,17 +223,17 @@ async fn user_answer_resumes_child_neutrally_and_rejects_late_parent_answer() ->
             .iter()
             .filter(|message| {
                 message.origin == Some(MessageOrigin::Generated)
-                    && message.content.contains("question_answered_by_user:")
+                    && message.text().contains("question_answered_by_user:")
             })
             .collect::<Vec<_>>();
         assert_eq!(notices.len(), 1);
-        assert!(notices[0].content.contains("The user answered child"));
-        assert!(notices[0].content.contains("Answer: Blue with stripes"));
+        assert!(notices[0].text().contains("The user answered child"));
+        assert!(notices[0].text().contains("Answer: Blue with stripes"));
         assert!(
             !requests[0]
                 .messages
                 .iter()
-                .any(|message| message.content.contains("waiting_for_answer"))
+                .any(|message| message.text().contains("waiting_for_answer"))
         );
     }
     assert_eq!(store.runs(&parent)?.len(), 1);

@@ -58,15 +58,15 @@ async fn manual_compact_bypasses_disabled_auto_trigger_and_keeps_originals() -> 
                 .request
                 .messages
                 .iter()
-                .any(|m| m.content == "Original decisions retained."
-                    || m.content.contains("Original decisions retained."))
+                .any(|m| m.text() == "Original decisions retained."
+                    || m.text().contains("Original decisions retained."))
         );
         assert!(
             prepared
                 .request
                 .messages
                 .iter()
-                .any(|m| m.content == "Exact request 2")
+                .any(|m| m.text() == "Exact request 2")
         );
     }
     Ok(())

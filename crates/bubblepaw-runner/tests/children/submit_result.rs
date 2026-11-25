@@ -124,6 +124,6 @@ async fn native_delegate_consumes_submitted_report_and_runs_acceptance_check() {
     assert!(
         messages
             .iter()
-            .any(|m| m.role == Role::User && m.content.contains("call `submit_result`"))
+            .any(|m| m.role == Role::User && m.text().contains("call `submit_result`"))
     );
 }

@@ -107,7 +107,7 @@ fn request(declaration: u8) -> ModelRequest {
             session_id: "session".into(),
             role: Role::User,
             origin: None,
-            content: "Submit the current result.".into(),
+            content: bubblepaw_core::text_blocks("Submit the current result."),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,

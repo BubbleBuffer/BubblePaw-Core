@@ -122,9 +122,9 @@ async fn real_sync_exec_outlasts_both_shortened_idle_deadlines() {
     let command = timed_command(IDLE * 7, "", "long-exec");
     let fixture = Fixture::new(format!("await tools.exec({})", json!({"command":command})));
     let result = fixture.result().await;
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.text());
     let result: Value =
-        serde_json::from_str(result.content.split("\n[---]\n").next().unwrap()).unwrap();
+        serde_json::from_str(result.text().split("\n[---]\n").next().unwrap()).unwrap();
     assert_eq!(result["status"], "exited");
     assert_eq!(result["exitCode"], 0);
     assert_eq!(result["stdout"], "long-exec");
@@ -160,9 +160,9 @@ async fn real_yielding_poll_outlasts_idle_deadlines_and_preserves_cell_state_and
         .expect("yielding poll failed before reaching the completion wait");
     };
     let (result, ()) = tokio::join!(fixture.result(), release);
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.text());
     let result: Value =
-        serde_json::from_str(result.content.split("\n[---]\n").next().unwrap()).unwrap();
+        serde_json::from_str(result.text().split("\n[---]\n").next().unwrap()).unwrap();
     assert_eq!(result["marker"], "preserved");
     assert_eq!(result["firstStatus"], "running");
     let elapsed = u128::from(result["elapsed"].as_u64().unwrap());
@@ -266,11 +266,11 @@ async fn yielding_poll_keeps_cancellation_and_explicit_cell_background_controls(
 async fn ordinary_host_call_still_hits_the_shortened_deadline() {
     let fixture = Fixture::new("await tools.stall({})".into());
     let result = fixture.result().await;
-    assert!(result.is_error, "{}", result.content);
+    assert!(result.is_error, "{}", result.text());
     assert!(
-        result.content.contains("Non-wait") && result.content.contains("deadline exceeded"),
+        result.text().contains("Non-wait") && result.text().contains("deadline exceeded"),
         "{}",
-        result.content
+        result.text()
     );
     fixture.shutdown().await;
 }
@@ -286,9 +286,9 @@ async fn sync_exec_backgrounds_at_configured_timeout_after_outlasting_idle_limit
         },
     );
     let result = fixture.result().await;
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.text());
     let result: Value =
-        serde_json::from_str(result.content.split("\n[---]\n").next().unwrap()).unwrap();
+        serde_json::from_str(result.text().split("\n[---]\n").next().unwrap()).unwrap();
     assert_eq!(result["status"], "backgrounded");
     assert_eq!(result["reason"], "sync_timeout");
     // Shell startup can outlast the foreground window. Output captured at
@@ -421,9 +421,9 @@ async fn real_web_calls_outlast_shortened_idle_deadlines() {
         })
         .await
         .unwrap();
-        assert!(!result.is_error, "{}", result.content);
+        assert!(!result.is_error, "{}", result.text());
         let value: Value =
-            serde_json::from_str(result.content.split("\n[---]\n").next().unwrap()).unwrap();
+            serde_json::from_str(result.text().split("\n[---]\n").next().unwrap()).unwrap();
         if search {
             assert_eq!(value["results"][0]["snippet"], "waited-search");
         } else {
@@ -479,9 +479,9 @@ async fn process_handle_wait_suspends_both_shortened_idle_deadlines() {
         json!({"command":command,"yieldMs":1})
     ));
     let result = fixture.result().await;
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.text());
     let result: Value =
-        serde_json::from_str(result.content.split("\n[---]\n").next().unwrap()).unwrap();
+        serde_json::from_str(result.text().split("\n[---]\n").next().unwrap()).unwrap();
     assert_eq!(result["status"], "exited");
     assert_eq!(result["exitCode"], 0);
     fixture.shutdown().await;

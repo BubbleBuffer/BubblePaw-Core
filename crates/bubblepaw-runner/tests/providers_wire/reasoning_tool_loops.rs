@@ -210,7 +210,7 @@ fn byte_equal(actual: &Value, expected: &Value, boundary: &str) -> Result<()> {
 
 fn check_stored(kind: Kind, message: &Message, round: usize) -> Result<()> {
     ensure!(
-        message.role == Role::Assistant && message.content == visible(round),
+        message.role == Role::Assistant && message.text() == visible(round),
         "assistant changed"
     );
     let state = message
@@ -311,7 +311,7 @@ impl Fake {
             ensure!(
                 result.role == Role::Tool
                     && result.tool_call_id.as_deref() == Some(&call_id(previous))
-                    && result.content == tool_output(previous),
+                    && result.text() == tool_output(previous),
                 "tool result order changed"
             );
             match self.kind {

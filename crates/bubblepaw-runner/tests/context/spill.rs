@@ -26,7 +26,7 @@ impl Provider for Cells {
             .messages
             .last()
             .filter(|message| message.role == Role::User)
-            && let Ok(input) = serde_json::from_str::<Value>(&message.content)
+            && let Ok(input) = serde_json::from_str::<Value>(&message.text())
         {
             return Ok(ModelResponse {
                 tool_calls: vec![ToolCall {
@@ -130,7 +130,7 @@ impl Fixture {
             .find(|message| message.role == Role::Tool)
             .unwrap();
         ToolResult {
-            content: message.content,
+            content: message.text().into_owned(),
             is_error: message.is_error,
             details: None,
             terminate: false,

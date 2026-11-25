@@ -48,7 +48,7 @@ fn plan(history: &[Message], coverage_end: usize) -> EpisodePlan {
     plan_episodes(
         history,
         coverage_end,
-        |message| message.content.parse().unwrap(),
+        |message| message.text().parse().unwrap(),
         is_typed_user,
     )
     .unwrap()
@@ -265,7 +265,7 @@ fn configuration_controls_source_targets_and_rejects_only_structural_invalidity(
     let result = plan_episodes_with_config(
         &history,
         0,
-        |m| m.content.parse().unwrap(),
+        |m| m.text().parse().unwrap(),
         is_typed_user,
         &config,
     )
@@ -384,7 +384,7 @@ fn caller_origin_predicate_controls_turn_boundaries_and_split_options() {
     let result = plan_episodes(
         &history,
         0,
-        |message| message.content.parse().unwrap(),
+        |message| message.text().parse().unwrap(),
         |message| message.role == Role::User && message.id != "generated",
     )
     .unwrap();
@@ -477,9 +477,9 @@ async fn actual_child_spawn_marks_unwrapped_and_wrapped_prompts_as_child_task() 
         assert_eq!(prompt.origin, Some(MessageOrigin::ChildTask));
         assert!(!is_typed_user(prompt));
         if input.get("context").is_some() {
-            assert!(prompt.content.starts_with("Task:\nwrapped child"));
+            assert!(prompt.text().starts_with("Task:\nwrapped child"));
         } else {
-            assert_eq!(prompt.content, "plain child");
+            assert_eq!(prompt.text(), "plain child");
         }
     }
     manager.shutdown().await.unwrap();

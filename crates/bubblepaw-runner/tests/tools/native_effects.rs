@@ -155,8 +155,8 @@ async fn js_exec_keeps_full_host_object_and_returns_only_exit_code() {
         .unwrap();
     let messages = store.messages(&session.id).unwrap();
     let reply = messages.iter().find(|m| m.role == Role::Tool).unwrap();
-    assert!(!reply.is_error, "{}", reply.content);
-    assert_eq!(reply.content, "0");
+    assert!(!reply.is_error, "{}", reply.text());
+    assert_eq!(reply.text(), "0");
     assert!(store.pending_effects(&session.id).unwrap().is_empty());
     repl.shutdown().await;
     processes.shutdown().await;

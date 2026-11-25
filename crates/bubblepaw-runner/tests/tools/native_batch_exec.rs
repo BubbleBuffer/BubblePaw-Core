@@ -133,7 +133,7 @@ fn result_of<'a>(request: &'a ModelRequest, id: &str) -> &'a Message {
 }
 
 fn json_of(message: &Message) -> Value {
-    serde_json::from_str(&message.content).unwrap()
+    serde_json::from_str(&message.text()).unwrap()
 }
 
 #[cfg(windows)]
@@ -247,14 +247,14 @@ async fn scripts_written_to_both_absolute_scratchpads_run_in_the_same_native_bat
     );
     for id in ["write-chat", "write-project"] {
         let write = result_of(&requests[1], id);
-        assert!(!write.is_error, "{}", write.content);
+        assert!(!write.is_error, "{}", write.text());
     }
     for (id, expected) in [
         ("exec-chat", "chat-script-ran\n"),
         ("exec-project", "project-script-ran\n"),
     ] {
         let exec = result_of(&requests[1], id);
-        assert!(!exec.is_error, "{}", exec.content);
+        assert!(!exec.is_error, "{}", exec.text());
         let exec = json_of(exec);
         assert_eq!(exec["status"], "exited");
         assert_eq!(exec["exitCode"], 0);
@@ -320,7 +320,7 @@ async fn two_background_execs_are_joined_by_one_wait_batch() {
     let mut handles = Vec::new();
     for id in ["start-a", "start-b"] {
         let started = result_of(&requests[1], id);
-        assert!(!started.is_error, "{}", started.content);
+        assert!(!started.is_error, "{}", started.text());
         let started = json_of(started);
         assert_eq!(started["status"], "running");
         handles.push(started["handle"].as_str().unwrap().to_owned());
@@ -328,7 +328,7 @@ async fn two_background_execs_are_joined_by_one_wait_batch() {
     assert_ne!(handles[0], handles[1]);
     for (id, handle, exit_code) in [("join-a", &handles[0], 0), ("join-b", &handles[1], 3)] {
         let joined = result_of(&requests[2], id);
-        assert!(!joined.is_error, "{}", joined.content);
+        assert!(!joined.is_error, "{}", joined.text());
         let joined = json_of(joined);
         assert_eq!(joined["handle"].as_str().unwrap(), handle.as_str());
         assert_eq!(joined["status"], "exited");
@@ -379,14 +379,10 @@ async fn failed_mid_batch_call_does_not_stop_later_calls() {
         let failed = result_of(&requests[1], id);
         assert!(failed.is_error, "{label}");
         if let Some(needle) = error_text {
-            assert!(
-                failed.content.contains(needle),
-                "{label}: {}",
-                failed.content
-            );
+            assert!(failed.text().contains(needle), "{label}: {}", failed.text());
         }
         let exec = result_of(&requests[1], "exec");
-        assert!(!exec.is_error, "{label}: {}", exec.content);
+        assert!(!exec.is_error, "{label}: {}", exec.text());
         let exec = json_of(exec);
         assert_eq!(exec["exitCode"], 0, "{label}");
         assert!(

@@ -33,7 +33,7 @@ impl Provider for Cells {
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if let Some(last) = request.messages.last().filter(|m| m.role == Role::User)
-            && let Ok(arguments) = serde_json::from_str::<Value>(&last.content)
+            && let Ok(arguments) = serde_json::from_str::<Value>(&last.text())
         {
             return Ok(ModelResponse {
                 tool_calls: vec![ToolCall {
@@ -134,7 +134,8 @@ impl Fixture {
             .rev()
             .find(|m| m.role == Role::Tool)
             .unwrap()
-            .content
+            .text()
+            .into_owned()
     }
 }
 async fn requested(events: &mut broadcast::Receiver<HarnessEvent>) -> ApprovalRecord {

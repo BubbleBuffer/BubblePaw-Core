@@ -112,26 +112,26 @@ async fn missing_result_failure_can_continue_and_schema_retains_replaces_or_clea
             assert_eq!(request.system_prompt, requests[0].system_prompt);
         }
         assert!(requests[4].messages.iter().any(|message| {
-            message.content.contains("current definition")
-                && message.content.contains("\"minimum\":9")
+            message.text().contains("current definition")
+                && message.text().contains("\"minimum\":9")
         }));
         assert!(
             requests[6]
                 .messages
                 .iter()
-                .any(|message| { message.content.contains("This run has no output schema") })
+                .any(|message| { message.text().contains("This run has no output schema") })
         );
         assert!(
             requests[6]
                 .messages
                 .iter()
-                .any(|m| m.role == Role::User && m.content == "structured answer")
+                .any(|m| m.role == Role::User && m.text() == "structured answer")
         );
         assert!(
             requests[6]
                 .messages
                 .iter()
-                .any(|m| m.role == Role::Assistant && m.content == "{\"answer\":8}")
+                .any(|m| m.role == Role::Assistant && m.text() == "{\"answer\":8}")
         );
     }
     fixture.shutdown().await?;
@@ -165,7 +165,7 @@ async fn oversized_json_is_explicit_failure_and_can_continue_with_full_history()
             .store
             .messages(child["sessionId"].as_str().unwrap())?
             .iter()
-            .any(|m| m.role == Role::Assistant && m.content == huge)
+            .any(|m| m.role == Role::Assistant && m.text() == huge)
     );
     fixture.manager.send(
         &fixture.owner,
@@ -246,13 +246,9 @@ async fn invalid_result_retry_timeout_returns_only_latest_stream_fragment() -> R
     assert!(
         messages
             .iter()
-            .any(|m| m.role == Role::Assistant && m.content == "first invalid streamed reply")
+            .any(|m| m.role == Role::Assistant && m.text() == "first invalid streamed reply")
     );
-    assert!(
-        !messages
-            .iter()
-            .any(|m| m.content.contains("retry fragment"))
-    );
+    assert!(!messages.iter().any(|m| m.text().contains("retry fragment")));
     let run = fixture.store.runs(session)?.into_iter().last().unwrap();
     let (metadata, bytes) = fixture
         .store

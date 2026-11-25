@@ -76,7 +76,7 @@ impl Provider for ControlProvider {
                     && message.origin != Some(bubblepaw_core::MessageOrigin::Generated)
             })
             .unwrap();
-        let input = user.content.clone();
+        let input = user.text().into_owned();
         let answered = request.messages[index + 1..]
             .iter()
             .any(|message| message.role == Role::Tool);
@@ -113,7 +113,7 @@ impl Provider for ControlProvider {
             );
             assert!(request.messages.iter().any(|message| {
                 message
-                    .content
+                    .text()
                     .contains("This run has no output schema. submit_result is unavailable")
             }));
             assert_eq!(request.tools.len(), 1, "the zero-budget round keeps tools");
@@ -138,17 +138,13 @@ impl Provider for ControlProvider {
                 .find(|message| message.role == Role::Tool)
                 .unwrap();
             assert!(
-                result.content.ends_with("0 tool calls left"),
+                result.text().ends_with("0 tool calls left"),
                 "{}",
-                result.content
+                result.text()
             );
-            let batch: Value = serde_json::from_str(
-                result
-                    .content
-                    .split("\n\n0 tool calls left")
-                    .next()
-                    .unwrap(),
-            )?;
+            let result_text = result.text();
+            let batch: Value =
+                serde_json::from_str(result_text.split("\n\n0 tool calls left").next().unwrap())?;
             let batch = batch.as_array().unwrap();
             assert_eq!(batch.iter().filter(|value| value["ok"] == true).count(), 2);
             let rejected: Vec<_> = batch.iter().filter(|value| value["ok"] == false).collect();
@@ -179,7 +175,7 @@ impl Provider for ControlProvider {
         if step > 1 {
             assert!(
                 request.messages.iter().any(|message| {
-                    message.role == Role::Assistant && message.content == "{\"step\":1}"
+                    message.role == Role::Assistant && message.text() == "{\"step\":1}"
                 }),
                 "follow-up must retain the first complete answer"
             );
@@ -279,9 +275,9 @@ impl Fixture {
             .rev()
             .find(|message| message.role == Role::Tool)
             .unwrap();
-        assert!(!reply.is_error, "{}", reply.content);
+        assert!(!reply.is_error, "{}", reply.text());
         assert!(self.store.pending_effects(&self.parent_id)?.is_empty());
-        Ok(serde_json::from_str(&reply.content)?)
+        Ok(serde_json::from_str(&reply.text())?)
     }
 
     async fn close(&self) -> Result<()> {
@@ -352,7 +348,7 @@ async fn child_js_parallel_native_calls_share_budget_and_reject_before_invocatio
             child_requests[0]
                 .messages
                 .iter()
-                .any(|message| message.content.contains("You have 3 tool calls"))
+                .any(|message| message.text().contains("You have 3 tool calls"))
         );
         // The exhausted round keeps the declarations; only the reminder asks for text.
         assert!(!child_requests[1].tools.is_empty());

@@ -29,7 +29,7 @@ impl LlmDecisions {
                 session_id: request.session_id.clone().unwrap_or_default(),
                 role: Role::User,
                 origin: None,
-                content: request.input.clone(),
+                content: bubblepaw_core::text_blocks(request.input.clone()),
                 tool_calls: Vec::new(),
                 tool_call_id: None,
                 provider_state: None,

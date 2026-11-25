@@ -156,7 +156,7 @@ impl Fixture {
             .find(|message| message.role == Role::Tool)
             .unwrap();
         if result.is_error {
-            eprintln!("reduced-idle fixture tool error: {}", result.content);
+            eprintln!("reduced-idle fixture tool error: {}", result.text());
         }
         result
     }

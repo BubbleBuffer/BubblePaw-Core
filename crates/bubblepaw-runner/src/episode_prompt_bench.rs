@@ -188,12 +188,12 @@ pub async fn run(options: BenchOptions, registry: Arc<ProviderRegistry>) -> Resu
                     );
                 }
                 if let Some(id) = &message.tool_call_id {
-                    tool_results.push(json!({"id": id, "content": message.content}));
+                    tool_results.push(json!({"id": id, "content": message.text()}));
                 }
                 if is_typed_user(&message) {
-                    members_typed.push(message.content.clone());
+                    members_typed.push(message.text().into_owned());
                 } else if message.origin == Some(MessageOrigin::ChildTask) {
-                    members_tasks.push(message.content.clone());
+                    members_tasks.push(message.text().into_owned());
                 }
                 Ok(())
             })?;

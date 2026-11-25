@@ -44,7 +44,7 @@ fn message(session: &str, index: usize) -> Message {
     Message {
         id: format!("signed-{index}"), session_id: session.into(),
         role: if assistant { Role::Assistant } else { Role::User },
-        origin: None, content: content.clone(), tool_calls: Vec::new(), tool_call_id: None,
+        origin: None, content: bubblepaw_core::text_blocks(content.clone()), tool_calls: Vec::new(), tool_call_id: None,
         provider_state: assistant.then(|| json!({"adapter":"anthropic-messages","content":[
             {"type":"thinking","thinking":"Synthetic signed reasoning.","signature":"signature+/==","opaque":{"keep":true}},
             {"type":"text","text":content}
@@ -126,7 +126,7 @@ async fn frozen_runtime_request_skips_unreadable_cold_rows_and_keeps_exact_wire_
     let mut summary = message(&session.id, 100);
     summary.id = "context:synthetic-summary".into();
     summary.role = Role::System;
-    summary.content = checkpoint.summary.clone();
+    summary.content = bubblepaw_core::text_blocks(checkpoint.summary.clone());
     summary.provider_state = None;
     let view = ContextView {
         session_id: session.id.clone(),

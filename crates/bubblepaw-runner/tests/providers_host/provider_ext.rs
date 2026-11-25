@@ -123,9 +123,9 @@ async fn code_surface_offers_only_js_and_deferred_tools_run_inside_it() {
     let (offered, tool) = run_surface(ToolSurface::Code).await;
     assert_eq!(offered[0], ["js"]);
     assert_eq!(offered[1], ["js"]);
-    assert!(!tool.is_error, "{}", tool.content);
-    assert!(tool.content.contains("host_echo"), "{}", tool.content);
-    assert!(tool.content.contains('7'), "{}", tool.content);
+    assert!(!tool.is_error, "{}", tool.text());
+    assert!(tool.text().contains("host_echo"), "{}", tool.text());
+    assert!(tool.text().contains('7'), "{}", tool.text());
     let (offered, _) = run_surface(ToolSurface::Direct).await;
     assert_eq!(
         offered[0],
@@ -296,7 +296,7 @@ fn user(content: &str) -> Message {
         session_id: "s".into(),
         role: Role::User,
         origin: None,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,

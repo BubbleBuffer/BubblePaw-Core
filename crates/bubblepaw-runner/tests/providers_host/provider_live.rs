@@ -757,7 +757,7 @@ async fn stream(kind: Kind) {
     assert!(
         stored.len() == 2
             && stored[1].role == Role::Assistant
-            && stored[1].content == responses[0].text,
+            && stored[1].text() == responses[0].text,
         "complete final response not persisted"
     );
     fixture.assert_counts(1, 1);
@@ -889,7 +889,7 @@ async fn tools(kind: Kind) {
     assert!(
         messages[2].role == Role::Tool
             && !messages[2].is_error
-            && messages[2].content.contains("42")
+            && messages[2].text().contains("42")
             && messages[2].tool_call_id.as_deref() == Some(first.tool_calls[0].id.as_str()),
         "tool result not durably tied to its call"
     );
@@ -1021,7 +1021,7 @@ async fn bad_key(kind: Kind) {
             session_id: "live-invalid-key".into(),
             role: Role::User,
             origin: None,
-            content: "Say ready.".into(),
+            content: bubblepaw_core::text_blocks("Say ready."),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,
@@ -1168,7 +1168,7 @@ async fn continuation(kind: Kind) {
     );
     let messages = fixture.stored_messages(&session.id);
     assert!(
-        messages.len() == 2 && messages[1].role == Role::Assistant && messages[1].content == joined,
+        messages.len() == 2 && messages[1].role == Role::Assistant && messages[1].text() == joined,
         "joined reply was not persisted as one assistant message"
     );
     let stored_state = messages[1]

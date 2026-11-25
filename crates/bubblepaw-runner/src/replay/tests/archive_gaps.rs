@@ -19,7 +19,7 @@ fn archive_unknown_outcomes_preserve_parallel_results_and_are_idempotent() -> Re
     ];
     let mut result = performance_message(2, Role::Tool);
     result.tool_call_id = Some("recorded-b".into());
-    result.content = "Actual recorded result".into();
+    result.content = bubblepaw_core::text_blocks("Actual recorded result");
     let mut corpus = gap_corpus(vec![
         performance_message(0, Role::User),
         calls,
@@ -46,7 +46,7 @@ fn archive_unknown_outcomes_preserve_parallel_results_and_are_idempotent() -> Re
     for marker in &corpus.messages[3..5] {
         assert_eq!(marker.role, Role::Tool);
         assert_eq!(marker.origin, Some(MessageOrigin::ArchiveUnknownOutcome));
-        assert_eq!(marker.content, ARCHIVE_UNKNOWN_OUTCOME);
+        assert_eq!(marker.text(), ARCHIVE_UNKNOWN_OUTCOME);
         assert!(!marker.is_error);
         assert_eq!(marker.created_at, original.messages[1].created_at);
     }
@@ -67,7 +67,7 @@ fn archive_unknown_outcomes_preserve_parallel_results_and_are_idempotent() -> Re
     assert_eq!(info.source_corpus_sha256, again.source_corpus_sha256);
     assert_eq!(info.markers_replayed(3), 0);
     assert_eq!(info.markers_replayed(4), 1);
-    corpus.messages[4].content = "invented success".into();
+    corpus.messages[4].content = bubblepaw_core::text_blocks("invented success");
     assert!(normalize_archive(&mut corpus).is_err());
     Ok(())
 }
@@ -116,10 +116,10 @@ fn archive_unknown_outcomes_do_not_replace_late_results_and_reject_ambiguity() -
 async fn archive_unknown_outcomes_pin_identical_planner_and_answering_positions() -> Result<()> {
     let directory = tempfile::tempdir()?;
     let mut first = performance_message(1, Role::Assistant);
-    first.content = "transient ".repeat(36_000);
+    first.content = bubblepaw_core::text_blocks("transient ".repeat(36_000));
     first.tool_calls = vec![archive_call("first-gap")];
     let mut last = performance_message(3, Role::Assistant);
-    last.content = "transient ".repeat(36_000);
+    last.content = bubblepaw_core::text_blocks("transient ".repeat(36_000));
     last.tool_calls = vec![archive_call("eof-gap")];
     let corpus = gap_corpus(vec![
         performance_message(0, Role::User),
@@ -197,14 +197,15 @@ async fn archive_unknown_outcomes_pin_identical_planner_and_answering_positions(
                 .count(),
             2
         );
-        assert_eq!(archived[2].content, ARCHIVE_UNKNOWN_OUTCOME);
+        assert_eq!(archived[2].text(), ARCHIVE_UNKNOWN_OUTCOME);
         let progress: Value =
             serde_json::from_slice(&std::fs::read(options.out.join("progress.json"))?)?;
         assert_eq!(progress["source_messages_replayed"], 4);
         assert_eq!(progress["archive_unknown_outcome_markers"], 2);
     }
     let mut changed = corpus;
-    changed.messages[0].content.push_str("changed");
+    let text = changed.messages[0].text().into_owned() + "changed";
+    changed.messages[0].set_text(text);
     options.out = directory.path().join("reject-changed-source");
     assert!(run_corpus(changed, options).await.is_err());
     Ok(())

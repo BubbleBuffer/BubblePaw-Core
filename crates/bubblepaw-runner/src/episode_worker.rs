@@ -716,7 +716,7 @@ impl EpisodeWorker {
             .unwrap_or_default();
         snapshot.walk(start, end, |_, message| {
             if is_typed_user(&message) {
-                latest_user_request = Some(message.content.clone());
+                latest_user_request = Some(message.text().into_owned());
             }
             if !span_text.is_empty() {
                 span_text.push_str("\n\n");
@@ -742,7 +742,7 @@ impl EpisodeWorker {
                             (!imported_prefix.is_empty()).then(|| {
                                 imported_prefix
                                     .iter()
-                                    .map(|message| message.content.as_str())
+                                    .map(|message| message.text().into_owned())
                                     .collect::<Vec<_>>()
                                     .join("\n")
                             })
@@ -853,7 +853,7 @@ pub(crate) fn render_task_anchor(message: &Message) -> String {
     } else {
         "Generated context (not a typed request)"
     };
-    format!("[source {}: {label}]\n{}", message.id, message.content)
+    format!("[source {}: {label}]\n{}", message.id, message.text())
 }
 
 pub(crate) fn render_episode_range(
@@ -897,19 +897,19 @@ fn render_episode_with_budget(messages: &[Message], budget: usize) -> String {
                 // canonical message delivered to the main model; never read a
                 // referenced spill file or reconstruct a larger original body.
                 let evidence = if budget == 0 {
-                    m.content.clone()
+                    m.text().into_owned()
                 } else {
                     tool_evidence(m, allocation())
                 };
                 format!(
                     "[tool output {}, {} chars, {status}]\n{evidence}",
                     m.tool_call_id.as_deref().unwrap_or(&m.id),
-                    m.content.chars().count()
+                    m.text().chars().count()
                 )
             } else if m.role == Role::User {
                 render_task_anchor(m)
             } else {
-                m.content.clone()
+                m.text().into_owned()
             };
             // Visible content only: provider_state and raw reasoning are never included.
             let mut text = format!("[{} {:?}]\n{content}", m.id, m.role);
@@ -937,14 +937,11 @@ fn render_episode_with_budget(messages: &[Message], budget: usize) -> String {
         .join("\n\n")
 }
 fn tool_evidence(message: &Message, budget: usize) -> String {
-    if text_tokens(&message.content) <= budget {
-        return message.content.clone();
+    if text_tokens(&message.text()) <= budget {
+        return message.text().into_owned();
     }
-    let result = message
-        .content
-        .split("\n[---]\n")
-        .next()
-        .unwrap_or_default();
+    let text = message.text();
+    let result = text.split("\n[---]\n").next().unwrap_or_default();
     let mut facts = Vec::new();
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(result) {
         structured_tool_facts(&value, "$", &mut facts);
@@ -952,7 +949,7 @@ fn tool_evidence(message: &Message, budget: usize) -> String {
     let facts = facts.join("\n");
     let structured = token_excerpt(&facts, text_tokens(&facts).min(budget / 2));
     let excerpt = token_excerpt(
-        &message.content,
+        &message.text(),
         budget.saturating_sub(text_tokens(&structured) + usize::from(!structured.is_empty())),
     );
     let evidence = if structured.is_empty() {
@@ -1005,7 +1002,8 @@ fn tool_result_failed(message: &Message) -> bool {
         return true;
     }
     // JS state notices follow the serialized return. They are not result data.
-    let result = message.content.split("\n[---]\n").next().unwrap();
+    let text = message.text();
+    let result = text.split("\n[---]\n").next().unwrap();
     serde_json::from_str(result)
         .map(|value| result_record_failed(&value))
         .unwrap_or(false)

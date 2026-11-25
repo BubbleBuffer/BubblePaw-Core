@@ -33,7 +33,7 @@ fn default_unlimited_evidence_retains_middle_facts_and_explicit_budget_stays_los
     let messages = vec![assistant, result];
     let original = serde_json::to_vec(&messages).unwrap();
     let full = render_episode(&messages);
-    assert!(full.contains(&messages[1].content));
+    assert!(full.contains(&*messages[1].text()));
     assert!(full.contains(&arguments));
     assert!(full.contains("BURIED_ARBITRARY_FACT=violet-bridge-47"));
     assert!(full.contains("BURIED_ARGUMENT=amber-92"));
@@ -53,7 +53,7 @@ fn default_unlimited_evidence_retains_middle_facts_and_explicit_budget_stays_los
 #[test]
 fn tool_evidence_keeps_short_results_and_bounded_head_tail_failures() {
     let short = tool("exact small result".into());
-    assert!(render_episode(std::slice::from_ref(&short)).contains(&short.content));
+    assert!(render_episode(std::slice::from_ref(&short)).contains(&*short.text()));
     let mut failed = tool(format!(
         "START_DIAGNOSTIC {} END_FAILURE_file.rs:12",
         " output".repeat(5000)
@@ -113,7 +113,7 @@ fn visible_text_is_retained_while_raw_reasoning_and_large_arguments_are_projecte
     let mut assistant = tool(String::new());
     assistant.role = Role::Assistant;
     assistant.tool_call_id = None;
-    assistant.content = "visible exact decision".into();
+    assistant.content = bubblepaw_core::text_blocks("visible exact decision");
     assistant.provider_state = Some(json!({"reasoning":"RAW_PRIVATE_REASONING"}));
     assistant.tool_calls.push(bubblepaw_core::ToolCall {
         id: "source-call".into(),

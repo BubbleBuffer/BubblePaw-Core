@@ -215,7 +215,7 @@ async fn shapes(kind: Kind) {
             }
         }
         for message in fixture.store.messages(&fixture.session).unwrap() {
-            assert!(!message.content.contains(&STANDARD.encode(PNG)));
+            assert!(!message.text().contains(&STANDARD.encode(PNG)));
         }
     }
     fixture.manager.shutdown().await;
@@ -292,7 +292,7 @@ impl Provider for Limited {
         let image_parts: usize = request
             .messages
             .iter()
-            .map(|message| message.content.matches(&encoded).count())
+            .map(|message| message.text().matches(&encoded).count())
             .sum();
         request.max_output_tokens = Some(512);
         let response = self.inner.generate(request, on_text, cancellation).await?;
@@ -345,7 +345,7 @@ async fn live(kind: Kind) {
             .unwrap()
             .iter()
             .any(|message| message.role == Role::Tool
-                && !bubblepaw_runner::images::split_refs(&message.content)
+                && !bubblepaw_runner::images::split_refs(&message.text())
                     .1
                     .is_empty()),
         "live model did not read the image through js; answer: {text}"

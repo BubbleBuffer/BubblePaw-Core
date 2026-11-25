@@ -59,7 +59,7 @@ impl Provider for Script {
             .filter(|message| message.role == Role::User)
             .find_map(|message| {
                 message
-                    .content
+                    .text()
                     .lines()
                     .next()
                     .and_then(|line| serde_json::from_str::<Value>(line).ok())
@@ -201,7 +201,7 @@ impl Host {
             .messages(child)?
             .into_iter()
             .filter(|message| message.is_error)
-            .map(|message| message.content)
+            .map(|message| message.text().into_owned())
             .collect();
         ensure!(errors.is_empty(), "child tool failed: {errors:?}");
         Ok(())
@@ -213,9 +213,9 @@ impl Host {
             if message.role != Role::Tool {
                 continue;
             }
-            ensure!(!message.is_error, "{}", message.content);
-            let text = message.content.split("\n[---]\n").next().unwrap();
-            values.push(serde_json::from_str(text)?);
+            ensure!(!message.is_error, "{}", message.text());
+            let s = message.text().into_owned();
+            values.push(serde_json::from_str(s.split("\n[---]\n").next().unwrap())?);
         }
         Ok(values)
     }

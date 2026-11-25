@@ -59,7 +59,7 @@ impl ReplayRun {
         let mut row=serde_json::to_value(decision).unwrap();
         row["options"]=json!(decision.option_message_ids.iter().map(|id| {
             let message=self.history.iter().find(|m|&m.id==id);
-            json!({"message_id":id,"user_excerpt":message.map(|m|m.content.chars().take(800).collect::<String>())})
+            json!({"message_id":id,"user_excerpt":message.map(|m|m.text().chars().take(800).collect::<String>())})
         }).chain(std::iter::once(json!({"message_id":null,"option":"none"}))).collect::<Vec<_>>());
         row
     }).collect();

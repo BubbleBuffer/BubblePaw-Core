@@ -261,13 +261,10 @@ async fn actual_http_runs_native_tool_and_projects_history_without_archive_write
     assert_eq!(view["session"]["status"], "completed");
     assert_eq!(view["session"]["message_count"], 4);
     assert_eq!(view["messages"][2]["role"], "tool");
-    assert!(
-        view["messages"][2]["content"]
-            .as_str()
-            .unwrap()
-            .contains("Native fixture contents")
-    );
-    assert_eq!(view["messages"][3]["content"], "The native file was read.");
+    let tool_text = view["messages"][2]["content"][0]["text"].to_string();
+    assert!(tool_text.contains("Native fixture contents"));
+    let reply = &view["messages"][3]["content"][0]["text"];
+    assert_eq!(reply, "The native file was read.");
     assert!(view["runs"][0].get("text").is_none());
     assert!(view["active_run_id"].is_null());
     assert_eq!(view["live_paragraphs"], json!([]));
@@ -329,7 +326,7 @@ async fn messages_before_pages_older_history_and_validates_cursors_and_limits() 
             Role::Assistant
         },
         origin: None,
-        content: format!("Historical message {index}"),
+        content: bubblepaw_core::text_blocks(format!("Historical message {index}")),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: Some(json!({"private":"history-provider-state"})),
@@ -673,13 +670,13 @@ async fn paragraphs_reconnect_cancel_followup_and_resume_use_same_durable_harnes
             request
                 .messages
                 .iter()
-                .any(|message| message.content == "Next task")
+                .any(|message| message.text() == "Next task")
         }));
         assert!(requests.iter().any(|request| {
             request
                 .messages
                 .iter()
-                .any(|message| message.content == "Steer at next boundary")
+                .any(|message| message.text() == "Steer at next boundary")
         }));
     }
     // Keep both SSE subscribers open while shutting down: shutdown must drain.
@@ -973,7 +970,7 @@ async fn unknown_effect_error_remains_visible_and_resume_does_not_replay_it() {
     let view = server.get(&format!("/api/sessions/{id}")).await;
     assert!(view["messages"].as_array().unwrap().iter().any(|message| {
         message["is_error"] == true
-            && message["content"]
+            && message["content"][0]["text"]
                 .as_str()
                 .unwrap()
                 .contains("outcome unknown")

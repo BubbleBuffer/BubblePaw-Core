@@ -410,7 +410,7 @@ impl ExtensionProvider {
         }
         // Harness selects the tool surface, including an explicit native mode.
         // Forward its declarations unchanged so introspection matches the wire.
-        let mut params = serde_json::to_value(&request)?;
+        let mut params = bubblepaw_core::plain_content(|| serde_json::to_value(&request))?;
         // Legacy callers may still set this field. Structured results use the
         // runtime submit_result tool; response schemas never cross the RPC wire.
         params.as_object_mut().unwrap().remove("output_schema");

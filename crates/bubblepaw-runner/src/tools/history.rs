@@ -280,7 +280,7 @@ impl HistoryTool {
                     self.store.for_each_message_range_while(&context.session_id, *first, *last, |_, message| {
                     let index = indexes[message.id.as_str()];
                     ensure!(!context.cancellation.is_cancelled(), "cancelled");
-                    let mut searchable = message.content.clone();
+                    let mut searchable = message.text().into_owned();
                     for call in &message.tool_calls {
                         push_values(&mut searchable, &call.arguments);
                     }
@@ -412,8 +412,8 @@ impl HistoryTool {
 }
 
 fn bounded_record(message: &Message, index: usize, next: Option<usize>) -> Result<Value> {
-    let text = clip_chars(&message.content, 4000);
-    let mut record = json!({"index":index,"message_id":message.id,"role":message.role,"text":text,"truncated":message.content.chars().count() > 4000,"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id});
+    let text = clip_chars(&message.text(), 4000);
+    let mut record = json!({"index":index,"message_id":message.id,"role":message.role,"text":text,"truncated":message.text().chars().count() > 4000,"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id});
     if fits(&json!({"messages":[record],"next":next}))? {
         return Ok(record);
     }

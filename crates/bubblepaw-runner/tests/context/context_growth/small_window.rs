@@ -19,7 +19,7 @@ async fn small_window_serves_summaries_and_preserves_latest_large_group_without_
         .collect::<Vec<_>>();
     assert_eq!(tools.len(), 1);
     assert!(!tools[0].is_error);
-    assert_eq!(tools[0].content.len(), 56002);
+    assert_eq!(tools[0].text().len(), 56002);
     f.assert_summarized_continuation(&original, latest, &["x ".repeat(28000)], 32000, false)?;
     Ok(())
 }

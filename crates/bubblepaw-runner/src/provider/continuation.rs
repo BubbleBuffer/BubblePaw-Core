@@ -78,7 +78,7 @@ fn turn(role: Role, content: &str, session_id: &str) -> Message {
         session_id: session_id.into(),
         role,
         origin: None,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,

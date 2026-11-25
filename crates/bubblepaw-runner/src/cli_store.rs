@@ -160,7 +160,7 @@ async fn write_history(ctx: &HostCtx, session: &str) -> Result<()> {
                 writer.write_all(b",\n")?;
             }
             first = false;
-            serde_json::to_writer(&mut writer, message)?;
+            serde_json::to_writer(&mut writer, &plain_text_content(message))?;
         }
         writer.flush()?;
         match page["next_seq"].as_i64() {
@@ -172,4 +172,18 @@ async fn write_history(ctx: &HostCtx, session: &str) -> Result<()> {
     writer.write_all(b"\n]\n")?;
     writer.flush()?;
     Ok(())
+}
+
+/// `history` prints the plain-string `content` that scripts reading it expect;
+/// the host API returns a list of blocks.
+fn plain_text_content(message: &Value) -> Value {
+    let mut message = message.clone();
+    if let Some(blocks) = message["content"].as_array() {
+        let text: String = blocks
+            .iter()
+            .filter_map(|block| block["text"].as_str())
+            .collect();
+        message["content"] = text.into();
+    }
+    message
 }

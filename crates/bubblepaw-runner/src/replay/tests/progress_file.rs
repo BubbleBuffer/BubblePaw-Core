@@ -9,7 +9,7 @@ async fn progress_json_is_metadata_only_and_matches_report_counts() -> Result<()
         session_id: "fixture".into(),
         origin: (role == Role::User).then_some(MessageOrigin::Typed),
         role,
-        content,
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,

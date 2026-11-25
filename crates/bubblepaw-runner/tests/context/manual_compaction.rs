@@ -140,7 +140,7 @@ impl Fixture {
             session_id: self.session.clone(),
             role,
             origin: None,
-            content: content.into(),
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,
@@ -354,12 +354,12 @@ async fn disabled_auto_preserves_exact_request_until_explicit_compaction_with_ru
             .request
             .messages
             .iter()
-            .any(|message| message.content.contains("Original decisions retained."))
+            .any(|message| message.text().contains("Original decisions retained."))
     );
     // The runtime facts are the harness's runtime_inventory reminder, not part of the view.
     assert!(prepared.request.messages.iter().all(|message| {
         !message
-            .content
+            .text()
             .starts_with("[host notice]\nCurrent volatile runtime facts")
     }));
     // The view's lookup hint is staged as a cold note: it renders in the cold tier.
@@ -379,7 +379,7 @@ async fn disabled_auto_preserves_exact_request_until_explicit_compaction_with_ru
         placed
             .messages
             .iter()
-            .any(|message| message.content.contains("history_lookup")),
+            .any(|message| message.text().contains("history_lookup")),
     );
     assert_eq!(f.models.inputs.lock().unwrap().len(), 1);
     Ok(())

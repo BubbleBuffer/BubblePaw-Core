@@ -155,7 +155,7 @@ impl MemoryFiles {
                         i64::MAX,
                         |_, message| {
                             if message.origin == Some(MessageOrigin::Generated) {
-                                for changes in message.content.split(NOTICE).skip(1) {
+                                for changes in message.text().split(NOTICE).skip(1) {
                                     if let Some(Ok(changes)) =
                                         serde_json::Deserializer::from_str(changes)
                                             .into_iter::<Snapshot>()
@@ -443,7 +443,7 @@ mod compaction_tests {
             id: "covered-notice".into(),
             session_id: session.clone(),
             role: bubblepaw_core::Role::User,
-            content: notice,
+            content: bubblepaw_core::text_blocks(notice),
             origin: Some(MessageOrigin::Generated),
             tool_calls: vec![],
             tool_call_id: None,

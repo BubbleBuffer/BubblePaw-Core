@@ -25,8 +25,8 @@ async fn idle_send_recreates_child_js_heap_and_releases_each_turn() -> Result<()
         .rev()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    assert!(!reply.is_error, "{}", reply.content);
-    let first: Value = serde_json::from_str(&reply.content)?;
+    assert!(!reply.is_error, "{}", reply.text());
+    let first: Value = serde_json::from_str(&reply.text())?;
     assert_eq!(first["status"], "completed");
     let child_id = first["sessionId"].as_str().unwrap();
     assert!(
@@ -58,8 +58,8 @@ async fn idle_send_recreates_child_js_heap_and_releases_each_turn() -> Result<()
         .rev()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    assert!(!reply.is_error, "{}", reply.content);
-    let second: Value = serde_json::from_str(&reply.content)?;
+    assert!(!reply.is_error, "{}", reply.text());
+    let second: Value = serde_json::from_str(&reply.text())?;
     assert_eq!(second["status"], "completed");
     assert_eq!(second["sessionId"], first["sessionId"]);
     assert_eq!(fixture.store.runs(child_id)?.len(), 2);

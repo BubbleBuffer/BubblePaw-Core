@@ -40,7 +40,7 @@ impl Provider for Script {
             .filter(|message| message.role == Role::User)
             .find_map(|message| {
                 message
-                    .content
+                    .text()
                     .lines()
                     .next()
                     .and_then(|line| serde_json::from_str::<Value>(line).ok())
@@ -57,7 +57,7 @@ impl Provider for Script {
             .iter()
             .rev()
             .find(|message| message.role == Role::User)
-            .is_some_and(|message| message.content.starts_with("<harness "));
+            .is_some_and(|message| message.text().starts_with("<harness "));
         if task["hang"] == true || task["hang-on-wake"] == true && waking {
             cancellation.cancelled().await;
             anyhow::bail!("script cancelled");
@@ -281,7 +281,7 @@ async fn three_levels_clamp_budget_count_down_and_continue_grandchild() -> Resul
             .messages(first_id)?
             .iter()
             .any(|message| message.role == Role::Tool
-                && message.content.contains("5 tool calls left"))
+                && message.text().contains("5 tool calls left"))
     );
     let list = fixture.agents.status(&fixture.root, &json!({}))?;
     assert_eq!(list["children"].as_array().unwrap().len(), 3);
@@ -396,7 +396,7 @@ async fn ordinary_hidden_child_wakes_worker_but_worker_stays_silent_outward() ->
             .messages(worker_id)?
             .iter()
             .any(|message| message.origin == Some(MessageOrigin::Generated)
-                && message.content.starts_with("<harness "))
+                && message.text().starts_with("<harness "))
     );
     assert_eq!(
         fixture.agents.status(worker_id, &json!({}))?["children"]
@@ -442,8 +442,8 @@ async fn idle_completion_wakes_only_the_direct_parent() -> Result<()> {
             .messages(first_id)?
             .iter()
             .any(|message| message.origin == Some(MessageOrigin::Generated)
-                && message.content.starts_with("<harness ")
-                && message.content.contains(&leaf.id))
+                && message.text().starts_with("<harness ")
+                && message.text().contains(&leaf.id))
     );
     assert!(fixture.agents.take_reminders(&fixture.root).is_empty());
     assert!(fixture.store.runs(&fixture.root)?.is_empty());
@@ -499,6 +499,12 @@ async fn completion_reaches_direct_parent_and_cancellation_cascades_three_levels
     Ok(())
 }
 
+fn said(messages: &[bubblepaw_core::Message], text: &str) -> bool {
+    messages
+        .iter()
+        .any(|message| message.role == Role::Tool && message.text().contains(text))
+}
+
 #[tokio::test]
 async fn nested_approvals_and_profile_restrictions_remain_clamped() -> Result<()> {
     let fixture = Fixture::new(false)?;
@@ -522,20 +528,14 @@ async fn nested_approvals_and_profile_restrictions_remain_clamped() -> Result<()
         .iter()
         .find(|session| session.parent_session_id.as_deref() != Some(&fixture.root))
         .unwrap();
-    assert!(
-        fixture
-            .store
-            .messages(&leaf.id)?
-            .iter()
-            .any(|message| message.role == Role::Tool && message.content.contains("Denied"))
-    );
+    assert!(said(&fixture.store.messages(&leaf.id)?, "Denied"));
     let child = fixture.agents.start(
         &fixture.context(&fixture.root),
         json!({"task":task(json!({"spawn":{"task":task(json!({})),"profile":"workspace"}}))}),
     )?;
     let child_id = child["sessionId"].as_str().unwrap();
     fixture.wait(&fixture.root, child_id).await?;
-    assert!(fixture.store.messages(child_id)?.iter().any(|message| message.role == Role::Tool && message.content.contains("cannot broaden")));
+    assert!(said(&fixture.store.messages(child_id)?, "cannot broaden"));
     assert!(
         fixture
             .store
@@ -561,13 +561,7 @@ async fn explicit_depth_and_active_caps_still_apply() -> Result<()> {
     )?;
     let child_id = child["sessionId"].as_str().unwrap();
     fixture.wait(&fixture.root, child_id).await?;
-    assert!(
-        fixture
-            .store
-            .messages(child_id)?
-            .iter()
-            .any(|message| message.role == Role::Tool && message.content.contains("depth limit"))
-    );
+    assert!(said(&fixture.store.messages(child_id)?, "depth limit"));
     assert_eq!(fixture.store.list_sessions()?.len(), 2);
     fixture.agents.apply_limits(&Agents {
         max_active_total: Some(1),

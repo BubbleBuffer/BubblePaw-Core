@@ -369,9 +369,9 @@ mod tests {
                     origin: (role == Role::User).then_some(MessageOrigin::Typed),
                     role,
                     content: if index % 2 == 0 {
-                        "Continue synthetic work.".into()
+                        bubblepaw_core::text_blocks("Continue synthetic work.")
                     } else {
-                        "work ".repeat(120)
+                        bubblepaw_core::text_blocks("work ".repeat(120))
                     },
                     tool_calls: vec![],
                     tool_call_id: None,

@@ -113,7 +113,10 @@ async fn messages_merges_user_notices_preserving_tool_result_first() {
     let captured = captured.lock().unwrap();
     let messages = captured[0]["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 3);
-    assert_eq!(messages[0]["content"][0]["text"], notice().content);
+    assert_eq!(
+        messages[0]["content"][0]["text"],
+        notice().text().into_owned()
+    );
     assert_eq!(messages[0]["content"][1]["text"], "Do the task");
     assert_eq!(
         serde_json::to_vec(&messages[1]["content"]).unwrap(),
@@ -121,7 +124,10 @@ async fn messages_merges_user_notices_preserving_tool_result_first() {
     );
     assert_eq!(messages[2]["content"][0]["type"], "tool_result");
     assert_eq!(messages[2]["content"][0]["tool_use_id"], "call");
-    assert_eq!(messages[2]["content"][1]["text"], notice().content);
+    assert_eq!(
+        messages[2]["content"][1]["text"],
+        notice().text().into_owned()
+    );
     server.abort();
 }
 
@@ -143,14 +149,14 @@ async fn responses_keeps_notice_after_function_output() {
         .unwrap();
     let captured = captured.lock().unwrap();
     let input = captured[0]["input"].as_array().unwrap();
-    assert_eq!(input[0]["content"][0]["text"], notice().content);
+    assert_eq!(input[0]["content"][0]["text"], notice().text().into_owned());
     assert_eq!(input[1]["content"][0]["text"], "Do the task");
     assert_eq!(input[input.len() - 2]["type"], "function_call_output");
     assert_eq!(input[input.len() - 2]["call_id"], "call");
     assert_eq!(input.last().unwrap()["role"], "user");
     assert_eq!(
         input.last().unwrap()["content"][0]["text"],
-        notice().content
+        notice().text().into_owned()
     );
     server.abort();
 }
@@ -178,7 +184,10 @@ async fn chat_preserves_adjacent_notice_and_user_messages() {
         .await
         .unwrap();
     let captured = captured.lock().unwrap();
-    assert_eq!(captured[0]["messages"][1]["content"], notice().content);
+    assert_eq!(
+        captured[0]["messages"][1]["content"],
+        notice().text().into_owned()
+    );
     assert_eq!(captured[0]["messages"][2]["content"], "Do the task");
     server.abort();
 }

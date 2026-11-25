@@ -69,7 +69,7 @@ fn message(role: Role, content: &str) -> Message {
         session_id: "synthetic-session".into(),
         role,
         origin: None,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,

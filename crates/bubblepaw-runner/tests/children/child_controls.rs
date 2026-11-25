@@ -255,13 +255,13 @@ async fn timeout_drops_inflight_provider_and_preserves_reusable_history() -> Res
             requests[1]
                 .messages
                 .iter()
-                .any(|m| m.role == Role::User && m.content == "first task")
+                .any(|m| m.role == Role::User && m.text() == "first task")
         );
         assert!(
             requests[1]
                 .messages
                 .iter()
-                .any(|m| m.role == Role::User && m.content == "continue task")
+                .any(|m| m.role == Role::User && m.text() == "continue task")
         );
     }
     fixture.shutdown().await?;
@@ -288,7 +288,7 @@ async fn timeout_returns_current_unfinished_stream_without_archiving_partial_mes
             .store
             .messages(child["sessionId"].as_str().unwrap())?
             .iter()
-            .any(|m| m.role == Role::Assistant && m.content == "unfinished streamed answer")
+            .any(|m| m.role == Role::Assistant && m.text() == "unfinished streamed answer")
     );
     let session = child["sessionId"].as_str().unwrap();
     let run = fixture.store.runs(session)?.into_iter().last().unwrap();
@@ -548,7 +548,7 @@ impl Provider for NestedProbe {
             .rev()
             .find(|message| message.role == Role::User)
             .unwrap();
-        if user.content == "hang grandchild" {
+        if user.text() == "hang grandchild" {
             let _inflight = Inflight(self.dropped.clone());
             self.entered.send(request.session_id)?;
             return std::future::pending().await;

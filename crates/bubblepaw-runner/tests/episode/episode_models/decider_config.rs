@@ -94,7 +94,7 @@ impl Provider for ShapedChat {
         let messages: Vec<Value> = request
             .messages
             .iter()
-            .map(|message| json!({"role":message.role,"content":message.content}))
+            .map(|message| json!({"role":message.role,"content":message.text()}))
             .collect();
         let body =
             json!({"model":request.model,"system":request.system_prompt,"messages":messages});

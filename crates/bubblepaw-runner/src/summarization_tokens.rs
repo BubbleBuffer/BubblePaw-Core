@@ -24,7 +24,7 @@ pub fn canonical_message_tokens(message: &Message) -> usize {
         && state["items"].is_array()
     {
         let mut items = json!(
-            crate::provider::replay_state::hydrate(state, &message.content, &message.tool_calls)
+            crate::provider::replay_state::hydrate(state, &message.text(), &message.tool_calls)
                 .unwrap_or_else(|_| state["items"].as_array().unwrap().clone())
         );
         for item in items.as_array_mut().unwrap() {
@@ -34,7 +34,7 @@ pub fn canonical_message_tokens(message: &Message) -> usize {
         }
         items.to_string()
     } else {
-        json!({"role":message.role,"content":message.content,"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id}).to_string()
+        json!({"role":message.role,"content":message.text(),"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id}).to_string()
     };
     crate::episodes::text_tokens(&body) + 4
 }
@@ -106,7 +106,7 @@ pub(super) fn message_fingerprint(message: &Message) -> [u8; 32] {
         Role::Assistant => 2,
         Role::Tool => 3,
     }]);
-    hash_text(&mut hasher, &message.content);
+    hash_text(&mut hasher, &message.text());
     hasher.update((message.tool_calls.len() as u64).to_le_bytes());
     for call in &message.tool_calls {
         hash_text(&mut hasher, &call.id);
@@ -210,7 +210,7 @@ impl SummarizingContext {
             .messages
             .iter()
             .filter(|message| message.role == Role::Tool)
-            .flat_map(|message| crate::images::split_refs(&message.content).1)
+            .flat_map(|message| crate::images::split_refs(&message.text()).1)
             .map(|image| image.id)
             .collect();
         ids.len().saturating_mul(IMAGE_ATTACHMENT_TOKENS)

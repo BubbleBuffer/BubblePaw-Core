@@ -44,7 +44,7 @@ impl Provider for Edits {
                 .rev()
                 .find(|message| is_typed_user(message))
                 .unwrap_or(last);
-            let input: Value = serde_json::from_str(&typed.content)?;
+            let input: Value = serde_json::from_str(&typed.text())?;
             let calls = vec![ToolCall {
                 id: uuid::Uuid::new_v4().to_string(),
                 name: "js".into(),
@@ -123,7 +123,7 @@ impl Fixture {
         assert!(run.error.is_none(), "{:?}", run.error);
         let messages = self.store.messages(session).unwrap();
         for message in messages.iter().filter(|message| message.role == Role::Tool) {
-            assert!(!message.is_error, "{}", message.content);
+            assert!(!message.is_error, "{}", message.text());
         }
     }
     async fn edit(&self, path: &str, old_string: &str, new_string: &str) {
@@ -219,7 +219,7 @@ async fn unreadable_checkpoint_metadata_aborts_edit_before_filesystem_effect() {
         .filter(|m| m.role == Role::Tool)
         .collect();
     assert!(tools[0].is_error);
-    assert!(tools[0].content.contains("checkpoint metadata"));
+    assert!(tools[0].text().contains("checkpoint metadata"));
     assert_eq!(fs::read(f.root.path().join("a")).unwrap(), b"one\n");
 }
 
@@ -699,7 +699,7 @@ async fn bound_child_worktree_rewind_uses_its_checkout_and_isolates_same_relativ
         .into_iter()
         .filter(|message| message.role == Role::Tool)
     {
-        assert!(!message.is_error, "{}", message.content);
+        assert!(!message.is_error, "{}", message.text());
     }
     assert_eq!(fs::read(binding.path.join("a")).unwrap(), child_changed);
     let child_target = f
@@ -903,7 +903,7 @@ async fn child_task(f: &Fixture, session: &str, code: &str) {
         .into_iter()
         .filter(|message| message.role == Role::Tool)
     {
-        assert!(!message.is_error, "{}", message.content);
+        assert!(!message.is_error, "{}", message.text());
     }
 }
 

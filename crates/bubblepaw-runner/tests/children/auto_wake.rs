@@ -40,7 +40,7 @@ impl Provider for Probe {
             .messages
             .iter()
             .rfind(|message| message.role == Role::User)
-            .map(|message| message.content.clone())
+            .map(|message| message.text().into_owned())
             .unwrap_or_default();
         let has_tool = request
             .messages
@@ -224,9 +224,9 @@ impl Fixture {
             .into_iter()
             .filter(|message| {
                 message.origin == Some(MessageOrigin::Generated)
-                    && message.content.starts_with("<harness ")
+                    && message.text().starts_with("<harness ")
             })
-            .map(|message| message.content)
+            .map(|message| message.text().into_owned())
             .collect()
     }
 }
@@ -638,7 +638,7 @@ async fn streaming_timeout_keeps_partial_result_out_of_durable_parent_notice() -
             .messages(child["sessionId"].as_str().unwrap())?
             .iter()
             .all(|message| !message
-                .content
+                .text()
                 .contains("transient unfinished child fragment"))
     );
     Ok(())

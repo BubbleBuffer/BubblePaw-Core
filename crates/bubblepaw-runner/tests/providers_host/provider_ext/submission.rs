@@ -36,7 +36,8 @@ async fn extension_omits_legacy_schema_and_forwards_supported_effort_without_cha
         request.max_output_tokens = Some(123);
         request.output_schema = schema;
         request.reasoning_effort = effort;
-        let mut expected = serde_json::to_value(&request).unwrap();
+        let mut expected =
+            bubblepaw_core::plain_content(|| serde_json::to_value(&request)).unwrap();
         expected.as_object_mut().unwrap().remove("output_schema");
         let state = call(&provider, request)
             .await
@@ -52,7 +53,7 @@ async fn extension_omits_legacy_schema_and_forwards_supported_effort_without_cha
 async fn extension_omits_unset_schema_and_effort_and_preserves_legacy_step_fields() {
     let provider = fake();
     let request = ext_step("direct-model", "hello", "e1", Some("m0"));
-    let expected = serde_json::to_value(&request).unwrap();
+    let expected = bubblepaw_core::plain_content(|| serde_json::to_value(&request)).unwrap();
     let state = call(&provider, request)
         .await
         .unwrap()
@@ -169,7 +170,7 @@ async fn extension_forwards_reserved_submission_with_missing_or_stale_declaratio
                 request.disabled_tools = std::mem::take(&mut request.tools);
             }
         }
-        let frozen = serde_json::to_value(&request).unwrap();
+        let frozen = bubblepaw_core::plain_content(|| serde_json::to_value(&request)).unwrap();
         let result = call(&provider, request).await.unwrap();
         assert_eq!(result.tool_calls[0].name, "submit_result");
         assert_eq!(result.tool_calls[0].arguments, json!({"value":"hi"}));

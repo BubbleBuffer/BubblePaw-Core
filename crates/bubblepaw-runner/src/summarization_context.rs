@@ -26,7 +26,7 @@ impl SummarizingContext {
         chapters: &[ContextChapter],
     ) -> Result<String> {
         let frozen = self.store.context_view(session)?;
-        Ok(bubblepaw_core::fingerprint(json!({"view":frozen,"model":request.model,"system":request.system_prompt,"tools":request.tools,"checkpoint":checkpoint.map(|c| &c.id),"chapters":chapters.iter().map(|chapter| &chapter.id).collect::<Vec<_>>(),"chapter_view":request.messages.iter().filter(|message| message.role == Role::System && message.content.starts_with("Context chapters (")).map(|message| &message.content).collect::<Vec<_>>()}).to_string().as_bytes()))
+        Ok(bubblepaw_core::fingerprint(json!({"view":frozen,"model":request.model,"system":request.system_prompt,"tools":request.tools,"checkpoint":checkpoint.map(|c| &c.id),"chapters":chapters.iter().map(|chapter| &chapter.id).collect::<Vec<_>>(),"chapter_view":request.messages.iter().filter(|message| message.role == Role::System && message.text().starts_with("Context chapters (")).map(|message| message.text().into_owned()).collect::<Vec<_>>()}).to_string().as_bytes()))
     }
     /// Read-only final admission: never prepares again, gathers, mutates a meter,
     /// or publishes a view after the final combined reminder has been appended.
@@ -218,9 +218,9 @@ impl SummarizingContext {
     pub(super) fn legacy_view(view: &ContextView) -> bool {
         !view.system_prompt.is_empty()
             || view.prefix.iter().any(|message| {
-                message.content == HISTORY_RETRIEVAL_INSTRUCTION
-                    || message.content == STRATEGY_RETRIEVAL_INSTRUCTION
-                    || PREVIOUS_RETRIEVAL_INSTRUCTIONS.contains(&message.content.as_str())
+                message.text() == HISTORY_RETRIEVAL_INSTRUCTION
+                    || message.text() == STRATEGY_RETRIEVAL_INSTRUCTION
+                    || PREVIOUS_RETRIEVAL_INSTRUCTIONS.contains(&&*message.text())
             })
     }
 

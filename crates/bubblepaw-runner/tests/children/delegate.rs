@@ -421,7 +421,7 @@ async fn read_first_opens_the_first_message_and_a_rework_resume_does_not_repeat_
         .unwrap()
         .into_iter()
         .filter(|m| m.role == Role::User)
-        .map(|m| m.content)
+        .map(|m| m.text().into_owned())
         .collect();
     assert_eq!(users.len(), 2, "the first message and one rework resume");
     // The body comes first, then the section with the named range only.

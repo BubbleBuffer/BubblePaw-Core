@@ -267,7 +267,7 @@ impl Fixture {
                 id: uuid::Uuid::new_v4().to_string(),
                 session_id: self.session.clone(),
                 role,
-                content,
+                content: bubblepaw_core::text_blocks(content),
                 tool_calls: vec![],
                 tool_call_id: None,
                 origin: None,
@@ -297,7 +297,7 @@ impl Fixture {
         assert_eq!(tools.len(), outputs.len(), "Every action ran exactly once");
         for (tool, output) in tools.iter().zip(outputs) {
             assert!(!tool.is_error);
-            assert_eq!(tool.content, serde_json::to_string(output)?);
+            assert_eq!(tool.text(), serde_json::to_string(output)?);
         }
         let groups: Vec<_> = archive
             .iter()
@@ -355,7 +355,7 @@ impl Fixture {
         assert!(self.policy.estimated_tokens(resumed) < threshold);
         let anchor = archive
             .iter()
-            .find(|m| bubblepaw_core::is_typed_user(m) && m.content == latest)
+            .find(|m| bubblepaw_core::is_typed_user(m) && m.text() == latest)
             .unwrap();
         assert_eq!(
             serde_json::to_value(resumed.messages.iter().find(|m| m.id == anchor.id).unwrap())?,
@@ -374,7 +374,7 @@ impl Fixture {
                     && resumed
                         .messages
                         .iter()
-                        .any(|m| m.content.contains(&episode.summary))
+                        .any(|m| m.text().contains(&episode.summary))
             }),
             "The continuation serves a saved episode summary, not just a smaller masked view"
         );
@@ -444,7 +444,7 @@ async fn publications_stay_outside_context_and_large_return_spills_without_losin
         messages
             .iter()
             .filter(|m| m.role == Role::Tool)
-            .all(|m| m.content.len() < 1024)
+            .all(|m| m.text().len() < 1024)
     );
     assert_eq!(f.provider.summary_count(), 0);
     f.provider
@@ -456,9 +456,9 @@ async fn publications_stay_outside_context_and_large_return_spills_without_losin
     let archive = f.store.messages(&f.session)?;
     let large = archive.iter().rev().find(|m| m.role == Role::Tool).unwrap();
     assert!(!large.is_error);
-    let receipt: Value = serde_json::from_str(&large.content)?;
+    let receipt: Value = serde_json::from_str(&large.text())?;
     assert_eq!(receipt["truncated"], true);
-    assert!(estimated_output_tokens(&large.content)? <= 10000);
+    assert!(estimated_output_tokens(&large.text())? <= 10000);
     let full = spilled_response(&f, &receipt)?;
     let value: Value = serde_json::from_str(full.split("\n[---]\n").next().unwrap())?;
     assert_eq!(value["body"].as_str().unwrap().len(), 70000);
@@ -472,13 +472,13 @@ async fn publications_stay_outside_context_and_large_return_spills_without_losin
     let archive = f.store.messages(&f.session)?;
     let recovery = archive.iter().rev().find(|m| m.role == Role::Tool).unwrap();
     assert!(!recovery.is_error);
-    assert!(recovery.content.contains("recovered"));
+    assert!(recovery.text().contains("recovered"));
     assert_eq!(
-        serde_json::from_str::<Value>(recovery.content.split("\n[---]\n").next().unwrap())?["kept"],
+        serde_json::from_str::<Value>(recovery.text().split("\n[---]\n").next().unwrap())?["kept"],
         19
     );
     assert_eq!(
-        serde_json::from_str::<Value>(recovery.content.split("\n[---]\n").next().unwrap())?["fullLength"],
+        serde_json::from_str::<Value>(recovery.text().split("\n[---]\n").next().unwrap())?["fullLength"],
         70000
     );
     Ok(())
@@ -497,7 +497,7 @@ async fn oversized_nested_native_json_spills_with_bounded_preview_and_cursor() -
     let archive = f.store.messages(&f.session)?;
     let tool = archive.iter().find(|m| m.role == Role::Tool).unwrap();
     assert!(!tool.is_error);
-    let receipt: Value = serde_json::from_str(&tool.content)?;
+    let receipt: Value = serde_json::from_str(&tool.text())?;
     assert_eq!(receipt["truncated"], true);
     assert_eq!(receipt["previewFormat"], "text");
     assert_eq!(receipt["cursor"], "recover-here");
@@ -508,8 +508,8 @@ async fn oversized_nested_native_json_spills_with_bounded_preview_and_cursor() -
             .unwrap()
             .contains("output preview truncated")
     );
-    assert!(tool.content.len() <= 60 * 1024);
-    assert!(estimated_output_tokens(&tool.content)? <= 10000);
+    assert!(tool.text().len() <= 60 * 1024);
+    assert!(estimated_output_tokens(&tool.text())? <= 10000);
     let full = spilled_response(&f, &receipt)?;
     assert!(full.len() > 64 * 1024);
     assert_eq!(
@@ -553,8 +553,8 @@ async fn per_cell_publication_limit_fails_small_preserving_already_published_out
     let archive = f.store.messages(&f.session)?;
     let tool = archive.iter().find(|m| m.role == Role::Tool).unwrap();
     assert!(tool.is_error);
-    assert!(tool.content.contains("Cell output limit reached"));
-    assert!(tool.content.len() < 1024);
+    assert!(tool.text().contains("Cell output limit reached"));
+    assert!(tool.text().len() < 1024);
     assert_eq!(f.provider.summary_count(), 0);
     Ok(())
 }
@@ -579,9 +579,9 @@ async fn default_dense_return_stays_bounded_and_dispatches_without_exceeding_sma
     );
     let tool = archive.iter().find(|m| m.role == Role::Tool).unwrap();
     assert!(!tool.is_error);
-    let receipt: Value = serde_json::from_str(&tool.content)?;
+    let receipt: Value = serde_json::from_str(&tool.text())?;
     assert_eq!(receipt["truncated"], true);
-    let result_tokens = estimated_output_tokens(&tool.content)?;
+    let result_tokens = estimated_output_tokens(&tool.text())?;
     assert!(result_tokens <= 10000);
     let full = spilled_response(&f, &receipt)?;
     assert_eq!(full.len(), 60002);
@@ -597,7 +597,7 @@ async fn default_dense_return_stays_bounded_and_dispatches_without_exceeding_sma
     assert_eq!(regular, 2, "A bounded continuation is dispatched");
     eprintln!(
         "dense single JS result after default budget: {} bytes, {result_tokens} tokenizer tokens; original60002bytes retained in spill",
-        tool.content.len()
+        tool.text().len()
     );
     Ok(())
 }
@@ -625,17 +625,13 @@ async fn several_legal_returns_in_one_model_round_are_summarized_as_a_complete_g
         .filter(|m| m.role == Role::Tool)
         .collect::<Vec<_>>();
     assert_eq!(tools.len(), 4);
-    assert!(
-        tools
-            .iter()
-            .all(|m| !m.is_error && m.content.len() == 48002)
-    );
-    let bytes = tools.iter().map(|m| m.content.len()).sum::<usize>();
+    assert!(tools.iter().all(|m| !m.is_error && m.text().len() == 48002));
+    let bytes = tools.iter().map(|m| m.text().len()).sum::<usize>();
     assert_eq!(bytes, 192008);
     let tokenizer = tiktoken_rs::bpe_for_tokenizer(tiktoken_rs::tokenizer::Tokenizer::O200kBase)?;
     let tokens = tools
         .iter()
-        .map(|m| tokenizer.encode_ordinary(&m.content).len())
+        .map(|m| tokenizer.encode_ordinary(&m.text()).len())
         .sum::<usize>();
     assert!(tokens > 32000);
     f.assert_summarized_continuation(
@@ -712,10 +708,10 @@ async fn default_272k_window_bounds_one_two_five_or_ten_large_results_then_summa
         let mut result_tokens = 0;
         for tool in &tools {
             assert!(!tool.is_error);
-            let tokens = estimated_output_tokens(&tool.content)?;
+            let tokens = estimated_output_tokens(&tool.text())?;
             assert!(tokens <= 10000, "Result has {tokens} estimated tokens");
             result_tokens += tokens;
-            let receipt: Value = serde_json::from_str(&tool.content)?;
+            let receipt: Value = serde_json::from_str(&tool.text())?;
             assert_eq!(receipt["truncated"], true);
             assert_eq!(spilled_response(&f, &receipt)?.len(), 60002);
         }
@@ -737,7 +733,7 @@ async fn default_272k_window_bounds_one_two_five_or_ten_large_results_then_summa
             resumed
                 .messages
                 .iter()
-                .any(|m| m.role == Role::User && m.content == latest)
+                .any(|m| m.role == Role::User && m.text() == latest)
         );
         let after = f.policy.estimated_tokens(resumed);
         assert!(after < 256000);

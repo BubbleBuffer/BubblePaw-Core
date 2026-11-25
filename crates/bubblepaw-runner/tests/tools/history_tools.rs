@@ -46,7 +46,7 @@ impl Fixture {
             id: uuid::Uuid::new_v4().to_string(),
             session_id: session.into(),
             role,
-            content: text,
+            content: bubblepaw_core::text_blocks(text),
             tool_calls: calls,
             tool_call_id: link.map(str::to_owned),
             origin: None,
@@ -333,7 +333,7 @@ async fn id_lookup_returns_original_outputs_and_call_arguments_with_existing_cap
         .await;
     let preview = result["messages"][0]["text"].as_str().unwrap();
     assert!(preview.starts_with("original output "));
-    assert!(output.content.starts_with(preview));
+    assert!(output.text().starts_with(preview));
     assert!(preview.chars().count() <= 4000);
     assert_eq!(result["messages"][0]["truncated"], true);
     assert_eq!(result["messages"][0]["tool_call_id"], "original-call");
@@ -642,7 +642,7 @@ async fn original_detail_and_tool_arguments_are_searchable_in_history_order() {
     assert_eq!(read["next"], Value::Null);
     let linked = fixture.call("history_read", json!({"from":2})).await;
     assert_eq!(linked["messages"][0]["tool_call_id"], "call-1");
-    assert_eq!(linked["messages"][0]["text"], tail.content);
+    assert_eq!(linked["messages"][0]["text"], &*tail.text());
     assert_eq!(
         fixture.store.storage_stats().unwrap().transaction_count,
         before

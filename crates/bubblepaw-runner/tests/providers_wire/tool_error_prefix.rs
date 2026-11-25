@@ -14,7 +14,7 @@ fn message(role: Role, content: &str) -> Message {
         id: format!("m-{content}"),
         session_id: "session".into(),
         role,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         ..Default::default()
     }
 }
@@ -91,6 +91,6 @@ async fn error_results_start_with_error_on_adapters_without_an_error_field() {
             .find(|item| item["type"] == "function_call_output")
             .unwrap();
         assert_eq!(output["output"], wire, "{content}");
-        assert_eq!(sent.messages[2].content, content);
+        assert_eq!(sent.messages[2].text(), content);
     }
 }

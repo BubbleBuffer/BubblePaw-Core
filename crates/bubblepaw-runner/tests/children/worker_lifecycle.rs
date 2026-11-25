@@ -674,24 +674,18 @@ async fn ordinary_hidden_child_continues_from_canonical_history_after_mirror_rel
             .collect();
         assert_eq!(child_requests.len(), 2);
         assert!(
-            child_requests[1]
-                .messages
-                .iter()
-                .any(|message| message.role == Role::User
-                    && message.content == "ordinary first task")
-        );
-        assert!(
             child_requests[1].messages.iter().any(
-                |message| message.role == Role::Assistant && message.content == "worker answer"
+                |message| message.role == Role::User && message.text() == "ordinary first task"
             )
         );
         assert!(
-            child_requests[1]
-                .messages
-                .iter()
-                .any(|message| message.role == Role::User
-                    && message.content == "ordinary follow-up task")
+            child_requests[1].messages.iter().any(
+                |message| message.role == Role::Assistant && message.text() == "worker answer"
+            )
         );
+        assert!(child_requests[1].messages.iter().any(
+            |message| message.role == Role::User && message.text() == "ordinary follow-up task"
+        ));
         assert_ne!(
             child_requests[0].history.epoch,
             child_requests[1].history.epoch

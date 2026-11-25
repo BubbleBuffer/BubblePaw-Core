@@ -100,13 +100,13 @@ async fn saved_answer_recovers_on_next_root_request_without_repeated_injection()
                 .iter()
                 .filter(|message| {
                     message
-                        .content
+                        .text()
                         .contains("<harness kind=\"question_answer:unadmitted-answer\">")
                 })
                 .collect::<Vec<_>>();
             assert_eq!(notices.len(), 1);
-            assert!(notices[0].content.starts_with("<harness "));
-            assert!(notices[0].content.contains("Answer: Keep the original"));
+            assert!(notices[0].text().starts_with("<harness "));
+            assert!(notices[0].text().contains("Answer: Keep the original"));
         }
     }
     assert_eq!(
@@ -114,7 +114,7 @@ async fn saved_answer_recovers_on_next_root_request_without_repeated_injection()
             .messages(&session)?
             .iter()
             .filter(|message| message
-                .content
+                .text()
                 .contains("<harness kind=\"question_answer:unadmitted-answer\">"))
             .count(),
         1

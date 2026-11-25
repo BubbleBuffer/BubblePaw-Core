@@ -81,7 +81,7 @@ fn request() -> ModelRequest {
             session_id: "fixture".into(),
             role: Role::User,
             origin: None,
-            content: "Return the answer.".into(),
+            content: bubblepaw_core::text_blocks("Return the answer."),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,

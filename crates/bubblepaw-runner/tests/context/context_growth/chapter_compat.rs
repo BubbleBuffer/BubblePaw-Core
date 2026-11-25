@@ -24,11 +24,7 @@ async fn ten_explicit_large_outputs_are_summarized_without_masking_or_replaying_
         .filter(|m| m.role == Role::Tool)
         .collect::<Vec<_>>();
     assert_eq!(tools.len(), 10);
-    assert!(
-        tools
-            .iter()
-            .all(|m| !m.is_error && m.content.len() == 60002)
-    );
+    assert!(tools.iter().all(|m| !m.is_error && m.text().len() == 60002));
     f.assert_summarized_continuation(
         &original,
         latest,

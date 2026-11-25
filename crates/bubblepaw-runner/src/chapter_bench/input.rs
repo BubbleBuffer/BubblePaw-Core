@@ -119,7 +119,7 @@ fn convert(value: Value, path: &Path, bytes: &[u8]) -> Result<ReplayCorpus> {
             session_id: "replay".into(),
             role,
             origin,
-            content: text,
+            content: bubblepaw_core::text_blocks(text),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,
@@ -129,11 +129,11 @@ fn convert(value: Value, path: &Path, bytes: &[u8]) -> Result<ReplayCorpus> {
         };
         if matches!(record.kind.as_str(), "function_call" | "custom_tool_call") {
             let prefix = format!("[{} ", record.kind);
-            let (name, argument_text) = message
-                .content
+            let text = message.text().into_owned();
+            let (name, argument_text) = text
                 .strip_prefix(&prefix)
                 .and_then(|body| body.split_once("]\n"))
-                .unwrap_or(("recorded_tool", &message.content));
+                .unwrap_or(("recorded_tool", &text));
             let call = ToolCall {
                 id: record
                     .call_id
@@ -142,7 +142,7 @@ fn convert(value: Value, path: &Path, bytes: &[u8]) -> Result<ReplayCorpus> {
                 arguments: serde_json::from_str(argument_text)
                     .unwrap_or_else(|_| json!(argument_text)),
             };
-            message.content.clear();
+            message.set_text("");
             message.tool_calls.push(call);
         } else if message.role == Role::Tool {
             message.tool_call_id = Some(
@@ -151,9 +151,9 @@ fn convert(value: Value, path: &Path, bytes: &[u8]) -> Result<ReplayCorpus> {
                     .context("Normalized tool result has no call ID")?,
             );
             message.is_error |= exit_failure
-                .captures_iter(&message.content)
+                .captures_iter(&message.text())
                 .any(|capture| capture[1].parse::<i64>().is_ok_and(|code| code != 0));
-            if let Ok(output) = serde_json::from_str::<Value>(&message.content) {
+            if let Ok(output) = serde_json::from_str::<Value>(&message.text()) {
                 message.is_error |= output["isError"] == true || output["is_error"] == true;
             }
         }

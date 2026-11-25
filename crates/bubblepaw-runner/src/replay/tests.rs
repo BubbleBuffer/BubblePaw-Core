@@ -62,7 +62,7 @@ fn performance_message(index: usize, role: Role) -> Message {
         session_id: "fixture".into(),
         origin: (role == Role::User).then_some(MessageOrigin::Typed),
         role,
-        content: format!("Fixture {index}"),
+        content: bubblepaw_core::text_blocks(format!("Fixture {index}")),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,

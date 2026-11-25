@@ -69,7 +69,7 @@ fn user(text: &str) -> Message {
         session_id: "fixture-session".into(),
         role: Role::User,
         origin: None,
-        content: text.into(),
+        content: bubblepaw_core::text_blocks(text),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,
@@ -949,14 +949,14 @@ async fn messages_withheld_thinking_stays_out_of_tool_rounds_and_next_turns() {
     let mut tool_round = first;
     tool_round.messages.push(Message {
         role: Role::Assistant,
-        content: round.text.clone(),
+        content: bubblepaw_core::text_blocks(round.text.clone()),
         tool_calls: round.tool_calls.clone(),
         provider_state: round.provider_state.clone(),
         ..user("")
     });
     tool_round.messages.push(Message {
         role: Role::Tool,
-        content: "alpha".into(),
+        content: bubblepaw_core::text_blocks("alpha"),
         tool_call_id: Some("toolu_read".into()),
         ..user("")
     });
@@ -968,7 +968,7 @@ async fn messages_withheld_thinking_stays_out_of_tool_rounds_and_next_turns() {
     let mut next_turn = tool_round;
     next_turn.messages.push(Message {
         role: Role::Assistant,
-        content: tool_done.text.clone(),
+        content: bubblepaw_core::text_blocks(tool_done.text.clone()),
         provider_state: tool_done.provider_state.clone(),
         ..user("")
     });

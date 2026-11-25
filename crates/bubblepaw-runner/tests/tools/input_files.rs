@@ -37,7 +37,7 @@ fn record_backed_large_attachments_share_blobs_with_inline_history_and_survive_c
             session_id: session.id.clone(),
             role: Role::User,
             origin: None,
-            content: content.clone(),
+            content: bubblepaw_core::text_blocks(content.clone()),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,
@@ -92,7 +92,7 @@ fn record_backed_large_attachments_share_blobs_with_inline_history_and_survive_c
         std::fs::read(workspace.path().join(&inline.path)).unwrap(),
         text.as_bytes()
     );
-    assert_eq!(reopened.messages(&session.id).unwrap()[0].content, content);
+    assert_eq!(reopened.messages(&session.id).unwrap()[0].text(), content);
 }
 fn files(text: &str) -> Value {
     let json = text

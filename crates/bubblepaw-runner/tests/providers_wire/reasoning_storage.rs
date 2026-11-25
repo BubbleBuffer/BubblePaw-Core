@@ -200,10 +200,10 @@ fn message(session: &str, index: usize) -> Message {
             Role::Assistant
         },
         origin: None,
-        content: format!(
+        content: bubblepaw_core::text_blocks(format!(
             "Canonical source {index}: {}",
             "Exact spelling π 猫 🐾\n".repeat(240)
-        ),
+        )),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
@@ -221,7 +221,7 @@ async fn history(fixture: &Fixture, kind: Kind, session: &str) -> Result<Vec<Mes
         )
         .await?;
     let mut messages: Vec<_> = (0..41).map(|index| message(session, index)).collect();
-    messages[1].content = response.text;
+    messages[1].content = bubblepaw_core::text_blocks(response.text);
     messages[1].tool_calls = response.tool_calls;
     messages[1].provider_state = response.provider_state;
     let state = messages[1].provider_state.as_ref().unwrap();

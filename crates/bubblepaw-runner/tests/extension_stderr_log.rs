@@ -52,7 +52,9 @@ async fn extension_stderr_is_logged_at_warn_with_secrets_redacted() {
             session_id: "s".into(),
             role: Role::User,
             origin: None,
-            content: "stderr-exit STDERR_LINE configured-secret-value Bearer bearer-secret".into(),
+            content: bubblepaw_core::text_blocks(
+                "stderr-exit STDERR_LINE configured-secret-value Bearer bearer-secret",
+            ),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,

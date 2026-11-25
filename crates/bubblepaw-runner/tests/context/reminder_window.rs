@@ -38,7 +38,7 @@ impl Provider for Estimate {
                 + request
                     .messages
                     .iter()
-                    .map(|message| message.content.len())
+                    .map(|message| message.text().len())
                     .sum::<usize>()
         })))
     }
@@ -142,7 +142,7 @@ fn oversized_final_reminder_keeps_queue_and_durable_history_unchanged() -> Resul
             .messages
             .last()
             .unwrap()
-            .content
+            .text()
             .contains(">ok</harness>")
     );
     assert_eq!(store.messages(&session)?.len(), 1);
@@ -209,7 +209,7 @@ async fn response_calibration_uses_the_dispatched_reminder_instead_of_counting_i
         id: "final-reminder".into(),
         session_id: session.clone(),
         role: bubblepaw_core::Role::User,
-        content: "r".repeat(80),
+        content: bubblepaw_core::text_blocks("r".repeat(80)),
         origin: Some(bubblepaw_core::MessageOrigin::Generated),
         tool_calls: vec![],
         tool_call_id: None,

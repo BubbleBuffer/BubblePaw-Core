@@ -205,14 +205,14 @@ async fn stdio_wakes_for_completion(code: &str, notice_prefix: &str) {
         .iter()
         .filter(|message| {
             message["origin"] == "generated"
-                && message["content"]
+                && message["content"][0]["text"]
                     .as_str()
                     .is_some_and(|text| text.starts_with("<harness "))
         })
         .collect::<Vec<_>>();
     assert_eq!(notices.len(), 1, "{state}");
     assert!(
-        notices[0]["content"]
+        notices[0]["content"][0]["text"]
             .as_str()
             .unwrap()
             .contains(notice_prefix)
@@ -362,7 +362,7 @@ async fn killed_extension_runner_recovers_unknown_effect_and_blocks_reused_dispa
             .any(|message| message.role == bubblepaw_core::Role::Tool
                 && message.tool_call_id.as_deref() == Some("interrupted-extension-effect")
                 && message.is_error
-                && message.content.contains("outcome unknown")),
+                && message.text().contains("outcome unknown")),
         "{recovered:?}"
     );
     // Outer dispatch_tx stores call_id, with its full call owned by the

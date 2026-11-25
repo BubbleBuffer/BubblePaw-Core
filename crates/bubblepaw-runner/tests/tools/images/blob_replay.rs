@@ -118,6 +118,6 @@ async fn canonical_image_blob_is_stored_once_and_replayed_after_file_removal() {
             .messages
             .iter()
             .any(|message| message.role == Role::Tool
-                && message.content.contains(&STANDARD.encode(&bytes)))
+                && message.text().contains(&STANDARD.encode(&bytes)))
     );
 }

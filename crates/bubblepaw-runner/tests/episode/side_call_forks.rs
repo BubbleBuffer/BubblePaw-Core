@@ -247,10 +247,10 @@ async fn summary_fork_sends_the_parent_prefix_with_its_cache_tiers() -> Result<(
     // The measured summary control follows the prefix unchanged.
     assert_eq!(sent[0].messages.len(), 5);
     assert_eq!(sent[0].messages[3].role, Role::User);
-    assert!(sent[0].messages[3].content.starts_with("<harness>\n"));
+    assert!(sent[0].messages[3].text().starts_with("<harness>\n"));
     assert!(
         sent[0].messages[4]
-            .content
+            .text()
             .contains("SUMMARY RETURN CONTROL")
     );
     // The fork reads the block the parent's last request wrote.
@@ -288,10 +288,10 @@ async fn chapter_fork_sends_the_parent_prefix_then_the_chapter_task() -> Result<
     assert_eq!(task[0].origin, Some(MessageOrigin::Generated));
     assert!(
         task[0]
-            .content
+            .text()
             .starts_with("<harness kind=\"chapter_task\">")
     );
-    assert!(task[0].content.contains("TYPED REQUEST:\nfix the parser"));
+    assert!(task[0].text().contains("TYPED REQUEST:\nfix the parser"));
     assert_eq!(sent[0].cache_tiers, Some(PARENT_TIERS));
     let built = f.built()?;
     let fork = built.last().unwrap();
@@ -370,7 +370,7 @@ async fn a_tool_call_is_refused_once_then_the_fork_is_retried() -> Result<()> {
     assert_eq!(refusal[1].role, Role::Tool);
     assert_eq!(refusal[1].tool_call_id.as_deref(), Some("call-0"));
     assert!(refusal[1].is_error);
-    assert_eq!(refusal[1].content, "No tools in this task; answer in text.");
+    assert_eq!(refusal[1].text(), "No tools in this task; answer in text.");
     assert_eq!(retry.cache_tiers, Some(PARENT_TIERS));
 
     // A second tool call fails as before, after one retry.

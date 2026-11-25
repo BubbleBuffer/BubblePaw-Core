@@ -144,9 +144,9 @@ async fn stdio_background_releases_sync_exec_and_cancel_removes_spool() {
                         .unwrap()
                         .iter()
                         .any(
-                            |message| message["content"].as_str().is_some_and(|text| text
-                                .contains("backgrounded")
-                                && text.contains("user"))
+                            |message| message["content"][0]["text"].as_str().is_some_and(
+                                |text| text.contains("backgrounded") && text.contains("user")
+                            )
                         )
                 );
                 break;

@@ -168,7 +168,9 @@ pub fn typed_user_block_with_budget(
     for (index, message) in users.iter().enumerate() {
         let entry = format!(
             "\n[{} | {}]\n{}\n",
-            message.id, message.created_at, message.content
+            message.id,
+            message.created_at,
+            message.text()
         );
         if tokenizer
             .encode_ordinary(&format!("{text}{entry}{}", refs(index + 1)))
@@ -216,7 +218,7 @@ mod tests {
             id: format!("message-{index}"),
             session_id: "session".into(),
             role: Role::Assistant,
-            content: String::new(),
+            content: bubblepaw_core::text_blocks(String::new()),
             origin: None,
             tool_calls: calls
                 .into_iter()

@@ -36,7 +36,7 @@ async fn local_http_probes_use_metered_history_tools_record_bad_judge_and_block_
         session_id: session.id.clone(),
         role: Role::User,
         origin: None,
-        content: "Garden was blue".into(),
+        content: bubblepaw_core::text_blocks("Garden was blue"),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,

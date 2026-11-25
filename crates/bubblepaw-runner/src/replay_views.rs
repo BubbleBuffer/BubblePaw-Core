@@ -23,26 +23,28 @@ impl ReplayRun {
                     "latest_typed_request"
                 } else if self.history.iter().any(|m| m.id == item.id) {
                     "raw"
-                } else if item.content.starts_with("Subject chapter index") {
+                } else if item.text().starts_with("Subject chapter index") {
                     "chapter_index"
-                } else if item.content.starts_with("Closed chapter summaries") {
+                } else if item.text().starts_with("Closed chapter summaries") {
                     "closed_chapter_summaries"
-                } else if item.content.starts_with("Open chapter episodes") {
+                } else if item.text().starts_with("Open chapter episodes") {
                     "open_episode_summaries"
-                } else if item.content.contains("history_search") {
+                } else if item.text().contains("history_search") {
                     "retrieval_instruction"
                 } else {
                     "runtime_note_or_legacy"
                 };
                 text.push_str(&format!(
                     "\n[{} {:?}]\n{}\n",
-                    item.id, item.role, item.content
+                    item.id,
+                    item.role,
+                    item.text()
                 ));
                 if !item.tool_calls.is_empty() {
                     text.push_str(&serde_json::to_string(&item.tool_calls)?);
                     text.push('\n');
                 }
-                items.push(json!({"item":kind,"message_id":item.id,"tokens":self.estimator.message_tokens(item),"content_tokens":token_count(&item.content)?}));
+                items.push(json!({"item":kind,"message_id":item.id,"tokens":self.estimator.message_tokens(item),"content_tokens":token_count(&item.text())?}));
             }
             std::fs::write(self.options.out.join(&file), text)?;
             items
@@ -84,7 +86,9 @@ impl ReplayRun {
         for message in &request.messages {
             text.push_str(&format!(
                 "\n[{} {:?}]\n{}\n",
-                message.id, message.role, message.content
+                message.id,
+                message.role,
+                message.text()
             ));
             if !message.tool_calls.is_empty() {
                 text.push_str(&serde_json::to_string(&message.tool_calls)?);

@@ -35,7 +35,7 @@ impl Provider for Cells {
             ["js"]
         );
         if let Some(last) = request.messages.last().filter(|m| m.role == Role::User)
-            && let Ok(arguments) = serde_json::from_str::<Value>(&last.content)
+            && let Ok(arguments) = serde_json::from_str::<Value>(&last.text())
         {
             return Ok(ModelResponse {
                 tool_calls: vec![ToolCall {
@@ -164,8 +164,8 @@ impl Fixture {
             .rev()
             .find(|m| m.role == Role::Tool)
             .unwrap();
-        assert!(!last.is_error, "{}", last.content);
-        serde_json::from_str(last.content.split("\n[---]\n").next().unwrap()).unwrap()
+        assert!(!last.is_error, "{}", last.text());
+        serde_json::from_str(last.text().split("\n[---]\n").next().unwrap()).unwrap()
     }
     async fn cell_error(&self, code: &str) -> String {
         self.harness
@@ -182,8 +182,8 @@ impl Fixture {
             .rev()
             .find(|m| m.role == Role::Tool)
             .unwrap();
-        assert!(last.is_error, "{}", last.content);
-        last.content.clone()
+        assert!(last.is_error, "{}", last.text());
+        last.text().into_owned()
     }
     fn texts(&self) -> Vec<String> {
         self.store
@@ -201,7 +201,7 @@ impl Fixture {
             .rev()
             .find(|m| m.role == Role::Tool)
             .unwrap()
-            .content
+            .into_text()
     }
     async fn until(&self, mut condition: impl FnMut(&Value) -> bool) {
         tokio::time::timeout(Duration::from_secs(8), async {
@@ -870,7 +870,7 @@ async fn fresh_locals_persistent_state_async_dispatch_and_output_ownership() {
             .messages(&f.session)
             .unwrap()
             .iter()
-            .any(|m| m.content.contains("\"invocation\""))
+            .any(|m| m.text().contains("\"invocation\""))
     );
     f.manager.shutdown().await;
 }
@@ -966,7 +966,7 @@ async fn read_only_cells_keep_reads_waits_and_environment_management_without_mut
         .rev()
         .find(|m| m.role == Role::Tool)
         .unwrap();
-    assert!(!message.is_error, "{}", message.content);
+    assert!(!message.is_error, "{}", message.text());
     assert_eq!(f.texts(), ["capture me"]);
     f.manager.shutdown().await;
     f._processes.as_ref().unwrap().shutdown().await;
@@ -1136,9 +1136,9 @@ async fn unrelated_explicit_wait_cannot_hide_stalled_host_call_deadline() {
         .unwrap();
     assert!(result.is_error);
     assert!(
-        result.content.contains("Non-wait host call deadline"),
+        result.text().contains("Non-wait host call deadline"),
         "{}",
-        result.content
+        result.text()
     );
     f.manager.shutdown().await;
 }

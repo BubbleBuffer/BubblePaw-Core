@@ -189,7 +189,7 @@ mod tests {
                     Role::Assistant
                 },
                 origin: None,
-                content: format!("Synthetic message {index}"),
+                content: bubblepaw_core::text_blocks(format!("Synthetic message {index}")),
                 tool_calls: vec![],
                 tool_call_id: None,
                 provider_state: None,

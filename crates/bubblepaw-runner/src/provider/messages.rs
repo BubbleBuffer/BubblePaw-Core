@@ -72,7 +72,7 @@ impl MessagesProvider {
         for (index, message) in request.messages.iter().enumerate() {
             let (role, content) = match message.role {
                 Role::System | Role::User => {
-                    ("user", vec![json!({"type":"text","text":message.content})])
+                    ("user", vec![json!({"type":"text","text":message.text()})])
                 }
                 Role::Tool => {
                     let id = message
@@ -80,7 +80,8 @@ impl MessagesProvider {
                         .as_deref()
                         .filter(|id| !id.is_empty())
                         .ok_or_else(|| anyhow!("tool message needs call_id"))?;
-                    let (text, images) = crate::images::split_wire(&message.content);
+                    let body = message.text();
+                    let (text, images) = crate::images::split_wire(&body);
                     let content = if images.is_empty() {
                         json!(text)
                     } else {
@@ -109,7 +110,7 @@ impl MessagesProvider {
                     // was lost. Older completed loops may still use fallback.
                     let current_loop = loop_start.is_some_and(|start| index >= start);
                     let reasoning_only =
-                        message.content.is_empty() && message.provider_state.is_some();
+                        message.text().is_empty() && message.provider_state.is_some();
                     let cause = if message.provider_state.is_none() {
                         "missing provider_state; the caller must carry the original assistant replay state"
                     } else {
@@ -125,11 +126,11 @@ impl MessagesProvider {
                     let mut stored = if let Some(state) = &message.provider_state
                         && compatible
                     {
-                        super::replay_state::hydrate(state, &message.content, &message.tool_calls)?
+                        super::replay_state::hydrate(state, &message.text(), &message.tool_calls)?
                     } else {
                         let mut blocks = Vec::new();
-                        if !message.content.is_empty() {
-                            blocks.push(json!({"type":"text","text":message.content}));
+                        if !message.text().is_empty() {
+                            blocks.push(json!({"type":"text","text":message.text()}));
                         }
                         for call in &message.tool_calls {
                             blocks.push(json!({"type":"tool_use","id":call.id,"name":call.name,"input":call.arguments}));
@@ -772,7 +773,7 @@ mod tests {
             session_id: "fixture-session".into(),
             role,
             origin: None,
-            content: content.into(),
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,
@@ -802,7 +803,7 @@ mod tests {
         json!({
             "adapter":"anthropic-messages",
             "content":[
-                {"type":"text","text":assistant.content},
+                {"type":"text","text":assistant.text()},
                 {"type":"tool_use","id":call.id,"name":call.name,"input":call.arguments}
             ],
             "stop_reason":"tool_use"
@@ -1117,11 +1118,8 @@ mod tests {
         };
         let mut slim = legacy.clone();
         let assistant = &mut slim.messages[2];
-        let state = super::super::replay_state::slim(
-            full_state,
-            &assistant.content,
-            &assistant.tool_calls,
-        )?;
+        let state =
+            super::super::replay_state::slim(full_state, &assistant.text(), &assistant.tool_calls)?;
         let serialized = state.to_string();
         for canonical in fragments.into_iter().chain([
             "ARGUMENT_SENTINEL_A",

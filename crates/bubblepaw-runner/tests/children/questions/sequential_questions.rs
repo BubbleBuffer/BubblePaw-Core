@@ -66,14 +66,14 @@ async fn sequential_questions_in_one_js_cell_preserve_both_accepted_answers() ->
         assert_eq!(
             messages
                 .iter()
-                .filter(|message| message.content.contains(&marker))
+                .filter(|message| message.text().contains(&marker))
                 .count(),
             1
         );
     }
     assert!(messages.iter().any(|message| message.tool_call_id.is_some()
-        && message.content.contains("First saved")
-        && message.content.contains("Second saved")));
+        && message.text().contains("First saved")
+        && message.text().contains("Second saved")));
     root.shutdown(Duration::from_secs(2)).await?;
     repl.shutdown().await;
     Ok(())

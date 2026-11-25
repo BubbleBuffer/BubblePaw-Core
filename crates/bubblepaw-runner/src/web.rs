@@ -635,7 +635,7 @@ mod tests {
             .await
             .unwrap();
         assert!(view.live_paragraphs.is_empty());
-        assert_eq!(view.messages.last().unwrap().content, "Persisted round 1.");
+        assert_eq!(view.messages.last().unwrap().text(), "Persisted round 1.");
         {
             let serving = state.serving.lock().unwrap();
             let data: String = serving

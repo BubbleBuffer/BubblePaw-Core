@@ -72,10 +72,10 @@ async fn fresh_summary_chapter_and_classical_recover_reasoning_only_once() -> Re
                     .all(|r| r.tools.is_empty() && r.output_schema.is_none())
             );
             if kind == "summary" {
-                assert!(requests[0].messages[0].content.ends_with(
+                assert!(requests[0].messages[0].text().ends_with(
                     "END OF CURRENT EPISODE. Summarize the episode above. Do not continue it and do not call tools."
                 ));
-                assert!(requests[0].messages[0].content.contains("ASSISTANT: Done;"));
+                assert!(requests[0].messages[0].text().contains("ASSISTANT: Done;"));
             }
         }
     }
@@ -249,7 +249,7 @@ async fn fork_tool_refusal_and_empty_recovery_have_separate_single_retry_bounds(
                 final_request
                     .messages
                     .iter()
-                    .filter(|m| m.content.starts_with(RETRY))
+                    .filter(|m| m.text().starts_with(RETRY))
                     .count(),
                 1
             );

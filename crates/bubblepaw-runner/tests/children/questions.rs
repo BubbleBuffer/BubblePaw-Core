@@ -46,11 +46,11 @@ impl Provider for Script {
             && request
                 .messages
                 .iter()
-                .any(|message| message.content.contains("waiting_for_answer"))
+                .any(|message| message.text().contains("waiting_for_answer"))
             && !request
                 .messages
                 .iter()
-                .any(|message| message.content.contains("\"answered\":true"));
+                .any(|message| message.text().contains("\"answered\":true"));
         self.requests.lock().unwrap().push(request.clone());
         if has_result && !needs_answer {
             if !is_root {
@@ -58,7 +58,7 @@ impl Provider for Script {
                     request
                         .messages
                         .iter()
-                        .any(|message| message.content.contains("Blue with stripes"))
+                        .any(|message| message.text().contains("Blue with stripes"))
                 );
             }
             return Ok(ModelResponse {
@@ -260,13 +260,13 @@ impl Provider for ResumeOnly {
             request
                 .messages
                 .iter()
-                .any(|message| message.content.contains("Answer: Keep the original"))
+                .any(|message| message.text().contains("Answer: Keep the original"))
         );
         assert!(
             request
                 .messages
                 .iter()
-                .any(|message| message.is_error && message.content.contains("outcome unknown"))
+                .any(|message| message.is_error && message.text().contains("outcome unknown"))
         );
         self.0.lock().unwrap().push(request);
         Ok(ModelResponse {
@@ -288,7 +288,7 @@ async fn recovered_answer_is_accepted_once_without_replaying_unknown_effect() ->
             session_id: session.clone(),
             role: Role::Assistant,
             origin: None,
-            content: String::new(),
+            content: bubblepaw_core::text_blocks(String::new()),
             tool_calls: vec![
                 ToolCall {
                     id: "unknown-call".into(),
@@ -480,7 +480,7 @@ async fn live_answer_notice_survives_pruned_run_metadata_without_reinjection() -
         );
         assert!(
             completed[1]
-                .content
+                .text()
                 .contains(&format!("<harness kind=\"question_answer:{question_id}\">"))
         );
         assert!(
@@ -496,7 +496,7 @@ async fn live_answer_notice_survives_pruned_run_metadata_without_reinjection() -
             store
                 .messages(&session)?
                 .iter()
-                .filter(|message| message.content.contains(&marker))
+                .filter(|message| message.text().contains(&marker))
                 .count(),
             1
         );
@@ -543,7 +543,7 @@ async fn live_answer_notice_survives_pruned_run_metadata_without_reinjection() -
         store
             .messages(&session)?
             .iter()
-            .filter(|message| message.content.contains(&marker))
+            .filter(|message| message.text().contains(&marker))
             .count(),
         1
     );

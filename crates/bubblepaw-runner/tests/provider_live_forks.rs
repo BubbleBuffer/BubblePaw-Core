@@ -38,7 +38,7 @@ fn message(id: &str, role: Role, content: &str) -> Message {
         session_id: "live-fork".into(),
         role,
         origin,
-        content: content.into(),
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,

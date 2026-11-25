@@ -78,9 +78,9 @@ impl Fixture {
             })
             .context("missing file tool result")?;
         if result.is_error {
-            bail!(result.content);
+            bail!("{}", result.text());
         }
-        Ok(serde_json::from_str(&result.content)?)
+        Ok(serde_json::from_str(&result.text())?)
     }
 
     fn checkpoints(&self) -> Vec<(String, String)> {
