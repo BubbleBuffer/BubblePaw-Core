@@ -74,7 +74,7 @@ use report::{
 const SPEND_LIMIT: f64 = 0.50;
 const FLASH_MODEL: &str = "opencode/deepseek-v4.1-flash";
 const HAIKU_MODEL: &str = "opencode-messages/claude-haiku-5-5";
-const PRICE_BASIS: &str = "Prices come from the embedded price table (src/prices.json): Flash peak rates; Haiku whole-prompt rates up to 100k input with the 5x tier above it; cached tokens are input subsets; cache creation bills at the uncached rate where a model publishes no cache-write rate; OpenRouter uses provider-reported usage.cost";
+const PRICE_BASIS: &str = "Prices come from the embedded price table (bubblepaw-ai catalog/models.json): Flash peak rates; Haiku whole-prompt rates up to 100k input with the 5x tier above it; cached tokens are input subsets; cache creation bills at the uncached rate where a model publishes no cache-write rate; OpenRouter uses provider-reported usage.cost";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ReplayCorpus {

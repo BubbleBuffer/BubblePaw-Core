@@ -37,8 +37,15 @@ reads the extensions file, and re-exports the moved names at their old paths. Th
 Claude Agent SDK rate-limit events the extension reports are parsed in
 `adapter/quota_events.rs`.
 
-Still to move: the provider registry and the model catalog, which live in
-`bubblepaw-runner` today. Some ai types carry a `session_id` that the ai layer
+The model catalog is `bubblepaw-ai/src/catalog.rs` with its data in
+`catalog/models.json`, keyed by model name. It holds the dated list prices (the
+`PriceTable`, `Rates` and `TokenClasses` types, re-exported by the runner's `pricing`
+module), the largest synchronous output per model, the Anthropic cache lifetime, the
+smallest cacheable prefix and the cache block size, and a context-window field that no
+model fills yet. Each fact keeps its old matching rule. To update a price, edit
+`models.json` and its `checked` date.
+
+Still to move: the provider registry, which lives in `bubblepaw-runner` today. Some ai types carry a `session_id` that the ai layer
 treats as an opaque key; the adapters add the `x-opencode-session` and Codex
 cache-key plumbing, the replay-state and continuation code that handle that key,
 and the extension provider keeps a cursor reset per `session_id` and sends

@@ -11,10 +11,7 @@ use std::time::{Duration, Instant};
 pub const MISS_TOLERANCE_TOKENS: u64 = 128;
 /// Shortfalls within this share of the prediction are byte-ratio estimate error.
 pub const MISS_TOLERANCE_PERCENT: u64 = 10;
-/// Prefixes shorter than this are not cached (Anthropic's smallest minimum).
-pub const MIN_CACHEABLE_TOKENS: u64 = 1024;
-/// Anthropic's default ephemeral cache lifetime; no adapter requests 1 h.
-pub const ANTHROPIC_CACHE_LIFETIME: Duration = Duration::from_secs(300);
+pub use bubblepaw_ai::catalog::MIN_CACHEABLE_TOKENS;
 
 /// One model request as logged in the serving view.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -275,10 +272,9 @@ fn close(
     }
 }
 
-/// Known provider cache lifetimes. Anthropic's is 5 minutes unless 1 h is requested.
+/// Known provider cache lifetimes, from the model catalog.
 pub fn cache_lifetime(provider: &str, model: &str) -> Option<Duration> {
-    (provider.contains("anthropic") || model.starts_with("claude"))
-        .then_some(ANTHROPIC_CACHE_LIFETIME)
+    bubblepaw_ai::catalog::cache_lifetime(provider, model)
 }
 
 fn classification_name(classification: &ContextClassification) -> String {
@@ -393,6 +389,7 @@ fn write(store: Option<Store>, closed: impl IntoIterator<Item = Closed>) {
 mod tests {
     use super::*;
     use crate::{Message, Role};
+    use bubblepaw_ai::catalog::ANTHROPIC_CACHE_LIFETIME;
 
     fn request(system: &str, contents: &[&str]) -> ModelRequest {
         ModelRequest {
