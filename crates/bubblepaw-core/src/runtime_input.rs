@@ -56,7 +56,8 @@ impl Harness {
             state: "pending".into(),
             origin: Some(crate::MessageOrigin::Typed),
         };
-        self.journal
+        self.journals
+            .session
             .input_queued(&input, run_id.as_deref(), client)?;
         // Admission only queues input. Releasing foreground waits is an
         // explicit host action, independent of accepting ordinary steering.
