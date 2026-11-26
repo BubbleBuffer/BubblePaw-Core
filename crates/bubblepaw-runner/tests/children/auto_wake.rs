@@ -510,7 +510,7 @@ async fn idle_and_busy_background_exec_use_the_same_completion_inbox() -> Result
         processes.set_wake(fixture.wake.clone());
         processes.set_store(fixture.store.clone());
         let mut tools = ToolRegistry::new();
-        processes.register(&mut tools)?;
+        processes.register(&mut tools, &fixture.store)?;
         tools.register(Arc::new(Noop))?;
         fixture.root = Arc::new(Harness::new(
             fixture.store.clone(),
@@ -560,7 +560,7 @@ async fn mixed_child_and_exec_completions_batch_into_one_parent_turn() -> Result
     processes.set_wake(fixture.wake.clone());
     processes.set_store(fixture.store.clone());
     let mut tools = ToolRegistry::new();
-    processes.register(&mut tools)?;
+    processes.register(&mut tools, &fixture.store)?;
     fixture.agents.register(&mut tools)?;
     fixture.root = Arc::new(Harness::new(
         fixture.store.clone(),
@@ -712,7 +712,7 @@ async fn unfinished_exec_is_not_replayed_or_claimed_complete_on_recovery() -> Re
     let processes = Arc::new(ProcessTools::new(WorkspaceTools::new(workspace.path())?));
     processes.set_store(fixture.store.clone());
     let mut tools = ToolRegistry::new();
-    processes.register(&mut tools)?;
+    processes.register(&mut tools, &fixture.store)?;
     tools
         .get("exec")
         .unwrap()
@@ -762,7 +762,7 @@ async fn concurrent_steering_and_exec_completion_do_not_deadlock_or_duplicate() 
         processes.set_wake(fixture.wake.clone());
         processes.set_store(fixture.store.clone());
         let mut tools = ToolRegistry::new();
-        processes.register(&mut tools)?;
+        processes.register(&mut tools, &fixture.store)?;
         fixture.root = Arc::new(Harness::new(
             fixture.store.clone(),
             fixture.probe.clone(),
@@ -874,7 +874,7 @@ async fn known_exec_completion_recovers_next_turn_without_proactive_restart_wake
     let processes = Arc::new(ProcessTools::new(WorkspaceTools::new(workspace.path())?));
     processes.set_store(fixture.store.clone());
     let mut tools = ToolRegistry::new();
-    processes.register(&mut tools)?;
+    processes.register(&mut tools, &fixture.store)?;
     processes.register_wait(&mut tools)?;
     let receipt = tools
         .get("exec")
@@ -901,7 +901,7 @@ async fn known_exec_completion_recovers_next_turn_without_proactive_restart_wake
     let restored = Arc::new(ProcessTools::new(WorkspaceTools::new(workspace.path())?));
     restored.set_store(fixture.store.clone());
     let mut tools = ToolRegistry::new();
-    restored.register(&mut tools)?;
+    restored.register(&mut tools, &fixture.store)?;
     let root = Arc::new(Harness::new(
         fixture.store.clone(),
         fixture.probe.clone(),

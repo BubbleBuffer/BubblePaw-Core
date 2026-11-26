@@ -101,14 +101,14 @@ async fn parent_repl_delegates_waits_and_publishes_child_answer_with_isolated_co
         requests: Mutex::default(),
     });
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, directory.path(), false)?;
+    let processes = register_native_tools(&mut tools, directory.path(), false, &store)?;
     let artifacts = Arc::new(ArtifactStore::new(
         directory.path(),
         directory.path().join("artifacts"),
     )?);
     let repl = Arc::new(CodeMode::new(directory.path().to_owned(), artifacts)?);
     let mut child_tools = tools.read_only();
-    repl.register(&mut child_tools)?;
+    repl.register(&mut child_tools, &store)?;
     let child = Harness::new(
         store.clone(),
         provider.clone(),
@@ -125,7 +125,7 @@ async fn parent_repl_delegates_waits_and_publishes_child_answer_with_isolated_co
     );
     agents.register(&mut tools)?;
     register_agent_handles(&mut tools, agents.clone())?;
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Harness::new(
         store.clone(),
         provider.clone(),
@@ -284,7 +284,7 @@ impl ControlFixture {
         let session = store.create_session("parent controls")?.id;
         let provider = Arc::new(CellProvider);
         let mut registry = ToolRegistry::new();
-        let processes = register_native_tools(&mut registry, directory.path(), false)?;
+        let processes = register_native_tools(&mut registry, directory.path(), false, &store)?;
         let repl = Arc::new(CodeMode::new(
             directory.path().to_owned(),
             Arc::new(ArtifactStore::new(
@@ -293,7 +293,7 @@ impl ControlFixture {
             )?),
         )?);
         let mut child_tools = registry.read_only();
-        repl.register(&mut child_tools)?;
+        repl.register(&mut child_tools, &store)?;
         let child = Harness::new(
             store.clone(),
             provider.clone(),
@@ -310,7 +310,7 @@ impl ControlFixture {
         );
         agents.register(&mut registry)?;
         register_agent_handles(&mut registry, agents.clone())?;
-        repl.register(&mut registry)?;
+        repl.register(&mut registry, &store)?;
         let harness = Harness::new(
             store.clone(),
             provider,

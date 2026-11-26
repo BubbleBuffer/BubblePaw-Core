@@ -73,14 +73,17 @@ impl Provider for Script {
         })
     }
 }
-fn tools(workspace: &Path) -> Result<(ToolRegistry, Arc<CodeMode>, Arc<ProcessTools>)> {
+fn tools(
+    workspace: &Path,
+    store: &Store,
+) -> Result<(ToolRegistry, Arc<CodeMode>, Arc<ProcessTools>)> {
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, workspace, false)?;
+    let processes = register_native_tools(&mut tools, workspace, false, store)?;
     let repl = Arc::new(CodeMode::new(
         workspace.to_owned(),
         Arc::new(ArtifactStore::new(workspace, workspace.join("artifacts"))?),
     )?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, store)?;
     Ok((tools, repl, processes))
 }
 fn harness(store: Store, tools: ToolRegistry, script: Arc<Script>, mode: ExecutionMode) -> Harness {
@@ -106,7 +109,7 @@ async fn js_chat_resumes_with_js_requests_under_native_configuration() -> Result
     {
         let store = Store::open_data_dir(&data)?;
         session = store.create_session("JS before default change")?.id;
-        let (tools, repl, processes) = tools(root.path())?;
+        let (tools, repl, processes) = tools(root.path(), &store)?;
         let script = Arc::new(Script {
             mode: ExecutionMode::Js,
             requests: Mutex::new(Vec::new()),
@@ -120,7 +123,7 @@ async fn js_chat_resumes_with_js_requests_under_native_configuration() -> Result
         processes.shutdown().await;
     }
     let store = Store::open_data_dir(&data)?;
-    let (tools, repl, processes) = tools(root.path())?;
+    let (tools, repl, processes) = tools(root.path(), &store)?;
     let script = Arc::new(Script {
         mode: ExecutionMode::Js,
         requests: Mutex::new(Vec::new()),
@@ -167,7 +170,7 @@ async fn fresh_default_chat_uses_native_declarations_and_instructions() -> Resul
     std::fs::write(root.path().join("sample.txt"), "default native chat")?;
     let store = Store::in_memory()?;
     let session = store.create_session("new default")?.id;
-    let (tools, repl, processes) = tools(root.path())?;
+    let (tools, repl, processes) = tools(root.path(), &store)?;
     let script = Arc::new(Script {
         mode: ExecutionMode::Native,
         requests: Mutex::new(Vec::new()),

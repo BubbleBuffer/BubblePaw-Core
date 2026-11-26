@@ -67,7 +67,7 @@ async fn returned_read_reaches_next_model_request_without_publishing_a_dump() ->
         requests: Mutex::default(),
     });
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, directory.path(), false)?;
+    let processes = register_native_tools(&mut tools, directory.path(), false, &store)?;
     let artifacts = Arc::new(ArtifactStore::new(
         directory.path(),
         directory.path().join("artifacts"),
@@ -76,7 +76,7 @@ async fn returned_read_reaches_next_model_request_without_publishing_a_dump() ->
         directory.path().to_owned(),
         artifacts.clone(),
     )?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Arc::new(Harness::new(
         store.clone(),
         provider.clone(),
@@ -176,13 +176,13 @@ async fn batched_reads_report_state_changes_and_reset_in_model_context() -> Resu
         requests: Mutex::default(),
     });
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, directory.path(), false)?;
+    let processes = register_native_tools(&mut tools, directory.path(), false, &store)?;
     let artifacts = Arc::new(ArtifactStore::new(
         directory.path(),
         directory.path().join("artifacts"),
     )?);
     let repl = Arc::new(CodeMode::new(directory.path().to_owned(), artifacts)?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Harness::new(
         store.clone(),
         provider.clone(),

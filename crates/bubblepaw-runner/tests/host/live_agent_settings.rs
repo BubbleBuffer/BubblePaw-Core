@@ -147,7 +147,7 @@ impl Fixture {
             )?),
         )?);
         let mut base = ToolRegistry::new();
-        let processes = register_native_tools(&mut base, directory.path(), false)?;
+        let processes = register_native_tools(&mut base, directory.path(), false, &store)?;
         let effects = Arc::new(AtomicUsize::new(0));
         for (name, read_only) in [("effect", false), ("old_read", true)] {
             base.register_host(Arc::new(Capability {
@@ -191,7 +191,7 @@ impl Fixture {
         )?;
         manager.register(&mut base)?;
         register_agent_handles(&mut base, manager.clone())?;
-        repl.register(&mut base)?;
+        repl.register(&mut base, &store)?;
         *tools.write().unwrap() = base.clone();
         let parent = Harness::new(store.clone(), probe.clone(), base, config);
         let owner = ToolContext {
@@ -392,7 +392,7 @@ async fn live_research_profile_can_enable_after_startup_without_exposing_parent_
         )?),
     )?);
     let mut base = ToolRegistry::new();
-    let processes = register_native_tools(&mut base, directory.path(), false)?;
+    let processes = register_native_tools(&mut base, directory.path(), false, &store)?;
     base.register_host(Arc::new(Capability {
         name: "mcp__private__read",
         read_only: true,

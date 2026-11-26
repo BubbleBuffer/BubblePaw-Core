@@ -253,7 +253,7 @@ impl HostBuilder {
                 );
                 artifact_store = Some(artifacts);
                 code_mode
-                    .register(&mut support)
+                    .register(&mut support, &store)
                     .context("cannot register the JavaScript adapter")?;
                 Some(code_mode)
             }

@@ -4,8 +4,12 @@ use super::*;
 async fn explicit_workspace_access_allows_writes_and_cleanup_awaits_owned_commands() {
     let fixture = Fixture::new();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, fixture.root.path(), false).unwrap();
-    fixture.repl.register(&mut registry).unwrap();
+    let processes =
+        register_native_tools(&mut registry, fixture.root.path(), false, &fixture.store).unwrap();
+    fixture
+        .repl
+        .register(&mut registry, &fixture.store)
+        .unwrap();
     let read_only = Harness::new(
         fixture.store.clone(),
         fixture.provider.clone(),

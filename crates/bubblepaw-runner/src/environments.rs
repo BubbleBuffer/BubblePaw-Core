@@ -9,8 +9,12 @@ use std::sync::Arc;
 
 /// Register host environment controls and large-result preservation without
 /// exposing the JavaScript model entrypoint.
-pub fn register(mode: &Arc<CodeMode>, registry: &mut ToolRegistry) -> Result<()> {
-    mode.spill_store().register(registry);
+pub fn register(
+    mode: &Arc<CodeMode>,
+    registry: &mut ToolRegistry,
+    store: &bubblepaw_core::Store,
+) -> Result<()> {
+    mode.spill_store().register(registry, store);
     if registry.get_host("environments").is_none() {
         registry.register_host(Arc::new(EnvironmentTool(mode.clone())))?;
     }

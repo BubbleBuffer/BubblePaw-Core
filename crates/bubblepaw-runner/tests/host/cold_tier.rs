@@ -129,7 +129,7 @@ async fn lcm_apply_changes_only_the_cold_tier() -> Result<()> {
     )?;
     context.set_episode_worker(&worker);
     let mut tools = ToolRegistry::new();
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let sink = Arc::new(Sink::default());
     let harness = Harness::new(
         store.clone(),

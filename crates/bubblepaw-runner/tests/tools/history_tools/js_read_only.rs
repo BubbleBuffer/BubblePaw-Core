@@ -24,7 +24,7 @@ async fn history_capabilities_work_through_js_in_read_only_mode() {
         .unwrap(),
     );
     let mut registry = fixture.registry.read_only();
-    repl.register(&mut registry).unwrap();
+    repl.register(&mut registry, &fixture.store).unwrap();
     let provider = Arc::new(ScriptedProvider::with_steps(
         vec![ScriptedStep::Calls {
             calls: vec![ToolCall {

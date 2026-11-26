@@ -96,8 +96,9 @@ impl Fixture {
             )
             .unwrap(),
         );
+        let store = Store::in_memory().unwrap();
         let mut registry = ToolRegistry::new();
-        processes.register(&mut registry).unwrap();
+        processes.register(&mut registry, &store).unwrap();
         processes.register_wait(&mut registry).unwrap();
         registry.register_host(Arc::new(StalledHost)).unwrap();
         if let Some(web) = web {
@@ -110,7 +111,7 @@ impl Fixture {
                 .unwrap()
                 .with_idle_limit(IDLE),
         );
-        mode.register(&mut registry).unwrap();
+        mode.register(&mut registry, &store).unwrap();
         let provider = Arc::new(ScriptedProvider::with_steps(
             vec![ScriptedStep::Calls {
                 calls: vec![ToolCall {
@@ -121,7 +122,6 @@ impl Fixture {
             }],
             "finished",
         ));
-        let store = Store::in_memory().unwrap();
         let session = store.create_session("reduced deadline").unwrap().id;
         let harness = Harness::new(
             store.clone(),

@@ -37,20 +37,20 @@ impl Tool for Bridge {
     }
 }
 
-fn registry(root: &Path) -> Result<ToolRegistry> {
+fn registry(root: &Path, store: &Store) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
-    WorkspaceTools::new(root)?.register(&mut registry, false)?;
+    WorkspaceTools::new(root)?.register(&mut registry, false, store)?;
     Ok(registry)
 }
 
 async fn dispatched(
+    store: &Store,
     registry: &ToolRegistry,
     target: &'static str,
     input: Value,
 ) -> Result<ToolResult> {
     let mut tools = registry.clone();
     tools.register(Arc::new(Bridge(target)))?;
-    let store = Store::in_memory()?;
     let session = store.create_session("tool defaults")?;
     let provider = ScriptedProvider::with_steps(
         vec![ScriptedStep::Calls {
@@ -100,7 +100,8 @@ async fn read_returns_file_text_with_a_final_note_only_when_partial() -> Result<
     ] {
         fs::write(root.path().join(name), body)?;
     }
-    let registry = registry(root.path())?;
+    let store = Store::in_memory()?;
+    let registry = registry(root.path(), &store)?;
     let first_1000: String = (1..=1000).map(|line| format!("{line}\n")).collect();
     for (input, expected) in [
         (json!({"path":"small.txt"}), "one\ntwo\n".to_owned()),
@@ -136,18 +137,18 @@ async fn read_returns_file_text_with_a_final_note_only_when_partial() -> Result<
             ),
         ),
     ] {
-        let result = dispatched(&registry, "read", input.clone()).await?;
+        let result = dispatched(&store, &registry, "read", input.clone()).await?;
         assert!(!result.is_error, "{}", result.body());
         assert_eq!(result.body(), expected, "{input}");
     }
     // A model call through call_tool gets the same text.
     let native = registry.with_execution_mode(ExecutionMode::Native);
     let wrapped = json!({"name":"read","arguments":{"path":"small.txt"}});
-    let result = dispatched(&native, "call_tool", wrapped).await?;
+    let result = dispatched(&store, &native, "call_tool", wrapped).await?;
     assert_eq!(result.body(), "one\ntwo\n");
     // Over the result limit the text stops at a line boundary and the note names
     // the last returned line.
-    let result = dispatched(&registry, "read", json!({"path":"wide.txt"})).await?;
+    let result = dispatched(&store, &registry, "read", json!({"path":"wide.txt"})).await?;
     let text = result.body();
     let (body, note) = text.rsplit_once('\n').context("missing note")?;
     let returned = body.lines().count();
@@ -175,7 +176,8 @@ async fn missing_workspace_paths_name_the_requested_path() -> Result<()> {
             .to_string()
             .contains(&missing_root.display().to_string())
     );
-    let registry = registry(root.path())?;
+    let store = Store::in_memory()?;
+    let registry = registry(root.path(), &store)?;
     for (target, input) in [
         ("read", json!({"path":"missing/named-file.txt"})),
         ("list", json!({"path":"missing/named-directory"})),
@@ -185,7 +187,7 @@ async fn missing_workspace_paths_name_the_requested_path() -> Result<()> {
         ),
     ] {
         let requested = input["path"].as_str().unwrap().to_owned();
-        let result = dispatched(&registry, target, input).await?;
+        let result = dispatched(&store, &registry, target, input).await?;
         assert!(result.is_error, "{target} unexpectedly succeeded");
         assert!(result.text_has(&requested), "{}", result.body());
     }
@@ -195,8 +197,9 @@ async fn missing_workspace_paths_name_the_requested_path() -> Result<()> {
 #[tokio::test]
 async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<()> {
     let root = tempfile::tempdir()?;
+    let store = Store::in_memory()?;
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, root.path(), false)?;
+    let processes = register_native_tools(&mut registry, root.path(), false, &store)?;
     for (target, mut input) in [
         ("read", json!({"path":"missing.txt"})),
         ("list", json!({})),
@@ -228,7 +231,7 @@ async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<(
         } else {
             fields.join(", ")
         };
-        let result = dispatched(&registry, target, input).await?;
+        let result = dispatched(&store, &registry, target, input).await?;
         assert!(result.is_error, "{target} unexpectedly succeeded");
         assert!(
             result.text_has("unexpected arguments: unknownArgument"),
@@ -243,6 +246,7 @@ async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<(
         assert!(!result.text_has("private-value"), "{}", result.body());
     }
     let result = dispatched(
+        &store,
         &registry,
         "poll",
         json!({"handle":"missing","cursor":{"typo":"private-value"}}),
@@ -263,7 +267,8 @@ async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<(
 #[tokio::test]
 async fn direct_workspace_invocation_names_valid_arguments() -> Result<()> {
     let root = tempfile::tempdir()?;
-    let registry = registry(root.path())?;
+    let store = Store::in_memory()?;
+    let registry = registry(root.path(), &store)?;
     let error = registry
         .get_host("read")
         .unwrap()

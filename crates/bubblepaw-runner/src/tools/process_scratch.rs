@@ -11,4 +11,18 @@ impl ProcessTools {
         }
         self.workspace.existing(path)
     }
+    /// Register `exec`, `poll`, `cancel` and `jobs` with no store of their own, for
+    /// fixtures that call them with sessions no store knows. Without a store a
+    /// command's working directory does not resolve scratchpads and a finished
+    /// job's completion notice is not persisted. Hosts use [`ProcessTools::register`].
+    #[doc(hidden)]
+    pub fn register_without_store(self: &Arc<Self>, registry: &mut ToolRegistry) -> Result<()> {
+        for name in ["exec", "poll", "cancel", "jobs"] {
+            registry.register_host(Arc::new(ProcessTool {
+                processes: self.clone(),
+                name,
+            }))?;
+        }
+        Ok(())
+    }
 }

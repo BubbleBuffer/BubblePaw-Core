@@ -39,7 +39,7 @@ impl Fixture {
         let store = Store::in_memory()?;
         let session = store.create_session("scratch files")?.id;
         let mut tools = ToolRegistry::new();
-        workspace.register(&mut tools, false)?;
+        workspace.register(&mut tools, false, &store)?;
         let harness = Harness::new(
             store.clone(),
             Arc::new(NoProvider),

@@ -20,7 +20,7 @@ async fn recursive_deny_rules_union_at_every_generation_with_pinned_override() -
             )?),
         )?);
         let mut base = ToolRegistry::new();
-        let processes = register_native_tools(&mut base, directory.path(), false)?;
+        let processes = register_native_tools(&mut base, directory.path(), false, &store)?;
         base.register(Arc::new(Bridge))?;
         for name in RECURSIVE_DENY_TOOLS {
             base.register(Arc::new(RecursiveDenyEffect {

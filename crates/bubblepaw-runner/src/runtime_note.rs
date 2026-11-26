@@ -333,7 +333,7 @@ mod durable_inventory_tests {
         )?);
         let context = Arc::new(crate::usage::UsageContext::new(store.clone(), context));
         let mut tools = ToolRegistry::new();
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         let harness = Harness::new(
             store.clone(),
             provider.clone(),

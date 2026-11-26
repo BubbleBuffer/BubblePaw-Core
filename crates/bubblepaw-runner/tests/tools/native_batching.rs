@@ -51,7 +51,7 @@ async fn run_batch(root: &std::path::Path, calls: Vec<ToolCall>) -> Arc<BatchPro
     let store = Store::in_memory().unwrap();
     let session = store.create_session("native batch").unwrap().id;
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, root, false).unwrap();
+    let processes = register_native_tools(&mut tools, root, false, &store).unwrap();
     let provider = Arc::new(BatchProvider {
         calls,
         requests: Mutex::default(),

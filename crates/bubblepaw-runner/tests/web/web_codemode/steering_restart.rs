@@ -39,13 +39,13 @@ async fn http_steer_then_explicit_interrupt_preserves_wait_and_captured_outputs_
         requests: Mutex::default(),
     });
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, &root, false)?;
+    let processes = register_native_tools(&mut tools, &root, false, &store)?;
     let artifacts = Arc::new(ArtifactStore::new(
         &root,
         directory.path().join("artifacts"),
     )?);
     let repl = Arc::new(CodeMode::new(root.clone(), artifacts.clone())?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Arc::new(Harness::new(
         store.clone(),
         provider.clone(),

@@ -38,9 +38,10 @@ impl Fixture {
     fn new(read_only: bool) -> Self {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("sample.txt"), "readable").unwrap();
+        let store = Store::in_memory().unwrap();
         let mut registry = ToolRegistry::new();
         let processes =
-            tools::register_native_tools(&mut registry, root.path(), read_only).unwrap();
+            tools::register_native_tools(&mut registry, root.path(), read_only, &store).unwrap();
         let mode = Arc::new(
             CodeMode::new(
                 root.path().to_owned(),
@@ -48,8 +49,7 @@ impl Fixture {
             )
             .unwrap(),
         );
-        mode.register(&mut registry).unwrap();
-        let store = Store::in_memory().unwrap();
+        mode.register(&mut registry, &store).unwrap();
         let session = store.create_session("discovery snapshot").unwrap().id;
         let harness = Harness::new(
             store,
@@ -208,7 +208,8 @@ fn host_environment_controls_register_without_js_and_use_native_description() {
         .unwrap(),
     );
     let mut registry = ToolRegistry::new();
-    environments::register(&mode, &mut registry).unwrap();
+    let store = Store::in_memory().unwrap();
+    environments::register(&mode, &mut registry, &store).unwrap();
     assert!(registry.get("js").is_none());
     let definition = registry.get_host("environments").unwrap().definition();
     assert!(!definition.description.contains("JS"));

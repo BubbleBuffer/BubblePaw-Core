@@ -87,14 +87,14 @@ impl Fixture {
         let session = store.create_session("images").unwrap().id;
         let mut tools = ToolRegistry::new();
         let workspace = WorkspaceTools::new(root.path()).unwrap();
-        workspace.register(&mut tools, true).unwrap();
+        workspace.register(&mut tools, true, &store).unwrap();
         Arc::new(bubblepaw_runner::tools::ProcessTools::new(workspace))
             .register_wait(&mut tools)
             .unwrap();
         let artifacts =
             Arc::new(ArtifactStore::new(root.path(), root.path().join("artifacts")).unwrap());
         let manager = Arc::new(CodeMode::new(root.path().to_owned(), artifacts).unwrap());
-        manager.register(&mut tools).unwrap();
+        manager.register(&mut tools, &store).unwrap();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let inner = Arc::new(Cells {
             requests: requests.clone(),

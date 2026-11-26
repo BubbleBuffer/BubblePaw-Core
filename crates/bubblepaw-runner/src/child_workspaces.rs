@@ -107,12 +107,11 @@ pub(crate) fn install(
             }
         };
         let mut native = ToolRegistry::new();
-        native_workspace.register(&mut native, false)?;
+        native_workspace.register(&mut native, false, &store)?;
         let processes = Arc::new(root_processes.for_workspace(native_workspace));
-        processes.set_store(store.clone());
         processes.set_wake(manager.wake_coordinator());
         processes.register_wait(&mut native)?;
-        processes.register(&mut native)?;
+        processes.register(&mut native, &store)?;
         native.show_always(crate::tools::ALWAYS_SHOWN_TOOLS.iter().copied());
         native.show_always(["jobs"]);
         let artifacts = Arc::new(ArtifactStore::new(workspace, data.join("artifacts"))?);

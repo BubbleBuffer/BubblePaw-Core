@@ -142,7 +142,8 @@ impl SpillStore {
         let directory = self.directory(session, false)?;
         fs::remove_dir_all(directory).context("chat deleted, but spill cleanup failed")
     }
-    /// Register at host startup, including hosts that only delete a stored chat.
+    /// Register the session-cleanup hooks at host startup, before any output can
+    /// spill, including hosts that only delete a stored chat.
     pub fn attach(&self, store: &Store) {
         crate::scratchpads::ScratchpadStore::register_cleanup_at(store, &self.data_dir);
         let spills = self.clone();
@@ -151,10 +152,12 @@ impl SpillStore {
             Arc::new(move |session| spills.delete_session(session)),
         );
     }
-    pub fn register(&self, registry: &mut ToolRegistry) {
+    /// Install the large-result limiter and attach the cleanup hooks to
+    /// `store`, so the two cannot be separated by a caller.
+    pub fn register(&self, registry: &mut ToolRegistry, store: &Store) {
+        self.attach(store);
         let spills = self.clone();
-        registry.set_result_limiter(Arc::new(move |store, context, result, limit| {
-            spills.attach(store);
+        registry.set_result_limiter(Arc::new(move |context, result, limit| {
             spills.limit(context, result, limit)
         }));
     }

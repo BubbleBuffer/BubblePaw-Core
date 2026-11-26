@@ -88,8 +88,8 @@ async fn run_surface(surface: ToolSurface) -> (Vec<Vec<String>>, Message) {
     let mut tools = ToolRegistry::new();
     tools.register_host(Arc::new(Named("host_echo"))).unwrap();
     tools.register(Arc::new(Named("other"))).unwrap();
-    mode.register(&mut tools).unwrap();
     let store = Store::in_memory().unwrap();
+    mode.register(&mut tools, &store).unwrap();
     let session = store.create_session("surface").unwrap().id;
     let provider = Arc::new(SurfaceProvider {
         surface,

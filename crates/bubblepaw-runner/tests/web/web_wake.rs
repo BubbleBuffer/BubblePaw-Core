@@ -71,7 +71,7 @@ impl Fixture {
         )?);
         let mut tools = ToolRegistry::new();
         agents.register(&mut tools)?;
-        processes.register(&mut tools)?;
+        processes.register(&mut tools, &store)?;
         let exec = tools.get("exec").unwrap();
         let harness = Arc::new(Harness::new(
             store.clone(),

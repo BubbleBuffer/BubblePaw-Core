@@ -8,7 +8,7 @@ pub use process::ProcessTools;
 pub use workspace::WorkspaceTools;
 
 use anyhow::Result;
-use bubblepaw_core::ToolRegistry;
+use bubblepaw_core::{Store, ToolRegistry};
 use std::{path::Path, sync::Arc};
 
 /// The host retains this handle and calls shutdown before exiting. Read-only
@@ -25,14 +25,15 @@ pub fn register_native_tools(
     registry: &mut ToolRegistry,
     root: impl AsRef<Path>,
     read_only: bool,
+    store: &Store,
 ) -> Result<Arc<ProcessTools>> {
     registry.show_always(ALWAYS_SHOWN_TOOLS.iter().copied());
     let workspace = WorkspaceTools::new(root)?;
-    workspace.register(registry, read_only)?;
+    workspace.register(registry, read_only, store)?;
     let processes = Arc::new(ProcessTools::new(workspace));
     processes.register_wait(registry)?;
     if !read_only {
-        processes.register(registry)?;
+        processes.register(registry, store)?;
     }
     Ok(processes)
 }

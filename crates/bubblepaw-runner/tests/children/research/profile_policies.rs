@@ -14,7 +14,7 @@ async fn standard_profiles_keep_workspace_policy_and_reject_duplicate_names() {
     );
     let provider = Arc::new(Probe::default());
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, root.path(), false).unwrap();
+    let processes = register_native_tools(&mut tools, root.path(), false, &store).unwrap();
     let config = HarnessConfig {
         max_rounds: Some(30),
         ..Default::default()

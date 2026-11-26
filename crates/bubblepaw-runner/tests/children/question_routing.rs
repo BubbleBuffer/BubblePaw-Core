@@ -184,7 +184,7 @@ async fn routing_case(hidden_worker: bool) -> Result<()> {
             ));
             manager.set_questions(questions.clone())?;
             questions.register(&mut tools)?;
-            repl.register(&mut tools)?;
+            repl.register(&mut tools, &store)?;
             Ok(vec![AgentProfile {
                 name: "read-only".into(),
                 description: "recursive question fixture".into(),
@@ -207,7 +207,7 @@ async fn routing_case(hidden_worker: bool) -> Result<()> {
     let mut root_tools = ToolRegistry::new();
     agents.register(&mut root_tools)?;
     register_agent_handles(&mut root_tools, agents.clone())?;
-    repl.register(&mut root_tools)?;
+    repl.register(&mut root_tools, &store)?;
     let root = Arc::new(Harness::new(
         store.clone(),
         script.clone(),

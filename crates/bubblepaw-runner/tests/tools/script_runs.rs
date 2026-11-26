@@ -97,8 +97,8 @@ impl Fixture {
                 .register_host(Arc::new(Host(name, stalled.clone())))
                 .unwrap();
         }
-        repl.register(&mut tools).unwrap();
         let store = Store::in_memory().unwrap();
+        repl.register(&mut tools, &store).unwrap();
         let session = store.create_session("scripts").unwrap().id;
         let model = Arc::new(Model::default());
         let harness = Harness::new(

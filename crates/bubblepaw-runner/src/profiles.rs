@@ -59,9 +59,10 @@ pub(crate) fn profile_harness_with_agents(
         nested.register_weak(&mut tools)?;
         register_agent_handles_weak(&mut tools, nested)?;
     }
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     if let Some(source) = config.registry_resolver.take() {
         let weak_repl = Arc::downgrade(repl);
+        let child_store = store.clone();
         let weak_nested = nested.map(Arc::downgrade);
         let controls_shown = ["agent", "wait", "cancel", "environments"]
             .into_iter()
@@ -92,7 +93,8 @@ pub(crate) fn profile_harness_with_agents(
                 register_agent_handles_weak(&mut tools, &nested).expect("valid child handles");
             }
             if let Some(repl) = weak_repl.upgrade() {
-                repl.register(&mut tools).expect("valid child JS tool");
+                repl.register(&mut tools, &child_store)
+                    .expect("valid child JS tool");
             }
             tools.show_always(controls_shown.iter().copied());
             tools

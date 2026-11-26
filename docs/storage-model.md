@@ -184,7 +184,7 @@ The sweep does not follow symlinks or junctions. No config knob is added.
 The runner owns paths, file grants and cleanup. `WorkspaceTools::scratchpads`
 resolves the paths for a session; `prepare_scratchpads` binds a host data dir and
 retains a workspace lease. The native pack does this at startup. Low-level file
-tools use the dispatcher's data dir when none is configured; in-memory fixtures
+tools use their store's data dir when none is configured; in-memory fixtures
 without either source use an owned temporary directory. Embedders constructing
 their own prompts can use `root_prompt::configure_scratchpads` with the same
 workspace tools to show the grants.

@@ -92,8 +92,7 @@ impl Fixture {
         Self::new_with_layout(text, false).await
     }
     async fn new_with_layout(text: &str, data_dir: bool) -> Self {
-        let root = tempfile::tempdir().unwrap();
-        Self::open(root, text, data_dir, None).await
+        Self::open(tempfile::tempdir().unwrap(), text, data_dir, None).await
     }
     async fn open(
         root: tempfile::TempDir,
@@ -125,6 +124,7 @@ impl Fixture {
             false,
             settings.exec.clone(),
             root.path().join("state"),
+            &store,
         )
         .unwrap();
         let mcp = Arc::new(McpHost::start(&settings.mcp, root.path()).await);
@@ -173,7 +173,7 @@ impl Fixture {
         .unwrap();
         agents.register(&mut tools).unwrap();
         register_agent_handles(&mut tools, agents.clone()).unwrap();
-        repl.register(&mut tools).unwrap();
+        repl.register(&mut tools, &store).unwrap();
         live.bind(tools, &agents).unwrap();
         let harness = Arc::new(Harness::new(
             store.clone(),

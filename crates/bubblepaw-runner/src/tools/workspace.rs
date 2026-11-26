@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use async_trait::async_trait;
-use bubblepaw_core::{Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult};
+use bubblepaw_core::{
+    Store, Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+};
 use regex::Regex;
 use serde_json::{Value, json};
 use std::{
@@ -112,7 +114,13 @@ impl WorkspaceTools {
             .insert(session.to_owned(), roots);
         Ok(())
     }
-    pub fn register(&self, registry: &mut ToolRegistry, read_only: bool) -> Result<()> {
+    /// `store` holds scratchpad cleanup, edit checkpoints and image attachments.
+    pub fn register(
+        &self,
+        registry: &mut ToolRegistry,
+        read_only: bool,
+        store: &Store,
+    ) -> Result<()> {
         for name in ["list", "read", "search", "edit", "write"] {
             if read_only && matches!(name, "edit" | "write") {
                 continue;
@@ -120,6 +128,7 @@ impl WorkspaceTools {
             registry.register_host(Arc::new(WorkspaceTool {
                 workspace: self.clone(),
                 name,
+                store: store.clone(),
             }))?;
         }
         Ok(())

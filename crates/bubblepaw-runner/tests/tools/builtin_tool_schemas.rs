@@ -51,7 +51,7 @@ async fn every_builtin_tool_input_schema_is_an_object() {
     );
 
     let mut host = ToolRegistry::new();
-    let processes = tools::register_native_tools(&mut host, root.path(), false).unwrap();
+    let processes = tools::register_native_tools(&mut host, root.path(), false, &store).unwrap();
     tools::register_history_tools(&mut host, store.clone()).unwrap();
     todo::register(&mut host, store.clone()).unwrap();
     let wake = Arc::new(WakeCoordinator::new(false, Duration::ZERO));
@@ -59,7 +59,7 @@ async fn every_builtin_tool_input_schema_is_an_object() {
         .register(&mut host)
         .unwrap();
     // Registers the environment tools and `js`.
-    mode.register(&mut host).unwrap();
+    mode.register(&mut host, &store).unwrap();
     let child = Harness::new(
         store.clone(),
         Arc::new(ScriptedProvider::new("done")),

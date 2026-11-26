@@ -84,6 +84,7 @@ impl Fixture {
             false,
             exec,
             data.path(),
+            &store,
         )
         .unwrap();
         registry
@@ -92,7 +93,7 @@ impl Fixture {
         let artifacts =
             Arc::new(ArtifactStore::new(workspace.path(), data.path().join("artifacts")).unwrap());
         let mode = Arc::new(CodeMode::new(workspace.path().to_owned(), artifacts).unwrap());
-        mode.register(&mut registry).unwrap();
+        mode.register(&mut registry, &store).unwrap();
         let harness = Harness::new(
             store.clone(),
             Arc::new(Cells),
@@ -415,6 +416,43 @@ fn archive_keeps_spills_and_reopened_host_cleanup_deletes_only_removed_chat() {
     assert!(reopened.session(&child).is_err());
     assert!(Path::new(second["path"].as_str().unwrap()).exists());
     assert!(reopened.session(&retained).is_ok());
+}
+
+/// Hosts register the cleanup when the tools are registered, not when a result
+/// first spills: no tool call may be needed before a chat delete removes its files.
+#[test]
+fn startup_registration_attaches_spill_cleanup_before_any_tool_call() {
+    for through_code_mode in [false, true] {
+        let data = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::open_data_dir(data.path()).unwrap();
+        let session = store.create_session("spilled").unwrap().id;
+        let saved = SpillStore::new(data.path())
+            .unwrap()
+            .save(&session, "output")
+            .unwrap();
+        if through_code_mode {
+            let artifacts = ArtifactStore::new(root.path(), data.path().join("artifacts"));
+            let mode = Arc::new(
+                CodeMode::new(root.path().to_owned(), Arc::new(artifacts.unwrap())).unwrap(),
+            );
+            mode.register(&mut ToolRegistry::new(), &store).unwrap();
+        } else {
+            let exec = ExecConfig::default();
+            let mut tools = ToolRegistry::new();
+            register_native_tools_with_exec(
+                &mut tools,
+                root.path(),
+                false,
+                exec,
+                data.path(),
+                &store,
+            )
+            .unwrap();
+        }
+        store.delete_session(&session).unwrap();
+        assert!(!Path::new(saved["path"].as_str().unwrap()).exists());
+    }
 }
 
 #[cfg(unix)]

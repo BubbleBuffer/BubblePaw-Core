@@ -455,7 +455,7 @@ async fn external_listed_folders_allow_only_canonical_reads_and_only_for_the_ses
         .set_skill_read_roots(&session, skills.read_roots(&session))
         .unwrap();
     let mut tools = ToolRegistry::new();
-    files.register(&mut tools, false).unwrap();
+    files.register(&mut tools, false, &store).unwrap();
     let read = tools.get_host("read").unwrap();
     let body = read
         .invoke(

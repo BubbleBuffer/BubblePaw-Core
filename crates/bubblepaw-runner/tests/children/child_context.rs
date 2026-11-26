@@ -98,8 +98,7 @@ struct Host {
     mcp: Arc<McpHost>,
 }
 impl Host {
-    /// Production wiring: LiveConfig owns the tool generation, and
-    /// child_agent_host_live installs the isolated workspace host.
+    /// Production wiring: LiveConfig owns tools; child_agent_host_live isolates workspaces.
     async fn start(directory: &Path, repo: &Path, text: &str) -> Result<Self> {
         let file = directory.join("config").join("config.toml");
         write_file(&file, text)?;
@@ -120,6 +119,7 @@ impl Host {
             false,
             settings.exec.clone(),
             data.clone(),
+            &store,
         )?;
         let mcp = Arc::new(McpHost::start(&settings.mcp, repo).await);
         let providers = Arc::new(LiveProviderConfig::new(effective.clone())?);
@@ -157,7 +157,7 @@ impl Host {
         )?;
         agents.register(&mut tools)?;
         register_agent_handles(&mut tools, agents.clone())?;
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         live.bind(tools, &agents)?;
         Ok(Self {
             store,

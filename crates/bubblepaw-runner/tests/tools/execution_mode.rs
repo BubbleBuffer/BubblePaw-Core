@@ -83,7 +83,7 @@ impl Fixture {
         let store = Store::in_memory().unwrap();
         let session = store.create_session("execution-mode").unwrap().id;
         let mut tools = ToolRegistry::new();
-        let processes = register_native_tools(&mut tools, root.path(), false).unwrap();
+        let processes = register_native_tools(&mut tools, root.path(), false, &store).unwrap();
         // Child profiles install their own CodeMode over the host capability pack,
         // matching the production caller before root CodeMode registration.
         let base_tools = tools.clone();
@@ -94,7 +94,7 @@ impl Fixture {
             )
             .unwrap(),
         );
-        repl.register(&mut tools).unwrap();
+        repl.register(&mut tools, &store).unwrap();
         let provider = Arc::new(Probe {
             mode,
             requests: Mutex::new(Vec::new()),

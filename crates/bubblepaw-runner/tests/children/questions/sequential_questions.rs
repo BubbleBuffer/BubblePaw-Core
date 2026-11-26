@@ -21,7 +21,7 @@ async fn sequential_questions_in_one_js_cell_preserve_both_accepted_answers() ->
     });
     let mut tools = ToolRegistry::new();
     questions.register(&mut tools)?;
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let root = Arc::new(Harness::new(
         store.clone(),
         provider.clone(),

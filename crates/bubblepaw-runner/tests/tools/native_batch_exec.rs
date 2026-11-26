@@ -72,7 +72,7 @@ async fn run(root: &std::path::Path, rounds: Vec<Round>) -> Arc<ScriptedRounds> 
     let store = Store::in_memory().unwrap();
     let session = store.create_session("native batch exec").unwrap().id;
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, root, false).unwrap();
+    let processes = register_native_tools(&mut tools, root, false, &store).unwrap();
     run_with_tools(store, &session, tools, processes, rounds).await
 }
 
@@ -197,10 +197,10 @@ async fn scripts_written_to_both_absolute_scratchpads_run_in_the_same_native_bat
     let project = root.path().canonicalize().unwrap();
     assert!(!chat_script.starts_with(&project) && !project_script.starts_with(&project));
     let mut tools = ToolRegistry::new();
-    workspace.register(&mut tools, false).unwrap();
+    workspace.register(&mut tools, false, &store).unwrap();
     let processes =
         Arc::new(ProcessTools::with_config(workspace, ExecConfig::default(), data.path()).unwrap());
-    processes.register(&mut tools).unwrap();
+    processes.register(&mut tools, &store).unwrap();
     processes.register_wait(&mut tools).unwrap();
     let provider = run_with_tools(
         store,

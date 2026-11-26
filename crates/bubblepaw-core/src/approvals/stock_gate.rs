@@ -96,7 +96,7 @@ impl ToolGate for StockGate {
     }
     fn after(&self, call: &GateCall<'_>, result: ToolResult) -> Result<ToolResult> {
         match call.result_hook {
-            Some(limit) => limit(&self.store, call.context, result, call.result_limit),
+            Some(limit) => limit(call.context, result, call.result_limit),
             None => Ok(result),
         }
     }

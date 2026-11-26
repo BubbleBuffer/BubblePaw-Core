@@ -13,17 +13,17 @@ use bubblepaw_runner::{
 use serde_json::{Value, json};
 use std::{
     fs,
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
 };
 
-fn register_js(tools: &mut ToolRegistry, root: &std::path::Path, data: &std::path::Path) {
+fn register_js(tools: &mut ToolRegistry, root: &Path, data: &Path, store: &Store) {
     let artifacts = Arc::new(ArtifactStore::new(root, data.join("artifacts")).unwrap());
-    Arc::new(CodeMode::new(root.to_owned(), artifacts).unwrap())
-        .register(tools)
-        .unwrap();
+    let mode = Arc::new(CodeMode::new(root.to_owned(), artifacts).unwrap());
+    mode.register(tools, store).unwrap();
 }
 
 struct Edits;
@@ -90,12 +90,12 @@ impl Fixture {
         let mut tools = ToolRegistry::new();
         WorkspaceTools::new(root.path())
             .unwrap()
-            .register(&mut tools, false)
+            .register(&mut tools, false, &store)
             .unwrap();
         let artifacts =
             Arc::new(ArtifactStore::new(root.path(), data.path().join("artifacts")).unwrap());
         Arc::new(CodeMode::new(root.path().to_owned(), artifacts).unwrap())
-            .register(&mut tools)
+            .register(&mut tools, &store)
             .unwrap();
         let harness = Harness::new(
             store.clone(),
@@ -173,7 +173,7 @@ async fn direct_tool_invocation_cannot_bypass_durable_checkpoints() {
     let mut tools = ToolRegistry::new();
     WorkspaceTools::new(root.path())
         .unwrap()
-        .register(&mut tools, false)
+        .register(&mut tools, false, &Store::in_memory().unwrap())
         .unwrap();
     let context = bubblepaw_core::ToolContext {
         session_id: "direct".into(),
@@ -676,9 +676,9 @@ async fn bound_child_worktree_rewind_uses_its_checkout_and_isolates_same_relativ
     let mut tools = ToolRegistry::new();
     WorkspaceTools::new(&binding.path)
         .unwrap()
-        .register(&mut tools, false)
+        .register(&mut tools, false, &f.store)
         .unwrap();
-    register_js(&mut tools, &binding.path, f._data.path());
+    register_js(&mut tools, &binding.path, f._data.path(), &f.store);
     let child_harness = Harness::new(
         f.store.clone(),
         Arc::new(Edits),
@@ -756,9 +756,9 @@ async fn fifty_edits_report_store_cost_and_compressed_preimages() {
     let mut tools = ToolRegistry::new();
     WorkspaceTools::new(f.root.path())
         .unwrap()
-        .register(&mut tools, false)
+        .register(&mut tools, false, &f.store)
         .unwrap();
-    register_js(&mut tools, f.root.path(), f._data.path());
+    register_js(&mut tools, f.root.path(), f._data.path(), &f.store);
     f.harness = Harness::new(
         f.store.clone(),
         Arc::new(MeasuredEdits {

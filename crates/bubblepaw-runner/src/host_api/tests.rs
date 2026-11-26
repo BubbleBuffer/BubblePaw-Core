@@ -314,7 +314,7 @@ async fn delete_cancels_owned_processes_and_preserves_another_sessions_job() -> 
     let session = store.create_session_with_workspace("delete", root.path())?;
     let other = store.create_session_with_workspace("other", root.path())?;
     let mut registry = ToolRegistry::new();
-    let processes = crate::tools::register_native_tools(&mut registry, root.path(), false)?;
+    let processes = crate::tools::register_native_tools(&mut registry, root.path(), false, &store)?;
     let harness = Arc::new(Harness::new(
         store.clone(),
         Arc::new(crate::provider::ScriptedProvider::new("")),

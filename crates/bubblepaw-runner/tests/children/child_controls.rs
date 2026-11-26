@@ -137,7 +137,7 @@ impl Fixture {
             release: Notify::new(),
         });
         let mut tools = ToolRegistry::new();
-        let processes = register_native_tools(&mut tools, directory.path(), false)?;
+        let processes = register_native_tools(&mut tools, directory.path(), false, &store)?;
         let repl = Arc::new(CodeMode::new(
             directory.path().to_owned(),
             Arc::new(ArtifactStore::new(
@@ -145,7 +145,7 @@ impl Fixture {
                 directory.path().join("artifacts"),
             )?),
         )?);
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         let harness = Harness::new(
             store.clone(),
             probe.clone(),
