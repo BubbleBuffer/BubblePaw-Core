@@ -110,20 +110,7 @@ impl Store {
         })
     }
     pub(crate) fn message(session_id: &str, role: Role, content: String) -> Message {
-        Message {
-            id: id(),
-            session_id: session_id.into(),
-            role,
-            origin: None,
-            content: crate::text_blocks(content),
-            tool_calls: Vec::new(),
-            tool_call_id: None,
-            provider_state: None,
-            is_error: false,
-            details: None,
-            incomplete: None,
-            created_at: now(),
-        }
+        Message::new(session_id, role, content)
     }
     pub(crate) fn insert_message(tx: &Connection, message: &Message) -> Result<()> {
         Self::insert_message_with_blobs(tx, message, false)

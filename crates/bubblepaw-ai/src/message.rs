@@ -66,6 +66,23 @@ pub struct Message {
     pub created_at: String,
 }
 impl Message {
+    /// A plain text message with a fresh id and the current time.
+    pub fn new(owner: &str, role: Role, content: String) -> Self {
+        Self {
+            id: crate::id(),
+            session_id: owner.into(),
+            role,
+            origin: None,
+            content: content_block::text_blocks(content),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+            provider_state: None,
+            is_error: false,
+            details: None,
+            incomplete: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
     /// The model-facing form of a stored message: `details` is for interfaces only.
     #[doc(hidden)]
     pub fn without_details(self) -> Self {

@@ -1196,8 +1196,7 @@ impl Harness {
                 response.storage_bytes()? <= self.config.max_request_bytes,
                 "Provider response exceeds configured storage size limit"
             );
-            let mut message =
-                Store::message(&run.session_id, Role::Assistant, response.text.clone());
+            let mut message = Message::new(&run.session_id, Role::Assistant, response.text.clone());
             message.content = crate::reply_blocks(&response.thinking, &response.text);
             message.tool_calls = response.tool_calls.clone();
             message.provider_state = response.provider_state;
@@ -1270,7 +1269,7 @@ impl Harness {
                     .invoke_direct(prepared, &message.id, prepared_invocation.take())
                     .await?;
                 let result = self.bound_tool_result(dispatched.result, &dispatcher);
-                let mut result_message = Store::message(&run.session_id, Role::Tool, String::new());
+                let mut result_message = Message::new(&run.session_id, Role::Tool, String::new());
                 result_message.content = result.content.clone();
                 let captured_result = single_tool.map(|_| result.clone());
                 result_message.tool_call_id = Some(call.id.clone());

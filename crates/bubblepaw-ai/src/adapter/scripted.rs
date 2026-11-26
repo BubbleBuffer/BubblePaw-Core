@@ -26,7 +26,7 @@ pub struct ScriptedProvider {
     demo_writable: Mutex<Option<bool>>,
 }
 impl ScriptedProvider {
-    /// Offline demo using the tool surface selected for the session.
+    /// Offline demo using the tool surface selected for the chat.
     /// Writable demo creates one new file; it never overwrites.
     pub fn demo(writable: bool) -> Self {
         let mut provider = Self::new("Offline demo completed through native capabilities.");
