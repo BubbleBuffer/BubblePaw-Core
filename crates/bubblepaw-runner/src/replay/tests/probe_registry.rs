@@ -109,7 +109,7 @@ async fn scripted_probe_reads_history_even_when_frozen_view_has_recorded_tool_re
         id: "r1".into(),
         session_id: session.id.clone(),
         role: Role::Tool,
-        content: "Original recorded tool output".into(),
+        content: bubblepaw_core::text_blocks("Original recorded tool output"),
         tool_call_id: Some("recorded-tool".into()),
         tool_calls: vec![],
         origin: None,

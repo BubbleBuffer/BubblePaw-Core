@@ -85,7 +85,7 @@ impl Provider for Recording {
         for notice in request
             .messages
             .iter()
-            .filter(|m| m.content.starts_with("<harness kind=\""))
+            .filter(|m| m.text().starts_with("<harness kind=\""))
         {
             assert_eq!(saved.iter().filter(|m| m.id == notice.id).count(), 1);
             assert_eq!(saved.iter().find(|m| m.id == notice.id), Some(notice));
@@ -153,7 +153,7 @@ async fn notices_batch_on_first_request_and_idle_next_turn_without_redelivery() 
     let messages = store.messages(&session)?;
     assert_eq!(messages.len(), 3);
     assert_eq!(
-        messages[1].content,
+        messages[1].text(),
         "<harness kind=\"host_tool:model_notice\">process:first exited exitCode=0 stdout=1 stderr=0</harness>\n<harness kind=\"host_tool:host_notice\">process:second exited exitCode=2 stdout=0 stderr=4</harness>"
     );
     assert_eq!(
@@ -179,7 +179,7 @@ async fn notices_batch_on_first_request_and_idle_next_turn_without_redelivery() 
         store
             .messages(&session)?
             .iter()
-            .filter(|m| m.content.starts_with("<harness kind=\""))
+            .filter(|m| m.text().starts_with("<harness kind=\""))
             .count(),
         1
     );
@@ -196,11 +196,11 @@ async fn notices_batch_on_first_request_and_idle_next_turn_without_redelivery() 
     let messages = store.messages(&session)?;
     let notices: Vec<_> = messages
         .iter()
-        .filter(|m| m.content.starts_with("<harness kind=\""))
+        .filter(|m| m.text().starts_with("<harness kind=\""))
         .collect();
     assert_eq!(notices.len(), 2);
     assert_eq!(
-        notices[1].content,
+        notices[1].text(),
         "<harness kind=\"host_tool:host_notice\">process:idle exited exitCode=0 stdout=9 stderr=0</harness>"
     );
     assert_eq!(
@@ -243,7 +243,7 @@ async fn notice_after_tool_round_preserves_call_result_adjacency() -> Result<()>
     assert_eq!(history[2].role, Role::Tool);
     assert_eq!(history[2].tool_call_id.as_deref(), Some("notice-call"));
     assert_eq!(
-        history[3].content,
+        history[3].text(),
         "<harness kind=\"host_tool:model_notice\">process:active exited exitCode=0 stdout=8 stderr=0</harness>"
     );
     assert!(tool.take_reminders(&session).is_empty());
@@ -300,7 +300,7 @@ async fn admitted_generated_host_input_survives_context_replacement() -> Result<
         assert_eq!(requests[0].messages.len(), 1);
         assert!(
             requests[0].messages[0]
-                .content
+                .text()
                 .ends_with(&format!(">{notice}</harness>"))
         );
         assert_eq!(
@@ -312,7 +312,7 @@ async fn admitted_generated_host_input_survives_context_replacement() -> Result<
         store
             .messages(&session)?
             .iter()
-            .filter(|message| message.content.ends_with(&format!(">{notice}</harness>")))
+            .filter(|message| message.text().ends_with(&format!(">{notice}</harness>")))
             .count(),
         1
     );
@@ -357,7 +357,7 @@ async fn context_policy_cannot_strip_notice_and_final_size_guard_includes_it() -
         assert!(serde_json::to_vec(&requests[0])?.len() < max_request_bytes);
         assert_eq!(requests[0].messages.len(), 1);
         assert_eq!(
-            requests[0].messages[0].content,
+            requests[0].messages[0].text(),
             "<harness kind=\"host_tool:host_notice\">process:kept exited exitCode=0 stdout=0 stderr=0</harness>"
         );
     }
@@ -376,7 +376,7 @@ async fn context_policy_cannot_strip_notice_and_final_size_guard_includes_it() -
         store
             .messages(&session)?
             .iter()
-            .filter(|m| m.content.starts_with("<harness kind=\""))
+            .filter(|m| m.text().starts_with("<harness kind=\""))
             .count(),
         1
     );

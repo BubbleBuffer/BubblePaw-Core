@@ -224,7 +224,7 @@ async fn references_reach_scripted_run_steer_followup_and_survive_archive_reopen
     assert!(
         messages
             .iter()
-            .any(|message| message.content.starts_with(original))
+            .any(|message| message.text().starts_with(original))
     );
     assert!(
         serialized.contains("Small referenced text")
@@ -246,7 +246,7 @@ async fn references_reach_scripted_run_steer_followup_and_survive_archive_reopen
                 .any(|request| request
                     .messages
                     .iter()
-                    .any(|message| message.content.contains(file["id"].as_str().unwrap())))
+                    .any(|message| message.text().contains(file["id"].as_str().unwrap())))
         );
     }
     let response = server
@@ -512,7 +512,7 @@ async fn configurable_prompt_limit_allows_escaped_json_and_default_file_limit_is
     );
     server.harness.wait_for_idle(&session).await.unwrap();
     assert_eq!(
-        server.harness.store().messages(&session).unwrap()[0].content,
+        server.harness.store().messages(&session).unwrap()[0].text(),
         text
     );
     server.stop().await;

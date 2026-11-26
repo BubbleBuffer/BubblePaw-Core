@@ -39,15 +39,11 @@ fn notices(store: &Store, session: &str) -> Result<Vec<Value>> {
     store
         .messages(session)?
         .iter()
-        .filter(|message| {
-            message
-                .content
-                .contains("<harness kind=\"tools_reloaded\">")
-        })
+        .filter(|message| message.text().contains("<harness kind=\"tools_reloaded\">"))
         .map(|message| {
             Ok(serde_json::from_str(
                 message
-                    .content
+                    .text()
                     .lines()
                     .find(|line| line.starts_with('{'))
                     .unwrap(),

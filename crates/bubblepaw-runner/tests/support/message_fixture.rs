@@ -6,7 +6,7 @@ pub fn message(id: &str, role: Role, content: String) -> Message {
         id: id.into(),
         session_id: "fixture".into(),
         role,
-        content,
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         origin: None,

@@ -320,13 +320,13 @@ impl Harness {
         };
         let history = self.history(session_id)?;
         if let Some(message) = history.into_iter().rev().find(is_user_request) {
-            return Ok(message.content);
+            return Ok(message.text().into_owned());
         }
         Ok(self
             .store
             .context_view(session_id)?
             .and_then(|view| view.prefix.into_iter().rev().find(is_user_request))
-            .map(|message| message.content)
+            .map(|message| message.text().into_owned())
             .unwrap_or_default())
     }
     pub fn new(

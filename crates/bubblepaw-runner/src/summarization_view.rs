@@ -171,7 +171,9 @@ impl SummarizingContext {
             let message = snapshot.message(*source_index)?;
             let entry = format!(
                 "\n[{} | {}]\n{}\n",
-                message.id, message.created_at, message.content
+                message.id,
+                message.created_at,
+                message.text()
             );
             if self.tokens(&format!("{text}{entry}{}", refs(index + 1)))
                 > self.config.verbatim_user_tokens
@@ -432,15 +434,15 @@ mod block_tests {
                 .map(|message| context.message_tokens(message) as u64)
                 .sum::<u64>()
         );
-        assert_eq!(prefix[0].content, "Legacy memory.");
+        assert_eq!(prefix[0].text(), "Legacy memory.");
         assert_eq!(prefix[1].id, history[0].id);
         assert_eq!(prefix[2].id, history[2].id);
         assert_eq!(
-            prefix[4].content,
+            prefix[4].text(),
             "Closed chapter summaries (historical):\n\n## Chapter 1 (closed)\n[ch-1]\nClosed memory.\n"
         );
         assert_eq!(
-            prefix[5].content,
+            prefix[5].text(),
             format!(
                 "Open chapter episodes (historical):\n\n## Open chapter 2 (open)\nEpisode 2 (episode-2) | Title 2\n{}\nEpisode 3 (episode-3) | Title 3\n{}\n",
                 episodes[1].summary, episodes[2].summary,

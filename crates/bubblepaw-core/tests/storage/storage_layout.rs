@@ -266,10 +266,10 @@ async fn failed_serving_tool_journal_write_keeps_record_result_and_refuses_gap_r
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         let history = store.messages(&session.id)?;
         assert_eq!(history.len(), 4);
-        assert_eq!(history[0].content, "accepted before journal failure");
+        assert_eq!(history[0].text(), "accepted before journal failure");
         assert_eq!(history[2].role, Role::Tool);
-        assert!(history[2].content.contains("large exact tool output"));
-        assert_eq!(history[3].content, "complete answer\n猫");
+        assert!(history[2].text().contains("large exact tool output"));
+        assert_eq!(history[3].text(), "complete answer\n猫");
         assert!(!agent.can_resume_from(before));
         assert!(
             agent
@@ -870,13 +870,7 @@ async fn pending_input_approval_record_and_unknown_effect_survive_serving_loss_w
         Some("unknown-call")
     );
     assert!(recovered.last().unwrap().is_error);
-    assert!(
-        recovered
-            .last()
-            .unwrap()
-            .content
-            .contains("outcome unknown")
-    );
+    assert!(recovered.last().unwrap().text().contains("outcome unknown"));
     assert_eq!(
         serde_json::to_vec(&store.queued_inputs(&session.id)?[0])?,
         serde_json::to_vec(&input)?
@@ -927,7 +921,7 @@ async fn pending_input_approval_record_and_unknown_effect_survive_serving_loss_w
     assert_eq!(&resumed[..recovered.len()], recovered.as_slice());
     assert_eq!(resumed.len(), recovered.len() + 1);
     assert_eq!(resumed.last().unwrap().role, Role::User);
-    assert_eq!(resumed.last().unwrap().content, queued_text);
+    assert_eq!(resumed.last().unwrap().text(), queued_text);
     assert!(
         store
             .queued_inputs(&session.id)?

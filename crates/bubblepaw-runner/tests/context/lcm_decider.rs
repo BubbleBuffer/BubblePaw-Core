@@ -169,9 +169,9 @@ impl Fixture {
                     Role::Assistant
                 },
                 content: if index % 2 == 0 {
-                    format!("Task {index}")
+                    bubblepaw_core::text_blocks(format!("Task {index}"))
                 } else {
-                    " datum".repeat(300)
+                    bubblepaw_core::text_blocks(" datum".repeat(300))
                 },
                 origin: None,
                 tool_calls: vec![],

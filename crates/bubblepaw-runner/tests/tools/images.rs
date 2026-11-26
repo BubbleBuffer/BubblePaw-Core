@@ -40,7 +40,7 @@ impl Provider for Cells {
             .iter()
             .rev()
             .take_while(|message| message.role == Role::User)
-            .find_map(|message| serde_json::from_str::<Value>(&message.content).ok())
+            .find_map(|message| serde_json::from_str::<Value>(&message.text()).ok())
         {
             return Ok(ModelResponse {
                 tool_calls: vec![ToolCall {
@@ -126,7 +126,8 @@ impl Fixture {
             .rev()
             .find(|message| message.role == Role::Tool)
             .unwrap()
-            .content
+            .text()
+            .into_owned()
     }
 }
 
@@ -160,7 +161,7 @@ async fn image_reads_attach_without_return_and_deduplicate_across_paths() {
             .iter()
             .find(|message| message.role == Role::Tool)
             .unwrap();
-        assert_eq!(sent.content.matches(&encoded).count(), 1);
+        assert_eq!(sent.text().matches(&encoded).count(), 1);
     }
     fixture.manager.shutdown().await;
 }
@@ -230,9 +231,9 @@ async fn nonvision_models_receive_a_short_note_without_bytes() {
             .iter()
             .find(|message| message.role == Role::Tool)
             .unwrap();
-        assert!(sent.content.contains("Image input is unavailable"));
-        assert!(!sent.content.contains(&STANDARD.encode(PNG)));
-        assert!(!sent.content.contains("BubblePawImages"));
+        assert!(sent.text().contains("Image input is unavailable"));
+        assert!(!sent.text().contains(&STANDARD.encode(PNG)));
+        assert!(!sent.text().contains("BubblePawImages"));
     }
     fixture.manager.shutdown().await;
 }
@@ -252,11 +253,11 @@ async fn truncated_js_text_and_budget_footer_preserve_image_refs() {
         .iter()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    let (text, images) = split_refs(&canonical.content);
+    let (text, images) = split_refs(&canonical.text());
     assert_eq!(images.len(), 1);
     assert!(text.contains("truncated"));
     assert!(text.ends_with("1 tool calls left"));
-    assert!(canonical.content.len() < 4096);
+    assert!(canonical.text().len() < 4096);
     {
         let requests = fixture.requests.lock().unwrap();
         assert!(
@@ -266,7 +267,7 @@ async fn truncated_js_text_and_budget_footer_preserve_image_refs() {
                 .messages
                 .iter()
                 .any(|message| message.role == Role::Tool
-                    && message.content.contains(&STANDARD.encode(PNG)))
+                    && message.text().contains(&STANDARD.encode(PNG)))
         );
     }
     fixture.manager.shutdown().await;
@@ -288,7 +289,7 @@ async fn repeated_reads_across_cells_send_one_image_per_prepared_request() {
         let history = last
             .messages
             .iter()
-            .map(|message| message.content.as_str())
+            .map(|message| message.text().into_owned())
             .collect::<String>();
         assert_eq!(history.matches(&STANDARD.encode(PNG)).count(), 1);
         assert!(history.contains("Image already provided earlier"));
@@ -310,7 +311,7 @@ async fn fork_refs_retain_the_original_attachment_session() {
     let messages = fixture.store.messages(&fork.id).unwrap();
     let reference = messages
         .iter()
-        .find_map(|message| split_refs(&message.content).1.into_iter().next())
+        .find_map(|message| split_refs(&message.text()).1.into_iter().next())
         .unwrap();
     assert_eq!(reference.session_id, fixture.session);
     assert!(
@@ -336,11 +337,11 @@ async fn fork_refs_retain_the_original_attachment_session() {
             latest
                 .messages
                 .iter()
-                .any(|message| message.content.contains(&STANDARD.encode(PNG)))
+                .any(|message| message.text().contains(&STANDARD.encode(PNG)))
         );
         assert!(latest.messages.iter().all(|message| {
             !message
-                .content
+                .text()
                 .contains("canonical attachment was not found")
         }));
     }
@@ -422,7 +423,7 @@ async fn background_image_read_is_attached_when_its_environment_is_inspected() {
         .rev()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    assert_eq!(split_refs(&result.content).1.len(), 1);
+    assert_eq!(split_refs(&result.text()).1.len(), 1);
     assert!(
         fixture
             .requests
@@ -432,7 +433,7 @@ async fn background_image_read_is_attached_when_its_environment_is_inspected() {
             .unwrap()
             .messages
             .iter()
-            .any(|message| message.content.contains(&STANDARD.encode(PNG)))
+            .any(|message| message.text().contains(&STANDARD.encode(PNG)))
     );
     fixture.manager.shutdown().await;
 }

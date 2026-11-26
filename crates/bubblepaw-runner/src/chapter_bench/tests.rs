@@ -55,7 +55,7 @@ fn corpus(chat: &str, prefix: &str, transition: bool) -> ReplayCorpus {
                 session_id: format!("source-{chat}"),
                 origin: (role == Role::User).then_some(MessageOrigin::Typed),
                 role,
-                content,
+                content: bubblepaw_core::text_blocks(content),
                 tool_calls: vec![],
                 tool_call_id: None,
                 provider_state: None,

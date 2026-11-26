@@ -174,7 +174,7 @@ fn tools_off_reminders(store: &Store, session: &str) -> Result<usize> {
     Ok(store
         .messages(session)?
         .iter()
-        .filter(|message| message.content.contains(REMINDER))
+        .filter(|message| message.text().contains(REMINDER))
         .count())
 }
 
@@ -216,13 +216,13 @@ async fn budget_reminder_complies_with_the_same_declarations_and_appends() -> Re
         requests[1]
             .messages
             .iter()
-            .any(|m| m.content.contains(REMINDER))
+            .any(|m| m.text().contains(REMINDER))
     );
     assert!(
         !requests[0]
             .messages
             .iter()
-            .any(|m| m.content.contains(REMINDER))
+            .any(|m| m.text().contains(REMINDER))
     );
     assert_eq!(
         builds(&f.records),
@@ -267,8 +267,8 @@ async fn ignored_budget_reminder_refuses_the_call_then_enforces_tools_off() -> R
     let results = tool_results(&f.store, &f.session)?;
     assert_eq!(results.len(), 2);
     assert!(results[1].is_error);
-    assert!(results[1].content.contains("budget exhausted"));
-    assert!(results[1].content.contains("not executed"));
+    assert!(results[1].text().contains("budget exhausted"));
+    assert!(results[1].text().contains("not executed"));
     assert_eq!(
         builds(&f.records),
         [

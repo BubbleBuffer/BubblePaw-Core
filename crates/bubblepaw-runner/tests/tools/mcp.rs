@@ -267,7 +267,7 @@ async fn scripted_provider_calls_mcp_through_js_and_keeps_the_effect_boundary() 
     assert!(
         results
             .iter()
-            .any(|message| message.role == Role::Tool && message.content.contains("MCP accepted"))
+            .any(|message| message.role == Role::Tool && message.text().contains("MCP accepted"))
     );
     assert!(store.pending_effects(&session.id)?.is_empty());
     let mut mcp_call_id = None;

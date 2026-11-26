@@ -45,7 +45,7 @@ impl bubblepaw_core::Provider for NoticeProvider {
             request
                 .messages
                 .iter()
-                .map(|message| message.content.clone())
+                .map(|message| message.text().into_owned())
                 .collect(),
         );
         Ok(if first {

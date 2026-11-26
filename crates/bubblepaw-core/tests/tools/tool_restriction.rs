@@ -162,7 +162,7 @@ async fn restricted_run_keeps_declarations_and_refuses_disallowed_calls() -> Res
         request
             .messages
             .iter()
-            .filter(|message| message.content.contains(notice))
+            .filter(|message| message.text().contains(notice))
             .count()
     };
     assert_eq!(notices(&requests[0]), 0);
@@ -178,10 +178,10 @@ async fn restricted_run_keeps_declarations_and_refuses_disallowed_calls() -> Res
         .expect("restricted run returns the refused call as an error result");
     assert!(
         rejection
-            .content
+            .text()
             .contains("Tool `write` is not available in this run. Allowed tools: read."),
         "{}",
-        rejection.content
+        rejection.text()
     );
     assert_eq!(writes.load(Ordering::Relaxed), 0);
     assert_eq!(reads.load(Ordering::Relaxed), 1);

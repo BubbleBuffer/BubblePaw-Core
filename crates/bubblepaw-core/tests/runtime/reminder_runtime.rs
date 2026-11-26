@@ -121,7 +121,7 @@ async fn drained_tool_reminders_survive_preparation_failure_and_flush_once_at_ta
     assert_eq!(requests.len(), 1);
     let tail = requests[0].messages.last().unwrap();
     assert_eq!(
-        tail.content,
+        tail.text(),
         "<harness kind=\"process_completion:p\">finished</harness>"
     );
     assert_eq!(tail.origin, Some(MessageOrigin::Generated));
@@ -167,7 +167,7 @@ async fn admitted_reminder_metadata_is_atomic_and_recovered_at_the_model_tail() 
     let request = provider.requests.lock().unwrap()[0].clone();
     let tail = request.messages.last().unwrap();
     assert_eq!(
-        tail.content,
+        tail.text(),
         "<harness kind=\"question_answer:q\">answer</harness>"
     );
     assert_eq!(store.queued_inputs(&session)?[0].state, "consumed");

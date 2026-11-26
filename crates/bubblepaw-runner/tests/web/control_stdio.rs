@@ -191,7 +191,7 @@ async fn stdio_user_answers_child_question_through_its_parent() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|message| message["content"]
+            .any(|message| message["content"][0]["text"]
                 .as_str()
                 .is_some_and(|text| text.contains("Green with stripes")))
     );
@@ -320,7 +320,7 @@ async fn stdio_todo_root_answer_and_cancel() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|message| message["content"]
+            .any(|message| message["content"][0]["text"]
                 .as_str()
                 .is_some_and(|text| text.contains("Green")))
     );

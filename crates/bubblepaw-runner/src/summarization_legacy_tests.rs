@@ -74,7 +74,9 @@ async fn legacy_view_serves_its_frozen_system_prompt_and_prefix_unchanged() -> R
     let mut later = old.clone();
     later.id = id();
     later.created_at = "1900-01-01T00:00:00Z".into();
-    later.content = "[host notice]\nCurrent volatile runtime facts: newer inventory".into();
+    later.content = bubblepaw_core::text_blocks(
+        "[host notice]\nCurrent volatile runtime facts: newer inventory",
+    );
     let mut extended = history.clone();
     extended.push(later.clone());
     let prepared = context.render_saved(&session, &extended, &view)?;

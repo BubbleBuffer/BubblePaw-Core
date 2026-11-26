@@ -266,7 +266,7 @@ async fn asynchronous_preparation_checks_final_view_persists_notice_and_accounts
         !store
             .messages(&session.id)?
             .iter()
-            .any(|m| m.content == "Earlier context summarized.")
+            .any(|m| m.text() == "Earlier context summarized.")
     );
     let outputs = store.outputs(&session.id, 20)?;
     assert_eq!(outputs.len(), 1);
@@ -334,7 +334,7 @@ async fn cancelling_preparation_prevents_late_notice_and_provider_dispatch() -> 
     assert_eq!(run.status, "cancelled");
     assert!(provider.0.lock().unwrap().is_empty());
     assert!(store.outputs(&session.id, 20)?.is_empty());
-    assert_eq!(store.messages(&session.id)?[0].content, "retained input");
+    assert_eq!(store.messages(&session.id)?[0].text(), "retained input");
     while let Ok(event) = events.try_recv() {
         assert!(!matches!(
             event.kind,

@@ -104,7 +104,7 @@ async fn details_are_stored_with_the_message_and_never_reach_the_model() -> Resu
         .into_iter()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    assert_eq!(stored.content, "shown to the model");
+    assert_eq!(stored.text(), "shown to the model");
     assert_eq!(serde_json::to_value(&stored)?["details"], json!({"rows":3}));
     let requests = provider.requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
@@ -113,7 +113,7 @@ async fn details_are_stored_with_the_message_and_never_reach_the_model() -> Resu
             .messages
             .iter()
             .filter(|message| message.role == Role::Tool)
-            .all(|message| message.details.is_none() && message.content == "shown to the model")
+            .all(|message| message.details.is_none() && message.text() == "shown to the model")
     );
     Ok(())
 }

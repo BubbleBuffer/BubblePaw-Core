@@ -16,14 +16,14 @@ fn cached_request_size_distinguishes_signed_zero_in_same_id_json_fields() -> Res
     };
     assert_eq!(
         cache.request_bytes(&mut request)?,
-        serde_json::to_vec(&request)?.len()
+        crate::plain_content(|| serde_json::to_vec(&request))?.len()
     );
     for value in [-0.0, 0.0, -0.0, 0.0] {
         request.messages[0].tool_calls[0].arguments["nested"][0]["value"] =
             serde_json::json!(value);
         assert_eq!(
             cache.request_bytes(&mut request)?,
-            serde_json::to_vec(&request)?.len()
+            crate::plain_content(|| serde_json::to_vec(&request))?.len()
         );
     }
     for value in [-0.0, 0.0, -0.0, 0.0] {
@@ -31,7 +31,7 @@ fn cached_request_size_distinguishes_signed_zero_in_same_id_json_fields() -> Res
             serde_json::json!(value);
         assert_eq!(
             cache.request_bytes(&mut request)?,
-            serde_json::to_vec(&request)?.len()
+            crate::plain_content(|| serde_json::to_vec(&request))?.len()
         );
     }
     Ok(())
@@ -59,7 +59,8 @@ fn cached_request_size_is_exact_and_tracks_same_id_transformations() -> Result<(
                 request.max_output_tokens = Some(100);
             }
             2 => {
-                first.content = "same id, longer transformed content".repeat(200);
+                first.content =
+                    crate::text_blocks("same id, longer transformed content".repeat(200));
                 request.messages[0] = first.clone();
             }
             3 => {
@@ -75,22 +76,22 @@ fn cached_request_size_is_exact_and_tracks_same_id_transformations() -> Result<(
         }
         assert_eq!(
             cache.request_bytes(&mut request)?,
-            serde_json::to_vec(&request)?.len()
+            crate::plain_content(|| serde_json::to_vec(&request))?.len()
         );
         assert_eq!(
             cache.request_bytes(&mut request)?,
-            serde_json::to_vec(&request)?.len()
+            crate::plain_content(|| serde_json::to_vec(&request))?.len()
         );
     }
     request.messages.clear();
     assert_eq!(
         cache.request_bytes(&mut request)?,
-        serde_json::to_vec(&request)?.len()
+        crate::plain_content(|| serde_json::to_vec(&request))?.len()
     );
     request.messages.push(first);
     assert_eq!(
         cache.request_bytes(&mut request)?,
-        serde_json::to_vec(&request)?.len()
+        crate::plain_content(|| serde_json::to_vec(&request))?.len()
     );
     Ok(())
 }
@@ -130,7 +131,7 @@ async fn prepared_guard_preserves_large_chat_journal_and_rejects_active_payload(
             _: CancellationToken,
         ) -> Result<crate::ModelResponse> {
             self.0.fetch_add(1, Ordering::SeqCst);
-            assert!(serde_json::to_vec(&request)?.len() > 2 * 1024 * 1024);
+            assert!(crate::plain_content(|| serde_json::to_vec(&request))?.len() > 2 * 1024 * 1024);
             assert!(crate::prepared_request_bytes(&request)? < 2 * 1024 * 1024);
             Ok(crate::ModelResponse {
                 text: "done".into(),

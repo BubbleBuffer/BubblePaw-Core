@@ -16,18 +16,18 @@ fn string_options() -> RunOptions {
         ..Default::default()
     }
 }
-fn notice<'a>(request: &'a ModelRequest, run: &Run) -> &'a str {
+fn notice(request: &ModelRequest, run: &Run) -> String {
     let marker = format!("<harness kind=\"result_schema:{}\">", run.id);
     request
         .messages
         .iter()
         .find_map(|message| {
             message
-                .content
+                .text()
                 .split_once(&marker)?
                 .1
                 .split_once("</harness>")
-                .map(|(body, _)| body)
+                .map(|(body, _)| body.to_owned())
         })
         .expect("the current run must supersede the previous visible result contract")
 }
@@ -84,11 +84,11 @@ async fn returning_to_the_initial_schema_supersedes_the_intervening_schema_notic
     assert_eq!(requests.len(), 3);
     stable_prefix(&requests)?;
     assert_eq!(
-        definition(notice(&requests[1], &changed))?.input_schema,
+        definition(&notice(&requests[1], &changed))?.input_schema,
         string_options().output_schema.unwrap().schema
     );
     assert_eq!(
-        definition(notice(&requests[2], &restored))?.input_schema,
+        definition(&notice(&requests[2], &restored))?.input_schema,
         options().output_schema.unwrap().schema
     );
     assert_eq!(
@@ -126,7 +126,7 @@ async fn returning_to_an_ordinary_run_supersedes_the_intervening_required_result
     assert_eq!(requests.len(), 3);
     stable_prefix(&requests)?;
     assert_eq!(
-        definition(notice(&requests[1], &required))?.input_schema,
+        definition(&notice(&requests[1], &required))?.input_schema,
         string_options().output_schema.unwrap().schema
     );
     let disabled = notice(&requests[2], &plain);

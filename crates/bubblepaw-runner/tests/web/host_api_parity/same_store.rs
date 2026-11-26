@@ -155,7 +155,7 @@ pub fn seed_session(
             session_id: session.id.clone(),
             role: Role::Assistant,
             origin: None,
-            content: format!("{title} {index}"),
+            content: bubblepaw_core::text_blocks(format!("{title} {index}")),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,

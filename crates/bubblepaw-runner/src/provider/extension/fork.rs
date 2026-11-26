@@ -29,7 +29,7 @@ pub(super) fn request(mut request: ModelRequest) -> Result<ModelRequest> {
     let session = controls[controls.len() - 1].session_id.clone();
     let content = controls
         .iter()
-        .map(|message| message.content.as_str())
+        .map(|message| message.text().into_owned())
         .collect::<Vec<_>>()
         .join("\n\n");
     request.messages.push(Message {
@@ -37,7 +37,7 @@ pub(super) fn request(mut request: ModelRequest) -> Result<ModelRequest> {
         session_id: session.clone(),
         role: Role::User,
         origin: Some(MessageOrigin::Generated),
-        content,
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,
@@ -94,5 +94,7 @@ pub(super) fn projection(request: &ModelRequest) -> Value {
             ..message.clone()
         })
         .collect();
-    json!({"system":request.system_prompt,"tools":request.tools,"messages":messages})
+    bubblepaw_core::plain_content(
+        || json!({"system":request.system_prompt,"tools":request.tools,"messages":messages}),
+    )
 }

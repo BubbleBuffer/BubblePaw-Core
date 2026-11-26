@@ -247,7 +247,7 @@ async fn model_and_embedder_routes_share_the_same_rejection_contract() -> Result
             assert!(embedder.is_error);
             // The model route may append a correction hint to the shared text.
             assert!(
-                model_error.content.starts_with(&embedder.content),
+                model_error.text().starts_with(&embedder.content),
                 "{case}/{route}"
             );
             if let Some(expected) = &expected {

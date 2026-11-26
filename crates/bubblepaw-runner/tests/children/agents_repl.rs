@@ -25,7 +25,7 @@ impl Provider for FamilyProvider {
         assert_eq!(request.tools.len(), 1);
         assert_eq!(request.tools[0].name, "js");
         if request.messages.last().is_some_and(|message| {
-            message.role == Role::User && message.content == "PARENT HISTORY MUST STAY PRIVATE"
+            message.role == Role::User && message.text() == "PARENT HISTORY MUST STAY PRIVATE"
         }) {
             self.requests.lock().unwrap().push(request);
             return Ok(ModelResponse {
@@ -36,7 +36,7 @@ impl Provider for FamilyProvider {
         let parent = request
             .messages
             .iter()
-            .any(|message| message.role == Role::User && message.content == "parent proof");
+            .any(|message| message.role == Role::User && message.text() == "parent proof");
         let has_result = request
             .messages
             .iter()
@@ -44,15 +44,15 @@ impl Provider for FamilyProvider {
         if !parent {
             assert!(!request.tools[0].description.contains("tools.agent("));
             assert!(request.messages.iter().any(|message| {
-                message.content.contains("Explain these supplied files")
-                    && message.content.contains("first document")
-                    && message.content.contains("second document")
+                message.text().contains("Explain these supplied files")
+                    && message.text().contains("first document")
+                    && message.text().contains("second document")
             }));
             assert!(
                 !request
                     .messages
                     .iter()
-                    .any(|message| message.content.contains("PARENT HISTORY MUST STAY PRIVATE"))
+                    .any(|message| message.text().contains("PARENT HISTORY MUST STAY PRIVATE"))
             );
         }
         self.requests.lock().unwrap().push(request);
@@ -150,8 +150,8 @@ async fn parent_repl_delegates_waits_and_publishes_child_answer_with_isolated_co
         .iter()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    assert!(!reply.is_error, "{}", reply.content);
-    let result: Value = serde_json::from_str(reply.content.split("\n[---]\n").next().unwrap())?;
+    assert!(!reply.is_error, "{}", reply.text());
+    let result: Value = serde_json::from_str(reply.text().split("\n[---]\n").next().unwrap())?;
     assert_eq!(result["status"], "completed");
     assert_eq!(result["text"], "Child explanation from supplied files");
     assert!(result["usage"]["input_tokens"].as_u64().unwrap() > 0);
@@ -194,16 +194,16 @@ async fn parent_repl_delegates_waits_and_publishes_child_answer_with_isolated_co
                     && !request
                         .messages
                         .iter()
-                        .any(|message| message.content == "parent proof")
+                        .any(|message| message.text() == "parent proof")
             })
             .unwrap();
-        let content = &child_request
+        let content = child_request
             .messages
             .iter()
             .find(|message| message.role == Role::Tool)
             .unwrap()
-            .content;
-        let read: Value = serde_json::from_str(content)?;
+            .text();
+        let read: Value = serde_json::from_str(&content)?;
         assert_eq!(read["canEdit"], "undefined");
         assert_eq!(read["canWrite"], "undefined");
         assert_eq!(read["canSpawn"], "undefined");
@@ -220,7 +220,7 @@ async fn parent_repl_delegates_waits_and_publishes_child_answer_with_isolated_co
         reopened
             .messages(&child_id)?
             .iter()
-            .any(|message| message.content == "Child explanation from supplied files")
+            .any(|message| message.text() == "Child explanation from supplied files")
     );
     Ok(())
 }
@@ -241,11 +241,12 @@ impl Provider for CellProvider {
             .rev()
             .find(|(_, message)| message.role == Role::User)
             .unwrap();
-        if input.content == "blocking child" {
+        if input.text() == "blocking child" {
             cancellation.cancelled().await;
             anyhow::bail!("synthetic child cancelled");
         }
-        if let Some(code) = input.content.strip_prefix("CELL:")
+        let input_text = input.text();
+        if let Some(code) = input_text.strip_prefix("CELL:")
             && !request.messages[index + 1..]
                 .iter()
                 .any(|message| message.role == Role::Tool)
@@ -362,8 +363,8 @@ async fn shared_js_wait_and_cancel_route_agent_process_and_timer_handles() -> Re
         .iter()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    assert!(!reply.is_error, "{}", reply.content);
-    let result: Value = serde_json::from_str(&reply.content)?;
+    assert!(!reply.is_error, "{}", reply.text());
+    let result: Value = serde_json::from_str(&reply.text())?;
     assert_eq!(result["cancelled"]["status"], "cancelled");
     assert_eq!(result["process"]["status"], "exited");
     assert!(

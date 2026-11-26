@@ -62,7 +62,7 @@ async fn child_config_cursor_starts_after_prior_reloads_and_keeps_later_changes_
             .into_iter()
             .filter(|message| {
                 message.origin == Some(MessageOrigin::Generated)
-                    && message.content.contains("Config changed:")
+                    && message.text().contains("Config changed:")
             })
             .collect::<Vec<_>>()
     };
@@ -76,7 +76,7 @@ async fn child_config_cursor_starts_after_prior_reloads_and_keeps_later_changes_
     fixture.code("continue config child once", &follow_up);
     fixture.turn("continue config child once").await;
     assert_eq!(child_notices().len(), 1);
-    assert!(child_notices()[0].content.contains("exec updated"));
+    assert!(child_notices()[0].text().contains("exec updated"));
     fixture.code("continue unchanged config child", &follow_up);
     fixture.turn("continue unchanged config child").await;
     assert_eq!(child_notices().len(), 1);

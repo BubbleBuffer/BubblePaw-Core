@@ -12,14 +12,14 @@ async fn chapter_ids_are_frozen_with_summary_text_across_later_turns() -> Result
     let summary = view
         .prefix
         .iter()
-        .find(|message| message.content.starts_with("Closed chapter summaries"))
+        .find(|message| message.text().starts_with("Closed chapter summaries"))
         .unwrap();
-    assert!(summary.content.contains("[ch-1]\nFUTURE_CHAPTER_SECRET"));
-    assert_eq!(summary.content.matches("[ch-1]").count(), 1);
+    assert!(summary.text().contains("[ch-1]\nFUTURE_CHAPTER_SECRET"));
+    assert_eq!(summary.text().matches("[ch-1]").count(), 1);
     assert!(
         view.prefix
             .iter()
-            .any(|message| message.content.contains("[ch-1] Chapter 1"))
+            .any(|message| message.text().contains("[ch-1] Chapter 1"))
     );
     let frozen = serde_json::to_vec(&view.prefix)?;
     let declarations = serde_json::to_vec(&first.request.tools)?;
@@ -140,8 +140,8 @@ async fn closed_chapter_summaries_are_capped_oldest_first_and_keep_their_index_r
         let text = |start: &str| {
             view.prefix
                 .iter()
-                .find(|message| message.content.starts_with(start))
-                .map(|message| message.content.clone())
+                .find(|message| message.text().starts_with(start))
+                .map(|message| message.text().into_owned())
                 .unwrap_or_default()
         };
         let summaries = text("Closed chapter summaries");

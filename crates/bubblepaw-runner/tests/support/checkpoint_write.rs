@@ -58,7 +58,7 @@ pub async fn invoke(registry: &ToolRegistry, name: &str, input: Value) -> Result
         })
         .context("mutation tool result is missing")?;
     if result.is_error {
-        bail!(result.content);
+        bail!("{}", result.text());
     }
     ensure!(
         !store
@@ -67,6 +67,6 @@ pub async fn invoke(registry: &ToolRegistry, name: &str, input: Value) -> Result
         "successful mutation did not persist a checkpoint"
     );
     Ok(serde_json::from_str(
-        result.content.split("\n[---]\n").next().unwrap(),
+        result.text().split("\n[---]\n").next().unwrap(),
     )?)
 }

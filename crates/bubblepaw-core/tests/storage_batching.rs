@@ -99,7 +99,7 @@ fn imported_serving_summary_does_not_decode_covered_rows() -> Result<()> {
     )?;
     let serving = store.serving_messages(&session.id)?;
     assert_eq!(serving.len(), 2);
-    assert_eq!(serving[0].content, "retained imported summary");
+    assert_eq!(serving[0].text(), "retained imported summary");
     assert_eq!(serving[1].id, "tail");
     Ok(())
 }
@@ -113,7 +113,7 @@ impl bubblepaw_core::Provider for Reuse {
         _: bubblepaw_core::TextCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
-        assert!(request.messages[0].content.ends_with("call\n</harness>"));
+        assert!(request.messages[0].text().ends_with("call\n</harness>"));
         assert!(
             !request
                 .messages
@@ -350,7 +350,7 @@ async fn admission_waits_for_maintenance_then_answers_late_input() -> Result<()>
         assert!(
             messages
                 .iter()
-                .any(|message| message.role == Role::User && message.content == text)
+                .any(|message| message.role == Role::User && message.text() == text)
         );
     }
     assert!(
@@ -526,7 +526,7 @@ async fn rejected_operational_copy_marks_journal_gap_without_losing_messages() -
         .await?;
     assert_eq!(run.status, "completed");
     assert_eq!(
-        store.messages(&session.id)?[0].content,
+        store.messages(&session.id)?[0].text(),
         "accepted despite projection failure"
     );
     assert!(!harness.can_resume_from(0));
@@ -619,10 +619,7 @@ async fn abrupt_loss_of_buffered_events_never_reuses_a_client_sequence() -> Resu
     let session = admitted["session"].as_str().unwrap();
     let cursor = admitted["sequence"].as_u64().unwrap();
     let store = Store::open_data_dir(dir.path())?;
-    assert_eq!(
-        store.messages(session)?[0].content,
-        "durably accepted input"
-    );
+    assert_eq!(store.messages(session)?[0].text(), "durably accepted input");
     let harness = bubblepaw_core::Harness::new(
         store,
         std::sync::Arc::new(FinalModel),

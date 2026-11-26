@@ -23,6 +23,7 @@ mod approvals;
 mod cache_accounting;
 #[doc(hidden)]
 pub mod config_schema;
+mod content_block;
 mod context_facts;
 mod context_state;
 mod decision;
@@ -44,6 +45,7 @@ mod store;
 mod stream;
 mod submit_result;
 mod tool_result;
+use request_usage::deserialize_cache_read_tokens;
 pub use tool_result::ToolResult;
 mod tool_notices;
 mod tool_views;
@@ -58,6 +60,7 @@ pub use cache_accounting::{
     CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, RequestKind, WireShape,
     request_components,
 };
+pub use content_block::{ContentBlock, plain_content, text_blocks};
 pub use context_facts::{
     ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextSurfaceRebind,
     ContextTrigger, MessageTokenSource, MessageTokens, ReportedMessageTokens,
@@ -195,7 +198,8 @@ pub struct Message {
     pub role: Role,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<MessageOrigin>,
-    pub content: String,
+    #[serde(with = "content_block::wire")]
+    pub content: Vec<ContentBlock>,
     #[serde(default)]
     pub tool_calls: Vec<ToolCall>,
     #[serde(default)]
@@ -299,13 +303,6 @@ pub struct Usage {
     /// them. `None` means not reported; it is omitted when serialized.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u64>,
-}
-// Earlier archives used Option<u64>, serializing explicit unknown values as null.
-fn deserialize_cache_read_tokens<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<u64>::deserialize(deserializer)?.unwrap_or(0))
 }
 impl Usage {
     /// Accumulate another request's usage into run totals.

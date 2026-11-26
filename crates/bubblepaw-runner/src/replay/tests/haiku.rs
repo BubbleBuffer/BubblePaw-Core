@@ -220,7 +220,7 @@ async fn selected_haiku_roles_probes_and_judge_use_messages_and_cache_aware_mete
         session_id: session.id.clone(),
         role: Role::User,
         origin: None,
-        content: "Blue facts.".into(),
+        content: bubblepaw_core::text_blocks("Blue facts."),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,

@@ -44,7 +44,7 @@ async fn running_child_resolves_deny_additions_and_removals_through_parent_overr
         let denied = fixture.store.messages(&child)?.iter().any(|message| {
             message.role == Role::Tool
                 && message.is_error
-                && message.content.contains("deny rule effect")
+                && message.text().contains("deny rule effect")
         });
         assert_eq!(denied, !initially_denied);
         fixture.manager.shutdown().await?;

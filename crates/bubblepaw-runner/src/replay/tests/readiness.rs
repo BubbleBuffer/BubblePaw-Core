@@ -18,7 +18,7 @@ fn replay_readiness_matches_prefix_planner_with_multi_turn_episodes_and_parallel
         performance_message(10, Role::User),
         performance_message(11, Role::Assistant),
     ];
-    messages[2].content = "[new subject] Change task".into();
+    messages[2].content = bubblepaw_core::text_blocks("[new subject] Change task");
     messages[3].tool_calls = vec![
         bubblepaw_core::ToolCall {
             id: "parallel-a".into(),

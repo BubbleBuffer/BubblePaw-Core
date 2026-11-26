@@ -69,7 +69,7 @@ async fn sse_resume_with_last_event_id_replays_missed_events() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|message| message["role"] == "user" && message["content"] == "third")
+        .find(|message| message["role"] == "user" && message["content"][0]["text"] == "third")
         .unwrap();
     assert_eq!(third_input["origin"], "typed");
     // An id the log cannot answer from resets.

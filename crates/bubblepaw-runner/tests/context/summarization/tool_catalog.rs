@@ -33,11 +33,12 @@ fn add_deferred(tools: &mut ToolRegistry, name: &'static str, server: &str) -> R
     tools.set_tool_server(name, server);
     Ok(())
 }
-fn harness_block<'a>(request: &'a ModelRequest, kind: &str) -> Option<(&'a Message, &'a str)> {
+fn harness_block<'a>(request: &'a ModelRequest, kind: &str) -> Option<(&'a Message, String)> {
     let marker = format!("<harness kind=\"{kind}\">");
     request.messages.iter().find_map(|message| {
-        let (_, tail) = message.content.split_once(&marker)?;
-        Some((message, tail.split_once("</harness>")?.0))
+        let text = message.text();
+        let (_, tail) = text.split_once(&marker)?;
+        Some((message, tail.split_once("</harness>")?.0.to_owned()))
     })
 }
 fn frozen(request: &ModelRequest) -> Result<Vec<u8>> {
@@ -139,11 +140,7 @@ async fn real_lcm_apply_preserves_frozen_chat_prefix_and_refreshes_cold_tool_cat
     let before = f.store.messages(&f.session)?;
     let notices = before
         .iter()
-        .filter(|message| {
-            message
-                .content
-                .contains("<harness kind=\"tools_reloaded\">")
-        })
+        .filter(|message| message.text().contains("<harness kind=\"tools_reloaded\">"))
         .cloned()
         .collect::<Vec<_>>();
     assert_eq!(notices.len(), 1);
@@ -182,7 +179,7 @@ async fn real_lcm_apply_preserves_frozen_chat_prefix_and_refreshes_cold_tool_cat
     let (cold, encoded) = harness_block(&fourth, "tool_catalog")
         .expect("applied inventory is present in cold context");
     assert_eq!(cold.role, Role::User);
-    let catalog: Value = serde_json::from_str(encoded)?;
+    let catalog: Value = serde_json::from_str(&encoded)?;
     assert_eq!(serde_json::to_string(&catalog)?, encoded);
     let anchors = catalog["anchors"].as_str().unwrap();
     assert!(anchors.contains("late.server") && anchors.contains("mcp__late__lookup"));
@@ -221,13 +218,13 @@ async fn real_lcm_apply_preserves_frozen_chat_prefix_and_refreshes_cold_tool_cat
         !fourth
             .messages
             .iter()
-            .any(|message| message.content.contains("Tool inventory changed"))
+            .any(|message| message.text().contains("Tool inventory changed"))
     );
     assert!(
         fourth
             .messages
             .iter()
-            .any(|message| message.content == "Retain this newest typed turn")
+            .any(|message| message.text() == "Retain this newest typed turn")
     );
     let canonical = f.store.messages(&f.session)?;
     for notice in notices {

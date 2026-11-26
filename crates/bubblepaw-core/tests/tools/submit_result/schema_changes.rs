@@ -80,11 +80,11 @@ fn schema_notice(request: &ModelRequest, run: &Run) -> Result<ToolDefinition> {
         .iter()
         .find_map(|message| {
             message
-                .content
+                .text()
                 .split_once(&marker)?
                 .1
                 .split_once("</harness>")
-                .map(|(body, _)| body)
+                .map(|(body, _)| body.to_owned())
         })
         .expect("a changed or newly required schema is delivered at run start");
     let (encoded, definition) = body
@@ -190,14 +190,14 @@ async fn changed_and_new_result_contracts_use_run_notices_without_changing_chat_
                     message.role == Role::Tool
                         && message.is_error
                         && message
-                            .content
+                            .text()
                             .contains("Invalid arguments for submit_result")
                 }));
                 assert!(
                     history.iter().any(|message| message.role == Role::Tool
                         && message.is_error
                         && message
-                            .content
+                            .text()
                             .contains("submit_result requires a run output schema")),
                     "a declaration retained from the initial run grants no capability to an ordinary run"
                 );
@@ -293,8 +293,9 @@ impl ContextPreparation for FoldCoveredHistory {
             memory.id = "context:applied-memory".into();
             memory.role = Role::System;
             memory.origin = Some(MessageOrigin::Generated);
-            memory.content =
-                "APPLIED_MEMORY: the fixture effect completed; finish the current task.".into();
+            memory.content = bubblepaw_core::text_blocks(
+                "APPLIED_MEMORY: bubblepaw_core::text_blocks(the fixture effect completed); finish the current task.",
+            );
             // The applied projection covers the old schema notice as well as
             // the completed work. Original rows remain in the authoritative store.
             request.messages = vec![memory, task];
@@ -372,7 +373,7 @@ async fn a_late_result_contract_is_refreshed_when_apply_folds_its_first_notice()
     let covered = requests[1]
         .messages
         .iter()
-        .find(|message| message.content.contains(&marker))
+        .find(|message| message.text().contains(&marker))
         .unwrap();
     assert!(
         !requests[2]
@@ -385,7 +386,7 @@ async fn a_late_result_contract_is_refreshed_when_apply_folds_its_first_notice()
         requests[2]
             .messages
             .iter()
-            .any(|message| message.content.contains("APPLIED_MEMORY:"))
+            .any(|message| message.text().contains("APPLIED_MEMORY:"))
     );
     assert!(
         !requests[2]
@@ -479,7 +480,7 @@ async fn a_host_collision_cannot_make_a_stale_result_declaration_callable_withou
     assert!(store.messages(&session)?.iter().any(|message| {
         message.is_error
             && message
-                .content
+                .text()
                 .contains("submit_result requires a run output schema")
     }));
     Ok(())

@@ -149,7 +149,7 @@ async fn http_steer_then_explicit_interrupt_preserves_wait_and_captured_outputs_
         provider.requests.lock().unwrap()[1]
             .messages
             .iter()
-            .any(|m| m.content.contains("Why is this taking so long?"))
+            .any(|m| m.text().contains("Why is this taking so long?"))
     );
     assert!(
         state["outputs"]

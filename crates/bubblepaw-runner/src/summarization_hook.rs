@@ -254,5 +254,5 @@ pub(super) fn has_inventory(request: &ModelRequest) -> bool {
     request
         .messages
         .iter()
-        .any(|message| message.content.contains("kind=\"runtime_inventory\""))
+        .any(|message| message.text().contains("kind=\"runtime_inventory\""))
 }

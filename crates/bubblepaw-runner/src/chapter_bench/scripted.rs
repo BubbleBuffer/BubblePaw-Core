@@ -87,14 +87,13 @@ fn boundary_choice(input: &str) -> String {
 
 fn narrative(request: &ModelRequest) -> String {
     let current = request.messages.iter().rev().find_map(|message| {
-        message
-            .content
-            .rsplit_once("CURRENT EPISODE:\n")
-            .map(|(_, episode)| {
-                episode
-                    .split_once("\n\nEND OF CURRENT EPISODE.")
-                    .map_or(episode, |(body, _)| body)
-            })
+        let text = message.text();
+        text.rsplit_once("CURRENT EPISODE:\n").map(|(_, episode)| {
+            episode
+                .split_once("\n\nEND OF CURRENT EPISODE.")
+                .map_or(episode, |(body, _)| body)
+                .to_owned()
+        })
     });
     let marker = if current.is_some_and(|episode| episode.contains("[boundary]")) {
         " The current episode records the fixture's subject transition [boundary]."
@@ -119,7 +118,7 @@ impl Provider for Offline {
             text: narrative(&request),
             ..ModelResponse::default()
         };
-        let input = serde_json::to_string(&request)?;
+        let input = bubblepaw_core::plain_content(|| serde_json::to_string(&request))?;
         response.usage = Some(usage(&input, &serde_json::to_string(&response)?));
         Ok(response)
     }
@@ -137,15 +136,15 @@ impl Provider for Offline {
             .rev()
             .find(|message| {
                 message
-                    .content
+                    .text()
                     .contains("NEXT BOUNDARIES (typed request or labeled episode summary):\n")
             })
-            .map_or_else(
-                || "none".into(),
-                |message| boundary_choice(&message.content),
-            );
+            .map_or_else(|| "none".into(), |message| boundary_choice(&message.text()));
         let text = json!({"choice":choice}).to_string();
-        let metering = usage(&serde_json::to_string(&request)?, &text);
+        let metering = usage(
+            &bubblepaw_core::plain_content(|| serde_json::to_string(&request))?,
+            &text,
+        );
         Ok(ModelResponse {
             text,
             usage: Some(metering),
@@ -203,7 +202,7 @@ impl DecisionProvider for Offline {
             })
             .collect::<Vec<_>>();
         let metering = usage(
-            &serde_json::to_string(&request)?,
+            &bubblepaw_core::plain_content(|| serde_json::to_string(&request))?,
             &serde_json::to_string(&answers)?,
         );
         Ok(DecisionResponse {
@@ -251,7 +250,7 @@ mod tests {
             session_id: String::new(),
             role: Role::User,
             origin: None,
-            content: content.into(),
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_state: None,

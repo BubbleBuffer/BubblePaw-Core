@@ -76,7 +76,7 @@ async fn context_preparation_preserves_the_chat_prefix_and_does_not_restore_sent
             .messages
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("Call submit_result")
     );
     Ok(())

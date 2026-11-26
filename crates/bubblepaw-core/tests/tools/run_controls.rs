@@ -91,7 +91,7 @@ fn budget_notices(messages: &[Message]) -> Vec<&Message> {
         .filter(|message| {
             message.role == Role::User
                 && message.origin == Some(MessageOrigin::Generated)
-                && message.content.contains("<harness kind=\"tool_budget:")
+                && message.text().contains("<harness kind=\"tool_budget:")
         })
         .collect()
 }
@@ -194,9 +194,9 @@ async fn three_consecutive_malformed_tool_replies_fail_the_run() -> Result<()> {
     let messages = store.messages(&session)?;
     let errors: Vec<_> = messages.iter().filter(|message| message.is_error).collect();
     assert_eq!(errors.len(), 6);
-    assert!(errors[3].content.contains("expected a JSON object"));
-    assert!(errors[4].content.contains("line 1 column 2"));
-    assert!(errors[5].content.contains("Closest available tools: count"));
+    assert!(errors[3].text().contains("expected a JSON object"));
+    assert!(errors[4].text().contains("line 1 column 2"));
+    assert!(errors[5].text().contains("Closest available tools: count"));
     Ok(())
 }
 
@@ -229,7 +229,7 @@ async fn batch_excess_is_denied_and_exhaustion_gets_final_request_at_round_limit
     );
     assert!(
         budget_notices(&requests[0].messages)[0]
-            .content
+            .text()
             .contains("You have 2 tool calls")
     );
     assert!(
@@ -249,12 +249,12 @@ async fn batch_excess_is_denied_and_exhaustion_gets_final_request_at_round_limit
         .filter(|m| m.role == Role::Tool)
         .collect();
     assert_eq!(results.len(), 4);
-    assert!(results[0].content.ends_with("1 tool calls left"));
-    assert!(results[1].content.ends_with("0 tool calls left"));
+    assert!(results[0].text().ends_with("1 tool calls left"));
+    assert!(results[1].text().ends_with("0 tool calls left"));
     assert!(
         results[2..]
             .iter()
-            .all(|m| m.is_error && m.content.contains("not executed"))
+            .all(|m| m.is_error && m.text().contains("not executed"))
     );
     Ok(())
 }
@@ -412,8 +412,8 @@ async fn every_new_run_has_a_fresh_explicit_budget_or_unlimited_default_and_full
     }
     assert_eq!(counter.0.load(Ordering::Relaxed), 5);
     let requests = provider.requests.lock().unwrap();
-    assert!(requests[2].messages.iter().any(|m| m.content == "first"));
-    assert!(requests[4].messages.iter().any(|m| m.content == "second"));
+    assert!(requests[2].messages.iter().any(|m| m.text() == "first"));
+    assert!(requests[4].messages.iter().any(|m| m.text() == "second"));
     assert_eq!(budget_notices(&store.messages(&session)?).len(), 4);
     assert_eq!(budget_notices(&requests[0].messages).len(), 1);
     assert_eq!(budget_notices(&requests[2].messages).len(), 3);
@@ -422,14 +422,14 @@ async fn every_new_run_has_a_fresh_explicit_budget_or_unlimited_default_and_full
         budget_notices(&requests[2].messages)
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("1 tool calls left")
     );
     assert!(
         budget_notices(&requests[4].messages)
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("0 of 1 tool calls left")
     );
     assert!(
@@ -447,7 +447,7 @@ async fn every_new_run_has_a_fresh_explicit_budget_or_unlimited_default_and_full
     assert!(
         last_results
             .iter()
-            .all(|m| !m.content.contains("tool calls left"))
+            .all(|m| !m.text().contains("tool calls left"))
     );
     Ok(())
 }

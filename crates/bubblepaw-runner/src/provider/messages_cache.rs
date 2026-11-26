@@ -143,7 +143,7 @@ mod tests {
             session_id: "fixture-session".into(),
             role,
             origin: None,
-            content: content.into(),
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,
@@ -168,7 +168,7 @@ mod tests {
                 arguments: json!({"path":id}),
             })
             .to_vec();
-        let mut content = vec![json!({"type":"text","text":assistant.content})];
+        let mut content = vec![json!({"type":"text","text":assistant.text()})];
         content.extend(assistant.tool_calls.iter().map(
             |call| json!({"type":"tool_use","id":call.id,"name":call.name,"input":call.arguments}),
         ));

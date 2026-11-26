@@ -91,7 +91,7 @@ async fn run_batch(root: &std::path::Path, calls: Vec<ToolCall>) -> Arc<BatchPro
         assert_eq!(results.len(), provider.calls.len());
         for (result, call) in results.iter().zip(&provider.calls) {
             assert_eq!(result.tool_call_id.as_deref(), Some(call.id.as_str()));
-            assert!(!result.is_error, "{}", result.content);
+            assert!(!result.is_error, "{}", result.text());
         }
     }
     provider
@@ -117,7 +117,7 @@ async fn three_native_reads_return_together_in_one_tool_result_turn() {
         .filter(|m| m.role == Role::Tool)
         .collect();
     for (result, expected) in results.iter().zip(["one", "two", "three"]) {
-        assert_eq!(result.content, expected);
+        assert_eq!(result.text(), expected);
     }
 }
 
@@ -151,5 +151,5 @@ async fn effectful_native_batch_runs_in_message_order() {
         .iter()
         .find(|m| m.tool_call_id.as_deref() == Some("read"))
         .unwrap();
-    assert_eq!(read.content, "after");
+    assert_eq!(read.text(), "after");
 }

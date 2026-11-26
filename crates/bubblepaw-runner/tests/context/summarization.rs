@@ -147,7 +147,7 @@ impl Fixture {
             id: id(),
             session_id: self.session.clone(),
             role,
-            content: content.into(),
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: vec![],
             tool_call_id: None,
             origin: None,
@@ -360,7 +360,7 @@ fn encrypted_reasoning_is_opaque_and_responses_wire_content_is_not_duplicated() 
         json!({"adapter":"responses","items":[{"type":"reasoning","summary":[],"encrypted_content":"short"},{"type":"message","content":[{"type":"output_text","text":"Visible answer."}]}]}),
     );
     let short = policy.estimated_tokens(&fixture.request(vec![assistant.clone()]));
-    assistant.content = "duplicated visible content ".repeat(2000);
+    assistant.set_text("duplicated visible content ".repeat(2000));
     assistant.provider_state.as_mut().unwrap()["items"][0]["encrypted_content"] =
         json!("opaque ciphertext ".repeat(10000));
     assert_eq!(
@@ -418,7 +418,7 @@ async fn lcm_rebuilds_compacted_view_after_serving_wipe_without_summary_or_main_
     // Rebuilding creates fresh synthetic message IDs/timestamps; the ordered
     // model-facing content must still match the original selected view.
     let content = |request: &ModelRequest| {
-        request.messages.iter().map(|message| json!({"role":message.role,"content":message.content,"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id,"provider_state":message.provider_state,"is_error":message.is_error})).collect::<Vec<_>>()
+        request.messages.iter().map(|message| json!({"role":message.role,"content":message.text(),"tool_calls":message.tool_calls,"tool_call_id":message.tool_call_id,"provider_state":message.provider_state,"is_error":message.is_error})).collect::<Vec<_>>()
     };
     assert_eq!(content(&first.request), content(&recovered.request));
     assert_eq!(first.request.system_prompt, recovered.request.system_prompt);
@@ -617,7 +617,7 @@ async fn apply_serves_ready_episodes_and_exact_recent_tools_without_refilling_ol
     let prefix = view
         .prefix
         .iter()
-        .map(|m| m.content.as_str())
+        .map(|m| m.text().into_owned())
         .collect::<Vec<_>>()
         .join("\n");
     for index in 0..4 {
@@ -796,7 +796,7 @@ async fn physical_window_pressure_applies_closed_and_open_memory_with_exact_unco
     let memory = view
         .prefix
         .iter()
-        .map(|m| m.content.as_str())
+        .map(|m| m.text().into_owned())
         .collect::<Vec<_>>()
         .join("\n");
     assert!(memory.contains("CLOSED_E1_E2"));
@@ -859,11 +859,11 @@ async fn child_assignment_and_latest_steering_survive_a_bounded_compacted_view()
     let f = Fixture::new()?;
     let mut history = f.turns(5, 35000);
     history[0].origin = Some(bubblepaw_core::MessageOrigin::ChildTask);
-    history[0].content = "Implement the requested fix; preserve exact failure evidence.".into();
+    history[0].set_text("Implement the requested fix; preserve exact failure evidence.");
     for index in [2, 4, 6, 8] {
         history[index].origin = Some(bubblepaw_core::MessageOrigin::ChildTask);
     }
-    history[8].content = "Latest steering: keep the public API compatible.".into();
+    history[8].set_text("Latest steering: keep the public API compatible.");
     f.seed(&history)?;
     f.save_episodes(&history, 5, 0, false)?;
     let mut config = SummaryConfig {
@@ -941,7 +941,7 @@ async fn pressure_consumes_whole_ready_closed_chapter_regardless_of_old_raw_tail
     let prefix = view
         .prefix
         .iter()
-        .map(|m| m.content.as_str())
+        .map(|m| m.text().into_owned())
         .collect::<Vec<_>>()
         .join("\n");
     assert!(prefix.contains("FUTURE_CHAPTER_SECRET"));
@@ -956,9 +956,9 @@ async fn pressure_consumes_whole_ready_closed_chapter_regardless_of_old_raw_tail
     let bodies = view
         .prefix
         .iter()
-        .find(|m| m.content.starts_with("Closed chapter summaries"))
+        .find(|m| m.text().starts_with("Closed chapter summaries"))
         .unwrap();
-    assert!(tokenizer.encode_ordinary(&bodies.content).len() < 16100);
+    assert!(tokenizer.encode_ordinary(&bodies.text()).len() < 16100);
     assert!(policy.estimated_tokens(&prepared.request) <= 128000);
     Ok(())
 }
@@ -974,13 +974,13 @@ async fn open_chapter_keeps_every_complete_summary_instead_of_only_older_titles(
     let block = view
         .prefix
         .iter()
-        .find(|m| m.content.starts_with("Open chapter episodes"))
+        .find(|m| m.text().starts_with("Open chapter episodes"))
         .unwrap();
-    assert!(block.content.contains("title 0"));
-    assert!(block.content.contains("summary 0"));
+    assert!(block.text().contains("title 0"));
+    assert!(block.text().contains("summary 0"));
     assert!(
         tiktoken_rs::o200k_base_singleton()
-            .encode_ordinary(&block.content)
+            .encode_ordinary(&block.text())
             .len()
             > 63000
     );
@@ -1058,7 +1058,7 @@ async fn uncovered_results_and_arguments_stay_exact_with_responses_reasoning() -
         .invoke(context.clone(), json!({"message_id":output.id}))
         .await?;
     let recovered: serde_json::Value = serde_json::from_str(&result.content)?;
-    assert_eq!(recovered["messages"][0]["text"], output.content);
+    assert_eq!(recovered["messages"][0]["text"], &*output.text());
     let result = registry
         .get_host("history_read")
         .unwrap()
@@ -1107,7 +1107,7 @@ async fn latest_typed_request_is_literal_when_covered_and_generated_users_are_no
     let prepared = f.prepare(&policy).await?;
     let view = f.store.context_view(&f.session)?.unwrap();
     assert_eq!(view.prefix.first().unwrap().id, history[0].id);
-    assert_eq!(view.prefix.first().unwrap().content, "keep exactly");
+    assert_eq!(view.prefix.first().unwrap().text(), "keep exactly");
     assert!(
         prepared
             .request
@@ -1151,7 +1151,7 @@ async fn legacy_v4_rendering_keeps_exact_old_format_and_budget_without_new_write
         " datum".repeat(120),
         HISTORY_RETRIEVAL_INSTRUCTION
     );
-    assert_eq!(prepared.request.messages[0].content, expected);
+    assert_eq!(prepared.request.messages[0].text(), expected);
     assert!(prepared.notice.is_none());
     assert_eq!(f.store.context_chapters(&f.session)?.len(), 5);
     assert!(f.store.context_view(&f.session)?.is_none());
@@ -1384,38 +1384,38 @@ async fn full_closed_chapter_summaries_are_chronological_without_silent_body_omi
     let index = view
         .prefix
         .iter()
-        .find(|m| m.content.starts_with("Subject chapter index"))
+        .find(|m| m.text().starts_with("Subject chapter index"))
         .unwrap();
     for i in 0..=boundary {
-        assert!(index.content.contains(&format!("closed description {i}")));
+        assert!(index.text().contains(&format!("closed description {i}")));
     }
     for i in boundary + 1..7 {
-        assert!(!index.content.contains(&format!("closed description {i}")));
+        assert!(!index.text().contains(&format!("closed description {i}")));
     }
     let body = view
         .prefix
         .iter()
-        .find(|m| m.content.starts_with("Closed chapter summaries"))
+        .find(|m| m.text().starts_with("Closed chapter summaries"))
         .unwrap();
-    assert!(body.content.contains(&format!("chapter body {boundary}")));
-    assert!(body.content.contains("chapter body 0"));
+    assert!(body.text().contains(&format!("chapter body {boundary}")));
+    assert!(body.text().contains("chapter body 0"));
     assert!(
         tiktoken_rs::o200k_base_singleton()
-            .encode_ordinary(&body.content)
+            .encode_ordinary(&body.text())
             .len()
             > 42000
     );
     let newer = body
-        .content
+        .text()
         .find(&format!("chapter body {boundary}"))
         .unwrap();
     let older = body
-        .content
+        .text()
         .find(&format!("chapter body {}", boundary - 1))
         .unwrap();
     assert!(older < newer);
     for i in boundary + 1..7 {
-        assert!(!body.content.contains(&format!("chapter body {i}")));
+        assert!(!body.text().contains(&format!("chapter body {i}")));
     }
     Ok(())
 }
@@ -1498,7 +1498,7 @@ async fn real_harness_prompts_keep_exact_provider_prefix_across_background_saves
         message.role == Role::User
             && message.origin == Some(bubblepaw_core::MessageOrigin::Generated)
             && message
-                .content
+                .text()
                 .contains("<harness kind=\"runtime_inventory\">")
     }));
     let durable_messages = |request: &ModelRequest| {

@@ -154,7 +154,7 @@ fn export_releases_its_shared_lock_before_an_unrelated_fork_execs() -> Result<()
     );
     let reopened = Store::open_data_dir(directory.path());
     fork.as_mut().unwrap().finish()?;
-    assert_eq!(reopened?.messages(&session.id)?[0].content, "original");
+    assert_eq!(reopened?.messages(&session.id)?[0].text(), "original");
     Ok(())
 }
 

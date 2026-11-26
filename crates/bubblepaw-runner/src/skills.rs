@@ -194,7 +194,7 @@ impl Skills {
                         i64::MAX,
                         |_, message| {
                             if message.origin == Some(MessageOrigin::Generated) {
-                                for change in message.content.split(NOTICE).skip(1) {
+                                for change in message.text().split(NOTICE).skip(1) {
                                     if let Some(Ok(delta)) =
                                         serde_json::Deserializer::from_str(change)
                                             .into_iter::<Delta>()

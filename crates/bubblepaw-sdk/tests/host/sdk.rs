@@ -133,13 +133,13 @@ async fn sdk_scripted_chat_runs_host_tool() -> Result<()> {
         .rev()
         .find(|message| message.role == Role::Assistant)
         .expect("a final assistant message");
-    assert_eq!(answer.content, "The echo tool answered.");
+    assert_eq!(answer.text(), "The echo tool answered.");
     let tool_result = messages
         .iter()
         .find(|message| message.role == Role::Tool)
         .expect("a tool result");
-    assert!(!tool_result.is_error, "{}", tool_result.content);
-    assert!(tool_result.content.contains("hello from the host tool"));
+    assert!(!tool_result.is_error, "{}", tool_result.text());
+    assert!(tool_result.text().contains("hello from the host tool"));
     Ok(())
 }
 

@@ -98,7 +98,7 @@ async fn unavailable_haiku_summary_falls_back_to_flash_for_summary_probe_and_jud
             session_id: session.id.clone(),
             role: Role::User,
             origin: None,
-            content: "Blue facts".into(),
+            content: bubblepaw_core::text_blocks("Blue facts"),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: Some(

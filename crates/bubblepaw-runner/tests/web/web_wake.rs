@@ -311,13 +311,13 @@ async fn idle_child_completion_wakes_root_with_streamed_reply_and_durable_genera
         .filter(|message| {
             message.role == Role::User
                 && message.origin == Some(MessageOrigin::Generated)
-                && message.content.starts_with("<harness ")
+                && message.text().starts_with("<harness ")
         })
         .collect();
     assert_eq!(notices.len(), 1);
     assert!(
         notices[0]
-            .content
+            .text()
             .contains(child["sessionId"].as_str().unwrap())
     );
     {
@@ -371,12 +371,12 @@ async fn idle_background_exec_completion_uses_the_existing_sse_and_generated_not
         .iter()
         .filter(|message| {
             message.origin == Some(MessageOrigin::Generated)
-                && message.content.starts_with("<harness ")
+                && message.text().starts_with("<harness ")
         })
         .collect();
     assert_eq!(notices.len(), 1);
-    assert!(notices[0].content.contains(job["handle"].as_str().unwrap()));
-    assert!(notices[0].content.contains("exit code 0"));
+    assert!(notices[0].text().contains(job["handle"].as_str().unwrap()));
+    assert!(notices[0].text().contains("exit code 0"));
     assert_eq!(fixture.provider.0.lock().unwrap().len(), 2);
     drop(events);
     fixture.close().await

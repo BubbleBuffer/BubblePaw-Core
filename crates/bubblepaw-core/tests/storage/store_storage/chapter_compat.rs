@@ -49,7 +49,7 @@ async fn attachment_bytes_and_inline_json_use_one_blob_with_exact_escaped_roundt
         Some((metadata.into(), text.as_bytes().to_vec()))
     );
     assert!(store.attachment(&session.id, "missing")?.is_none());
-    assert_eq!(store.messages(&session.id)?[0].content, content);
+    assert_eq!(store.messages(&session.id)?[0].text(), content);
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM blobs", [], |row| row.get::<_, i64>(0))?,
         2
@@ -80,7 +80,7 @@ async fn attachment_bytes_and_inline_json_use_one_blob_with_exact_escaped_roundt
     drop(agent);
     drop(store);
     let reopened = Store::open(&path)?;
-    assert_eq!(reopened.messages(&session.id)?[0].content, content);
+    assert_eq!(reopened.messages(&session.id)?[0].text(), content);
     assert_eq!(
         reopened.attachment(&session.id, "file-1")?,
         Some((metadata.into(), text.into_bytes()))

@@ -329,3 +329,11 @@ pub fn discard_request_usage_since(start: usize) -> bool {
         })
         .unwrap_or(false)
 }
+
+// Earlier archives used Option<u64>, serializing explicit unknown values as null.
+pub(crate) fn deserialize_cache_read_tokens<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<u64>::deserialize(deserializer)?.unwrap_or(0))
+}

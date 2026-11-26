@@ -792,7 +792,7 @@ async fn idle_completion_notice_is_durable_once_and_chatty_output_has_no_chunk_t
             .messages(&session.id)
             .unwrap()
             .iter()
-            .any(|message| message.content.starts_with("<harness "))
+            .any(|message| message.text().starts_with("<harness "))
     );
     assert_eq!(
         harness
@@ -805,14 +805,14 @@ async fn idle_completion_notice_is_durable_once_and_chatty_output_has_no_chunk_t
     let messages = store.messages(&session.id).unwrap();
     let notices = messages
         .iter()
-        .filter(|message| message.content.starts_with("<harness "))
+        .filter(|message| message.text().starts_with("<harness "))
         .collect::<Vec<_>>();
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].origin, Some(MessageOrigin::Generated));
-    assert!(notices[0].content.contains(&handle));
+    assert!(notices[0].text().contains(&handle));
     assert!(
         notices[0]
-            .content
+            .text()
             .contains("stdout 2000000 bytes, stderr 2000000 bytes")
     );
     assert!(
@@ -838,7 +838,7 @@ async fn idle_completion_notice_is_durable_once_and_chatty_output_has_no_chunk_t
             .messages(&session.id)
             .unwrap()
             .iter()
-            .filter(|message| message.content.starts_with("<harness "))
+            .filter(|message| message.text().starts_with("<harness "))
             .count(),
         1
     );

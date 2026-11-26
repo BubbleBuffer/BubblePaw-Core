@@ -297,7 +297,7 @@ mod tests {
             system_prompt: "frozen-secret".into(),
             messages: vec![Message {
                 role: Role::User,
-                content: "history-secret".into(),
+                content: bubblepaw_core::text_blocks("history-secret"),
                 provider_state: Some(serde_json::json!({"signature":"native-secret"})),
                 id: String::new(),
                 session_id: String::new(),
@@ -384,7 +384,8 @@ mod tests {
         assert_eq!(route.fork_cold("root", &request), [0]);
         assert!(route.fork_cold("child", &request).is_empty());
         let mut changed = request.clone();
-        changed.messages[0].content.push_str(" next capture");
+        let text = changed.messages[0].text().into_owned() + " next capture";
+        changed.messages[0].set_text(text);
         assert!(route.fork_cold("root", &changed).is_empty());
     }
     #[test]

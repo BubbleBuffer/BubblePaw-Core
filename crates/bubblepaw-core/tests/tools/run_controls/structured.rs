@@ -82,14 +82,14 @@ async fn schema_becomes_result_tool_and_missing_submission_gets_one_nudge_at_rou
             .messages
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("Call submit_result")
     );
     assert!(
         store
             .messages(&session)?
             .iter()
-            .any(|message| message.content == r#"{"count":0}"#)
+            .any(|message| message.text() == r#"{"count":0}"#)
     );
     Ok(())
 }
@@ -125,14 +125,14 @@ async fn two_text_only_replies_fail_after_exactly_one_nudge() -> Result<()> {
             .messages
             .last()
             .unwrap()
-            .content
+            .text()
             .contains("Call submit_result")
     );
     assert!(
         store
             .messages(&session)?
             .iter()
-            .any(|message| message.content == r#"{"count":"two"}"#)
+            .any(|message| message.text() == r#"{"count":"two"}"#)
     );
     Ok(())
 }

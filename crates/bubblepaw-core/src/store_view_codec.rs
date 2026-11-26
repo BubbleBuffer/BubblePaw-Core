@@ -66,7 +66,7 @@ impl Store {
             pointers.push(PrefixPointer::Rendered {
                 base_seq: canonical.map(|(seq, _)| seq),
                 metadata,
-                content: Self::text_pointers(&message.content, &sources),
+                content: Self::text_pointers(&message.text(), &sources),
                 fields,
             });
         }
@@ -170,7 +170,7 @@ impl Store {
                                     .context("View message field is absent")?,
                             )?
                         } else {
-                            message.content
+                            message.text().into_owned()
                         }
                     } else if table == "imported_derived" {
                         anyhow::ensure!(field == "summary", "Unknown imported view source field");

@@ -48,7 +48,7 @@ impl Provider for Probe {
             .rev()
             .find(|(_, message)| message.role == Role::User)
             .unwrap();
-        let input = user.content.clone();
+        let input = user.text().into_owned();
         let has_result = request.messages[index + 1..]
             .iter()
             .any(|message| message.role == Role::Tool);
@@ -282,8 +282,8 @@ impl Fixture {
             .rev()
             .find(|message| message.role == Role::Tool)
             .unwrap();
-        assert!(!reply.is_error, "{}", reply.content);
-        Ok(serde_json::from_str(&reply.content)?)
+        assert!(!reply.is_error, "{}", reply.text());
+        Ok(serde_json::from_str(&reply.text())?)
     }
 }
 fn allow() -> ApprovalPolicy {
@@ -362,7 +362,7 @@ async fn idle_child_accepts_new_turn_and_status_listing_preserves_unread() -> Re
         history
             .iter()
             .filter(|message| message.role == Role::User)
-            .map(|message| message.content.as_str())
+            .map(|message| message.text().into_owned())
             .collect::<Vec<_>>(),
         ["first", "second"]
     );
@@ -468,7 +468,7 @@ async fn running_send_steers_same_run_without_a_second_effect() -> Result<()> {
             .store
             .messages(child_id)?
             .iter()
-            .filter(|message| message.role == Role::User && message.content == "steered")
+            .filter(|message| message.role == Role::User && message.text() == "steered")
             .count(),
         1
     );
@@ -741,7 +741,7 @@ async fn strict_profile_tightens_parent_allow() -> Result<()> {
             .iter()
             .any(|message| message.role == Role::Tool
                 && message.is_error
-                && message.content.contains("Denied"))
+                && message.text().contains("Denied"))
     );
     fixture.manager.shutdown().await?;
     Ok(())
@@ -905,7 +905,7 @@ async fn restart_marks_parent_and_child_unknown_reattaches_and_send_never_replay
             session_id: session.clone(),
             role: Role::Assistant,
             origin: None,
-            content: String::new(),
+            content: bubblepaw_core::text_blocks(String::new()),
             tool_calls: vec![ToolCall {
                 id: call_id.into(),
                 name: name.into(),
@@ -959,7 +959,7 @@ async fn restart_marks_parent_and_child_unknown_reattaches_and_send_never_replay
             store
                 .messages(id)?
                 .iter()
-                .any(|message| message.is_error && message.content.contains("outcome unknown"))
+                .any(|message| message.is_error && message.text().contains("outcome unknown"))
         );
     }
     assert_eq!(store.run("child-interrupted")?.status, "interrupted");
@@ -1023,7 +1023,7 @@ async fn restart_marks_parent_and_child_unknown_reattaches_and_send_never_replay
         request
             .messages
             .iter()
-            .any(|message| message.is_error && message.content.contains("outcome unknown"))
+            .any(|message| message.is_error && message.text().contains("outcome unknown"))
     }));
     assert_eq!(store.pending_effects(&child_id)?[0]["state"], "unknown");
     assert_eq!(store.pending_effects(&parent_id)?[0]["state"], "unknown");
@@ -1127,7 +1127,7 @@ async fn reattached_real_child_keeps_original_profile_capabilities() -> Result<(
             .iter()
             .any(|message| message.role == Role::Tool
                 && message.is_error
-                && message.content.contains("effect"))
+                && message.text().contains("effect"))
     );
     manager.shutdown().await?;
     Ok(())
@@ -1314,7 +1314,7 @@ async fn registered_send_rejections_settle_without_unknown_effects() -> Result<(
         assert!(
             rejected.is_error,
             "send rejection must reach the provider: {}",
-            rejected.content
+            rejected.text()
         );
         assert!(
             fixture
@@ -1352,7 +1352,7 @@ impl Provider for TreeProbe {
             .rev()
             .find(|(_, message)| message.role == Role::User)
             .unwrap();
-        let levels: usize = user.content.strip_prefix("tree:").unwrap().parse()?;
+        let levels: usize = user.text().strip_prefix("tree:").unwrap().parse()?;
         let answered = request.messages[index + 1..]
             .iter()
             .filter(|message| message.role == Role::Tool)
@@ -1860,7 +1860,7 @@ async fn child_denies_from_parent_or_profile_survive_permissive_run_override() -
                 .iter()
                 .any(|message| message.role == Role::Tool
                     && message.is_error
-                    && message.content.contains("deny rule effect"))
+                    && message.text().contains("deny rule effect"))
         );
         fixture.manager.shutdown().await?;
     }
@@ -1938,8 +1938,8 @@ impl Provider for RecursiveDenyProvider {
                     && message.origin != Some(bubblepaw_core::MessageOrigin::Generated)
             })
             .unwrap();
-        let depth: usize = input
-            .content
+        let input_text = input.text();
+        let depth: usize = input_text
             .strip_prefix("recursive-deny:")
             .unwrap()
             .parse()?;

@@ -73,7 +73,7 @@ async fn http_sidebar_keeps_archived_root_and_child_packed_with_accurate_summari
             assert_eq!(item["created_at"], record.session.created_at);
             assert_eq!(item["message_count"], record.message_count);
             let message = record.last_message.as_ref().unwrap();
-            assert_eq!(item["last_message_preview"], message.content);
+            assert_eq!(item["last_message_preview"], message.text().into_owned());
             let run = record.latest_run.as_ref().unwrap();
             assert_eq!(item["status"], run.status);
             let updated = record

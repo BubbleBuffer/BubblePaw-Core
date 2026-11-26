@@ -22,7 +22,7 @@ fn dictionary_pins_survive_more_than_64_open_files_and_expire_with_the_reader() 
         let messages: Vec<_> = (0..24)
             .map(|index| {
                 let mut message = message(&root.id, index);
-                message.content = format!("file-specific-pattern-{file}: {}", message.content);
+                message.set_text(format!("file-specific-pattern-{file}: {}", message.text()));
                 message
             })
             .collect();
@@ -97,10 +97,10 @@ fn message(session: &str, index: usize) -> Message {
             Role::Assistant
         },
         origin: None,
-        content: format!(
+        content: bubblepaw_core::text_blocks(format!(
             "synthetic canonical sample {index}: {}",
             "A repeated sentence with unicode 猫 and spelling. ".repeat(24)
-        ),
+        )),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: if !index.is_multiple_of(2) {
@@ -358,7 +358,7 @@ fn dictionary_rows_preserve_requests_view_references_and_hot_tail() -> Result<()
     let frontier = store.message_seq(&session.id, &messages[69].id)?;
     let mut summary = message(&session.id, 100);
     summary.role = Role::System;
-    summary.content = checkpoint.summary.clone();
+    summary.content = bubblepaw_core::text_blocks(checkpoint.summary.clone());
     let view = ContextView {
         session_id: session.id.clone(),
         frontier: Some(frontier),

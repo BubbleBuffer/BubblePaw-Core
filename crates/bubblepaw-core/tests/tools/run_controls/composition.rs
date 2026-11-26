@@ -76,10 +76,10 @@ async fn composition_wrapper_and_parallel_nested_host_calls_share_one_budget() -
         .find(|m| m.role == Role::Tool)
         .unwrap();
     assert!(
-        result.content.starts_with(r#"{"allowed":2,"denied":4}"#),
+        result.text().starts_with(r#"{"allowed":2,"denied":4}"#),
         "{}",
-        result.content
+        result.text()
     );
-    assert!(result.content.ends_with("0 tool calls left"));
+    assert!(result.text().ends_with("0 tool calls left"));
     Ok(())
 }

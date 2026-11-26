@@ -45,25 +45,26 @@ async fn native_reload_and_external_inventory_changes_append_notice_without_chan
             let notice = requests[1]
                 .messages
                 .iter()
-                .find(|message| message.content.contains("Tool inventory changed"))
+                .find(|message| message.text().contains("Tool inventory changed"))
                 .unwrap();
             // Runtime notices use generated user-role harness blocks for provider replay.
             assert_eq!(
                 notice.origin,
                 Some(bubblepaw_core::MessageOrigin::Generated)
             );
-            assert!(notice.content.contains("<harness kind=\"tools_reloaded\">"));
+            assert!(notice.text().contains("<harness kind=\"tools_reloaded\">"));
             assert!(
-                notice.content.contains("mcp__late__lookup")
-                    && notice.content.contains("former_core")
+                notice.text().contains("mcp__late__lookup")
+                    && notice.text().contains("former_core")
             );
-            assert!(notice.content.contains("tool_search") && notice.content.contains("call_tool"));
+            assert!(notice.text().contains("tool_search") && notice.text().contains("call_tool"));
             let encoded = notice
-                .content
+                .text()
                 .lines()
                 .find(|line| line.starts_with('{'))
-                .unwrap();
-            let diff: Value = serde_json::from_str(encoded)?;
+                .unwrap()
+                .to_owned();
+            let diff: Value = serde_json::from_str(&encoded)?;
             assert_eq!(serde_json::to_string(&diff)?, encoded);
             let added = diff["added"].as_array().unwrap();
             assert_eq!(
@@ -82,13 +83,13 @@ async fn native_reload_and_external_inventory_changes_append_notice_without_chan
             );
             assert!(
                 !notice
-                    .content
+                    .text()
                     .contains("DEFERRED_SCHEMA_MUST_NOT_APPEAR_IN_NOTICE")
             );
-            assert!(!notice.content.contains("deferred_only_detail"));
+            assert!(!notice.text().contains("deferred_only_detail"));
             assert_eq!(diff["removed"], json!(["former_core", "mcp__old__lookup"]));
-            assert!(!notice.content.contains("Inspect former_core records"));
-            assert!(!notice.content.contains("Inspect mcp__old__lookup records"));
+            assert!(!notice.text().contains("Inspect former_core records"));
+            assert!(!notice.text().contains("Inspect mcp__old__lookup records"));
             assert_eq!(
                 added
                     .iter()
@@ -100,14 +101,14 @@ async fn native_reload_and_external_inventory_changes_append_notice_without_chan
         let messages = f.store.messages(&f.session)?;
         assert!(messages.iter().any(|message| message.role == Role::Tool
             && !message.is_error
-            && message.content.contains("fresh")));
+            && message.text().contains("fresh")));
         assert!(messages.iter().any(|message| message.role == Role::Tool
             && !message.is_error
-            && message.content.contains("new core reached")));
+            && message.text().contains("new core reached")));
         assert!(messages.iter().any(|message| {
             message.is_error
                 && message
-                    .content
+                    .text()
                     .contains("Tool former_core is unavailable: removed by reload")
         }));
         // The chat retains its initial declarations and anchors in later runs.
@@ -157,14 +158,13 @@ async fn compaction_apply_folds_inventory_into_cold_catalog_without_changing_cha
                 .messages
                 .iter()
                 .find_map(|message| {
-                    let (_, tail) = message
-                        .content
-                        .split_once("<harness kind=\"tool_catalog\">")?;
-                    Some((message, tail.split_once("</harness>")?.0))
+                    let text = message.text();
+                    let (_, tail) = text.split_once("<harness kind=\"tool_catalog\">")?;
+                    Some((message, tail.split_once("</harness>")?.0.to_owned()))
                 })
                 .expect("applied inventory remains in the cold context");
             assert_eq!(message.role, Role::User);
-            let catalog: Value = serde_json::from_str(encoded)?;
+            let catalog: Value = serde_json::from_str(&encoded)?;
             assert_eq!(
                 serde_json::to_string(&catalog)?,
                 encoded,
@@ -204,7 +204,7 @@ async fn compaction_apply_folds_inventory_into_cold_catalog_without_changing_cha
                 !request
                     .messages
                     .iter()
-                    .any(|message| message.content.contains("Tool inventory changed")),
+                    .any(|message| message.text().contains("Tool inventory changed")),
                 "the applied view can fold the old live notice without losing current tools"
             );
             assert!(request.cache_tiers.unwrap().cold_end.is_some());

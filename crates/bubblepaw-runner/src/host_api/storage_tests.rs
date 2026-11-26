@@ -11,7 +11,7 @@ async fn archive_restore_and_deleted_chat_search_preserve_offline_contract() -> 
         session_id: session.id.clone(),
         role: bubblepaw_core::Role::User,
         origin: None,
-        content: "synthetic needle".into(),
+        content: bubblepaw_core::text_blocks("synthetic needle"),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,

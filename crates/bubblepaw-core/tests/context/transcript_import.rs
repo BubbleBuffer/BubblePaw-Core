@@ -210,7 +210,7 @@ fn committed_generator_covers_multiple_compactions_and_blob_backed_roundtrips() 
             imported.stats.opaque_encrypted_fields
         );
         let blob_backed_tools: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM messages WHERE json_extract(data,'$.role')='tool' AND json_extract(data,'$.content')=''", [], |row| row.get(0)
+            "SELECT COUNT(*) FROM messages WHERE json_extract(data,'$.role')='tool' AND json_extract(data,'$.content')='[]'", [], |row| row.get(0)
         ).unwrap();
         assert_eq!(
             u64::try_from(blob_backed_tools).unwrap(),
@@ -319,10 +319,10 @@ fn codex_preserves_original_native_content_and_records_source_compaction() {
     assert_eq!(result.stats.encrypted_fields_dropped, 0);
     assert_eq!(result.stats.excluded["non_original_user"], 1);
     let messages = store.messages(&result.root_session_id).unwrap();
-    assert_eq!(messages[0].content, "Actual question");
+    assert_eq!(messages[0].text(), "Actual question");
     assert_eq!(messages[1].tool_calls[0].name, "functions.run");
     assert_eq!(messages[3].tool_calls[0].arguments, "native raw\ninput");
-    assert!(messages[2].content.contains("synthetic-image"));
+    assert!(messages[2].text().contains("synthetic-image"));
     let derived = store.import_derived(&result.root_session_id).unwrap();
     // Reasoning is a message now, so the compaction is the only derived record.
     assert_eq!(derived.len(), 1);
@@ -380,7 +380,7 @@ fn real_typed_harness_looking_text_takes_precedence() {
     let store = Store::in_memory().unwrap();
     let result = import_file(&store, path, ImportFormat::Codex, &ImportOptions::default()).unwrap();
     assert_eq!(
-        store.messages(&result.root_session_id).unwrap()[0].content,
+        store.messages(&result.root_session_id).unwrap()[0].text(),
         text
     );
 }
@@ -414,7 +414,7 @@ fn claude_signed_thinking_tools_images_and_source_summary_survive() {
     assert_eq!(result.stats.reasoning_artifacts, 2);
     assert_eq!(result.stats.opaque_encrypted_fields, 1);
     let messages = store.messages(&result.root_session_id).unwrap();
-    assert!(messages[0].content.contains("real words"));
+    assert!(messages[0].text().contains("real words"));
     // Thinking blocks become reasoning-only assistant records, in source order.
     let thinking = messages[1].provider_state.as_ref().unwrap();
     assert_eq!(
@@ -429,10 +429,10 @@ fn claude_signed_thinking_tools_images_and_source_summary_survive() {
         messages[2].provider_state.as_ref().unwrap()["content"][0],
         json!({"type":"redacted_thinking","data":"NEVER_ARCHIVE"})
     );
-    assert_eq!(messages[3].content, "Answer");
+    assert_eq!(messages[3].text(), "Answer");
     assert_eq!(messages[4].role, Role::Tool);
     assert!(messages[4].is_error);
-    assert!(messages[4].content.contains("base64"));
+    assert!(messages[4].text().contains("base64"));
     let derived = store.import_derived(&result.root_session_id).unwrap();
     assert!(
         !serde_json::to_string(&derived)

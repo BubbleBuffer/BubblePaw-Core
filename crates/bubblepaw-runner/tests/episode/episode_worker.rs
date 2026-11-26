@@ -53,7 +53,7 @@ async fn imported_compaction_advances_without_decoding_covered_tool_bodies() -> 
         id: format!("import-continuation-{index}"),
         session_id: session.clone(),
         role,
-        content,
+        content: bubblepaw_core::text_blocks(content),
         origin: None,
         tool_calls: Vec::new(),
         tool_call_id: None,
@@ -175,7 +175,7 @@ async fn imported_compaction_advances_without_decoding_covered_tool_bodies() -> 
             .request
             .messages
             .iter()
-            .any(|message| message.content == "Preserved source summary.")
+            .any(|message| message.text() == "Preserved source summary.")
     );
     let frontier = store.context_view(&session)?.unwrap().frontier.unwrap();
     // The next preparation must also skip paid native coverage, not merely the
@@ -214,7 +214,7 @@ async fn imported_compaction_advances_without_decoding_covered_tool_bodies() -> 
         next.request
             .messages
             .iter()
-            .any(|message| message.content == "Preserved source summary.")
+            .any(|message| message.text() == "Preserved source summary.")
     );
     assert!(store.context_checkpoint(&session)?.is_none());
     assert_eq!(store.import_derived(&session)?, vec![derived]);
@@ -252,9 +252,9 @@ async fn completed_episode_background_planning_skips_unrelated_cold_bodies() -> 
             Role::Assistant
         },
         content: if index.is_multiple_of(2) {
-            format!("Original task {index}.")
+            bubblepaw_core::text_blocks(format!("Original task {index}."))
         } else {
-            " datum".repeat(17_000)
+            bubblepaw_core::text_blocks(" datum".repeat(17_000))
         },
         origin: None,
         tool_calls: Vec::new(),
@@ -299,8 +299,8 @@ async fn completed_episode_background_planning_skips_unrelated_cold_bodies() -> 
     assert_eq!(store.context_episodes(&session)?.len(), 8);
     let summaries = models.summaries.lock().unwrap();
     assert_eq!(summaries.len(), 8);
-    assert!(summaries[5].episode_text.contains(&history[10].content));
-    assert!(summaries[5].episode_text.contains(&history[11].content));
+    assert!(summaries[5].episode_text.contains(&*history[10].text()));
+    assert!(summaries[5].episode_text.contains(&*history[11].text()));
     Ok(())
 }
 
@@ -543,7 +543,7 @@ async fn long_child_task_gathers_and_changes_phase_without_typed_input() -> Resu
         message.id = format!("child-round-{index}");
         message.role = Role::Assistant;
         message.origin = None;
-        message.content = " datum".repeat(1600);
+        message.content = bubblepaw_core::text_blocks(" datum".repeat(1600));
         messages.push(message);
     }
     fixture.store.append_batch(&messages)?;
@@ -589,7 +589,7 @@ async fn long_child_task_gathers_and_changes_phase_without_typed_input() -> Resu
             .all(|input| input
                 .turn_request
                 .as_ref()
-                .is_some_and(|text| text.contains(&anchor.content)
+                .is_some_and(|text| text.contains(&*anchor.text())
                     && text.contains(&anchor.id)
                     && text.contains("ChildTask instruction")))
     );
@@ -598,7 +598,7 @@ async fn long_child_task_gathers_and_changes_phase_without_typed_input() -> Resu
     continuation.id = "later-child-phase".into();
     continuation.role = Role::Assistant;
     continuation.origin = None;
-    continuation.content = " datum".repeat(1600);
+    continuation.content = bubblepaw_core::text_blocks(" datum".repeat(1600));
     fixture
         .store
         .append_batch(std::slice::from_ref(&continuation))?;
@@ -609,7 +609,7 @@ async fn long_child_task_gathers_and_changes_phase_without_typed_input() -> Resu
         chapters
             .iter()
             .all(|input| input.typed_user_texts.is_empty()
-                && input.task_instructions == vec![anchor.content.clone()])
+                && input.task_instructions == vec![anchor.text().into_owned()])
     );
     assert!(chapters[1].episodes[0].contains(&episodes[1].first_message_id));
     drop(chapters);
@@ -1029,7 +1029,7 @@ async fn explicit_lossy_summary_budget_preserves_archive_and_continuation_contex
         id: uuid::Uuid::new_v4().to_string(),
         session_id: session.clone(),
         role,
-        content,
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         origin: None,
@@ -1078,7 +1078,7 @@ async fn explicit_lossy_summary_budget_preserves_archive_and_continuation_contex
     assert_eq!(summaries.len(), 3);
     for (round, input) in summaries.iter().enumerate() {
         let output = &history[2 + 2 * round];
-        let chars = output.content.chars().count();
+        let chars = output.text().chars().count();
         assert!(input.episode_text.contains(&format!(
             "[tool output round-{round}, {chars} chars, {}]",
             if round == 1 { "error" } else { "ok" }

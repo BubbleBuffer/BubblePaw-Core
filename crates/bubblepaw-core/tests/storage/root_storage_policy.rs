@@ -232,7 +232,9 @@ fn automatic_cold_compression_uses_each_roots_thresholds() -> Result<()> {
                 session_id: root.id.clone(),
                 role: Role::User,
                 origin: None,
-                content: "Synthetic repeated message body for policy separation. ".repeat(30),
+                content: bubblepaw_core::text_blocks(
+                    "Synthetic repeated message body for policy separation. ".repeat(30),
+                ),
                 tool_calls: vec![],
                 tool_call_id: None,
                 provider_state: None,

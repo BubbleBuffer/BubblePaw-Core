@@ -46,10 +46,10 @@ impl EpisodeWorker {
         let mut task_instructions = Vec::new();
         let mut collect_instruction = |message: Message| {
             if is_typed_user(&message) {
-                typed_user_texts.push(message.content);
+                typed_user_texts.push(message.text().into_owned());
             } else if message.role == Role::User && message.origin == Some(MessageOrigin::ChildTask)
             {
-                task_instructions.push(message.content);
+                task_instructions.push(message.text().into_owned());
             }
         };
         // A continuation chapter may start after its task anchor was covered.

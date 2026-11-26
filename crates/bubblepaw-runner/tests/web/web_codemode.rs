@@ -97,8 +97,8 @@ async fn returned_read_reaches_next_model_request_without_publishing_a_dump() ->
             .iter()
             .find(|message| message.role == Role::Tool)
             .unwrap();
-        assert!(!result.is_error, "{}", result.content);
-        let data: Value = serde_json::from_str(&result.content)?;
+        assert!(!result.is_error, "{}", result.text());
+        let data: Value = serde_json::from_str(&result.text())?;
         assert_eq!(data["content"], contents);
     }
     // The same session projection used by the frontend must not contain the
@@ -208,8 +208,8 @@ async fn batched_reads_report_state_changes_and_reset_in_model_context() -> Resu
             .filter(|message| message.role == Role::Tool)
             .collect::<Vec<_>>();
         assert_eq!(results.len(), 3);
-        let (data, notice) = results[0]
-            .content
+        let text0 = results[0].text().into_owned();
+        let (data, notice) = text0
             .split_once("\n[---]\n")
             .expect("state notice after data");
         let docs: Value = serde_json::from_str(data)?;
@@ -218,10 +218,12 @@ async fn batched_reads_report_state_changes_and_reset_in_model_context() -> Resu
         assert!(notice.contains("state.docs added"), "{notice}");
         assert!(notice.contains("state.temp added"), "{notice}");
         assert!(!notice.contains("first contents"));
-        let (_, notice) = results[1].content.split_once("\n[---]\n").unwrap();
+        let text1 = results[1].text().into_owned();
+        let (_, notice) = text1.split_once("\n[---]\n").unwrap();
         assert!(notice.contains("state.docs changed"), "{notice}");
         assert!(notice.contains("state.temp deleted"), "{notice}");
-        let (data, notice) = results[2].content.split_once("\n[---]\n").unwrap();
+        let text2 = results[2].text().into_owned();
+        let (data, notice) = text2.split_once("\n[---]\n").unwrap();
         let reset: Value = serde_json::from_str(data)?;
         assert_eq!(reset["keys"], json!([]));
         assert!(notice.contains("state reset"), "{notice}");

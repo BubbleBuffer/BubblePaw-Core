@@ -42,7 +42,7 @@ fn combines_latest_per_kind_in_one_generated_tail_and_suppresses_unchanged() -> 
     let tail = &first.request.messages[0];
     assert_eq!(tail.origin, Some(MessageOrigin::Generated));
     assert_eq!(
-        tail.content,
+        tail.text(),
         "<harness kind=\"inventory\">latest\nraw text</harness>\n<harness kind=\"budget\">two left</harness>"
     );
     assert_eq!(store.storage_stats()?.transaction_count, before + 1);
@@ -93,7 +93,7 @@ fn preparation_and_storage_failures_preserve_pending_and_do_not_advance_hashes()
     conn.execute_batch("DROP TRIGGER fail_reminder;")?;
     let first = build(&state, &store, &session)?;
     assert_eq!(first.record.classification, Class::First);
-    assert!(first.request.messages[0].content.contains("retained"));
+    assert!(first.request.messages[0].text().contains("retained"));
     assert_eq!(store.messages(&session)?.len(), 1);
     Ok(())
 }
@@ -134,7 +134,7 @@ fn restart_dedup_survives_context_projection_dropping_old_reminder() -> Result<(
     )?;
     assert_eq!(changed.request.messages.len(), 1);
     assert_eq!(
-        changed.request.messages[0].content,
+        changed.request.messages[0].text(),
         "<harness kind=\"inventory\">changed</harness>"
     );
     assert_eq!(store.messages(&session)?[0], original[0]);

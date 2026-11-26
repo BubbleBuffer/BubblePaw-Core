@@ -48,7 +48,7 @@ impl Provider for Scripted {
         let answered = request.messages[index + 1..]
             .iter()
             .any(|message| message.role == Role::Tool);
-        let response = match serde_json::from_str::<Value>(&request.messages[index].content) {
+        let response = match serde_json::from_str::<Value>(&request.messages[index].text()) {
             Ok(arguments) if arguments.get("code").is_some() && !answered => ModelResponse {
                 tool_calls: vec![ToolCall {
                     id: uuid::Uuid::new_v4().to_string(),
@@ -234,14 +234,14 @@ fn tool_reply(request: &ModelRequest) -> (usize, Value) {
         .iter()
         .enumerate()
         .find(|(_, message)| message.role == Role::Tool)
-        .map(|(index, message)| (index, reply(&message.content)))
+        .map(|(index, message)| (index, reply(&message.text())))
         .expect("tool reply")
 }
 fn input_position(request: &ModelRequest, text: &str) -> usize {
     request
         .messages
         .iter()
-        .position(|message| message.role == Role::User && message.content == text)
+        .position(|message| message.role == Role::User && message.text() == text)
         .expect("steer input")
 }
 fn exec_cell() -> String {

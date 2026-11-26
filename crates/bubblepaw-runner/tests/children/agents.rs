@@ -26,8 +26,8 @@ impl Provider for Probe {
             .iter()
             .find(|message| message.role == Role::User)
             .unwrap()
-            .content
-            .clone();
+            .text()
+            .into_owned();
         let has_tool = request
             .messages
             .iter()
@@ -235,10 +235,10 @@ async fn fresh_visible_child_has_explicit_context_only_and_reopens_as_history() 
         ["js"]
     );
     assert_eq!(request.messages.len(), 1);
-    assert!(request.messages[0].content.contains("explicit handoff"));
+    assert!(request.messages[0].text().contains("explicit handoff"));
     assert!(
         !request.messages[0]
-            .content
+            .text()
             .contains("private parent history")
     );
     let child_session = fixture.store.session(child_id).unwrap();
@@ -283,7 +283,7 @@ async fn fresh_visible_child_has_explicit_context_only_and_reopens_as_history() 
     let history = reopened.messages(child_id).unwrap();
     assert_eq!(history.len(), 2);
     assert_eq!(
-        history.last().unwrap().content,
+        history.last().unwrap().text(),
         result["text"].as_str().unwrap()
     );
     assert_eq!(reopened.runs(child_id).unwrap()[0].status, "completed");
@@ -484,7 +484,7 @@ async fn reply_is_bounded_even_with_json_escaping_and_full_answer_stays_canonica
         .store
         .messages(started["sessionId"].as_str().unwrap())
         .unwrap();
-    let canonical = &history.last().unwrap().content;
+    let canonical = history.last().unwrap().text();
     assert_eq!(
         result["textBytes"].as_u64().unwrap(),
         canonical.len() as u64

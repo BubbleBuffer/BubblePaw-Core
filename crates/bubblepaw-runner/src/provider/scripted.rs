@@ -163,7 +163,7 @@ impl Provider for ScriptedProvider {
                 ensure!(
                     !message.is_error,
                     "offline demo tool failed: {}",
-                    message.content
+                    message.text()
                 );
                 if message
                     .tool_call_id
@@ -171,11 +171,11 @@ impl Provider for ScriptedProvider {
                     .is_some_and(|id| id.starts_with("demo-exec-"))
                 {
                     let result: serde_json::Value =
-                        serde_json::from_str(message.content.split("\n[---]\n").next().unwrap())?;
+                        serde_json::from_str(message.text().split("\n[---]\n").next().unwrap())?;
                     ensure!(
                         result["status"] == "exited" && result["exitCode"] == 0,
                         "offline demo command did not exit successfully: {}",
-                        message.content
+                        message.text()
                     );
                 }
             }

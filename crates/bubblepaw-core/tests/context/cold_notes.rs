@@ -46,7 +46,7 @@ fn notes_render_after_the_cold_tier_by_kind_then_insertion() {
     let contents: Vec<_> = request
         .messages
         .iter()
-        .map(|m| m.content.as_str())
+        .map(|m| m.text().into_owned())
         .collect();
     assert_eq!(
         contents[..2],
@@ -84,11 +84,11 @@ fn notes_change_only_at_a_declared_change() {
         "an undeclared note change is held back"
     );
     assert_eq!(second.messages[..3], first.messages[..3]);
-    assert!(second.messages[1].content.contains("lookup v1"));
+    assert!(second.messages[1].text().contains("lookup v1"));
     state.declare(Some("s"), "lcm_apply");
     let (third, class, _) = build(&state, &["new view", "b"], &[0]);
     assert_eq!(class, Class::ColdChange);
-    assert!(third.messages[1].content.contains("lookup v2"));
+    assert!(third.messages[1].text().contains("lookup v2"));
     let (fourth, class, _) = build(&state, &["new view", "b", "c"], &[0]);
     assert_eq!(class, Class::Append);
     assert_eq!(
@@ -156,13 +156,13 @@ fn request_carries_no_system_message_after_the_prompt() {
             .iter()
             .all(|m| m.origin == Some(MessageOrigin::Generated))
     );
-    assert_eq!(messages[0].content, "<harness>\nview\n</harness>");
+    assert_eq!(messages[0].text(), "<harness>\nview\n</harness>");
     assert_eq!(
-        messages[1].content,
+        messages[1].text(),
         "<harness kind=\"lookup\">cold text</harness>"
     );
     assert_eq!(
-        messages[2].content,
+        messages[2].text(),
         "<harness kind=\"inventory\">reminder text</harness>"
     );
 }

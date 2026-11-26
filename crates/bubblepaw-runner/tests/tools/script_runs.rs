@@ -39,7 +39,7 @@ impl Provider for Model {
                 tool_calls: vec![ToolCall {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: "js".into(),
-                    arguments: json!({"code": last.content}),
+                    arguments: json!({"code": last.text()}),
                 }],
                 ..Default::default()
             });
@@ -151,8 +151,8 @@ async fn script_run_calls_a_host_tool_without_a_provider() {
         messages.iter().map(|m| m.role.clone()).collect::<Vec<_>>(),
         [Role::User, Role::Assistant, Role::Tool]
     );
-    assert_eq!(messages[0].content, "[automation] Echo");
-    assert_eq!(messages[1].content, "");
+    assert_eq!(messages[0].text(), "[automation] Echo");
+    assert_eq!(messages[1].text(), "");
     assert_eq!(messages[1].provider_state, Some(json!({"script":true})));
     let call = &messages[1].tool_calls[0];
     assert_eq!(call.name, "js");
@@ -214,7 +214,7 @@ async fn script_and_later_model_run_share_state_and_history() {
         .rev()
         .find(|m| m.role == Role::Tool)
         .unwrap();
-    assert!(last_tool.content.starts_with("42"), "{}", last_tool.content);
+    assert!(last_tool.text().starts_with("42"), "{}", last_tool.text());
     let requests = f.model.requests.lock().unwrap();
     let first = &requests[0].messages;
     assert!(first.iter().any(|m| {
@@ -225,7 +225,7 @@ async fn script_and_later_model_run_share_state_and_history() {
     assert!(
         first
             .iter()
-            .any(|m| m.role == Role::Tool && m.content.starts_with("\"seeded\""))
+            .any(|m| m.role == Role::Tool && m.text().starts_with("\"seeded\""))
     );
 }
 

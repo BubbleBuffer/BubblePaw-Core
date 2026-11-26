@@ -273,7 +273,7 @@ async fn user_child_question_endpoint_delivers_and_maps_typed_errors() -> Result
         store
             .messages(&child.id)?
             .iter()
-            .any(|message| message.content.contains("Green with stripes"))
+            .any(|message| message.text().contains("Green with stripes"))
     );
     assert_eq!(
         store

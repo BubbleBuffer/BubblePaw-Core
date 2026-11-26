@@ -22,7 +22,7 @@ use std::{
 fn body(request: &ModelRequest) -> Value {
     let mut messages = vec![json!({"role":"system","content":request.system_prompt})];
     messages.extend(request.messages.iter().map(|m| {
-        json!({"role":m.role,"content":m.content,"tool_calls":m.tool_calls,"tool_call_id":m.tool_call_id})
+        json!({"role":m.role,"content":m.text(),"tool_calls":m.tool_calls,"tool_call_id":m.tool_call_id})
     }));
     json!({"model":request.model,"messages":messages,"tools":request.tools,"max_tokens":request.max_output_tokens})
 }
@@ -95,7 +95,7 @@ impl ContextPreparation for Apply {
         Ok(if self.apply.load(Ordering::SeqCst) {
             let mut view = history[0].clone();
             view.role = bubblepaw_core::Role::System;
-            view.content = "compacted view".into();
+            view.content = bubblepaw_core::text_blocks("compacted view");
             let mut messages = vec![view];
             messages.extend_from_slice(&history[1..]);
             messages

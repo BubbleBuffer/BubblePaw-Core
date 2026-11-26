@@ -118,7 +118,7 @@ impl ContextState {
         let mut message = crate::Store::message(session, Role::User, content);
         message.id = format!(
             "context:cold_notes:{}",
-            fingerprint(message.content.as_bytes())
+            fingerprint(message.text().as_bytes())
         );
         message.origin = Some(MessageOrigin::Generated);
         message.created_at = created_at.to_owned();
@@ -132,7 +132,7 @@ impl ContextState {
         let mut message = message.clone();
         message.role = Role::User;
         message.origin = Some(MessageOrigin::Generated);
-        message.content = format!("<harness>\n{}\n</harness>", message.content);
+        message.content = crate::text_blocks(format!("<harness>\n{}\n</harness>", message.text()));
         message
     }
 }

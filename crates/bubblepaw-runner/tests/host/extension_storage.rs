@@ -30,7 +30,7 @@ fn message(session: &str, index: usize) -> Message {
             Role::Assistant
         },
         origin: None,
-        content: "Synthetic history 猫 π 🐾\n".repeat(240),
+        content: bubblepaw_core::text_blocks("Synthetic history 猫 π 🐾\n".repeat(240)),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
@@ -112,7 +112,7 @@ async fn extension_opaque_bytes_survive_sqlite_reopen_cold_archive_export_and_re
     // Keep the assistant row large after opaque state moves into its blob, so
     // the artifact's owning row itself exercises dictionary compression.
     let mut prompt = messages[0].clone();
-    prompt.content = format!("text {}", messages[1].content);
+    prompt.content = bubblepaw_core::text_blocks(format!("text {}", messages[1].text()));
     let response = provider
         .generate(
             ModelRequest {
@@ -125,7 +125,7 @@ async fn extension_opaque_bytes_survive_sqlite_reopen_cold_archive_export_and_re
             CancellationToken::new(),
         )
         .await?;
-    messages[1].content = response.text;
+    messages[1].content = bubblepaw_core::text_blocks(response.text);
     messages[1].tool_calls = response.tool_calls;
     messages[1].provider_state = response.provider_state;
     assert_exact(&messages, &baseline, &signature, &redacted)?;

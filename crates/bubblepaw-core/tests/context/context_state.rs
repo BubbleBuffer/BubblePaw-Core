@@ -120,12 +120,12 @@ fn explicit_declarations_cover_frozen_cold_and_history_changes_once() {
     assert!(frozen.declared);
     assert_eq!(frozen.declaration_reason.as_deref(), Some("tools_reloaded"));
     state.declare(Some("s"), "lcm_apply");
-    r.messages[0].content = "new cold".into();
+    r.messages[0].content = bubblepaw_core::text_blocks("new cold");
     let cold = state.build(r.clone(), "s", "root", &[0]).record;
     assert_eq!(cold.classification, Class::ColdChange);
     assert!(cold.declared);
     state.declare(None, "rewind");
-    r.messages[1].content = "rewritten".into();
+    r.messages[1].content = bubblepaw_core::text_blocks("rewritten");
     let history = state.build(r.clone(), "s", "root", &[0]).record;
     assert_eq!(
         history.classification,
@@ -134,7 +134,7 @@ fn explicit_declarations_cover_frozen_cold_and_history_changes_once() {
         }
     );
     assert!(history.declared);
-    r.messages[1].content = "undeclared second rewrite".into();
+    r.messages[1].content = bubblepaw_core::text_blocks("undeclared second rewrite");
     assert!(!state.build(r, "s", "root", &[0]).record.declared);
 }
 

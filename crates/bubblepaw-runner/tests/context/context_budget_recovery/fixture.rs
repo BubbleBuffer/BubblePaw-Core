@@ -205,7 +205,8 @@ impl Fixture {
         let tools: Vec<_> = archive.iter().filter(|m| m.role == Role::Tool).collect();
         assert_eq!(tools.len(), 1, "one canonical tool result");
         assert_eq!(
-            tools[0].content, self.bulky.output,
+            tools[0].text(),
+            self.bulky.output,
             "canonical evidence kept"
         );
         assert!(

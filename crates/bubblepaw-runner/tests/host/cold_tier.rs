@@ -192,7 +192,7 @@ async fn lcm_apply_changes_only_the_cold_tier() -> Result<()> {
     let body = after
         .messages
         .iter()
-        .map(|message| message.content.as_str())
+        .map(|message| message.text().into_owned())
         .collect::<Vec<_>>()
         .join("\n");
     assert!(!body.contains("[host notice]"), "no inventory in the view");
@@ -205,31 +205,27 @@ async fn lcm_apply_changes_only_the_cold_tier() -> Result<()> {
     let lookup = after
         .messages
         .iter()
-        .position(|message| {
-            message
-                .content
-                .contains("<harness kind=\"history_lookup\">")
-        })
+        .position(|message| message.text().contains("<harness kind=\"history_lookup\">"))
         .expect("the lookup hint is a cold note");
     assert!(
         after.messages[lookup]
-            .content
+            .text()
             .contains(HISTORY_RETRIEVAL_INSTRUCTION)
     );
     assert!(
         after
             .messages
             .iter()
-            .filter(|message| message.content.contains(HISTORY_RETRIEVAL_INSTRUCTION))
+            .filter(|message| message.text().contains(HISTORY_RETRIEVAL_INSTRUCTION))
             .count()
             == 1,
         "only the cold note carries the lookup hint, not the view prefix"
     );
     assert!(
         after.messages[lookup + 1..].iter().all(|message| !message
-            .content
+            .text()
             .starts_with("<harness>\nClosed chapter")
-            && !message.content.starts_with("<harness>\nOpen chapter")),
+            && !message.text().starts_with("<harness>\nOpen chapter")),
         "the note follows the view"
     );
 
@@ -262,11 +258,11 @@ async fn lcm_apply_changes_only_the_cold_tier() -> Result<()> {
     let harness: Vec<_> = after
         .messages
         .iter()
-        .filter(|message| message.content.starts_with("<harness"))
+        .filter(|message| message.text().starts_with("<harness"))
         .collect();
     assert!(harness.len() > 1, "view blocks and the cold note");
     for message in harness {
-        assert!(user_text.contains(&message.content.as_str()), "{message:?}");
+        assert!(user_text.contains(&&*message.text()), "{message:?}");
     }
     Ok(())
 }

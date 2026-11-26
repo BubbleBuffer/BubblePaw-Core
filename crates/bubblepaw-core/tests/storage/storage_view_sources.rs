@@ -76,14 +76,16 @@ fn saving_embedded_typed_user_anchor_ignores_unrelated_cold_bodies() -> Result<(
         Role::System,
         &format!(
             "[{} | {}]\n{}\nOlder typed user message IDs (history_read):\nolder-user\nunrelated-cold",
-            source.id, source.created_at, source.content
+            source.id,
+            source.created_at,
+            source.text()
         ),
     );
     let captured = view(&session.id, vec![rendered]);
     store.save_context_view(&captured)?;
     store.flush_serving()?;
     let data = stored_view(dir.path())?;
-    assert!(!data.contains(&source.content));
+    assert!(!data.contains(&*source.text()));
     let encoded: serde_json::Value = serde_json::from_str(&data)?;
     assert!(
         encoded["prefix_refs"][0]["content"]
@@ -129,7 +131,7 @@ fn canonical_prefix_ids_preserve_clipped_content_and_provider_bytes() -> Result<
     ])?;
     unreadable(&store, &session.id, "cold-output")?;
     let mut selected = source.clone();
-    selected.content = format!("Clipped: {}", &source.content[10..]);
+    selected.content = bubblepaw_core::text_blocks(format!("Clipped: {}", &source.text()[10..]));
     selected.tool_calls[0].arguments = json!({"value":-0.0,"path":"original path"});
     let captured = view(&session.id, vec![selected]);
     store.save_context_view(&captured)?;
@@ -216,7 +218,7 @@ fn repetitive_selected_source_keeps_only_prefix_bounded_pointer_metadata() -> Re
     );
     store.append_batch(std::slice::from_ref(&source))?;
     let mut clipped = source;
-    clipped.content = format!("{}z", "a".repeat(1024));
+    clipped.content = bubblepaw_core::text_blocks(format!("{}z", "a".repeat(1024)));
     let captured = view(&session.id, vec![clipped]);
     store.save_context_view(&captured)?;
     store.flush_serving()?;

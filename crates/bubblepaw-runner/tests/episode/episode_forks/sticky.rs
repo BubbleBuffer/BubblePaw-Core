@@ -157,7 +157,7 @@ async fn pending_sticky_go_main_keeps_completed_route_and_failed_main_cannot_pro
             .request
             .messages
             .iter()
-            .any(|message| message.content == "next pending task"),
+            .any(|message| message.text() == "next pending task"),
         "the latest successful capture advances history despite its unchanged system prompt"
     );
     let failed = harness

@@ -159,6 +159,7 @@ impl ChatCompletionsProvider {
                     .as_array()
                     .filter(|rounds| !rounds.is_empty())
                 {
+                    let full = message.text();
                     for round in rounds {
                         let range = round["text_range"].as_array();
                         let text = range
@@ -168,15 +169,15 @@ impl ChatCompletionsProvider {
                                     usize::try_from(range.get(1)?.as_u64()?).ok()?,
                                 ))
                             })
-                            .and_then(|(start, end)| message.content.get(start..end))
-                            .unwrap_or(&message.content);
+                            .and_then(|(start, end)| full.get(start..end))
+                            .unwrap_or(&full);
                         messages.push(chat_wire_message(round, text));
                     }
                 } else {
-                    messages.push(chat_wire_message(state, &message.content));
+                    messages.push(chat_wire_message(state, &message.text()));
                 }
             } else if message.role == Role::Assistant
-                && message.content.is_empty()
+                && message.text().is_empty()
                 && message.tool_calls.is_empty()
                 && message.provider_state.as_ref().is_some_and(|state| {
                     state
@@ -192,12 +193,13 @@ impl ChatCompletionsProvider {
                 }
                 continue;
             } else {
-                messages.push(json!({"role":role,"content":message.content}));
+                messages.push(json!({"role":role,"content":message.text()}));
             }
             // Tool history remains native even when a host stops offering new
             // tools on the final round. Opaque reasoning cannot replace it.
             if message.role == Role::Tool {
-                let (text, images) = crate::images::split_wire(&message.content);
+                let body = message.text();
+                let (text, images) = crate::images::split_wire(&body);
                 if map_sources && !images.is_empty() {
                     image_sources.push(mapping.len());
                 }
@@ -220,7 +222,7 @@ impl ChatCompletionsProvider {
                 messages.last_mut().unwrap()["tool_calls"] = Value::Array(message.tool_calls.iter()
                     .map(|call| Ok(json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":serde_json::to_string(&call.arguments)?}})))
                     .collect::<Result<Vec<_>>>()?);
-                if message.content.is_empty() {
+                if message.text().is_empty() {
                     messages.last_mut().unwrap()["content"] = Value::Null;
                 }
             }
@@ -533,7 +535,7 @@ fn unfinished_tool_loop(messages: &[bubblepaw_core::Message]) -> Option<usize> {
                 start.get_or_insert(index);
                 has_calls = true;
             }
-            Role::Assistant if !message.content.is_empty() => {
+            Role::Assistant if !message.text().is_empty() => {
                 start = None;
                 has_calls = false;
             }
@@ -1038,8 +1040,7 @@ mod prepared_accounting_tests {
             session_id: "s".into(),
             role: Role::Assistant,
             origin: None,
-            content: "visible".into(),
-            tool_calls: vec![],
+            content: bubblepaw_core::text_blocks("visible"),
             provider_state: Some(state),
             created_at: "now".into(),
             ..Default::default()
@@ -1076,8 +1077,7 @@ mod prepared_accounting_tests {
             session_id: "s".into(),
             role: Role::User,
             origin: None,
-            content: content.into(),
-            tool_calls: vec![],
+            content: bubblepaw_core::text_blocks(content),
             created_at: "now".into(),
             ..Default::default()
         };

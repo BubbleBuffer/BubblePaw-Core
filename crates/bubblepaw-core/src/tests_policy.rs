@@ -72,7 +72,7 @@ async fn direct_host_call_is_correctable_and_never_crosses_effect_boundary() -> 
         .unwrap();
     assert!(rejection.is_error);
     assert_eq!(
-        rejection.content,
+        rejection.text(),
         "Tool `native` is not available in this run. Allowed tools: compose, guarded."
     );
     drop(requests);
@@ -175,13 +175,13 @@ async fn host_policy_survives_model_selection_and_denies_disallowed_nested_calls
             .find(|message| message.tool_call_id.as_deref() == Some("denied-native"))
             .unwrap();
         assert!(denied.is_error);
-        assert_eq!(denied.content, "Unknown tool: native");
+        assert_eq!(denied.text(), "Unknown tool: native");
         for call in ["allowed-read", "allowed-direct", "allowed-wrapper"] {
             let result = messages
                 .iter()
                 .find(|message| message.tool_call_id.as_deref() == Some(call))
                 .unwrap();
-            assert!(!result.is_error, "{call}: {}", result.content);
+            assert!(!result.is_error, "{call}: {}", result.text());
         }
         let requests = provider.requests.lock().unwrap();
         let frozen = serde_json::to_vec(&requests[0].tools)?;

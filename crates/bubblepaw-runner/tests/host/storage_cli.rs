@@ -92,7 +92,7 @@ fn message(session: &str, role: Role, text: &str) -> Message {
         session_id: session.into(),
         role,
         origin: None,
-        content: text.into(),
+        content: bubblepaw_core::text_blocks(text),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,

@@ -325,7 +325,7 @@ impl SummarizingContext {
             id: id(),
             session_id: session.into(),
             role,
-            content,
+            content: bubblepaw_core::text_blocks(content),
             tool_calls: vec![],
             tool_call_id: None,
             origin: None,
@@ -476,18 +476,19 @@ impl SummarizingContext {
     }
     fn apply_projection(message: &mut Message, masked: &HashSet<&str>, clipped: &HashSet<&str>) {
         if masked.contains(message.id.as_str()) {
-            message.content = format!(
+            message.content = bubblepaw_core::text_blocks(format!(
                 "[tool output {}, {} chars; history_read can fetch it]",
                 message.id,
-                message.content.chars().count()
-            );
+                message.text().chars().count()
+            ));
+            let output = message.text().into_owned();
             // Tool outputs are normally stored without adapter state; keep any replay honest.
             if let Some(state) = &mut message.provider_state
                 && let Some(items) = state["items"].as_array_mut()
             {
                 for item in items {
                     if item["type"] == "function_call_output" {
-                        item["output"] = json!(message.content);
+                        item["output"] = json!(&output);
                     }
                 }
             }
@@ -499,11 +500,7 @@ impl SummarizingContext {
                 call.arguments = json!({"_history_preview":format!("{preview} [… {} chars clipped; history_read can fetch it] (tool call {})", original.chars().count().saturating_sub(500), call.id)});
                 if let Some(state) = &mut message.provider_state {
                     crate::provider::replay_state::clear_argument_layout(state, index);
-                }
-                if let Some(state) = &mut message.provider_state
-                    && let Some(items) = state["items"].as_array_mut()
-                {
-                    for item in items {
+                    for item in state["items"].as_array_mut().into_iter().flatten() {
                         if item["type"] == "function_call" && item["call_id"] == call.id {
                             item["arguments"] = json!(call.arguments.to_string());
                         }
@@ -1578,7 +1575,7 @@ mod token_cache_tests {
         let context = estimator();
         let mut message = assistant();
         context.message_tokens(&message);
-        message.content.push_str(" changed");
+        message.set_text(message.text().into_owned() + " changed");
         assert_eq!(
             context.message_tokens(&message),
             context.uncached_message_tokens(&message)
@@ -1616,13 +1613,13 @@ mod token_cache_tests {
         let mut message = assistant();
         let full = json!({"adapter":"responses","items":[
             {"type":"reasoning","encrypted_content":"opaque","summary":[{"type":"summary_text","text":"thinking"}]},
-            {"type":"message","role":"assistant","content":[{"type":"output_text","text":message.content}]},
+            {"type":"message","role":"assistant","content":[{"type":"output_text","text":message.text()}]},
             {"type":"function_call","call_id":"call","name":"read","arguments":"{ \"path\" : \"a\" }"}
         ]});
         message.provider_state = Some(full.clone());
         let expected = context.message_tokens(&message);
         message.provider_state = Some(
-            crate::provider::replay_state::slim(full, &message.content, &message.tool_calls)
+            crate::provider::replay_state::slim(full, &message.text(), &message.tool_calls)
                 .unwrap(),
         );
         assert_eq!(context.message_tokens(&message), expected);

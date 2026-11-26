@@ -191,7 +191,7 @@ impl Provider for ResearchConversation {
                 !request
                     .messages
                     .iter()
-                    .any(|m| m.content.contains("PARENT PRIVATE"))
+                    .any(|m| m.text().contains("PARENT PRIVATE"))
             );
             let round = self.child_round.fetch_add(1, Ordering::SeqCst);
             return match round {
@@ -205,9 +205,9 @@ impl Provider for ResearchConversation {
                         .rev()
                         .find(|m| m.role == Role::Tool)
                         .unwrap();
-                    assert!(!result.is_error, "{}", result.content);
+                    assert!(!result.is_error, "{}", result.text());
                     let value: Value =
-                        serde_json::from_str(result.content.split("\n[---]\n").next().unwrap())?;
+                        serde_json::from_str(result.text().split("\n[---]\n").next().unwrap())?;
                     let id = value["id"].as_str().unwrap().to_owned();
                     if round == 1 {
                         *self.source.lock().unwrap() = Some(id.clone());
@@ -215,7 +215,7 @@ impl Provider for ResearchConversation {
                         assert_eq!(self.source.lock().unwrap().as_deref(), Some(id.as_str()));
                         assert!(
                             request.messages.iter().any(|m| m.role == Role::Assistant
-                                && m.content.contains(&format!("[{id}]")))
+                                && m.text().contains(&format!("[{id}]")))
                         );
                     }
                     Ok(ModelResponse {
@@ -232,10 +232,10 @@ impl Provider for ResearchConversation {
                 }
                 2 => {
                     assert!(request.messages.iter().any(|m| m.role == Role::User
-                        && m.content == "What exactly does the same source confirm?"));
+                        && m.text() == "What exactly does the same source confirm?"));
                     let id = self.source.lock().unwrap().clone().unwrap();
                     assert!(request.messages.iter().any(
-                        |m| m.role == Role::Assistant && m.content.contains(&format!("[{id}]"))
+                        |m| m.role == Role::Assistant && m.text().contains(&format!("[{id}]"))
                     ));
                     let literal = serde_json::to_string(&id)?;
                     Ok(js(&format!(
@@ -378,7 +378,7 @@ async fn main_model_uses_ordinary_research_child_and_follows_up_in_its_persisted
     assert_eq!(
         messages
             .iter()
-            .filter(|m| m.role == Role::Assistant && m.content.contains(&format!("[{source}]")))
+            .filter(|m| m.role == Role::Assistant && m.text().contains(&format!("[{source}]")))
             .count(),
         2
     );
@@ -388,11 +388,7 @@ async fn main_model_uses_ordinary_research_child_and_follows_up_in_its_persisted
             .filter(|m| m.role == Role::Tool)
             .all(|m| !m.is_error)
     );
-    assert!(
-        !messages
-            .iter()
-            .any(|m| m.content.contains("PARENT PRIVATE"))
-    );
+    assert!(!messages.iter().any(|m| m.text().contains("PARENT PRIVATE")));
     assert_eq!(fixture.store.runs(&child.id).unwrap().len(), 2);
     assert!(
         fixture

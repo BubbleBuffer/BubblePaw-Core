@@ -407,7 +407,7 @@ mod tests {
                     session_id: "s".into(),
                     role: Role::User,
                     origin: None,
-                    content: content.repeat(200),
+                    content: crate::text_blocks(content.repeat(200)),
                     tool_calls: Vec::new(),
                     tool_call_id: None,
                     provider_state: None,

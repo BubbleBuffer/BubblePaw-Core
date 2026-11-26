@@ -200,7 +200,7 @@ pub(crate) fn hydrate_request(
         if message.role != Role::Tool {
             continue;
         }
-        let (text, images) = split_refs(&message.content);
+        let (text, images) = split_refs(&message.text());
         if images.is_empty() {
             continue;
         }
@@ -240,7 +240,7 @@ pub(crate) fn hydrate_request(
             content.push_str(&serde_json::to_string(&wire)?);
             content.push_str(WIRE_CLOSE);
         }
-        message.content = content;
+        message.set_text(content);
     }
     Ok(())
 }
@@ -367,7 +367,7 @@ mod projection_tests {
             session_id: session.clone(),
             role: Role::Assistant,
             origin: None,
-            content: "Reading the image.".into(),
+            content: bubblepaw_core::text_blocks("Reading the image."),
             tool_calls: vec![ToolCall {
                 id: "read-image".into(),
                 name: "read".into(),
@@ -387,7 +387,7 @@ mod projection_tests {
                 Message {
                     id: "user".into(),
                     role: Role::User,
-                    content: "Inspect image.png".into(),
+                    content: bubblepaw_core::text_blocks("Inspect image.png"),
                     tool_calls: vec![],
                     provider_state: None,
                     ..message.clone()
@@ -399,7 +399,10 @@ mod projection_tests {
                     tool_calls: vec![],
                     tool_call_id: Some("read-image".into()),
                     provider_state: None,
-                    content: append_refs("image read".into(), &[image]),
+                    content: bubblepaw_core::text_blocks(append_refs(
+                        "image read".into(),
+                        &[image],
+                    )),
                     ..message
                 },
             ],

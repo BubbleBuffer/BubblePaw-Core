@@ -40,7 +40,7 @@ impl Provider for Script {
             .filter(|message| message.role == Role::User)
             .find_map(|message| {
                 message
-                    .content
+                    .text()
                     .lines()
                     .next()
                     .and_then(|line| serde_json::from_str::<Value>(line).ok())

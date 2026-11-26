@@ -97,7 +97,7 @@ pub(super) fn normalize_archive(corpus: &mut ReplayCorpus) -> Result<ArchiveNorm
                 session_id: message.session_id.clone(),
                 role: Role::Tool,
                 origin: Some(MessageOrigin::ArchiveUnknownOutcome),
-                content: ARCHIVE_UNKNOWN_OUTCOME.into(),
+                content: bubblepaw_core::text_blocks(ARCHIVE_UNKNOWN_OUTCOME),
                 tool_calls: vec![],
                 tool_call_id: Some(call.id.clone()),
                 provider_state: None,

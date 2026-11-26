@@ -43,15 +43,15 @@ async fn classical_automatic_apply_rebinds_current_prefix_and_discards_stale_pen
         .await;
     let delivered_notices = host_notices(&fixture);
     assert_eq!(delivered_notices.len(), 1);
-    assert!(delivered_notices[0].content.contains("classical-added"));
+    assert!(delivered_notices[0].text().contains("classical-added"));
     assert!(
         delivered_notices[0]
-            .content
+            .text()
             .contains("CLASSICAL-DELIVERED-BEFORE-PRESSURE")
     );
     assert!(
         delivered_notices[0]
-            .content
+            .text()
             .contains("CLASSICAL-DELIVERED-CATALOG")
     );
     drop(worker);
@@ -60,7 +60,7 @@ async fn classical_automatic_apply_rebinds_current_prefix_and_discards_stale_pen
         id: uuid::Uuid::new_v4().to_string(),
         session_id: fixture.session.clone(),
         role,
-        content,
+        content: bubblepaw_core::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         origin: None,
@@ -181,10 +181,10 @@ async fn classical_automatic_apply_rebinds_current_prefix_and_discards_stale_pen
                     .iter()
                     .any(|delivered| delivered.id == message.id)
             );
-            assert!(!message.content.contains("CLASSICAL-PENDING-B"));
-            assert!(!message.content.contains("CLASSICAL-CATALOG-B"));
-            assert!(!message.content.contains("Memory files changed"));
-            assert!(!message.content.contains("Skills changed"));
+            assert!(!message.text().contains("CLASSICAL-PENDING-B"));
+            assert!(!message.text().contains("CLASSICAL-CATALOG-B"));
+            assert!(!message.text().contains("Memory files changed"));
+            assert!(!message.text().contains("Skills changed"));
         }
     }
     let history_after = fixture.store.messages(&fixture.session).unwrap();

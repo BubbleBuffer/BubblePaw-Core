@@ -149,8 +149,8 @@ async fn turn_start_refreshes_live_calls_without_rebinding_the_initial_prefix() 
             request
                 .messages
                 .iter()
-                .any(|message| message.content.contains("tools_reloaded")
-                    && message.content.contains("new tool"))
+                .any(|message| message.text().contains("tools_reloaded")
+                    && message.text().contains("new tool"))
         );
     }
     Ok(())
@@ -219,7 +219,7 @@ async fn registry_swaps_refresh_only_after_own_request_and_keep_call_budget() ->
         let history = store.messages(&session.id)?;
         assert!(history.iter().any(|message| message.tool_call_id.as_deref()
             == Some("over-budget")
-            && message.content.contains("Tool call budget exhausted")));
+            && message.text().contains("Tool call budget exhausted")));
         {
             let requests = provider.requests.lock().unwrap();
             let round_one = &requests[1].tools;

@@ -48,9 +48,8 @@ async fn existing_children_refresh_root_tools_each_turn_and_keep_profile_restric
             .rev()
             .find(|message| message.role == Role::Tool)
             .expect("the child executed live tools.$list discovery");
-        assert!(!result.is_error, "{}", result.content);
-        let listed: Value =
-            serde_json::from_str(result.content.split("\n[---]\n").next().unwrap())?;
+        assert!(!result.is_error, "{}", result.text());
+        let listed: Value = serde_json::from_str(result.text().split("\n[---]\n").next().unwrap())?;
         let names = listed
             .as_array()
             .unwrap()

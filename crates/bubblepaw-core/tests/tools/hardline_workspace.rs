@@ -96,7 +96,7 @@ async fn protected_workspace_is_resolved_against_exec_cwd() -> Result<()> {
                 store
                     .messages(&session.id)?
                     .iter()
-                    .any(|message| message.is_error && message.content.contains("hardline"))
+                    .any(|message| message.is_error && message.text().contains("hardline"))
             );
         }
     }
@@ -148,7 +148,7 @@ async fn worktree_resolver_sets_the_exec_directory_and_the_host_workspace_stays_
                 store
                     .messages(&session.id)?
                     .iter()
-                    .any(|message| message.is_error && message.content.contains("hardline"))
+                    .any(|message| message.is_error && message.text().contains("hardline"))
             );
         }
     }

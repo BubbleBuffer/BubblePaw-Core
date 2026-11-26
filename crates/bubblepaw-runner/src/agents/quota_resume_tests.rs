@@ -74,7 +74,7 @@ fn restored_wait(
         session_id: child.id.clone(),
         role: Role::User,
         origin: Some(MessageOrigin::ChildTask),
-        content: "original task".into(),
+        content: bubblepaw_core::text_blocks("original task"),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,

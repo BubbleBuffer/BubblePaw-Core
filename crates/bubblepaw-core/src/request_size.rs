@@ -7,7 +7,7 @@ use serde_json::Value;
 /// the Chat Completions opaque SSE journal which that adapter never replays.
 /// This is not an exact count of an adapter's final HTTP representation.
 pub fn prepared_request_bytes(request: &ModelRequest) -> Result<usize> {
-    let mut bytes = serde_json::to_vec(request)?.len();
+    let mut bytes = crate::plain_content(|| serde_json::to_vec(request))?.len();
     for message in &request.messages {
         bytes -= canonical_only_bytes(message.provider_state.as_ref())?;
     }
@@ -15,7 +15,8 @@ pub fn prepared_request_bytes(request: &ModelRequest) -> Result<usize> {
 }
 
 pub(crate) fn prepared_message_bytes(message: &Message) -> Result<usize> {
-    Ok(serde_json::to_vec(message)?.len() - canonical_only_bytes(message.provider_state.as_ref())?)
+    Ok(crate::plain_content(|| serde_json::to_vec(message))?.len()
+        - canonical_only_bytes(message.provider_state.as_ref())?)
 }
 
 fn journal_field_bytes(state: &Value) -> Result<usize> {
@@ -90,11 +91,11 @@ mod tests {
             };
             assert_eq!(
                 prepared_message_bytes(&message)?,
-                serde_json::to_vec(&projected)?.len()
+                crate::plain_content(|| serde_json::to_vec(&projected))?.len()
             );
             assert_eq!(
                 prepared_request_bytes(&request)?,
-                serde_json::to_vec(&projected_request)?.len()
+                crate::plain_content(|| serde_json::to_vec(&projected_request))?.len()
             );
             assert_eq!(message, original);
         }
@@ -107,7 +108,7 @@ mod tests {
             message.provider_state = Some(state);
             assert_eq!(
                 prepared_message_bytes(&message)?,
-                serde_json::to_vec(&message)?.len()
+                crate::plain_content(|| serde_json::to_vec(&message))?.len()
             );
         }
         Ok(())

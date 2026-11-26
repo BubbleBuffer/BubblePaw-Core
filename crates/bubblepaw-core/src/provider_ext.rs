@@ -229,7 +229,7 @@ impl HistoryTracker {
     }
 }
 fn hash(message: &Message) -> [u8; 32] {
-    Sha256::digest(serde_json::to_vec(message).unwrap_or_default()).into()
+    Sha256::digest(crate::plain_content(|| serde_json::to_vec(message)).unwrap_or_default()).into()
 }
 
 /// Lets a provider host hand a session a fresh cursor (after a provider switch
@@ -296,7 +296,7 @@ mod tests {
         let same = tracker.advance("s", &[a.clone(), b.clone()]);
         assert_eq!(same, first);
         let mut edited = b.clone();
-        edited.content = "two, edited".into();
+        edited.content = crate::text_blocks("two, edited");
         let rewrite = tracker.advance("s", &[a.clone(), edited.clone(), c.clone()]);
         assert_ne!(rewrite.epoch, first.epoch);
         assert_eq!(rewrite.rewritten_from.as_deref(), Some("b"));
@@ -332,7 +332,7 @@ mod tests {
         assert_eq!(third, first);
         // A rewrite never names an ephemeral message.
         let mut edited = b.clone();
-        edited.content = "two, edited".into();
+        edited.content = crate::text_blocks("two, edited");
         let rewrite = tracker.advance("s", &[summary.clone(), a.clone(), note("y"), edited]);
         assert_ne!(rewrite.epoch, first.epoch);
         assert_eq!(rewrite.rewritten_from.as_deref(), Some("b"));

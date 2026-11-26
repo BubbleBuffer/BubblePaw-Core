@@ -579,7 +579,7 @@ async fn state_and_journal_share_turn_transactions_and_wire_payloads() -> Result
             |row| row.get(0),
         )?;
         assert_eq!(
-            Store::read_message(conn, &session.id, &result_id)?.content,
+            Store::read_message(conn, &session.id, &result_id)?.text(),
             run.text.unwrap()
         );
         Ok(())
@@ -747,7 +747,7 @@ async fn consumed_input_references_replay_the_original_client_events() -> Result
             )?;
             assert!(text.is_empty());
             assert_eq!(
-                Store::read_message(conn, &session.id, &message_id)?.content,
+                Store::read_message(conn, &session.id, &message_id)?.text(),
                 input.text
             );
         }
@@ -860,7 +860,7 @@ async fn rejected_tool_journal_boundary(rejected_kind: &str, dispatched: bool) -
     if dispatched {
         assert_eq!(messages.len(), 3);
         assert!(messages[2].is_error);
-        assert!(messages[2].content.contains("outcome unknown"));
+        assert!(messages[2].text().contains("outcome unknown"));
         assert_eq!(store.pending_effects(&session.id)?[0]["state"], "unknown");
     } else {
         // In a single-file store, a rejected combined assistant/dispatch

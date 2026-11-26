@@ -58,7 +58,7 @@ async fn chat_prefix_survives_store_reopen_while_live_calls_and_new_chats_use_cu
                 .iter()
                 .any(|message| message.role == Role::Tool
                     && !message.is_error
-                    && message.content.contains("reopened live tool"))
+                    && message.text().contains("reopened live tool"))
         );
 
         let fresh = store.create_session("new chat after restart")?.id;
@@ -139,13 +139,13 @@ async fn a_changed_run_allowlist_remains_live_without_rewriting_the_chat_declara
         let history = f.store.messages(&f.session)?;
         assert!(history.iter().any(|message| message.role == Role::Tool
             && message.is_error
-            && message.content.contains("not available in this run")));
+            && message.text().contains("not available in this run")));
         assert!(history.iter().any(|message| message.role == Role::Tool
             && !message.is_error
-            && message.content.contains("currently allowed")));
+            && message.text().contains("currently allowed")));
         assert!(!history.iter().any(|message| message.role == Role::Tool
             && !message.is_error
-            && message.content.contains("must be denied")));
+            && message.text().contains("must be denied")));
     }
     Ok(())
 }

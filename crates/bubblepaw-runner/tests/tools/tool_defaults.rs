@@ -79,9 +79,9 @@ async fn dispatched(
         .context("missing tool result")?;
     ensure!(store.pending_effects(&session.id)?.is_empty());
     Ok(if message.is_error {
-        ToolResult::error(message.content)
+        ToolResult::error(message.text())
     } else {
-        ToolResult::text(message.content)
+        ToolResult::text(message.text())
     })
 }
 

@@ -18,7 +18,7 @@ fn user_message() -> Message {
         session_id: "fixture-session".into(),
         role: Role::User,
         origin: None,
-        content: "Read the file.".into(),
+        content: bubblepaw_core::text_blocks("Read the file."),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,

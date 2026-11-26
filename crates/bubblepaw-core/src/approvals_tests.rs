@@ -822,7 +822,7 @@ async fn direct_denial_is_an_error_result_without_effect() -> Result<()> {
     let message = tool_message(&store, &session.id, "c1");
     assert!(message.is_error);
     assert_eq!(
-        message.content,
+        message.text(),
         "Denied by the user: not now. Do not retry this call unless the user asks."
     );
     let kinds = drain(&mut events);
@@ -869,7 +869,7 @@ async fn nested_call_waits_and_denial_rejects_the_host_call() -> Result<()> {
     let denied = tool_message(&store, &session.id, "n2");
     assert!(denied.is_error);
     assert_eq!(
-        denied.content,
+        denied.text(),
         "Denied by the user. Do not retry this call unless the user asks."
     );
     Ok(())
@@ -1023,7 +1023,7 @@ async fn policy_allow_deny_and_overrides_need_no_person() -> Result<()> {
                     "case {index}"
                 );
                 assert_eq!(
-                    tool_message(&store, &session.id, "c1").content,
+                    tool_message(&store, &session.id, "c1").text(),
                     "Denied by the user: policy. Do not retry this call unless the user asks."
                 );
                 assert_eq!(effects(&store), 0);
@@ -1075,7 +1075,7 @@ async fn timeout_expires_the_approval_and_denies_the_call() -> Result<()> {
     );
     let message = tool_message(&store, &session.id, "c1");
     assert!(message.is_error);
-    assert_eq!(message.content, "Approval timed out.");
+    assert_eq!(message.text(), "Approval timed out.");
     assert!(drain(&mut events).iter().any(|k| matches!(
         k,
         EventKind::ApprovalResolved {
@@ -1277,7 +1277,7 @@ async fn configured_deny_precedes_modes_session_allow_and_run_overrides() -> Res
                 )));
                 assert!(
                     tool_message(&store, &session.id, "c1")
-                        .content
+                        .text()
                         .contains("deny rule write")
                 );
                 if !nested_call {

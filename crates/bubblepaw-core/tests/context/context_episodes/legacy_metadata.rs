@@ -138,7 +138,7 @@ async fn retired_boundary_metadata_survives_reopen_without_controlling_chapters(
     let conn = rusqlite::Connection::open(chat_path)?;
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-        12
+        13
     );
     assert_eq!(
         conn.query_row(

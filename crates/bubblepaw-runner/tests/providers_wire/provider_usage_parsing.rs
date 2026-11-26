@@ -70,7 +70,7 @@ async fn failed_messages_usage(end: Option<Value>) -> Result<()> {
                     session_id: session.clone(),
                     role: Role::User,
                     origin: None,
-                    content: "Hello".into(),
+                    content: bubblepaw_core::text_blocks("Hello"),
                     tool_calls: Vec::new(),
                     tool_call_id: None,
                     provider_state: None,

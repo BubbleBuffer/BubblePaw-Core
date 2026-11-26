@@ -26,11 +26,11 @@ impl Provider for Model {
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let last = request.messages.last().expect("a message");
-        if last.role == Role::User && last.content == "block" {
+        if last.role == Role::User && last.text() == "block" {
             cancellation.cancelled().await;
             bail!("cancelled");
         }
-        if last.role == Role::User && last.content == "call" {
+        if last.role == Role::User && last.text() == "call" {
             return Ok(ModelResponse {
                 tool_calls: vec![ToolCall {
                     id: uuid::Uuid::new_v4().to_string(),

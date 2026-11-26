@@ -180,7 +180,7 @@ async fn approval_updates_apply_to_next_direct_and_nested_call() -> Result<()> {
                 .messages(&session.id)?
                 .iter()
                 .any(|message| message.role == Role::Tool
-                    && message.content.contains("Denied by the user: policy"))
+                    && message.text().contains("Denied by the user: policy"))
         );
     }
     Ok(())

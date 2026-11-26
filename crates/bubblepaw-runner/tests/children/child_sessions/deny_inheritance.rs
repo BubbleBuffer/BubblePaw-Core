@@ -182,15 +182,16 @@ async fn recursive_deny_rules_union_at_every_generation_with_pinned_override() -
                     .find(|message| message.tool_call_id.as_deref() == Some(call_id.as_str()))
                     .unwrap();
                 assert_eq!(
-                    reply.is_error, denied,
+                    reply.is_error,
+                    denied,
                     "{tool} result at depth {depth}: {}",
-                    reply.content
+                    reply.text()
                 );
                 if denied {
                     assert!(
-                        reply.content.contains(&format!("deny rule {tool}")),
+                        reply.text().contains(&format!("deny rule {tool}")),
                         "{}",
-                        reply.content
+                        reply.text()
                     );
                     assert!(!observed_events.iter().any(|event| event.session_id == *session
                         && matches!(&event.kind, EventKind::ToolStarted { call } if call.name == tool)));
@@ -362,8 +363,8 @@ async fn real_child_honours_the_host_hardline_floor_in_both_spawn_shapes() -> Re
                 .rev()
                 .find(|message| message.role == Role::Tool)
                 .unwrap();
-            assert!(!reply.is_error, "{shape}: {}", reply.content);
-            serde_json::from_str(&reply.content)?
+            assert!(!reply.is_error, "{shape}: {}", reply.text());
+            serde_json::from_str(&reply.text())?
         };
         let child_id = child["sessionId"].as_str().unwrap();
         let result = manager.wait(&session.id, child_id, Some(5000)).await?;
@@ -381,11 +382,11 @@ async fn real_child_honours_the_host_hardline_floor_in_both_spawn_shapes() -> Re
                 .unwrap()
         };
         let blocked = reply("hardline-rm");
-        assert!(blocked.is_error, "{shape}: {}", blocked.content);
+        assert!(blocked.is_error, "{shape}: {}", blocked.text());
         assert!(
-            blocked.content.contains("Blocked by hardline rule"),
+            blocked.text().contains("Blocked by hardline rule"),
             "{shape}: {}",
-            blocked.content
+            blocked.text()
         );
         assert!(!reply("hardline-safe").is_error, "{shape}");
         manager.shutdown().await?;

@@ -31,8 +31,8 @@ pub(crate) fn outcome(history: &[Message], calls: &[ToolCall]) -> Result<String>
         .find(|message| message.role == Role::Tool && message.tool_call_id.as_ref() == Some(call))
         .ok_or_else(|| anyhow!("Script result was not recorded"))?;
     if result.is_error {
-        Err(anyhow!("{}", result.content))
+        Err(anyhow!("{}", result.text()))
     } else {
-        Ok(result.content.clone())
+        Ok(result.text().into_owned())
     }
 }

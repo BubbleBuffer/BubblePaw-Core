@@ -188,7 +188,7 @@ fn notices(state: &Value) -> Vec<String> {
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|message| message["content"].as_str())
+        .filter_map(|message| message["content"][0]["text"].as_str())
         .filter(|content| content.contains("<harness kind=\"live_config:"))
         .map(str::to_owned)
         .collect()

@@ -135,7 +135,7 @@ impl ContextPreparation for ApplyOnce {
             // Simulate an applied view folding prior notices into its memory.
             request
                 .messages
-                .retain(|message| !message.content.contains("Tool inventory changed"));
+                .retain(|message| !message.text().contains("Tool inventory changed"));
         }
         Ok(PreparedContext {
             request,

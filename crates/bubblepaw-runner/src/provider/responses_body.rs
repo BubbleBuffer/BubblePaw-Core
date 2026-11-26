@@ -15,7 +15,8 @@ impl ResponsesProvider {
             starts.push(input.len());
             match message.role{
                 Role::Tool=> {
-                    let (text, images) = crate::images::split_wire(&message.content);
+                    let body = message.text();
+                    let (text, images) = crate::images::split_wire(&body);
                     let text = tool_wire::error_text(message, text);
                     let output = if images.is_empty() { json!(text) } else {
                         let mut parts = vec![json!({"type":"input_text","text":text})];
@@ -28,12 +29,12 @@ impl ResponsesProvider {
                     if let Some(state)=&message.provider_state
                         && bubblepaw_core::provider_state_replay_compatible(state, "responses", &request.model)
                         && state["items"].is_array() {
-                        input.extend(replay_state::hydrate(state, &message.content, &message.tool_calls)?);continue;
+                        input.extend(replay_state::hydrate(state, &message.text(), &message.tool_calls)?);continue;
                     }
-                    if !message.content.is_empty(){input.push(json!({"role":"assistant","content":[{"type":"output_text","text":message.content}]}));}
+                    if !message.text().is_empty(){input.push(json!({"role":"assistant","content":[{"type":"output_text","text":message.text()}]}));}
                     for call in &message.tool_calls{input.push(json!({"type":"function_call","call_id":call.id,"name":call.name,"arguments":serde_json::to_string(&call.arguments)?}));}
                 }
-                Role::System|Role::User=>input.push(json!({"role":if message.role==Role::System{"system"}else{"user"},"content":[{"type":"input_text","text":message.content}]}))
+                Role::System|Role::User=>input.push(json!({"role":if message.role==Role::System{"system"}else{"user"},"content":[{"type":"input_text","text":message.text()}]}))
             }
         }
         let mut body = json!({"model":request.model,"instructions":request.system_prompt,"input":input,"store":false,"stream":true,"include":["reasoning.encrypted_content"]});
