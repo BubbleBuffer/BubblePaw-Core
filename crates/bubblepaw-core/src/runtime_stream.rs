@@ -1,7 +1,7 @@
 //! The listener the loop hands a provider for one model request: it turns the
 //! adapter's stream events into live host events.
 use crate::{
-    CancellationToken, EventKind, Harness, IncompleteReason, Message, Role, Store, StreamCallback,
+    CancellationToken, EventKind, Harness, IncompleteReason, Message, Role, StreamCallback,
     StreamEvent, live_events::LiveEvents, stream::Paragraphs,
 };
 use std::sync::{
@@ -56,7 +56,7 @@ impl PartialReply {
         if reply.storage_bytes().map_or(true, |bytes| bytes > limit) {
             return None;
         }
-        let mut message = Store::message(session_id, Role::Assistant, self.text.clone());
+        let mut message = Message::new(session_id, Role::Assistant, self.text.clone());
         message.content = crate::reply_blocks(&self.thinking, &self.text);
         message.incomplete = Some(reason);
         Some(message)

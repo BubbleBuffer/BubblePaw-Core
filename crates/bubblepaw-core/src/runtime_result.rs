@@ -134,7 +134,7 @@ impl Harness {
 
 pub(super) fn outcome(run: &Run, value: serde_json::Value) -> Result<TurnOutcome> {
     let text = serde_json::to_string(&value)?;
-    let mut final_message = Store::message(&run.session_id, Role::Assistant, text.clone());
+    let mut final_message = Message::new(&run.session_id, Role::Assistant, text.clone());
     final_message.origin = Some(crate::MessageOrigin::Generated);
     Ok(TurnOutcome {
         text,
