@@ -6,7 +6,7 @@ word bubblepaw-core episode 219
 word bubblepaw-core chapter 271
 word bubblepaw-core child 181
 word bubblepaw-core opencode 1
-word bubblepaw-core quota 174
+word bubblepaw-core quota 173
 word bubblepaw-core "js" 32
 word bubblepaw-ai session 94
 word bubblepaw-ai approval 5

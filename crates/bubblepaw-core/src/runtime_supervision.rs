@@ -46,7 +46,7 @@ impl Harness {
         run.status = "failed".into();
         run.ended_at = Some(now());
         run.error = Some(format!("run panicked: {}", panic_text(join)));
-        if let Err(storage_error) = self.store.close_unresolved(&run.session_id, &run.id) {
+        if let Err(storage_error) = self.journal.run_closed(&run.session_id, &run.id) {
             let error = run.error.take().unwrap_or_default();
             run.error = Some(format!("{error}; recovery failed: {storage_error}"));
         }
@@ -65,23 +65,15 @@ impl Harness {
         }
         // The same durable boundary an ordinary run error commits. A failure here
         // still reaches the waiters through the error text below.
-        let log = &self.state.log;
-        let settlement = log.commit(&self.store, &run.session_id, &run.id, None, |tx| {
-            Store::finish_run_tx(tx, &run, None)?;
-            let reference = ContentRef::Run {
-                run_id: run.id.clone(),
-            };
-            let finished = EventKind::RunFinished {
-                status: run.status.clone(),
-                text: None,
-                error: run.error.clone(),
-                usage: None,
-            };
-            let events = Vec::from([
-                (finished, Some(reference)),
-                (EventKind::SessionSettled {}, None),
-            ]);
-            Ok(((), events))
+        // A running run has neither text nor usage, so the event carries none.
+        let settlement = self.journal.run_finished(RunFinish {
+            run: &run,
+            result_message_id: None,
+            final_message: None,
+            usage: &[],
+            request_ids: &[],
+            origin: None,
+            settles_session: true,
         });
         if let Err(error) = settlement {
             let text = run.error.take().unwrap_or_default();

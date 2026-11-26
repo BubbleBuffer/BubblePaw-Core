@@ -52,6 +52,10 @@ and the extension provider keeps a cursor reset per `session_id` and sends
 `session.close`; the guard records all of these occurrences as ceilings rather than
 renaming them.
 
+## The journal seam
+
+The run loop in `bubblepaw-core` writes things down through the `Journal` trait before it goes on: admission, queued input, replies, tool starts and finishes, outputs and run endings are each one journal call, and the call commits its rows and durable events together. The loop reads pending input and duplicate call ids through the same trait. One implementation, `SqliteJournal`, sits over the store and the event log. Writes that still ride inside a journal commit, such as the execution mode, tool surface and reminders bound at admission, stay in that implementation until they get their own seams.
+
 ## Rules
 
 Normal and build dependencies obey these rules; dev-dependencies are exempt:

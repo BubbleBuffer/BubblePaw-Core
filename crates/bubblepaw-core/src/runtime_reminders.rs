@@ -208,7 +208,7 @@ impl Harness {
         self.store
             .queue_reminder(session, InputKind::Steer, reminder)
     }
-    pub(super) fn admit_reminders_tx(
+    pub(crate) fn admit_reminders_tx(
         tx: &rusqlite::Connection,
         session: &str,
         reminders: &[Reminder],

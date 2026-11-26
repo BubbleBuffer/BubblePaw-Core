@@ -1,5 +1,6 @@
 //! Run admission, committed before asynchronous execution.
 use super::*;
+use crate::journal_admission::{Passengers, RunAdmission};
 impl Harness {
     pub(super) fn admit(
         &self,
@@ -28,7 +29,7 @@ impl Harness {
         active_storage_only: bool,
         single_tool: Option<SingleToolRun>,
         cancellation: Option<CancellationToken>,
-        expected_quota_wait: Option<&crate::QuotaWait>,
+        expected_wait: Option<&crate::QuotaWait>,
         reminders: Vec<crate::Reminder>,
     ) -> Result<Run> {
         ensure!(
@@ -100,42 +101,19 @@ impl Harness {
             run.model = "tool".into();
         }
         let initial_surface = self.initial_chat_surface(session_id, &options)?;
-        self.state.log.commit(
-            &self.store,
-            session_id,
-            &run.id,
-            options.client.take(),
-            |tx| {
-                if let Some(expected) = expected_quota_wait {
-                    Store::ensure_quota_resume_tx(tx, expected)?;
-                }
-                Store::bind_execution_mode_tx(tx, session_id, self.config.execution_mode)?;
-                if let Some(surface) = &initial_surface {
-                    Store::bind_chat_tool_surface_tx(tx, session_id, surface)?;
-                }
-                if single_tool.is_some() {
-                    // A tool-only run answers no queued conversational input.
-                    Store::start_run_tx(tx, &run)?;
-                } else {
-                    Store::admit_tx(
-                        tx,
-                        &run,
-                        text.clone().map(MessageInput::into_blocks),
-                        options.origin,
-                    )?;
-                }
-                Self::admit_reminders_tx(tx, session_id, &reminders)?;
-                Ok((
-                    (),
-                    vec![(
-                        EventKind::RunStarted {
-                            model: run.model.clone(),
-                        },
-                        None,
-                    )],
-                ))
+        self.journal.run_admitted(RunAdmission {
+            run: &run,
+            content: text.map(MessageInput::into_blocks),
+            origin: options.origin,
+            client: options.client.take(),
+            tool_only: single_tool.is_some(),
+            passengers: Passengers {
+                execution_mode: self.config.execution_mode,
+                surface: initial_surface.as_ref(),
+                reminders: &reminders,
+                expected_wait,
             },
-        )?;
+        })?;
         let cancellation = cancellation.unwrap_or_default();
         active.insert(
             session_id.into(),

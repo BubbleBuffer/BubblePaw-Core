@@ -1,4 +1,4 @@
-use crate::event_log::ContentRef;
+use crate::journal::{Consumed, InputScope, Journal, Reply, RunFinish};
 use crate::{
     CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
     ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput,
@@ -294,6 +294,7 @@ pub struct Harness {
     config: HarnessConfig,
     state: Arc<RuntimeState>,
     cursors: Arc<crate::HistoryTracker>,
+    journal: Arc<dyn Journal>,
 }
 impl Harness {
     fn history(&self, session_id: &str) -> Result<Vec<Message>> {
@@ -341,6 +342,10 @@ impl Harness {
     ) -> Self {
         let state = store.runtime();
         state.log.init(config.event_capacity);
+        let journal = Arc::new(crate::journal_sqlite::SqliteJournal::new(
+            store.clone(),
+            state.log.clone(),
+        ));
         let harness = Self {
             store,
             provider,
@@ -348,6 +353,7 @@ impl Harness {
             config,
             state,
             cursors: Arc::default(),
+            journal,
         };
         if let Some(days) = harness.config.event_retention_days {
             harness.prune_events(days);
@@ -760,9 +766,7 @@ impl Harness {
                     .into();
                     run.error = Some(format!("{error:#}"));
                     self.keep_partial_reply(&run.session_id, &partial, cancellation.is_cancelled());
-                    if let Err(storage_error) =
-                        self.store.close_unresolved(&run.session_id, &run.id)
-                    {
+                    if let Err(storage_error) = self.journal.run_closed(&run.session_id, &run.id) {
                         run.error = Some(format!("{error:#}; recovery failed: {storage_error}"));
                     }
                 }
@@ -806,39 +810,19 @@ impl Harness {
                 && single_tool.is_none()
                 && !cancellation.is_cancelled()
                 && !self.state.stopping.load(Ordering::Relaxed)
-                && self.store.has_pending(&run.session_id).unwrap_or(false);
-            let checkpoint =
-                self.state
-                    .log
-                    .commit(&self.store, &run.session_id, &run.id, origin, |tx| {
-                        if let Some(message) = &final_message {
-                            Store::insert_message(tx, message)?;
-                            Store::insert_message_request_usage_tx(
-                                tx,
-                                message,
-                                &request_usage,
-                                &request_ids,
-                            )?;
-                        } else {
-                            Store::insert_request_usage_tx(tx, &request_usage)?;
-                        }
-                        Store::finish_run_tx(tx, &run, result_message_id.as_deref())?;
-                        let mut events = vec![(
-                            EventKind::RunFinished {
-                                status: run.status.clone(),
-                                text: run.text.clone(),
-                                error: run.error.clone(),
-                                usage: run.usage.clone(),
-                            },
-                            Some(ContentRef::Run {
-                                run_id: run.id.clone(),
-                            }),
-                        )];
-                        if !continue_run {
-                            events.push((EventKind::SessionSettled {}, None));
-                        }
-                        Ok(((), events))
-                    });
+                && self
+                    .journal
+                    .input_pending(&run.session_id, InputScope::Any)
+                    .unwrap_or(false);
+            let checkpoint = self.journal.run_finished(RunFinish {
+                run: &run,
+                result_message_id: result_message_id.as_deref(),
+                final_message: final_message.as_ref(),
+                usage: &request_usage,
+                request_ids: &request_ids,
+                origin,
+                settles_session: !continue_run,
+            });
             if let Err(error) = &checkpoint {
                 run.status = "failed".into();
                 run.error = Some(format!("Run checkpoint failed: {error}"));
@@ -847,24 +831,7 @@ impl Harness {
                 // Input queued during a script run is answered by a model run.
                 options.script = None;
                 let next = self.new_run(&run.session_id, &options);
-                if self
-                    .state
-                    .log
-                    .commit(&self.store, &next.session_id, &next.id, None, |tx| {
-                        Store::start_run_tx(tx, &next)?;
-                        Store::consume_tx(tx, &next.session_id, false, true)?;
-                        Ok((
-                            (),
-                            vec![(
-                                EventKind::RunStarted {
-                                    model: next.model.clone(),
-                                },
-                                None,
-                            )],
-                        ))
-                    })
-                    .is_ok()
-                {
+                if self.journal.run_continued(&next).is_ok() {
                     if let Some(value) = active.get_mut(&run.session_id) {
                         value.run_id = next.id.clone();
                     }
@@ -872,7 +839,7 @@ impl Harness {
                     drop(active);
                     continue;
                 }
-                self.emit(&run.session_id, &run.id, EventKind::SessionSettled {});
+                self.journal.session_settled(&run.session_id, &run.id);
             }
             // Admission waits for this final phase without holding the active
             // lock, allowing archival to inspect other roots. Idle notification
@@ -935,6 +902,7 @@ impl Harness {
             self.config.max_tool_result_bytes,
             self.config.observation.clone(),
         )
+        .with_journal(self.journal.clone())
         .with_approval(self.config.approval.clone())
         .with_approval_resolver(
             self.config
@@ -1063,7 +1031,7 @@ impl Harness {
                     // Preparation may await auxiliary work. Refresh from raw
                     // canonical history if input arrived meanwhile: appending
                     // after preparation would bypass token admission/calibration.
-                    let steers = self.store.consume_steering_messages(&run.session_id)?;
+                    let steers = self.journal.steering_batch_consumed(&run.session_id)?;
                     if !steers.is_empty() {
                         late_steering = true;
                         steering_batch.extend(steers);
@@ -1305,7 +1273,7 @@ impl Harness {
                 ensure!(
                     !call.id.is_empty()
                         && call_ids.insert(call.id.clone())
-                        && !self.store.has_tool_call(&run.session_id, &call.id)?,
+                        && !self.journal.tool_call_recorded(&run.session_id, &call.id)?,
                     "Provider returned duplicate, reused, or empty tool call IDs"
                 );
             }
@@ -1341,10 +1309,8 @@ impl Harness {
             if options.script.is_none()
                 && response.tool_calls.is_empty()
                 && !self
-                    .store
-                    .queued_inputs(&run.session_id)?
-                    .iter()
-                    .any(|input| input.state == "pending" && input.kind == crate::InputKind::Steer)
+                    .journal
+                    .input_pending(&run.session_id, InputScope::Steering)?
             {
                 return Ok(runtime_result::text_outcome(message, true, request_ids));
             }
@@ -1378,9 +1344,10 @@ impl Harness {
                     prepared,
                 )?)
             } else {
-                self.state.log.settle_text(&run.session_id, || {
-                    self.store
-                        .append_with_request_usage(&message, request_usage, &request_ids)
+                self.journal.reply_received(Reply {
+                    message: &message,
+                    usage: request_usage.as_slice(),
+                    request_ids: &request_ids,
                 })?;
                 None
             };
@@ -1433,7 +1400,8 @@ impl Harness {
             }
             if options.script.is_some() || single_tool.is_some() {
                 if single_tool.is_none() {
-                    self.store.consume_generated_steering(&run.session_id)?;
+                    self.journal
+                        .inputs_consumed(&run.session_id, Consumed::GeneratedSteering)?;
                 }
                 let history = self.history(&run.session_id)?;
                 let result_message_id = history
@@ -1455,7 +1423,9 @@ impl Harness {
             }
             // Consume steering after a complete model/tool round. The final
             // preparation drain also catches admissions arriving after this.
-            let steered = self.store.consume(&run.session_id, true, false)?;
+            let steered = self
+                .journal
+                .inputs_consumed(&run.session_id, Consumed::Steering)?;
             if steered > 0 && self.config.auto_approval.is_some() {
                 user_request = self.latest_user_request(&run.session_id)?;
             }
