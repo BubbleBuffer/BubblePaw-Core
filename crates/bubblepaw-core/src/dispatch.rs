@@ -327,8 +327,8 @@ impl ToolDispatcher {
         } else {
             result
         };
-        if result.content.len() > self.max_result_bytes
-            && let Ok(value) = serde_json::from_str::<Value>(&result.content)
+        if result.body().len() > self.max_result_bytes
+            && let Ok(value) = serde_json::from_str::<Value>(&result.body())
         {
             let mut summary = serde_json::json!({"error":"Tool result exceeds size limit; request smaller output. Work already performed is not undone.","resultTruncated":true});
             for key in ["handle", "status", "cursor", "exitCode"] {
@@ -337,17 +337,16 @@ impl ToolDispatcher {
                 }
             }
             return Ok(ToolResult {
-                content: summary.to_string(),
+                content: crate::text_blocks(summary.to_string()),
                 is_error: true,
                 details: None,
                 terminate: result.terminate,
                 pending: result.pending,
             });
         }
-        Ok(ToolResult {
-            content: super::runtime::bounded(&result.content, self.max_result_bytes),
-            ..result
-        })
+        let mut result = result;
+        result.bound_text(self.max_result_bytes);
+        Ok(result)
     }
 }
 

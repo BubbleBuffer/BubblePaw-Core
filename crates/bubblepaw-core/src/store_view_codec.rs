@@ -62,7 +62,10 @@ impl Store {
                     );
                 }
             }
-            metadata.as_object_mut().unwrap().remove("content");
+            // Only the text is pointed to; image blocks stay in the metadata.
+            if let Some(blocks) = metadata["content"].as_array_mut() {
+                blocks.retain(|block| block["type"] != "text");
+            }
             pointers.push(PrefixPointer::Rendered {
                 base_seq: canonical.map(|(seq, _)| seq),
                 metadata,
@@ -124,9 +127,8 @@ impl Store {
                             .context("Invalid rendered message metadata")?
                             .clone(),
                     );
-                    value["content"] = serde_json::Value::String(Self::render_text_pointers(
-                        conn, session_id, content,
-                    )?);
+                    let text = Self::render_text_pointers(conn, session_id, content)?;
+                    value["content"] = Self::content_with_text(&value["content"], text);
                     for (field, pointers) in fields {
                         value[&field] = serde_json::from_str(&Self::render_text_pointers(
                             conn, session_id, pointers,

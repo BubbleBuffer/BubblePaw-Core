@@ -210,8 +210,8 @@ impl SummarizingContext {
             .messages
             .iter()
             .filter(|message| message.role == Role::Tool)
-            .flat_map(|message| crate::images::split_refs(&message.text()).1)
-            .map(|image| image.id)
+            .flat_map(|message| message.images())
+            .map(|image| image.id.clone())
             .collect();
         ids.len().saturating_mul(IMAGE_ATTACHMENT_TOKENS)
     }

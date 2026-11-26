@@ -80,12 +80,12 @@ impl MessagesProvider {
                         .as_deref()
                         .filter(|id| !id.is_empty())
                         .ok_or_else(|| anyhow!("tool message needs call_id"))?;
-                    let body = message.text();
-                    let (text, images) = crate::images::split_wire(&body);
+                    let text = message.text();
+                    let images = crate::images::wire_images(message);
                     let content = if images.is_empty() {
-                        json!(text)
+                        json!(text.as_ref())
                     } else {
-                        let mut blocks = vec![json!({"type":"text","text":text})];
+                        let mut blocks = vec![json!({"type":"text","text":text.as_ref()})];
                         blocks.extend(images.into_iter().map(|image| json!({"type":"image","source":{"type":"base64","media_type":image["mime_type"],"data":image["data"]}})));
                         json!(blocks)
                     };

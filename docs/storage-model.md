@@ -53,16 +53,21 @@ default retention, eligibility boundaries, rebuild and re-archive, and complete
 expired-chat resource deletion. It also reports archive bytes, WAL and
 transaction counts. This is scripted acceptance without live model calls.
 
-## Message content blocks (chat store 13)
+## Message content blocks (chat store 13 and 14)
 
-`Message.content` is a list of blocks (today one `text` block). New rows store
-the list; the store's three out-of-row cases (attachment parts, large or error
-tool content, and user text already present as a blob) work on the message's
-text with the same thresholds, and leave an empty list beside the
-`_content_blob` / `_content_parts_blob` key. Rows written earlier keep the plain
-string and are read as one text block; they are never rewritten. Chat store
-version 13 only marks that a store may hold list rows, so an older program
-refuses it. Search text, token estimates and provider requests use the text.
+`Message.content` is a list of blocks: `text` blocks and `image` blocks. New
+rows store the list; the store's three out-of-row cases (attachment parts, large
+or error tool content, and user text already present as a blob) move the
+message's text with the same thresholds and leave only its image blocks beside
+the `_content_blob` / `_content_parts_blob` key. An image block holds the image's
+reference (id, session, mime type, byte length); the bytes are one attachment
+blob, and a hydrated copy used for a provider request is never serialized.
+Rows written earlier keep their form and are never rewritten: a plain string is
+read as one text block, and a `<BubblePawImages>` envelope at the end of a stored
+text (the form before version 14) is read as a text block plus image blocks, in
+the one place content is deserialized. Chat store versions 13 and 14 only mark
+that a store may hold list rows and image blocks, so an older program refuses
+it. Search text, token estimates and provider requests use the text.
 
 ## Bounded host state (2026-10-15)
 

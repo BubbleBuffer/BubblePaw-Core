@@ -537,7 +537,7 @@ impl Harness {
             run.status == "completed"
                 || (result.is_error
                     && run.status == "failed"
-                    && run.error.as_deref() == Some(result.content.as_str())),
+                    && run.error.as_deref() == Some(result.body().as_ref())),
             "{}",
             run.error.as_deref().unwrap_or("Tool run did not complete")
         );
@@ -1501,8 +1501,8 @@ impl Harness {
                     .invoke_direct(prepared, &message.id, prepared_invocation.take())
                     .await?;
                 let result = self.bound_tool_result(dispatched.result, &dispatcher);
-                let mut result_message =
-                    Store::message(&run.session_id, Role::Tool, result.content.clone());
+                let mut result_message = Store::message(&run.session_id, Role::Tool, String::new());
+                result_message.content = result.content.clone();
                 let captured_result = single_tool.map(|_| result.clone());
                 result_message.tool_call_id = Some(call.id.clone());
                 result_message.is_error = result.is_error;
@@ -1562,7 +1562,6 @@ impl Harness {
         }
     }
 }
-pub(crate) use crate::stream::bounded;
 
 #[cfg(test)]
 #[path = "runtime_tests.rs"]

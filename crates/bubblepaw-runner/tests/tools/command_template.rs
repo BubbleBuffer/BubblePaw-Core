@@ -165,7 +165,7 @@ async fn native_arguments_roundtrip_adversarial_values_without_shell_effects() {
         )
         .await
         .unwrap();
-    let started: Value = serde_json::from_str(&output.content).unwrap();
+    let started: Value = serde_json::from_str(&output.body()).unwrap();
     let done = registry
         .get("wait")
         .unwrap()
@@ -175,7 +175,7 @@ async fn native_arguments_roundtrip_adversarial_values_without_shell_effects() {
         )
         .await
         .unwrap();
-    let done: Value = serde_json::from_str(&done.content).unwrap();
+    let done: Value = serde_json::from_str(&done.body()).unwrap();
     assert_eq!(done["status"], "exited");
     assert_eq!(done["exitCode"], 0);
     let output = registry
@@ -184,7 +184,7 @@ async fn native_arguments_roundtrip_adversarial_values_without_shell_effects() {
         .invoke(context(), json!({"handle":started["handle"]}))
         .await
         .unwrap();
-    let output: Value = serde_json::from_str(&output.content).unwrap();
+    let output: Value = serde_json::from_str(&output.body()).unwrap();
     assert_eq!(output["stdout"], format!("{values:?}\n"));
     assert_eq!(output["stderr"], "");
     assert!(!directory.path().join("escaped.txt").exists());

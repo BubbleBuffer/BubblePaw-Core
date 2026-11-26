@@ -2,26 +2,12 @@
 use anyhow::{Context, Result, ensure};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bubblepaw_core::{
-    CancellationToken, Capabilities, ModelInfo, ModelRequest, ModelResponse, Provider, Role, Store,
-    TextCallback,
+    CancellationToken, Capabilities, ContentBlock, Message, ModelInfo, ModelRequest, ModelResponse,
+    Provider, Role, Store, TextCallback, text_blocks,
 };
-use serde::{Deserialize, Serialize};
+pub use bubblepaw_core::{ImageRef, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL};
 use serde_json::{Value, json};
 use std::{collections::HashSet, fs::File, io::Read, path::Path, sync::Arc};
-
-pub const MAX_IMAGE_BYTES: usize = 5_000_000;
-pub const MAX_IMAGES_PER_CALL: usize = 4;
-const OPEN: &str = "\n<BubblePawImages>\n";
-const CLOSE: &str = "\n</BubblePawImages>";
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ImageRef {
-    pub id: String,
-    pub session_id: String,
-    pub mime_type: String,
-    pub bytes: usize,
-}
 
 #[derive(Clone, Default)]
 pub(crate) struct ImageBatch {
@@ -45,19 +31,25 @@ impl ImageBatch {
             }
         }
     }
-    pub(crate) fn attach(&self, mut content: String) -> String {
+    /// `content` as a result body: its text, the omission note when images were
+    /// left out, then the collected images.
+    pub(crate) fn blocks(&self, mut content: String) -> Vec<ContentBlock> {
         if self.omitted {
             content.push_str("\n[Image limit: at most 4 distinct images per tool call; additional images were omitted. Read them in another call.]");
         }
-        append_refs(content, &self.images)
+        blocks_with_images(content, &self.images)
     }
 }
 
 fn supported(mime: &str) -> bool {
-    matches!(
-        mime,
-        "image/png" | "image/jpeg" | "image/gif" | "image/webp"
-    )
+    ImageRef::is_supported_mime(mime)
+}
+
+/// `text` followed by one image block per reference.
+pub(crate) fn blocks_with_images(text: String, images: &[ImageRef]) -> Vec<ContentBlock> {
+    let mut blocks = text_blocks(text);
+    blocks.extend(images.iter().cloned().map(ContentBlock::image));
+    blocks
 }
 pub(crate) fn mime_type(bytes: &[u8]) -> Option<&'static str> {
     if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
@@ -79,7 +71,7 @@ pub(crate) fn read_image(
     session: &str,
     path: &Path,
     relative: &str,
-) -> Result<Option<String>> {
+) -> Result<Option<Vec<ContentBlock>>> {
     let mut file = File::open(path)?;
     ensure!(file.metadata()?.is_file(), "path must be a regular file");
     let mut prefix = [0u8; 16];
@@ -88,16 +80,16 @@ pub(crate) fn read_image(
         return Ok(None);
     };
     if file.metadata()?.len() > MAX_IMAGE_BYTES as u64 {
-        return Ok(Some(json!({"path":relative,"imageOmitted":true,"note":"Image exceeds the 5 MB limit; no resize is performed. Use a smaller image."}).to_string()));
+        return Ok(Some(text_blocks(json!({"path":relative,"imageOmitted":true,"note":"Image exceeds the 5 MB limit; no resize is performed. Use a smaller image."}).to_string())));
     }
     let mut bytes = prefix[..count].to_vec();
     file.take((MAX_IMAGE_BYTES + 1 - count) as u64)
         .read_to_end(&mut bytes)?;
     if bytes.len() > MAX_IMAGE_BYTES {
-        return Ok(Some(json!({"path":relative,"imageOmitted":true,"note":"Image exceeds the 5 MB limit; no resize is performed. Use a smaller image."}).to_string()));
+        return Ok(Some(text_blocks(json!({"path":relative,"imageOmitted":true,"note":"Image exceeds the 5 MB limit; no resize is performed. Use a smaller image."}).to_string())));
     }
     let image = store_image(store, session, mime, &bytes)?;
-    Ok(Some(append_refs(json!({"path":relative,"image":image,"note":"Image attached to the tool result for image-capable providers."}).to_string(), &[image])))
+    Ok(Some(blocks_with_images(json!({"path":relative,"image":image,"note":"Image attached to the tool result for image-capable providers."}).to_string(), &[image])))
 }
 
 pub fn store_image(store: &Store, session: &str, mime: &str, bytes: &[u8]) -> Result<ImageRef> {
@@ -123,73 +115,24 @@ pub fn store_image(store: &Store, session: &str, mime: &str, bytes: &[u8]) -> Re
     Ok(image)
 }
 
-pub fn append_refs(mut text: String, images: &[ImageRef]) -> String {
-    if !images.is_empty() {
-        text.push_str(OPEN);
-        text.push_str(&json!({"images":images}).to_string());
-        text.push_str(CLOSE);
-    }
-    text
+/// The images of a hydrated message as `{mime_type, data}` values (data is
+/// base64), in order. Blocks without bytes were not hydrated and are skipped.
+pub(crate) fn wire_images(message: &Message) -> Vec<Value> {
+    message
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Image {
+                image,
+                data: Some(data),
+            } => Some(json!({"mime_type":image.mime_type,"data":STANDARD.encode(data)})),
+            _ => None,
+        })
+        .collect()
 }
 
-/// Only a final, line-delimited host envelope is interpreted. Text inside the
-/// JSON result uses escaped newlines and cannot impersonate either delimiter.
-pub fn split_refs(content: &str) -> (String, Vec<ImageRef>) {
-    let Some((body, footer)) = content.rsplit_once(CLOSE) else {
-        return (content.to_owned(), Vec::new());
-    };
-    // The generic runtime may add its bounded tool-budget footer after a result.
-    let valid_footer = footer.is_empty()
-        || footer
-            .strip_prefix("\n\n")
-            .and_then(|footer| footer.strip_suffix(" tool calls left"))
-            .is_some_and(|count| {
-                !count.is_empty() && count.bytes().all(|byte| byte.is_ascii_digit())
-            });
-    if !valid_footer {
-        return (content.to_owned(), Vec::new());
-    }
-    let Some((text, envelope)) = body.rsplit_once(OPEN) else {
-        return (content.to_owned(), Vec::new());
-    };
-    let images = serde_json::from_str::<Value>(envelope)
-        .ok()
-        .and_then(|value| serde_json::from_value::<Vec<ImageRef>>(value["images"].clone()).ok());
-    match images {
-        Some(images)
-            if images.len() <= MAX_IMAGES_PER_CALL
-                && images.iter().all(|image| {
-                    !image.session_id.is_empty()
-                        && image.session_id.len() <= 128
-                        && supported(&image.mime_type)
-                        && image.bytes <= MAX_IMAGE_BYTES
-                        && image.id.strip_prefix("image-").is_some_and(|hash| {
-                            hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
-                        })
-                }) =>
-        {
-            (format!("{text}{footer}"), images)
-        }
-        _ => (content.to_owned(), Vec::new()),
-    }
-}
-
-// This envelope exists only inside the provider call, after core observation and
-// persistence. HTTP adapters consume it before serializing their native request.
-const WIRE_OPEN: &str = "\n<BubblePawImageWire>\n";
-const WIRE_CLOSE: &str = "\n</BubblePawImageWire>";
-pub(crate) fn split_wire(content: &str) -> (&str, Vec<Value>) {
-    let Some(body) = content.strip_suffix(WIRE_CLOSE) else {
-        return (content, Vec::new());
-    };
-    let Some((text, envelope)) = body.rsplit_once(WIRE_OPEN) else {
-        return (content, Vec::new());
-    };
-    match serde_json::from_str(envelope) {
-        Ok(images) => (text, images),
-        Err(_) => (content, Vec::new()),
-    }
-}
+/// Fills the bytes of every tool-result image block, or replaces it with a
+/// note when the bytes cannot be sent. Notes close the message's text.
 pub(crate) fn hydrate_request(
     request: &mut ModelRequest,
     store: &Store,
@@ -197,55 +140,54 @@ pub(crate) fn hydrate_request(
 ) -> Result<()> {
     let mut sent = HashSet::new();
     for message in &mut request.messages {
-        if message.role != Role::Tool {
+        if message.role != Role::Tool || message.images().next().is_none() {
             continue;
         }
-        let (text, images) = split_refs(&message.text());
-        if images.is_empty() {
-            continue;
-        }
-        let mut content = text;
-        let mut wire = Vec::new();
-        if image_input {
-            for image in images {
-                if sent.contains(&image.id) {
-                    content.push_str("\n[Image already provided earlier in this request.]");
-                    continue;
+        let mut notes = String::new();
+        let mut blocks = Vec::new();
+        for block in &message.content {
+            let ContentBlock::Image { image, .. } = block else {
+                blocks.push(block.clone());
+                continue;
+            };
+            if !image_input {
+                if notes.is_empty() {
+                    notes.push_str("\n[Image input is unavailable for this model/provider; image bytes were not sent.]");
                 }
-                let Some((metadata, bytes)) = store.attachment(&image.session_id, &image.id)?
-                else {
-                    content.push_str("\n[Image unavailable: canonical attachment was not found.]");
-                    continue;
-                };
-                let stored: ImageRef =
-                    serde_json::from_str(&metadata).context("invalid image attachment metadata")?;
-                ensure!(
-                    stored == image
-                        && bytes.len() == image.bytes
-                        && mime_type(&bytes) == Some(image.mime_type.as_str()),
-                    "image attachment mismatch"
-                );
-                ensure!(
-                    format!("image-{}", bubblepaw_core::fingerprint(&bytes)) == image.id,
-                    "image attachment integrity mismatch"
-                );
-                sent.insert(image.id.clone());
-                wire.push(json!({"mime_type":image.mime_type,"data":STANDARD.encode(bytes)}));
+                continue;
             }
-        } else {
-            content.push_str("\n[Image input is unavailable for this model/provider; image bytes were not sent.]");
+            if sent.contains(&image.id) {
+                notes.push_str("\n[Image already provided earlier in this request.]");
+                continue;
+            }
+            let Some((metadata, bytes)) = store.attachment(&image.session_id, &image.id)? else {
+                notes.push_str("\n[Image unavailable: canonical attachment was not found.]");
+                continue;
+            };
+            let stored: ImageRef =
+                serde_json::from_str(&metadata).context("invalid image attachment metadata")?;
+            ensure!(
+                &stored == image
+                    && bytes.len() == image.bytes
+                    && mime_type(&bytes) == Some(image.mime_type.as_str()),
+                "image attachment mismatch"
+            );
+            ensure!(
+                format!("image-{}", bubblepaw_core::fingerprint(&bytes)) == image.id,
+                "image attachment integrity mismatch"
+            );
+            sent.insert(image.id.clone());
+            blocks.push(ContentBlock::image_with_data(image.clone(), bytes));
         }
-        if !wire.is_empty() {
-            content.push_str(WIRE_OPEN);
-            content.push_str(&serde_json::to_string(&wire)?);
-            content.push_str(WIRE_CLOSE);
+        if !notes.is_empty() {
+            blocks.push(ContentBlock::Text { text: notes });
         }
-        message.set_text(content);
+        message.content = blocks;
     }
     Ok(())
 }
 
-/// Library hosts wrap their selected provider once; canonical messages remain refs.
+/// Library hosts wrap their selected provider once; canonical messages keep image references.
 pub struct ImageProvider {
     inner: Arc<dyn Provider>,
     store: Store,
@@ -399,10 +341,7 @@ mod projection_tests {
                     tool_calls: vec![],
                     tool_call_id: Some("read-image".into()),
                     provider_state: None,
-                    content: bubblepaw_core::text_blocks(append_refs(
-                        "image read".into(),
-                        &[image],
-                    )),
+                    content: blocks_with_images("image read".into(), &[image]),
                     ..message
                 },
             ],

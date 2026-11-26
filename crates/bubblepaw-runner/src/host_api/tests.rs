@@ -341,7 +341,7 @@ async fn delete_cancels_owned_processes_and_preserves_another_sessions_job() -> 
                 CancellationToken::new(),
             )
             .await?;
-        assert!(!reply.is_error, "{}", reply.content);
+        assert!(!reply.is_error, "{}", reply.body());
     }
     let receipt = store
         .runs(&session.id)?

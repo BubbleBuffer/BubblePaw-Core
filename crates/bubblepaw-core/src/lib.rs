@@ -60,7 +60,7 @@ pub use cache_accounting::{
     CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, RequestKind, WireShape,
     request_components,
 };
-pub use content_block::{ContentBlock, plain_content, text_blocks};
+pub use content_block::*;
 pub use context_facts::{
     ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextSurfaceRebind,
     ContextTrigger, MessageTokenSource, MessageTokens, ReportedMessageTokens,

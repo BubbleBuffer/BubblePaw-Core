@@ -23,7 +23,7 @@ temporary store.
 The host publishes `<data-dir>/host.json` only after opening its control endpoint:
 
 ```json
-{"pid":1234,"endpoint":"/path/to/data/host.sock","protocol_version":5}
+{"pid":1234,"endpoint":"/path/to/data/host.sock","protocol_version":6}
 ```
 
 On Unix, the socket is inside the data directory. The directory is owned by the
@@ -110,7 +110,7 @@ be auto-denied or cleaned up by another request's event listener. Providers and
 request resources drain independently; shared `Harness::shutdown` runs once at
 host exit.
 
-## Control protocol, version 5
+## Control protocol, version 6
 
 The endpoint carries newline-delimited JSON-RPC 2.0, reusing stdio's envelopes and
 `event` records. It is private local process control, not a network service.
@@ -118,7 +118,8 @@ Records have the same 1 MiB bound as stdio requests.
 Version 2 replaces version 1's full environment snapshot with explicit references.
 Version 3 adds host-API JSON-RPC sessions (`attach.session`).
 Version 4 adds the optional `profile` parameter of `attach.session`.
-Version 5 returns message `content` as a list of blocks (see [session-api](session-api.md#message-content-blocks-host-protocol-5)).
+Version 5 returns message `content` as a list of blocks (see [session-api](session-api.md#message-content-blocks-host-protocol-5-and-6)).
+Version 6 adds the `image` content block (an image reference; see [session-api](session-api.md#message-content-blocks-host-protocol-5-and-6)).
 Mixed-version processes reject attachment; restart an older host before attaching.
 
 1. The client sends one `attach.submit` request with an ID. Its parameters are the

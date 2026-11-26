@@ -146,7 +146,7 @@ async fn current_state_and_owned_command_regenerate_after_reset_and_restart() {
         .invoke(fixture.context(), json!({"command":command,"yieldMs":0}))
         .await
         .unwrap();
-    let command: Value = serde_json::from_str(&output.content).unwrap();
+    let command: Value = serde_json::from_str(&output.body()).unwrap();
     let handle = command["handle"].as_str().unwrap();
     let note = fixture
         .notes
@@ -396,7 +396,7 @@ async fn sync_results_already_returned_add_no_per_step_notice() {
             .invoke(fixture.context(), json!({"command":ok}))
             .await
             .unwrap()
-            .content,
+            .body(),
     )
     .unwrap();
     assert_eq!(finished["status"], "exited");
@@ -410,7 +410,7 @@ async fn sync_results_already_returned_add_no_per_step_notice() {
             .invoke(fixture.context(), json!({"command":failing}))
             .await
             .unwrap()
-            .content,
+            .body(),
     )
     .unwrap();
     assert_eq!(failed["exitCode"], 3);

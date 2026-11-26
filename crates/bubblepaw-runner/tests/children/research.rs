@@ -464,8 +464,8 @@ async fn main_model_uses_ordinary_research_child_and_follows_up_in_its_persisted
         .invoke(context.clone(), json!({"id":source}))
         .await
         .unwrap();
-    assert!(!fetched.is_error, "{}", fetched.content);
-    let fetched: Value = serde_json::from_str(&fetched.content).unwrap();
+    assert!(!fetched.is_error, "{}", fetched.body());
+    let fetched: Value = serde_json::from_str(&fetched.body()).unwrap();
     assert_eq!(fetched["id"], source);
     assert_eq!(fetched["source"]["url"], page);
     assert_eq!(fetched["source"]["title"], "Fixture title");
@@ -481,8 +481,8 @@ async fn main_model_uses_ordinary_research_child_and_follows_up_in_its_persisted
         .invoke(context, json!({"query":"fixture evidence"}))
         .await
         .unwrap();
-    assert!(!searched.is_error, "{}", searched.content);
-    let searched: Value = serde_json::from_str(&searched.content).unwrap();
+    assert!(!searched.is_error, "{}", searched.body());
+    let searched: Value = serde_json::from_str(&searched.body()).unwrap();
     assert_eq!(searched["results"][0]["id"], source);
     assert_eq!(searched["results"][0]["url"], page);
     assert_eq!(search_calls.load(Ordering::SeqCst), 1);
@@ -686,7 +686,7 @@ async fn concurrent_research_profiles_share_the_ordinary_parent_child_limit() {
                 && name == "agent"
                 && result.is_error
             {
-                assert!(result.content.contains("parent agent concurrency limit"));
+                assert!(result.text_has("parent agent concurrency limit"));
                 break;
             }
         }

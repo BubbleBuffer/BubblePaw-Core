@@ -2,8 +2,9 @@
 //! upgrade steps to the current version (older), or written by a newer build,
 //! fails with `StoreSchemaError` and is left as it was.
 use anyhow::Result;
-use bubblepaw_core::{Message, Role, Store, StoreSchemaError};
+use bubblepaw_core::{ContentBlock, ImageRef, Message, Role, Store, StoreSchemaError};
 use rusqlite::Connection;
+use serde_json::json;
 use std::path::{Path, PathBuf};
 
 fn message(session: &str) -> Message {
@@ -42,7 +43,7 @@ fn populated(dir: &Path) -> Result<(String, [StoreFile; 3])> {
     Ok((
         session.id,
         [
-            ("chat", chat, 13),
+            ("chat", chat, 14),
             ("catalog", dir.join("catalog.db"), 2),
             ("serving", dir.join("serving.db"), 2),
         ],
@@ -96,8 +97,8 @@ fn a_fresh_store_reopens_with_its_data_and_the_same_versions() -> Result<()> {
 #[test]
 fn a_store_at_another_version_fails_with_a_typed_error_and_is_not_modified() -> Result<()> {
     for (index, name) in ["chat", "catalog", "serving"].into_iter().enumerate() {
-        // The chat store has an upgrade step from 12, so its older case is 11.
-        for shift in [if name == "chat" { -2_i64 } else { -1 }, 1] {
+        // The chat store has upgrade steps from 12 and 13, so its older case is 11.
+        for shift in [if name == "chat" { -3_i64 } else { -1 }, 1] {
             let dir = tempfile::tempdir()?;
             let (session, files) = populated(dir.path())?;
             let (_, path, expected) = &files[index];
@@ -146,21 +147,117 @@ fn a_foreign_database_is_still_refused_as_foreign() -> Result<()> {
 }
 
 #[test]
-fn a_version_12_chat_store_with_a_string_message_opens_at_13() -> Result<()> {
-    let dir = tempfile::tempdir()?;
-    let (session, files) = populated(dir.path())?;
-    let chat = &files[0].1;
+fn chat_stores_before_14_open_at_14_and_keep_their_messages() -> Result<()> {
+    for from in [12, 13] {
+        let dir = tempfile::tempdir()?;
+        let (session, files) = populated(dir.path())?;
+        let chat = &files[0].1;
+        let conn = Connection::open(chat)?;
+        let data: String = conn.query_row("SELECT data FROM messages", [], |row| row.get(0))?;
+        let mut data: serde_json::Value = serde_json::from_str(&data)?;
+        data["content"] = "kept across restart".into();
+        conn.execute("UPDATE messages SET data=?1", [data.to_string()])?;
+        drop(conn);
+        set_version(chat, from)?;
+
+        let store = Store::open_data_dir(dir.path())?;
+        assert_eq!(store.messages(&session)?[0].text(), "kept across restart");
+        drop(store);
+        assert_eq!(pragma(chat, "user_version")?, 14, "from {from}");
+    }
+    Ok(())
+}
+
+fn raw_message(chat: &Path) -> Result<serde_json::Value> {
     let conn = Connection::open(chat)?;
     let data: String = conn.query_row("SELECT data FROM messages", [], |row| row.get(0))?;
-    let mut data: serde_json::Value = serde_json::from_str(&data)?;
-    data["content"] = "kept across restart".into();
-    conn.execute("UPDATE messages SET data=?1", [data.to_string()])?;
-    drop(conn);
-    set_version(chat, 12)?;
+    Ok(serde_json::from_str(&data)?)
+}
 
-    let store = Store::open_data_dir(dir.path())?;
-    assert_eq!(store.messages(&session)?[0].text(), "kept across restart");
-    drop(store);
-    assert_eq!(pragma(chat, "user_version")?, 13);
+/// Every stored form of an image message reads as the same blocks, and a write
+/// stores the block form: the image beside its text, never an envelope in it.
+#[test]
+fn image_messages_read_the_same_from_every_stored_form_and_write_blocks() -> Result<()> {
+    let image = ImageRef {
+        id: format!("image-{:064x}", 7),
+        session_id: "s".into(),
+        mime_type: "image/png".into(),
+        bytes: 12,
+    };
+    let envelope = format!(
+        "\n<BubblePawImages>\n{}\n</BubblePawImages>",
+        json!({"images":[image]})
+    );
+    let block = json!({"type":"image","image":image});
+    let expected = vec![
+        ContentBlock::Text {
+            text: "look".into(),
+        },
+        ContentBlock::image(image.clone()),
+    ];
+    for (name, stored) in [
+        ("legacy string", json!(format!("look{envelope}"))),
+        (
+            "list, envelope in text",
+            json!([{"type":"text","text":format!("look{envelope}")}]),
+        ),
+        ("block form", json!([{"type":"text","text":"look"}, block])),
+    ] {
+        let dir = tempfile::tempdir()?;
+        let (session, files) = populated(dir.path())?;
+        let chat = &files[0].1;
+        let conn = Connection::open(chat)?;
+        let mut data = raw_message(chat)?;
+        data["content"] = stored;
+        conn.execute("UPDATE messages SET data=?1", [data.to_string()])?;
+        drop(conn);
+        let store = Store::open_data_dir(dir.path())?;
+        assert_eq!(store.messages(&session)?[0].content, expected, "{name}");
+    }
+
+    // A write keeps the image block in the row, also when the text moves to a blob.
+    for (name, text) in [("small", "look".to_owned()), ("large", "x".repeat(5000))] {
+        let dir = tempfile::tempdir()?;
+        let (session, files) = populated(dir.path())?;
+        let mut tool = message(&session);
+        tool.id = format!("tool-{name}");
+        tool.role = Role::Tool;
+        tool.tool_call_id = Some("call".into());
+        tool.content = vec![
+            ContentBlock::Text { text: text.clone() },
+            ContentBlock::image_with_data(image.clone(), vec![1u8, 2, 3]),
+        ];
+        let store = Store::open_data_dir(dir.path())?;
+        store.append_batch(&[tool])?;
+        let chat = &files[0].1;
+        store.idle_checkpoint()?;
+        let conn = Connection::open(chat)?;
+        let raw: String = conn.query_row(
+            "SELECT data FROM messages WHERE message_id=?1",
+            [format!("tool-{name}")],
+            |row| row.get(0),
+        )?;
+        let raw: serde_json::Value = serde_json::from_str(&raw)?;
+        assert!(!raw.to_string().contains("BubblePawImages"), "{name}");
+        assert!(
+            raw["content"].as_array().unwrap().contains(&block),
+            "{name}: {raw}"
+        );
+        assert!(
+            !raw.to_string().contains("AQID"),
+            "{name}: bytes are never stored"
+        );
+        let read = store
+            .messages(&session)?
+            .into_iter()
+            .find(|message| message.role == Role::Tool)
+            .unwrap();
+        assert_eq!(read.text(), text, "{name}");
+        assert_eq!(
+            read.content.last(),
+            Some(&ContentBlock::image(image.clone())),
+            "{name}"
+        );
+    }
     Ok(())
 }

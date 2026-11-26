@@ -220,8 +220,8 @@ async fn call(registry: &ToolRegistry, owner: &str, name: &str, input: Value) ->
         .invoke(context(owner), input)
         .await
         .unwrap();
-    assert!(!result.is_error, "{}", result.content);
-    serde_json::from_str(&result.content).unwrap()
+    assert!(!result.is_error, "{}", result.body());
+    serde_json::from_str(&result.body()).unwrap()
 }
 /// The JS reply before any state-notice suffix.
 fn reply(content: &str) -> Value {

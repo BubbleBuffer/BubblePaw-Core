@@ -147,14 +147,14 @@ impl Fixture {
             .await
             .unwrap();
         assert!(!result.is_error && !result.pending);
-        assert!(result.content.len() <= 60 * 1024);
+        assert!(result.body().len() <= 60 * 1024);
         assert!(
             tiktoken_rs::o200k_base_singleton()
-                .encode_ordinary(&result.content)
+                .encode_ordinary(&result.body())
                 .len()
                 <= 9_000
         );
-        serde_json::from_str(&result.content).unwrap()
+        serde_json::from_str(&result.body()).unwrap()
     }
 }
 
@@ -506,7 +506,7 @@ async fn id_filters_reject_conflicts_foreign_ids_and_forks_keep_only_their_origi
         .await
         .unwrap();
     assert_eq!(
-        serde_json::from_str::<Value>(&index.content).unwrap()["chapters"],
+        serde_json::from_str::<Value>(&index.body()).unwrap()["chapters"],
         json!([])
     );
     let fork_messages = fixture.store.messages(&fork.id).unwrap();
@@ -521,7 +521,7 @@ async fn id_filters_reject_conflicts_foreign_ids_and_forks_keep_only_their_origi
         .await
         .unwrap();
     assert_eq!(
-        serde_json::from_str::<Value>(&lookup.content).unwrap()["messages"][0]["text"],
+        serde_json::from_str::<Value>(&lookup.body()).unwrap()["messages"][0]["text"],
         "original local"
     );
     assert!(
@@ -791,7 +791,7 @@ async fn invalid_arguments_and_session_isolation_are_enforced_without_dispatcher
         .await
         .unwrap();
     assert_eq!(
-        serde_json::from_str::<Value>(&foreign_result.content).unwrap()["messages"][0]["text"],
+        serde_json::from_str::<Value>(&foreign_result.body()).unwrap()["messages"][0]["text"],
         "FOREIGN ONLY"
     );
     let unknown = fixture

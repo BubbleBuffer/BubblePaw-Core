@@ -79,8 +79,8 @@ async fn file_tools_read_write_and_edit_both_scratchpads_through_the_dispatcher(
         let result = fixture
             .call("write", json!({"path":path,"content":"old\r\n"}))
             .await?;
-        assert!(!result.is_error, "{}", result.content);
-        let value: Value = serde_json::from_str(&result.content)?;
+        assert!(!result.is_error, "{}", result.body());
+        let value: Value = serde_json::from_str(&result.body())?;
         assert_eq!(value, json!({"path":path,"bytes":5,"created":true}));
         let result = fixture
             .call(
@@ -88,14 +88,14 @@ async fn file_tools_read_write_and_edit_both_scratchpads_through_the_dispatcher(
                 json!({"path":path,"old_string":"old","new_string":"new"}),
             )
             .await?;
-        assert!(!result.is_error, "{}", result.content);
+        assert!(!result.is_error, "{}", result.body());
         assert_eq!(
-            serde_json::from_str::<Value>(&result.content)?,
+            serde_json::from_str::<Value>(&result.body())?,
             json!({"path":path,"replacements":1})
         );
         let result = fixture.call("read", json!({"path":path})).await?;
-        assert!(!result.is_error, "{}", result.content);
-        assert_eq!(result.content, "new\r\n");
+        assert!(!result.is_error, "{}", result.body());
+        assert_eq!(result.body(), "new\r\n");
         assert_eq!(fs::read(&path)?, b"new\r\n");
     }
     assert!(
@@ -111,7 +111,7 @@ async fn file_tools_read_write_and_edit_both_scratchpads_through_the_dispatcher(
             json!({"path":"workspace.txt","content":"workspace"}),
         )
         .await?;
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.body());
     assert_eq!(
         fs::read_to_string(fixture.root.path().join("workspace.txt"))?,
         "workspace"

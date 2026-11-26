@@ -77,7 +77,7 @@ async fn root_question_accepts_free_text_and_cancellation() -> Result<()> {
         "C, with details",
     )?;
     assert!(answer.live);
-    let result: Value = serde_json::from_str(&task.await??.content)?;
+    let result: Value = serde_json::from_str(&task.await??.body())?;
     assert_eq!(result["answer"], "C, with details");
     assert!(tools.pending(&session)?.is_none());
     // This direct-tool fixture has no run metadata. Use another session
@@ -90,7 +90,7 @@ async fn root_question_accepts_free_text_and_cancellation() -> Result<()> {
         tokio::spawn(async move { task_tools.ask(call_context, json!({"text":"Again?"})).await });
     pending(&tools, &cancelled_session).await?;
     token.cancel();
-    let result: Value = serde_json::from_str(&task.await??.content)?;
+    let result: Value = serde_json::from_str(&task.await??.body())?;
     assert_eq!(result["status"], "cancelled");
     assert!(tools.pending(&cancelled_session)?.is_none());
     Ok(())
@@ -108,7 +108,7 @@ async fn unattended_root_returns_immediately_but_child_routes_to_direct_parent()
         &tools
             .ask(context(&root), json!({"text":"Unavailable?"}))
             .await?
-            .content,
+            .body(),
     )?;
     assert_eq!(result["status"], "no_user_available");
     assert_eq!(store.storage_stats()?.transaction_count, before);
@@ -125,7 +125,7 @@ async fn unattended_root_returns_immediately_but_child_routes_to_direct_parent()
     assert_eq!(notices.len(), 1);
     assert!(notices[0].text.contains("waiting_for_answer"));
     assert!(tools.cancel(&grandchild)?);
-    assert!(task.await??.content.contains("cancelled"));
+    assert!(task.await??.text_has("cancelled"));
     Ok(())
 }
 #[tokio::test]
@@ -292,7 +292,7 @@ async fn user_answer_replaces_waiting_notice_and_both_event_streams_include_attr
     tools
         .answer_child_as_user(&parent, &child, id, "Keep the original")
         .await?;
-    let result: Value = serde_json::from_str(&task.await??.content)?;
+    let result: Value = serde_json::from_str(&task.await??.body())?;
     assert_eq!(result["answer"], "Keep the original");
     assert_eq!(result["answered_by"], "user");
     assert!(tools.pending(&child)?.is_none());

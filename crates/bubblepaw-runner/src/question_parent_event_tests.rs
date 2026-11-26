@@ -74,7 +74,7 @@ async fn transition_case(store: &Store) -> Result<()> {
                 assert!(questions.cancel(&child)?);
             }
         }
-        let result: Value = serde_json::from_str(&task.await??.content)?;
+        let result: Value = serde_json::from_str(&task.await??.body())?;
         let resolved_events = question_events(&harness, &parent, asked_events[0].sequence)?;
         let after_resolve = store.storage_stats()?;
         // Answers accept one generated child input after the atomic state

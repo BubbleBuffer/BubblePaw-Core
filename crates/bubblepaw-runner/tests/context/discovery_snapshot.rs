@@ -117,8 +117,8 @@ async fn js_allowlist_filters_help_discovery_and_exec_invocation() {
         assert!(!help.contains(hidden), "hidden {hidden}: {help}");
     }
     let discovered = fixture.js("return {list:await tools.$list(), search:await tools.$search('select:read,exec'), exposed:Object.keys(tools)};", options.tool_names.clone()).await;
-    assert!(!discovered.is_error, "{}", discovered.content);
-    let discovered: Value = serde_json::from_str(&discovered.content).unwrap();
+    assert!(!discovered.is_error, "{}", discovered.body());
+    let discovered: Value = serde_json::from_str(&discovered.body()).unwrap();
     assert_eq!(
         discovered["list"]
             .as_array()
@@ -137,11 +137,11 @@ async fn js_allowlist_filters_help_discovery_and_exec_invocation() {
             options.tool_names,
         )
         .await;
-    assert!(refused.is_error, "{}", refused.content);
+    assert!(refused.is_error, "{}", refused.body());
     assert!(
-        refused.content.contains("not available in this run"),
+        refused.text_has("not available in this run"),
         "{}",
-        refused.content
+        refused.body()
     );
     assert!(!fixture.root.path().join("unauthorized.txt").exists());
     // The allowed target remains executable through the same adapter.
@@ -151,9 +151,9 @@ async fn js_allowlist_filters_help_discovery_and_exec_invocation() {
             Some(vec!["read".into()]),
         )
         .await;
-    assert!(!read.is_error, "{}", read.content);
+    assert!(!read.is_error, "{}", read.body());
     assert_eq!(
-        serde_json::from_str::<Value>(read.content.split("\n[---]\n").next().unwrap()).unwrap()["content"],
+        serde_json::from_str::<Value>(read.body().split("\n[---]\n").next().unwrap()).unwrap()["content"],
         "readable"
     );
     fixture.shutdown().await;
@@ -175,8 +175,8 @@ async fn read_only_js_discovery_and_help_exclude_write_capabilities() {
         assert!(!help.contains(hidden), "hidden {hidden}: {help}");
     }
     let result = fixture.js("return {list:await tools.$list(), search:await tools.$search('select:read,edit,write,exec')};", None).await;
-    assert!(!result.is_error, "{}", result.content);
-    let result: Value = serde_json::from_str(&result.content).unwrap();
+    assert!(!result.is_error, "{}", result.body());
+    let result: Value = serde_json::from_str(&result.body()).unwrap();
     assert_eq!(
         result["search"]["unknown"],
         json!(["edit", "write", "exec"])
@@ -306,14 +306,14 @@ async fn actual_js_native_and_named_exec_share_allowlist_and_approval_refusals()
             )
             .await
             .unwrap();
-        assert!(direct.is_error, "{}", direct.content);
-        assert!(named.is_error, "{}", named.content);
+        assert!(direct.is_error, "{}", direct.body());
+        assert!(named.is_error, "{}", named.body());
         assert_eq!(direct.content, named.content);
         let js = js_harness.call_tool(&js_session, "js", json!({"code":"try { await tools.exec({command:'fixture'}); throw Error('executed'); } catch(error) { return error.message; }"}), options, CancellationToken::new()).await.unwrap();
-        assert!(!js.is_error, "{}", js.content);
+        assert!(!js.is_error, "{}", js.body());
         assert_eq!(
-            serde_json::from_str::<String>(&js.content).unwrap(),
-            direct.content
+            serde_json::from_str::<String>(&js.body()).unwrap(),
+            direct.body()
         );
     }
     assert_eq!(calls.load(Ordering::Relaxed), 0);

@@ -1088,7 +1088,7 @@ impl Tool for JsTool {
                 )
             }
         };
-        result.content = images.lock().unwrap().attach(result.content);
+        result.content = images.lock().unwrap().blocks(result.owned_text());
         Ok(result)
     }
 }
@@ -1620,7 +1620,7 @@ async fn host_call(owner: &Owner, call: HostCall, artifacts: Arc<ArtifactStore>)
         Ok(result) if !result.is_error => result,
         result => {
             let cause = match result {
-                Ok(result) => result.content,
+                Ok(result) => result.owned_text(),
                 Err(error) => format!("{error:#}"),
             };
             if process_call {
@@ -1629,7 +1629,7 @@ async fn host_call(owner: &Owner, call: HostCall, artifacts: Arc<ArtifactStore>)
             bail!("{cause}");
         }
     };
-    let (text, images) = crate::images::split_refs(&result.content);
+    let (text, images) = (result.owned_text(), result.images().cloned().collect());
     owner.images.lock().unwrap().collect(images);
     let value = serde_json::from_str(&text).unwrap_or(Value::String(text));
     if process_call

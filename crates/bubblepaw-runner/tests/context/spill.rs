@@ -130,7 +130,7 @@ impl Fixture {
             .find(|message| message.role == Role::Tool)
             .unwrap();
         ToolResult {
-            content: message.text().into_owned(),
+            content: message.content.clone(),
             is_error: message.is_error,
             details: None,
             terminate: false,
@@ -139,8 +139,8 @@ impl Fixture {
     }
     async fn cell(&self, code: &str) -> Value {
         let result = self.cell_for(&self.session, code).await;
-        assert!(!result.is_error, "{}", result.content);
-        serde_json::from_str(result.content.split("\n[---]\n").next().unwrap()).unwrap()
+        assert!(!result.is_error, "{}", result.body());
+        serde_json::from_str(result.body().split("\n[---]\n").next().unwrap()).unwrap()
     }
     async fn shutdown(&self) {
         self.mode.shutdown().await;
@@ -191,9 +191,9 @@ async fn js_returned_native_text_spills_all_bytes_and_reads_own_files_only() {
         .await;
     assert!(rejected.is_error);
     assert!(
-        rejected.content.contains("outside this chat"),
+        rejected.text_has("outside this chat"),
         "{}",
-        rejected.content
+        rejected.body()
     );
     let traversal = Path::new(path)
         .parent()

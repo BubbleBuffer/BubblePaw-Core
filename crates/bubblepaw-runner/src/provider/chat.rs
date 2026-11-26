@@ -198,14 +198,14 @@ impl ChatCompletionsProvider {
             // Tool history remains native even when a host stops offering new
             // tools on the final round. Opaque reasoning cannot replace it.
             if message.role == Role::Tool {
-                let body = message.text();
-                let (text, images) = crate::images::split_wire(&body);
+                let text = message.text();
+                let images = crate::images::wire_images(message);
                 if map_sources && !images.is_empty() {
                     image_sources.push(mapping.len());
                 }
                 pending_images.extend(images);
                 messages.last_mut().unwrap()["content"] =
-                    json!(tool_wire::error_text(message, text));
+                    json!(tool_wire::error_text(message, &text));
                 messages.last_mut().unwrap()["tool_call_id"] = json!(
                     message
                         .tool_call_id

@@ -328,10 +328,10 @@ impl ToolObservation {
         self.finished = true;
         match result {
             Ok(result) => {
-                let content = serde_json::from_str::<Value>(&result.content)
-                    .unwrap_or_else(|_| Value::String(result.content.clone()));
+                let content = serde_json::from_str::<Value>(&result.body())
+                    .unwrap_or_else(|_| Value::String(result.owned_text()));
                 let process = process_metrics(&self.tool, &content);
-                self.observer.emit(self.scope.clone(), "tool_finished", json!({"elapsed_ms":self.started.elapsed().as_millis() as u64,"is_error":result.is_error,"pending":result.pending,"result_bytes":result.content.len(),"result_fingerprint":fingerprint(result.content.as_bytes()),"process":process}), Some(json!({"content":content,"is_error":result.is_error,"pending":result.pending})));
+                self.observer.emit(self.scope.clone(), "tool_finished", json!({"elapsed_ms":self.started.elapsed().as_millis() as u64,"is_error":result.is_error,"pending":result.pending,"result_bytes":result.body().len(),"result_fingerprint":fingerprint(result.body().as_bytes()),"process":process}), Some(json!({"content":content,"is_error":result.is_error,"pending":result.pending})));
             }
             Err(error) => self.observer.failure(
                 self.scope.clone(),

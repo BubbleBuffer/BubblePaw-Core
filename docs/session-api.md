@@ -744,10 +744,15 @@ Archiving/archived roots have `usage: null` in lists; reporting does not restore
 them. Unavailable descendants are listed in `unavailable_session_ids` and omitted
 from the partial totals.
 
-## Message content blocks (host protocol 5)
+## Message content blocks (host protocol 5 and 6)
 
-A message's `content` is a list of blocks, not a string. Today there is one
-block kind, `text`; a message holds one text block with the text it always had.
+A message's `content` is a list of blocks, not a string. There are two block
+kinds: `text`, and (protocol 6) `image`, a reference to an image stored as a
+session attachment. A message holds one text block with its text; images follow
+it, and a tool result's budget footer ("N tool calls left") is a text block after
+the images. An image block is `{"type":"image","image":{"id","session_id","mime_type","bytes"}}`.
+Image bytes are never part of a message and never cross the host protocol; the
+runner reads them from the attachment store when it builds a provider request.
 Every host method that returns messages (`session.history`, `history.messages`,
 `history.range`, session snapshots and events) uses the list form. Inputs are
 unchanged: `session.start`, `session.steer` and the other methods that take
@@ -755,10 +760,12 @@ text still take plain strings. Clients that read `content` as a string must read
 the text blocks instead; Rust embedders call `message.text()`. A message with
 no text has an empty list. New block kinds may be added, so clients ignore kinds
 they do not know. `bubblepaw history`, `bubblepaw export` and the provider
-extension protocol keep the plain string.
+extension protocol keep the plain string, with each image written as
+`[image: <mime>, <bytes> bytes]` (for example `[image: image/png, 4096 bytes]`).
 
 ```json
 {"id":"m1","session_id":"s1","role":"user","content":[{"type":"text","text":"Fix the failing test"}],"tool_calls":[]}
+{"id":"m2","session_id":"s1","role":"tool","content":[{"type":"text","text":"read ok"},{"type":"image","image":{"id":"image-<sha256>","session_id":"s1","mime_type":"image/png","bytes":4096}}],"tool_call_id":"c1"}
 ```
 
 ## Local process attachment

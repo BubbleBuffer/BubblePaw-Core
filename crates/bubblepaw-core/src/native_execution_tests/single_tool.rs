@@ -31,7 +31,7 @@ async fn single_tool_call_validates_names_arguments_and_entrypoint_restrictions(
             .call_tool(&session.id, name, input, options, CancellationToken::new())
             .await?;
         assert!(result.is_error);
-        assert!(result.content.contains(expected), "{}", result.content);
+        assert!(result.text_has(expected), "{}", result.body());
         assert!(store.pending_effects(&session.id)?.is_empty());
         assert_eq!(harness.wait_for_idle(&session.id).await?.status, "failed");
     }
@@ -99,11 +99,9 @@ async fn single_tool_call_refuses_interactive_approval_direct_and_nested_but_hon
         .await??;
         assert!(result.is_error);
         assert!(
-            result
-                .content
-                .contains("Interactive approval is unavailable"),
+            result.text_has("Interactive approval is unavailable"),
             "{}",
-            result.content
+            result.body()
         );
         assert!(harness.pending_approvals(&session.id)?.is_empty());
         assert!(store.pending_effects(&session.id)?.is_empty());
@@ -124,7 +122,7 @@ async fn single_tool_call_refuses_interactive_approval_direct_and_nested_but_hon
                 CancellationToken::new(),
             )
             .await?;
-        assert!(!allowed.is_error, "{}", allowed.content);
+        assert!(!allowed.is_error, "{}", allowed.body());
         assert_eq!(capability.calls.load(Ordering::SeqCst), 1);
         assert!(provider.requests.lock().unwrap().is_empty());
     }

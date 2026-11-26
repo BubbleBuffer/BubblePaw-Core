@@ -164,18 +164,18 @@ impl SpillStore {
         mut result: ToolResult,
         limit: usize,
     ) -> Result<ToolResult> {
-        if result.content.len() <= limit {
+        if result.body().len() <= limit {
             return Ok(result);
         }
         let mut receipt = json!({"truncated":true,"previewFormat":"text","preview":""});
-        match self.save(&context.session_id, &result.content) {
+        match self.save(&context.session_id, &result.body()) {
             Ok(reference) => receipt["fullOutput"] = reference,
             Err(error) => {
                 receipt["fullOutputError"] = json!(format!("Could not save full output: {error}"))
             }
         }
         // Preserve useful process handles and status even when a native result spills.
-        if let Ok(value) = serde_json::from_str::<Value>(&result.content) {
+        if let Ok(value) = serde_json::from_str::<Value>(&result.body()) {
             for key in ["handle", "status", "cursor", "exitCode"] {
                 if let Some(value) = value.get(key)
                     && value.to_string().len() <= 1024
@@ -186,13 +186,13 @@ impl SpillStore {
         }
         let mut budget = limit.saturating_sub(receipt.to_string().len() + 128) / 6;
         loop {
-            receipt["preview"] = json!(preview(&result.content, budget));
+            receipt["preview"] = json!(preview(&result.body(), budget));
             if receipt.to_string().len() <= limit || budget == 0 {
                 break;
             }
             budget /= 2;
         }
-        result.content = receipt.to_string();
+        result.set_content_text(receipt.to_string());
         Ok(result)
     }
 }

@@ -237,7 +237,7 @@ impl Tool for Composite {
         let read = dispatcher
             .invoke(context.clone(), "guarded", serde_json::json!({"count":1}))
             .await?;
-        assert_eq!(read.content, "nested read payload");
+        assert_eq!(read.body(), "nested read payload");
         dispatcher.emit_output(
             &context,
             "cell-1",

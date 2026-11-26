@@ -404,8 +404,8 @@ async fn modern_discovery_and_json_sse_calls_are_stateless_and_metadata_matches(
     let definition = tool(&host, "echo").definition();
     assert!(!definition.read_only);
     assert_eq!(definition.approval, Approval::Confirm);
-    assert_eq!(invoke(&host, json!({})).await.content, "ok");
-    assert_eq!(invoke(&host, json!({"sse":true})).await.content, "streamed");
+    assert_eq!(invoke(&host, json!({})).await.body(), "ok");
+    assert_eq!(invoke(&host, json!({"sse":true})).await.body(), "streamed");
     host.shutdown(Duration::ZERO).await;
     let requests = fixture.requests();
     assert_eq!(
@@ -479,9 +479,9 @@ async fn legacy_negotiation_session_roundtrip_json_sse_and_delete() {
         let root = tempfile::tempdir().unwrap();
         let host = start(fixture.config(), root.path()).await;
         assert!(host.warnings().is_empty(), "{:?}", host.warnings());
-        assert_eq!(invoke(&host, json!({})).await.content, "ok");
+        assert_eq!(invoke(&host, json!({})).await.body(), "ok");
         assert_eq!(
-            invoke(&host, json!({"sse":true})).await.content,
+            invoke(&host, json!({"sse":true})).await.body(),
             "legacy stream"
         );
         host.shutdown(Duration::from_secs(1)).await;
@@ -570,9 +570,9 @@ async fn stale_session_404_reinitializes_once_without_stale_id_and_retries_rejec
     let root = tempfile::tempdir().unwrap();
     let host = start(fixture.config(), root.path()).await;
     let recovered = invoke(&host, json!({"stale":true})).await;
-    assert!(!recovered.is_error, "{}", recovered.content);
-    assert_eq!(recovered.content, "ok");
-    assert_eq!(invoke(&host, json!({"fresh":true})).await.content, "ok");
+    assert!(!recovered.is_error, "{}", recovered.body());
+    assert_eq!(recovered.body(), "ok");
+    assert_eq!(invoke(&host, json!({"fresh":true})).await.body(), "ok");
     host.shutdown(Duration::from_secs(1)).await;
     let requests = fixture.requests();
     let initialize: Vec<_> = requests
@@ -634,11 +634,11 @@ async fn disconnected_call_is_unknown_never_post_replayed_and_next_invocation_wo
         let host = start(fixture.config(), root.path()).await;
         let failed = invoke(&host, json!({"disconnect":true})).await;
         assert!(
-            failed.is_error && failed.content.contains("unknown"),
+            failed.is_error && failed.text_has("unknown"),
             "{}",
-            failed.content
+            failed.body()
         );
-        assert_eq!(invoke(&host, json!({})).await.content, "ok");
+        assert_eq!(invoke(&host, json!({})).await.body(), "ok");
         host.shutdown(Duration::ZERO).await;
         let requests = fixture.requests();
         assert_eq!(calls(&requests).len(), 2);
@@ -676,7 +676,7 @@ async fn legacy_sse_priming_resumes_with_cursor_and_retry_without_replaying_post
     .await;
     let root = tempfile::tempdir().unwrap();
     let host = start(fixture.config(), root.path()).await;
-    assert_eq!(invoke(&host, json!({})).await.content, "resumed");
+    assert_eq!(invoke(&host, json!({})).await.body(), "resumed");
     host.shutdown(Duration::from_secs(1)).await;
     let requests = fixture.requests();
     assert_eq!(calls(&requests).len(), 1);
@@ -719,9 +719,9 @@ async fn interrupted_sse_without_cursor_or_with_get_405_is_unknown_without_legac
         let host = start(fixture.config(), root.path()).await;
         let failed = invoke(&host, json!({})).await;
         assert!(
-            failed.is_error && failed.content.contains("unknown"),
+            failed.is_error && failed.text_has("unknown"),
             "{}",
-            failed.content
+            failed.body()
         );
         host.shutdown(Duration::from_secs(1)).await;
         let requests = fixture.requests();
@@ -777,8 +777,8 @@ async fn concurrent_legacy_streams_resume_their_own_ids_and_results() {
         invoke(&host, json!({"text":"first"})),
         invoke(&host, json!({"text":"second"}))
     );
-    assert_eq!(first.content, "first");
-    assert_eq!(second.content, "second");
+    assert_eq!(first.body(), "first");
+    assert_eq!(second.body(), "second");
     host.shutdown(Duration::from_secs(1)).await;
     let requests = fixture.requests();
     assert_eq!(calls(&requests).len(), 2);
@@ -817,19 +817,19 @@ async fn malformed_sse_is_bounded_unknown_and_never_replayed() {
         let before = Instant::now();
         let failed = invoke(&host, json!({})).await;
         assert!(
-            failed.is_error && failed.content.contains("unknown"),
+            failed.is_error && failed.text_has("unknown"),
             "{}",
-            failed.content
+            failed.body()
         );
         assert!(
-            failed.content.len() < 1024,
+            failed.body().len() < 1024,
             "untrusted SSE echoed into diagnostic"
         );
         if oversized {
             assert!(
-                failed.content.contains("limit"),
+                failed.text_has("limit"),
                 "oversized frame reached timeout: {}",
-                failed.content
+                failed.body()
             );
         }
         assert!(before.elapsed() < Duration::from_secs(3));
@@ -854,7 +854,7 @@ async fn modern_timeout_and_cancellation_close_call_without_post_replay_or_notif
     config.call_timeout_secs = 1;
     let host = start(config, root.path()).await;
     let failed = invoke(&host, json!({"slow":true})).await;
-    assert!(failed.is_error && failed.content.contains("outcome unknown"));
+    assert!(failed.is_error && failed.text_has("outcome unknown"));
     let echo = tool(&host, "echo");
     let context = context();
     let cancellation = context.cancellation.clone();
@@ -863,7 +863,7 @@ async fn modern_timeout_and_cancellation_close_call_without_post_replay_or_notif
     cancellation.cancel();
     let cancelled = pending.await.unwrap();
     assert!(cancelled.is_err() || cancelled.as_ref().is_ok_and(|result| result.is_error));
-    assert_eq!(invoke(&host, json!({})).await.content, "ok");
+    assert_eq!(invoke(&host, json!({})).await.body(), "ok");
     host.shutdown(Duration::ZERO).await;
     let requests = fixture.requests();
     assert_eq!(calls(&requests).len(), 3);
@@ -902,7 +902,7 @@ async fn annotated_nested_primitives_mirror_and_encode_headers_without_changing_
     assert!(host.warnings().is_empty(), "{:?}", host.warnings());
     let input = json!({"plain":"ordinary", "unicode":"猫", "space":" x ",
         "sentinel":"=?base64?eA==?=", "nested":{"count":42,"enabled":false}});
-    assert_eq!(invoke(&host, input.clone()).await.content, "ok");
+    assert_eq!(invoke(&host, input.clone()).await.body(), "ok");
     host.shutdown(Duration::ZERO).await;
     let requests = fixture.requests();
     let call = calls(&requests)[0];
@@ -954,7 +954,7 @@ async fn invalid_header_annotations_exclude_tools_with_bounded_warnings() {
     );
     assert_eq!(host.warnings().len(), count, "{:?}", host.warnings());
     assert!(host.warnings().iter().all(|warning| warning.len() < 512));
-    assert_eq!(invoke(&host, json!({})).await.content, "ok");
+    assert_eq!(invoke(&host, json!({})).await.body(), "ok");
     host.shutdown(Duration::ZERO).await;
     fixture.close().await;
 }
@@ -976,7 +976,7 @@ async fn modern_closed_sse_never_attempts_get_even_with_event_id() {
     let root = tempfile::tempdir().unwrap();
     let host = start(fixture.config(), root.path()).await;
     let result = invoke(&host, json!({})).await;
-    assert!(result.is_error && result.content.contains("unknown"));
+    assert!(result.is_error && result.text_has("unknown"));
     host.shutdown(Duration::ZERO).await;
     let requests = fixture.requests();
     assert_eq!(calls(&requests).len(), 1);
@@ -1033,9 +1033,9 @@ async fn unsupported_modern_input_required_is_not_followed_or_replayed() {
     let result = invoke(&host, json!({})).await;
     assert!(result.is_error);
     assert!(
-        result.content.contains("input") && result.content.contains("unsupported"),
+        result.text_has("input") && result.text_has("unsupported"),
         "{}",
-        result.content
+        result.body()
     );
     host.shutdown(Duration::ZERO).await;
     assert_eq!(calls(&fixture.requests()).len(), 1);
@@ -1096,8 +1096,8 @@ async fn env_header_child() {
     let host = start(config, root.path()).await;
     assert!(host.warnings().is_empty(), "{:?}", host.warnings());
     let result = invoke(&host, json!({})).await;
-    assert!(result.content.contains("[redacted]"));
-    assert!(!result.content.contains(SYNTHETIC_VALUE));
+    assert!(result.text_has("[redacted]"));
+    assert!(!result.text_has(SYNTHETIC_VALUE));
     host.shutdown(Duration::ZERO).await;
     assert!(
         fixture
@@ -1156,7 +1156,7 @@ async fn modern_sse_discovery_and_unicode_tool_name_header_encoding() {
     assert!(host.warnings().is_empty(), "{:?}", host.warnings());
     assert_eq!(host.tools().len(), 1);
     let result = host.tools()[0].invoke(context(), json!({})).await.unwrap();
-    assert_eq!(result.content, "ok");
+    assert_eq!(result.body(), "ok");
     host.shutdown(Duration::ZERO).await;
     let requests = fixture.requests();
     assert_eq!(requests.len(), 2);
@@ -1279,9 +1279,9 @@ async fn concurrent_stale_calls_do_not_use_session_from_failed_reinitialization(
     );
     assert_eq!(
         if first.is_error {
-            &second.content
+            second.body()
         } else {
-            &first.content
+            first.body()
         },
         "ok"
     );
@@ -1380,7 +1380,7 @@ async fn resumed_initialize_result_assigns_session_before_legacy_requests() {
         let root = tempfile::tempdir().unwrap();
         let host = start(fixture.config(), root.path()).await;
         assert!(host.warnings().is_empty(), "{:?}", host.warnings());
-        assert_eq!(invoke(&host, json!({})).await.content, "ok");
+        assert_eq!(invoke(&host, json!({})).await.body(), "ok");
         host.shutdown(Duration::from_secs(1)).await;
         let requests = fixture.requests();
         assert_eq!(
@@ -1436,7 +1436,7 @@ async fn strict_older_server_negotiates_header_free_initialize_before_versioned_
     let root = tempfile::tempdir().unwrap();
     let host = start(fixture.config(), root.path()).await;
     assert!(host.warnings().is_empty(), "{:?}", host.warnings());
-    assert_eq!(invoke(&host, json!({})).await.content, "ok");
+    assert_eq!(invoke(&host, json!({})).await.body(), "ok");
     host.shutdown(Duration::from_secs(1)).await;
     let requests = fixture.requests();
     assert_eq!(requests.len(), 6);
@@ -1480,7 +1480,7 @@ async fn explicit_supported_version_selects_known_legacy_but_unknown_offer_is_in
         let host = start(fixture.config(), root.path()).await;
         if supported == "2025-06-18" {
             assert!(host.warnings().is_empty(), "{:?}", host.warnings());
-            assert_eq!(invoke(&host, json!({})).await.content, "ok");
+            assert_eq!(invoke(&host, json!({})).await.body(), "ok");
             host.shutdown(Duration::from_secs(1)).await;
             let requests = fixture.requests();
             assert_eq!(requests.len(), 6);
@@ -1556,7 +1556,7 @@ async fn response_stream_tool_list_notifications_refresh_modern_and_legacy_inven
                 .invoke(context(), json!({"notify":true}))
                 .await
                 .unwrap()
-                .content,
+                .body(),
             "notified"
         );
         let diff = host.refresh_tools().await;
@@ -1573,18 +1573,16 @@ async fn response_stream_tool_list_notifications_refresh_modern_and_legacy_inven
                 .invoke(context(), json!({}))
                 .await
                 .unwrap()
-                .content
-                .contains("removed")
+                .text_has("removed")
         );
         assert!(
             old_echo
                 .invoke(context(), json!({}))
                 .await
                 .unwrap()
-                .content
-                .contains("definition changed")
+                .text_has("definition changed")
         );
-        assert_eq!(invoke(&host, json!({})).await.content, "current");
+        assert_eq!(invoke(&host, json!({})).await.body(), "current");
         assert!(host.refresh_tools().await.is_empty());
         let requests = fixture.requests();
         assert_eq!(
@@ -1645,7 +1643,7 @@ async fn legacy_generation_retires_session_only_after_its_in_flight_call_complet
     .await;
     host.reload(&config, Some("fixture")).await.unwrap();
     assert_eq!(
-        retained.invoke(context(), json!({})).await.unwrap().content,
+        retained.invoke(context(), json!({})).await.unwrap().body(),
         "generation-2"
     );
     assert!(
@@ -1654,7 +1652,7 @@ async fn legacy_generation_retires_session_only_after_its_in_flight_call_complet
             .iter()
             .any(|r| r.verb == "DELETE" && r.header("mcp-session-id") == Some("generation-1"))
     );
-    assert_eq!(pending.await.unwrap().content, "generation-1");
+    assert_eq!(pending.await.unwrap().body(), "generation-1");
     eventually(|| {
         fixture
             .requests()
@@ -1754,7 +1752,7 @@ async fn client_env_headers_differ_per_host_and_never_fall_back_to_host_env() {
     assert!(first.warnings().is_empty(), "{:?}", first.warnings());
     let result = invoke(&first, json!({})).await;
     assert!(!result.is_error);
-    assert_eq!(result.content, "ok");
+    assert_eq!(result.body(), "ok");
     first.shutdown(Duration::ZERO).await;
     let before_second = fixture.requests();
     assert!(!before_second.is_empty());

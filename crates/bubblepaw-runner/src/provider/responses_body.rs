@@ -16,8 +16,8 @@ impl ResponsesProvider {
             match message.role{
                 Role::Tool=> {
                     let body = message.text();
-                    let (text, images) = crate::images::split_wire(&body);
-                    let text = tool_wire::error_text(message, text);
+                    let images = crate::images::wire_images(message);
+                    let text = tool_wire::error_text(message, &body);
                     let output = if images.is_empty() { json!(text) } else {
                         let mut parts = vec![json!({"type":"input_text","text":text})];
                         parts.extend(images.into_iter().map(|image| json!({"type":"input_image","image_url":format!("data:{};base64,{}",image["mime_type"].as_str().unwrap_or(""),image["data"].as_str().unwrap_or(""))})));

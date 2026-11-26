@@ -60,9 +60,11 @@ async fn canonical_image_blob_is_stored_once_and_replayed_after_file_removal() {
         .unwrap()
         .map(Result::unwrap)
         .collect();
-    assert!(data.iter().all(
-        |data| !data.contains(&STANDARD.encode(&bytes)) && !data.contains("BubblePawImageWire")
-    ));
+    assert!(
+        data.iter()
+            .all(|data| !data.contains(&STANDARD.encode(&bytes))
+                && !data.contains("BubblePawImages"))
+    );
     let stats = fixture.store.storage_stats().unwrap();
     let growth = stats.database_bytes.saturating_sub(baseline.database_bytes);
     assert!(
@@ -117,7 +119,10 @@ async fn canonical_image_blob_is_stored_once_and_replayed_after_file_removal() {
             .unwrap()
             .messages
             .iter()
-            .any(|message| message.role == Role::Tool
-                && message.text().contains(&STANDARD.encode(&bytes)))
+            .flat_map(|message| &message.content)
+            .any(|block| matches!(
+                block,
+                ContentBlock::Image { data: Some(data), .. } if data.as_ref() == bytes.as_slice()
+            ))
     );
 }

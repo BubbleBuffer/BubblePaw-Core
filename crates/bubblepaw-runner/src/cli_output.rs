@@ -79,7 +79,7 @@ impl Output {
             EventKind::Paragraph { text } => self.stdout(format!("{text}\n\n")),
             EventKind::ToolStarted { call } => self.stderr(format!("[{}]\n", call.name)),
             EventKind::ToolFinished { name, result, .. } if result.is_error => {
-                self.stderr(format!("[{name}: {}]\n", result.content))
+                self.stderr(format!("[{name}: {}]\n", result.body()))
             }
             _ => Ok(()),
         }

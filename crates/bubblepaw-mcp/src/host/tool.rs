@@ -173,7 +173,7 @@ fn convert_result(result: Value) -> ToolResult {
         blocks.insert(0, structured.to_string());
     }
     ToolResult {
-        content: blocks.join("\n"),
+        content: bubblepaw_core::text_blocks(blocks.join("\n")),
         is_error: result["isError"].as_bool().unwrap_or(false),
         details: None,
         terminate: false,
@@ -225,10 +225,10 @@ mod tests {
         let result = convert_result(
             json!({"content":[{"type":"text","text":"a"},{"type":"image","data":"YWJjZA=="},{"type":"text","text":"b"}],"structuredContent":{"ignored":true},"isError":true}),
         );
-        assert_eq!(result.content, "a\n[MCP image: 4 bytes omitted]\nb");
+        assert_eq!(result.body(), "a\n[MCP image: 4 bytes omitted]\nb");
         assert!(result.is_error);
         let result = convert_result(json!({"content":[],"structuredContent":{"x":2}}));
-        assert_eq!(result.content, "{\"x\":2}");
+        assert_eq!(result.body(), "{\"x\":2}");
         assert!(!result.is_error);
     }
     #[test]
@@ -236,13 +236,13 @@ mod tests {
         for kind in ["input_required", "unrecognized"] {
             let result = convert_result(json!({"resultType":kind,"content":[],"inputRequests":[]}));
             assert!(result.is_error);
-            assert!(result.content.contains("outcome unknown"));
-            assert!(result.content.contains("Do not replay"));
+            assert!(result.text_has("outcome unknown"));
+            assert!(result.text_has("Do not replay"));
         }
         let result = convert_result(
             json!({"resultType":"complete","content":[{"type":"text","text":"done"}]}),
         );
-        assert_eq!(result.content, "done");
+        assert_eq!(result.body(), "done");
         assert!(!result.is_error);
     }
 }

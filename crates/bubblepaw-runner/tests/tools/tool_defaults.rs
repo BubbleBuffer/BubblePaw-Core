@@ -137,20 +137,21 @@ async fn read_returns_file_text_with_a_final_note_only_when_partial() -> Result<
         ),
     ] {
         let result = dispatched(&registry, "read", input.clone()).await?;
-        assert!(!result.is_error, "{}", result.content);
-        assert_eq!(result.content, expected, "{input}");
+        assert!(!result.is_error, "{}", result.body());
+        assert_eq!(result.body(), expected, "{input}");
     }
     // A model call through call_tool gets the same text.
     let native = registry.with_execution_mode(ExecutionMode::Native);
     let wrapped = json!({"name":"read","arguments":{"path":"small.txt"}});
     let result = dispatched(&native, "call_tool", wrapped).await?;
-    assert_eq!(result.content, "one\ntwo\n");
+    assert_eq!(result.body(), "one\ntwo\n");
     // Over the result limit the text stops at a line boundary and the note names
     // the last returned line.
     let result = dispatched(&registry, "read", json!({"path":"wide.txt"})).await?;
-    let (body, note) = result.content.rsplit_once('\n').context("missing note")?;
+    let text = result.body();
+    let (body, note) = text.rsplit_once('\n').context("missing note")?;
     let returned = body.lines().count();
-    assert!(returned > 50 && returned < 200 && result.content.len() < 60 * 1024);
+    assert!(returned > 50 && returned < 200 && result.body().len() < 60 * 1024);
     assert!(body.ends_with(&"x".repeat(595)));
     assert_eq!(
         note,
@@ -186,7 +187,7 @@ async fn missing_workspace_paths_name_the_requested_path() -> Result<()> {
         let requested = input["path"].as_str().unwrap().to_owned();
         let result = dispatched(&registry, target, input).await?;
         assert!(result.is_error, "{target} unexpectedly succeeded");
-        assert!(result.content.contains(&requested), "{}", result.content);
+        assert!(result.text_has(&requested), "{}", result.body());
     }
     Ok(())
 }
@@ -230,24 +231,16 @@ async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<(
         let result = dispatched(&registry, target, input).await?;
         assert!(result.is_error, "{target} unexpectedly succeeded");
         assert!(
-            result
-                .content
-                .contains("unexpected arguments: unknownArgument"),
+            result.text_has("unexpected arguments: unknownArgument"),
             "{}",
-            result.content
+            result.body()
         );
         assert!(
-            result
-                .content
-                .contains(&format!("Valid arguments: {valid}.")),
+            result.text_has(&format!("Valid arguments: {valid}.")),
             "{}",
-            result.content
+            result.body()
         );
-        assert!(
-            !result.content.contains("private-value"),
-            "{}",
-            result.content
-        );
+        assert!(!result.text_has("private-value"), "{}", result.body());
     }
     let result = dispatched(
         &registry,
@@ -256,17 +249,13 @@ async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<(
     )
     .await?;
     assert!(result.is_error);
+    assert!(result.text_has("poll at /cursor"), "{}", result.body());
     assert!(
-        result.content.contains("poll at /cursor"),
+        result.text_has("Valid arguments: stderr, stdout."),
         "{}",
-        result.content
+        result.body()
     );
-    assert!(
-        result.content.contains("Valid arguments: stderr, stdout."),
-        "{}",
-        result.content
-    );
-    assert!(!result.content.contains("private-value"));
+    assert!(!result.text_has("private-value"));
     processes.shutdown().await;
     Ok(())
 }

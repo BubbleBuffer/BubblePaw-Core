@@ -464,7 +464,7 @@ async fn external_listed_folders_allow_only_canonical_reads_and_only_for_the_ses
         )
         .await
         .unwrap();
-    assert!(!body.is_error && body.content.contains("EXTERNAL-SKILL-BODY"));
+    assert!(!body.is_error && body.text_has("EXTERNAL-SKILL-BODY"));
     let helper = read
         .invoke(
             context(&session),
@@ -472,7 +472,7 @@ async fn external_listed_folders_allow_only_canonical_reads_and_only_for_the_ses
         )
         .await
         .unwrap();
-    assert!(!helper.is_error && helper.content.contains("HELPER"));
+    assert!(!helper.is_error && helper.text_has("HELPER"));
     for (session, path) in [
         (&other, external.join("listed/SKILL.md")),
         (&session, external.join("unlisted/private.txt")),

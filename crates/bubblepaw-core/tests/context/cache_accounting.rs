@@ -74,7 +74,7 @@ impl Tool for Echo {
     }
     async fn invoke(&self, _: ToolContext, input: Value) -> Result<ToolResult> {
         Ok(ToolResult {
-            content: input.to_string(),
+            content: bubblepaw_core::text_blocks(input.to_string()),
             is_error: false,
             details: None,
             terminate: false,

@@ -2,19 +2,33 @@ use anyhow::Result;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bubblepaw_core::{
-    CancellationToken, Capabilities, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider,
-    Role, RunOptions, Store, TextCallback, ToolCall, ToolRegistry,
+    CancellationToken, Capabilities, ContentBlock, Harness, HarnessConfig, ImageRef, Message,
+    ModelRequest, ModelResponse, Provider, Role, RunOptions, Store, TextCallback, ToolCall,
+    ToolRegistry,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
     codemode::CodeMode,
-    images::{ImageProvider, MAX_IMAGE_BYTES, split_refs, store_image},
+    images::{ImageProvider, MAX_IMAGE_BYTES, store_image},
     tools::WorkspaceTools,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 const PNG: &[u8] = include_bytes!("../fixtures/image-two-colors.png");
+
+fn refs(message: &Message) -> Vec<ImageRef> {
+    message.images().cloned().collect()
+}
+/// How many image blocks of `request` carry the fixture's bytes.
+fn sent_images(request: &ModelRequest) -> usize {
+    request
+        .messages
+        .iter()
+        .flat_map(|message| &message.content)
+        .filter(|block| matches!(block, ContentBlock::Image { data: Some(data), .. } if data.as_ref() == PNG))
+        .count()
+}
 
 struct Cells {
     requests: Arc<Mutex<Vec<ModelRequest>>>,
@@ -104,7 +118,7 @@ impl Fixture {
             requests,
         }
     }
-    async fn cell(&self, code: &str) -> String {
+    async fn cell(&self, code: &str) -> Message {
         let run = self
             .harness
             .prompt(
@@ -126,8 +140,6 @@ impl Fixture {
             .rev()
             .find(|message| message.role == Role::Tool)
             .unwrap()
-            .text()
-            .into_owned()
     }
 }
 
@@ -137,7 +149,7 @@ async fn image_reads_attach_without_return_and_deduplicate_across_paths() {
     std::fs::write(fixture.root.path().join("image.png"), PNG).unwrap();
     std::fs::write(fixture.root.path().join("copy.png"), PNG).unwrap();
     let result = fixture.cell("await Promise.all([tools.read({path:'image.png'}),tools.read({path:'copy.png'}),tools.read({path:'image.png'})]); return 'look at the image';").await;
-    let (text, images) = split_refs(&result);
+    let (text, images) = (result.text(), refs(&result));
     assert!(text.contains("look at the image"));
     assert_eq!(images.len(), 1);
     assert_eq!(images[0].mime_type, "image/png");
@@ -151,18 +163,11 @@ async fn image_reads_attach_without_return_and_deduplicate_across_paths() {
         PNG
     );
     let encoded = STANDARD.encode(PNG);
-    assert!(!result.contains(&encoded));
-    {
-        let requests = fixture.requests.lock().unwrap();
-        let sent = requests
-            .last()
-            .unwrap()
-            .messages
-            .iter()
-            .find(|message| message.role == Role::Tool)
-            .unwrap();
-        assert_eq!(sent.text().matches(&encoded).count(), 1);
-    }
+    assert!(!text.contains(&encoded));
+    assert_eq!(
+        sent_images(fixture.requests.lock().unwrap().last().unwrap()),
+        1
+    );
     fixture.manager.shutdown().await;
 }
 
@@ -180,7 +185,7 @@ async fn supported_formats_and_four_image_cap_are_explicit() {
         std::fs::write(fixture.root.path().join(name), bytes).unwrap();
     }
     let result = fixture.cell("for (const path of ['a.png','b.jpg','c.gif','d.webp','e.png']) await tools.read({path}); return 'checked';").await;
-    let (text, images) = split_refs(&result);
+    let (text, images) = (result.text(), refs(&result));
     assert_eq!(
         images
             .iter()
@@ -204,13 +209,13 @@ async fn image_limit_is_exactly_five_million_bytes_and_does_not_resize() {
     let result = fixture
         .cell("return await tools.read({path:'limit.png'});")
         .await;
-    assert_eq!(split_refs(&result).1[0].bytes, 5_000_000);
+    assert_eq!(refs(&result)[0].bytes, 5_000_000);
     let result = fixture
         .cell("return await tools.read({path:'over.png'});")
         .await;
-    assert!(split_refs(&result).1.is_empty());
-    assert!(result.contains("5 MB"));
-    assert!(result.contains("no resize"));
+    assert!(refs(&result).is_empty());
+    assert!(result.text().contains("5 MB"));
+    assert!(result.text().contains("no resize"));
     fixture.manager.shutdown().await;
 }
 
@@ -221,7 +226,7 @@ async fn nonvision_models_receive_a_short_note_without_bytes() {
     let canonical = fixture
         .cell("await tools.read({path:'image.png'}); return 'done';")
         .await;
-    assert_eq!(split_refs(&canonical).1.len(), 1);
+    assert_eq!(refs(&canonical).len(), 1);
     {
         let requests = fixture.requests.lock().unwrap();
         let sent = requests
@@ -232,14 +237,13 @@ async fn nonvision_models_receive_a_short_note_without_bytes() {
             .find(|message| message.role == Role::Tool)
             .unwrap();
         assert!(sent.text().contains("Image input is unavailable"));
-        assert!(!sent.text().contains(&STANDARD.encode(PNG)));
-        assert!(!sent.text().contains("BubblePawImages"));
+        assert_eq!(sent.images().count(), 0);
     }
     fixture.manager.shutdown().await;
 }
 
 #[tokio::test]
-async fn truncated_js_text_and_budget_footer_preserve_image_refs() {
+async fn truncated_js_text_and_budget_footer_keep_the_image_block_intact() {
     let fixture = Fixture::new(true);
     std::fs::write(fixture.root.path().join("image.png"), PNG).unwrap();
     let run = fixture.harness.prompt(&fixture.session, json!({"code":"await tools.read({path:'image.png'}); return 'x'.repeat(200000);", "maxOutputTokens":256}).to_string(), RunOptions { max_tool_calls: Some(3), ..Default::default() }).await.unwrap();
@@ -253,22 +257,26 @@ async fn truncated_js_text_and_budget_footer_preserve_image_refs() {
         .iter()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    let (text, images) = split_refs(&canonical.text());
+    let (text, images) = (canonical.text(), refs(canonical));
     assert_eq!(images.len(), 1);
     assert!(text.contains("truncated"));
     assert!(text.ends_with("1 tool calls left"));
     assert!(canonical.text().len() < 4096);
+    // The footer is its own last block: the image is not inside or after it.
+    assert!(matches!(
+        canonical.content.last(),
+        Some(ContentBlock::Text { text }) if text.ends_with("1 tool calls left")
+    ));
     {
         let requests = fixture.requests.lock().unwrap();
-        assert!(
-            requests
-                .last()
-                .unwrap()
-                .messages
-                .iter()
-                .any(|message| message.role == Role::Tool
-                    && message.text().contains(&STANDARD.encode(PNG)))
-        );
+        let request = requests.last().unwrap();
+        assert_eq!(sent_images(request), 1);
+        let sent = request
+            .messages
+            .iter()
+            .find(|message| message.role == Role::Tool)
+            .unwrap();
+        assert!(sent.text().ends_with("1 tool calls left"));
     }
     fixture.manager.shutdown().await;
 }
@@ -291,7 +299,7 @@ async fn repeated_reads_across_cells_send_one_image_per_prepared_request() {
             .iter()
             .map(|message| message.text().into_owned())
             .collect::<String>();
-        assert_eq!(history.matches(&STANDARD.encode(PNG)).count(), 1);
+        assert_eq!(sent_images(last), 1);
         assert!(history.contains("Image already provided earlier"));
     }
     fixture.manager.shutdown().await;
@@ -311,7 +319,7 @@ async fn fork_refs_retain_the_original_attachment_session() {
     let messages = fixture.store.messages(&fork.id).unwrap();
     let reference = messages
         .iter()
-        .find_map(|message| split_refs(&message.text()).1.into_iter().next())
+        .find_map(|message| refs(message).into_iter().next())
         .unwrap();
     assert_eq!(reference.session_id, fixture.session);
     assert!(
@@ -333,12 +341,7 @@ async fn fork_refs_retain_the_original_attachment_session() {
     {
         let requests = fixture.requests.lock().unwrap();
         let latest = requests.last().unwrap();
-        assert!(
-            latest
-                .messages
-                .iter()
-                .any(|message| message.text().contains(&STANDARD.encode(PNG)))
-        );
+        assert_eq!(sent_images(latest), 1);
         assert!(latest.messages.iter().all(|message| {
             !message
                 .text()
@@ -423,17 +426,10 @@ async fn background_image_read_is_attached_when_its_environment_is_inspected() {
         .rev()
         .find(|message| message.role == Role::Tool)
         .unwrap();
-    assert_eq!(split_refs(&result.text()).1.len(), 1);
-    assert!(
-        fixture
-            .requests
-            .lock()
-            .unwrap()
-            .last()
-            .unwrap()
-            .messages
-            .iter()
-            .any(|message| message.text().contains(&STANDARD.encode(PNG)))
+    assert_eq!(refs(result).len(), 1);
+    assert_eq!(
+        sent_images(fixture.requests.lock().unwrap().last().unwrap()),
+        1
     );
     fixture.manager.shutdown().await;
 }

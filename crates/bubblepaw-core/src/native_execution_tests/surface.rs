@@ -110,7 +110,7 @@ async fn single_tool_call_preserves_results_journal_effects_and_pending() -> Res
                 CancellationToken::new(),
             )
             .await?;
-        assert_eq!(result.content, "hello");
+        assert_eq!(result.body(), "hello");
         assert!(!result.is_error);
         assert_eq!(result.pending, pending);
         assert_eq!(capability.calls.load(Ordering::SeqCst), 1);
@@ -124,7 +124,7 @@ async fn single_tool_call_preserves_results_journal_effects_and_pending() -> Res
             messages[1].tool_call_id.as_deref().unwrap()
         );
         let events = harness.events_after(0, Some(&session.id), 100)?;
-        assert!(events.iter().any(|event|matches!(&event.kind,EventKind::ToolFinished { result,.. } if result.pending==pending && result.content=="hello")));
+        assert!(events.iter().any(|event|matches!(&event.kind,EventKind::ToolFinished { result,.. } if result.pending==pending && result.body()=="hello")));
         assert_eq!(
             store.pending_effects(&session.id)?.len(),
             usize::from(pending)
@@ -148,7 +148,7 @@ async fn single_tool_call_leaves_prequeued_user_input_pending() -> Result<()> {
             CancellationToken::new(),
         )
         .await?;
-    assert_eq!(result.content, "hello");
+    assert_eq!(result.body(), "hello");
     assert!(!result.is_error);
     let inputs = store.queued_inputs(&session.id)?;
     assert!(inputs.iter().any(|input| {
@@ -226,7 +226,7 @@ async fn single_tool_call_waits_for_its_own_run_when_another_run_starts() -> Res
     assert_eq!(second_finished.status, "cancelled");
     assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
     let result = own_result??;
-    assert_eq!(result.content, "first result");
+    assert_eq!(result.body(), "first result");
     assert!(!result.is_error);
     Ok(())
 }
