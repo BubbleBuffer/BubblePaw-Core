@@ -1,6 +1,6 @@
 use super::*;
-use crate::StreamCallback;
 use crate::{ObservationMode, ObservationRecord, ObservationSink};
+use crate::{Role, StreamCallback};
 
 #[derive(Default)]
 struct Records(Mutex<Vec<ObservationRecord>>);

@@ -1,9 +1,8 @@
 //! The outcome of one tool call.
+use bubblepaw_ai::{ContentBlock, ImageRef, content_images, content_text, text_blocks, with_text};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
-
-use crate::{ContentBlock, text_blocks};
 
 /// What a tool returns. `content` is what the model reads, text and image blocks; `details` is
 /// JSON for user interfaces and is never sent to a model; `terminate` ends the
@@ -48,7 +47,7 @@ impl ToolResult {
     }
     /// The text blocks joined; images contribute nothing.
     pub fn body(&self) -> Cow<'_, str> {
-        crate::content_text(&self.content)
+        content_text(&self.content)
     }
     /// `content_text` as an owned string.
     pub fn owned_text(&self) -> String {
@@ -59,12 +58,12 @@ impl ToolResult {
         self.body().contains(needle)
     }
     /// The images the result names, in order.
-    pub fn images(&self) -> impl Iterator<Item = &crate::ImageRef> {
-        crate::content_images(&self.content)
+    pub fn images(&self) -> impl Iterator<Item = &ImageRef> {
+        content_images(&self.content)
     }
     /// Replaces the text with `text`; image blocks stay after it.
     pub fn set_content_text(&mut self, text: impl Into<String>) {
-        self.content = crate::with_text(&self.content, text);
+        self.content = with_text(&self.content, text);
     }
     /// Cuts the text to `max` bytes with the truncation marker; images are kept.
     pub(crate) fn bound_text(&mut self, max: usize) {

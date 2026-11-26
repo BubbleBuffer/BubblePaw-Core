@@ -1,8 +1,8 @@
-use crate::{
-    CancellationToken, ContextWriter, Message, ModelRequest, ModelResponse, Provider, Usage,
-};
+use crate::ContextWriter;
+pub use crate::prepare_types::{PrepareMode, PreparedContext};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use bubblepaw_ai::{CancellationToken, Message, ModelRequest, ModelResponse, Provider};
 use std::sync::Arc;
 
 /// The hook shapes a request view without rewriting canonical history.
@@ -86,22 +86,6 @@ pub trait ContextPreparation: Send + Sync {
     }
 }
 
-/// Why the hook runs: an ordinary main request, or explicit manual compaction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PrepareMode<'a> {
-    Request,
-    /// Retry final admission over fresh history, reserving space for additions
-    /// which were absent from the host's prepared view. This is automatic
-    /// pressure, not a user-requested manual compaction.
-    Pressure {
-        additional_tokens: usize,
-        additional_bytes: usize,
-    },
-    Compact {
-        focus: Option<&'a str>,
-    },
-}
-
 /// A recoverable final admission failure. Display remains the host's original
 /// diagnostic; the harness uses the overhead only to re-enter preparation.
 #[derive(Debug)]
@@ -128,11 +112,4 @@ pub struct PrepareCall<'a> {
     pub writer: &'a ContextWriter<'a>,
     pub mode: PrepareMode<'a>,
     pub cancellation: CancellationToken,
-}
-
-#[derive(Debug, Clone)]
-pub struct PreparedContext {
-    pub request: ModelRequest,
-    pub notice: Option<String>,
-    pub usage: Option<Usage>,
 }

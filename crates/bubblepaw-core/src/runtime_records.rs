@@ -13,19 +13,9 @@ pub(crate) struct Active {
     /// The client whose cancel stopped this run; RunFinished carries it.
     pub(super) cancelled_by: Option<ClientInfo>,
 }
-pub(super) struct CallbackLifetime(pub(super) Arc<AtomicBool>);
-pub(super) struct TurnOutcome {
-    pub(super) text: String,
-    pub(super) result_message_id: String,
-    pub(super) final_message: Option<Message>,
-}
-pub(super) struct SingleToolRun {
-    pub(super) call: ToolCall,
-    pub(super) result: Arc<Mutex<Option<ToolResult>>>,
+/// A single-tool run as the shell holds it: the loop's record of it, and where
+/// its completion goes.
+pub(super) struct SingleToolHandle {
+    pub(super) run: SingleToolRun,
     pub(super) completion: tokio::sync::oneshot::Sender<Run>,
-}
-impl Drop for CallbackLifetime {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::Relaxed);
-    }
 }

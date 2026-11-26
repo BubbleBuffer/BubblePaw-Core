@@ -12,7 +12,7 @@ impl Harness {
         run: Run,
         options: RunOptions,
         cancellation: CancellationToken,
-        single_tool: Option<SingleToolRun>,
+        single_tool: Option<SingleToolHandle>,
     ) {
         let driver = self.clone();
         let supervisor = self.clone();

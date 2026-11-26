@@ -1,68 +1,8 @@
 //! Explicit host wake admission. Merely queuing a ContextState reminder never
 //! starts a run; these APIs retain the host's existing deliberate wake decision.
 use super::*;
+use crate::round_reminders::{BudgetReminder, RunReminders, ToolsRound};
 use crate::{Reminder, ReminderMetadata};
-
-/// Per-run tool budget reminder state: one start notice, then at most one
-/// near-exhaustion warning. The kind is scoped to the run, so a later run with
-/// the same limit still receives its own start notice.
-#[derive(Default)]
-pub(super) struct BudgetReminder {
-    start: Option<usize>,
-    warned: bool,
-}
-
-/// Where tools stand for one model request of a run.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ToolsRound {
-    /// Tools are active.
-    #[default]
-    Open,
-    /// Tools are unavailable, yet the request declares them exactly as before.
-    /// Any call it returns is refused.
-    Unavailable,
-    /// The declarations move into `disabled_tools`, so the adapters send tool_choice none.
-    Enforced,
-}
-
-impl ToolsRound {
-    pub(super) fn is_open(self) -> bool {
-        self == Self::Open
-    }
-
-    /// Only the enforcement round moves the declarations out of `tools`.
-    pub(super) fn apply(self, request: &mut crate::ModelRequest) {
-        if self == Self::Enforced {
-            request.disabled_tools = std::mem::take(&mut request.tools);
-        }
-    }
-}
-
-/// Per-run harness notices queued before each model request.
-#[derive(Default)]
-pub(crate) struct RunReminders {
-    budget: BudgetReminder,
-    restriction_sent: bool,
-    /// Sticky: once tools are unavailable, they stay unavailable for the run.
-    unavailable: bool,
-    tools_off_reminded: bool,
-    /// Set when an unavailable round returned a call; the next round enforces.
-    enforce: bool,
-    enforced: bool,
-}
-
-impl RunReminders {
-    /// True when the next round is the enforcement round.
-    pub(super) fn enforcing(&self) -> bool {
-        self.enforce && !self.enforced
-    }
-    /// A call returned on an unavailable round is refused, and enforcement follows.
-    pub(super) fn observe_tool_calls(&mut self, round: ToolsRound, calls: usize) {
-        if round != ToolsRound::Open && calls > 0 {
-            self.enforce = true;
-        }
-    }
-}
 
 impl Harness {
     /// Queue the run's notices and decide the tools of the next model request. The

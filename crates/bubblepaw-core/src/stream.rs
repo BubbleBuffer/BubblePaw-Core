@@ -94,7 +94,7 @@ impl Paragraphs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Paragraphs;
     #[test]
     fn emits_paragraphs_and_never_splits_fenced_code() {
         let mut p = Paragraphs::default();

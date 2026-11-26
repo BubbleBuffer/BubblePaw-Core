@@ -1,9 +1,12 @@
 //! How the dispatcher asks whether a call may run, and how a finished result is
 //! shaped before the model sees it. Each method is one question about one call;
 //! the implementation owns every record, event and wait that answering needs.
-use crate::{ToolCall, ToolContext, ToolDefinition, ToolResult, ToolResultLimiter};
+use crate::tool::ToolContext;
+use crate::tool_registry::ToolResultLimiter;
+use crate::tool_result::ToolResult;
 use anyhow::Result;
 use async_trait::async_trait;
+use bubblepaw_ai::{ToolCall, ToolDefinition};
 
 /// Where a call came from: a model reply, or a host call composed inside another call.
 #[derive(Clone, Copy)]

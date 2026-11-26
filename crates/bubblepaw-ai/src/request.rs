@@ -17,7 +17,7 @@ pub struct ToolCall {
     pub name: String,
     pub arguments: Value,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -27,6 +27,23 @@ pub struct ToolDefinition {
     /// Whether calls wait for a person's decision (docs/approvals.md).
     #[serde(default)]
     pub approval: Approval,
+}
+
+impl ToolDefinition {
+    /// A definition with the defaults for every other field: not read-only, and no
+    /// confirmation wanted.
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        input_schema: Value,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            description: description.into(),
+            input_schema,
+            ..Default::default()
+        }
+    }
 }
 
 /// Requested reasoning effort. An unspecified model request uses the provider's

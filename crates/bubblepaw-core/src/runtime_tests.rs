@@ -1,6 +1,6 @@
 use super::runtime_context::ParsedHistory;
 use super::*;
-use crate::StreamCallback;
+use crate::{Role, StreamCallback};
 
 #[test]
 fn cached_request_size_distinguishes_signed_zero_in_same_id_json_fields() -> Result<()> {

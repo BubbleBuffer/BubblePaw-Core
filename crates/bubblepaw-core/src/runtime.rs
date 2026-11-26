@@ -1,9 +1,11 @@
-use crate::request_seam::{Built, Draft, Note, Release, RequestContext};
+use crate::loop_options::LoopOptions;
+use crate::loop_records::SingleToolRun;
+use crate::request_seam::{Note, Release, RequestContext};
+use crate::run_inputs::{RunInputs, RunOutcome};
 use crate::{
-    CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
-    ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput, Role, Run,
-    RunOptions, Store, ToolCall, ToolDispatcher, ToolRegistry, ToolResult, Usage, id, now,
-    stream::Paragraphs,
+    CancellationToken, ClientInfo, HarnessEvent, InputKind, Message, MessageInput, ModelRequest,
+    ModelResponse, Observation, ObservationScope, Provider, QueuedInput, Run, RunOptions, Store,
+    ToolCall, ToolDispatcher, ToolRegistry, ToolResult, id, now,
 };
 use crate::{journal::RunFinish, journal_sqlite::Journals};
 use anyhow::{Context, Result, anyhow, ensure};
@@ -14,10 +16,12 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::sync::{Notify, broadcast};
 
+#[path = "run_loop_build.rs"]
+mod run_loop_build;
 #[path = "runtime_admission.rs"]
 mod runtime_admission;
 #[path = "runtime_context.rs"]
@@ -29,10 +33,9 @@ pub use runtime_context::FullHistory;
 mod runtime_catalog;
 #[path = "runtime_compact.rs"]
 mod runtime_compact;
-#[path = "runtime_overflow.rs"]
-mod runtime_overflow;
 #[path = "runtime_preparation.rs"]
 mod runtime_preparation;
+pub use crate::loop_hooks::{ProviderResolver, TurnStart};
 pub use runtime_preparation::{
     ContextBudgetExceeded, ContextPreparation, PrepareCall, PrepareMode, PreparedContext,
 };
@@ -42,30 +45,19 @@ mod runtime_input;
 mod runtime_reminders;
 #[path = "runtime_result.rs"]
 mod runtime_result;
-#[path = "runtime_stream.rs"]
-mod runtime_stream;
 #[path = "runtime_supervision.rs"]
 mod runtime_supervision;
 #[path = "runtime_tools.rs"]
 mod runtime_tools;
-#[path = "tool_source.rs"]
-mod tool_source;
-use crate::submit_result::is_submission;
+#[path = "stock_tool_source.rs"]
+mod stock_tool_source;
 
 #[path = "runtime_records.rs"]
 mod records;
-#[path = "run_inputs.rs"]
-mod run_inputs;
-#[path = "run_loop.rs"]
-mod run_loop;
-#[path = "run_settle.rs"]
-mod run_settle;
 pub(crate) use records::Active;
-use records::{CallbackLifetime, SingleToolRun, TurnOutcome};
-use run_inputs::{RunInputs, RunOutcome};
+use records::SingleToolHandle;
+use stock_tool_source::StockToolSource;
 
-/// Resolve the host's default model and request client as one snapshot.
-pub type ProviderResolver = Arc<dyn Fn() -> (String, Arc<dyn Provider>) + Send + Sync>;
 /// A host-owned registry snapshot, captured at each turn start and explicit refresh.
 pub type ToolRegistryResolver = Arc<dyn Fn() -> ToolRegistry + Send + Sync>;
 /// Resolve approval policy at each tool call, including composed host calls.
@@ -76,12 +68,6 @@ pub type ApprovalResolver = Arc<dyn Fn(&str) -> crate::ApprovalPolicy + Send + S
 pub type WorkspaceResolver = Arc<dyn Fn(&str) -> Option<std::path::PathBuf> + Send + Sync>;
 /// Host-owned session instructions, resolved over the selected base prompt.
 pub type SystemPromptResolver = Arc<dyn Fn(&str, &str) -> Result<String> + Send + Sync>;
-
-/// Optional host work before a turn captures its tools or makes a model request.
-#[async_trait]
-pub trait TurnStart: Send + Sync {
-    async fn before_turn(&self, session_id: &str, cancellation: CancellationToken) -> Result<()>;
-}
 
 #[derive(Clone)]
 pub struct HarnessConfig {
@@ -339,7 +325,7 @@ impl Harness {
         self.state.log.subscribe()
     }
     #[cfg(test)]
-    pub(crate) fn emit(&self, session_id: &str, run_id: &str, kind: EventKind) {
+    pub(crate) fn emit(&self, session_id: &str, run_id: &str, kind: crate::EventKind) {
         self.state
             .log
             .emit(&self.store, session_id, run_id, kind, None);
@@ -451,13 +437,15 @@ impl Harness {
         );
         let (completion, completed) = tokio::sync::oneshot::channel();
         let result = Arc::default();
-        let execution = SingleToolRun {
-            call: ToolCall {
-                id: format!("tool_{}", id()),
-                name: name.into(),
-                arguments,
+        let execution = SingleToolHandle {
+            run: SingleToolRun {
+                call: ToolCall {
+                    id: format!("tool_{}", id()),
+                    name: name.into(),
+                    arguments,
+                },
+                result: Arc::clone(&result),
             },
-            result: Arc::clone(&result),
             completion,
         };
         self.admit_execution(
@@ -647,7 +635,7 @@ impl Harness {
         mut run: Run,
         mut options: RunOptions,
         cancellation: CancellationToken,
-        mut single_tool: Option<SingleToolRun>,
+        mut single_tool: Option<SingleToolHandle>,
     ) {
         let run_loop = self.run_loop();
         loop {
@@ -675,10 +663,10 @@ impl Harness {
             } = run_loop
                 .run_once(&RunInputs {
                     run: &run,
-                    options: &options,
+                    options: &LoopOptions::from(&options),
                     cancellation: &cancellation,
-                    single_tool: single_tool.as_ref(),
-                    tools: &tool_source::StockToolSource::new(self),
+                    single_tool: single_tool.as_ref().map(|handle| &handle.run),
+                    tools: &StockToolSource::new(self, &options),
                     dispatcher: &*self.run_dispatcher(&options, single_tool.is_some()),
                     wants_user_request: self.config.auto_approval.is_some(),
                 })

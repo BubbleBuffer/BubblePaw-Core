@@ -1,5 +1,7 @@
 //! Host notice and cancellation collection.
-use crate::*;
+use crate::reminder_types::Reminder;
+use crate::tool_registry::ToolRegistry;
+
 impl ToolRegistry {
     pub(crate) fn take_reminders(&self, session: &str) -> Vec<Reminder> {
         self.tools

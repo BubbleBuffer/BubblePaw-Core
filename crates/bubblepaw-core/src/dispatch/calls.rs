@@ -1,15 +1,22 @@
 //! Shared admission, invocation and effect journaling for every tool route.
-use super::*;
-use crate::EventKind;
-use crate::tool_gate::Verdict;
-use anyhow::bail;
+use super::ToolDispatcher;
+use crate::ids::id;
+use crate::live_events::LiveEvent;
+use crate::observer::ToolWatch;
+use crate::tool::{Tool, ToolContext};
+use crate::tool_gate::{GateSource, Verdict};
+use crate::tool_result::ToolResult;
+use anyhow::{Result, anyhow, bail, ensure};
+use bubblepaw_ai::{CancellationToken, Message, ToolCall};
+use serde_json::Value;
+use std::sync::Arc;
 
 /// A call admitted against one registry and policy snapshot. The same admission
 /// is used by native calls, composition wrappers and model-free host calls.
 pub(crate) struct PreparedToolCall {
     context: ToolContext,
     call: ToolCall,
-    tool: Option<Arc<dyn crate::Tool>>,
+    tool: Option<Arc<dyn Tool>>,
     rejection: Option<ToolResult>,
     approved: bool,
     validation_rejected: bool,
@@ -105,7 +112,7 @@ impl ToolDispatcher {
     }
     pub(crate) fn commit_reply_dispatch(
         &self,
-        message: &crate::Message,
+        message: &Message,
         prepared: &PreparedToolCall,
     ) -> Result<String> {
         ensure!(
@@ -190,7 +197,7 @@ impl ToolDispatcher {
         &self,
         prepared: &mut PreparedToolCall,
         journal: CallJournal<'_>,
-        observation: &mut Option<crate::observation::ToolObservation>,
+        observation: &mut Option<Box<dyn ToolWatch>>,
     ) -> Result<DispatchedToolCall> {
         ensure!(
             !prepared.context.cancellation.is_cancelled(),
@@ -258,7 +265,7 @@ impl ToolDispatcher {
                 self.live.transient(
                     &prepared.context.session_id,
                     &prepared.context.run_id,
-                    EventKind::ToolStarted {
+                    LiveEvent::ToolStarted {
                         call: prepared.call.clone(),
                     },
                 );
@@ -297,7 +304,7 @@ impl ToolDispatcher {
             self.live.transient(
                 &prepared.context.session_id,
                 &prepared.context.run_id,
-                EventKind::ToolFinished {
+                LiveEvent::ToolFinished {
                     call_id: prepared.call.id.clone(),
                     name: prepared.call.name.clone(),
                     result: result.clone(),
@@ -331,7 +338,7 @@ impl ToolDispatcher {
     pub(crate) fn record_direct_result(
         &self,
         run_id: &str,
-        message: &crate::Message,
+        message: &Message,
         call: &ToolCall,
         result: ToolResult,
         invocation: Option<&str>,
@@ -343,7 +350,7 @@ impl ToolDispatcher {
         &self,
         context: ToolContext,
         name: &str,
-        tool: Arc<dyn crate::Tool>,
+        tool: Arc<dyn Tool>,
         input: Value,
     ) -> Result<ToolResult> {
         let cancellation: CancellationToken = context.cancellation.clone();

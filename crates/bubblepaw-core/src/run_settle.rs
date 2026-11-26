@@ -1,26 +1,42 @@
 //! The second half of a round: checks on the model reply, its recording, tool
 //! dispatch and the steering that follows.
-use super::run_inputs::{RunInputs, RunLoop};
-use super::*;
+use crate::dispatch::ToolDispatcher;
+use crate::loop_records::{self, TurnOutcome};
+use crate::round_reminders::ToolsRound;
+use crate::run_inputs::{RunInputs, RunLoop};
 use crate::run_journal::{Consumed, InputScope};
+use crate::submit_result::is_submission;
+use anyhow::{Result, anyhow, ensure};
+use bubblepaw_ai::{Message, ModelResponse, Role, ToolCall, reply_blocks};
 
 /// Loop state that outlives one round and is shared with the settling step.
 #[derive(Default)]
-pub(super) struct RoundState {
-    pub(super) user_request: String,
-    pub(super) result_nudged: bool,
-    pub(super) result_retry_pending: bool,
-    pub(super) malformed_replies: usize,
+pub(crate) struct RoundState {
+    pub(crate) user_request: String,
+    pub(crate) result_nudged: bool,
+    pub(crate) result_retry_pending: bool,
+    pub(crate) malformed_replies: usize,
 }
 
 /// What a settled round asks of the loop.
-pub(super) enum Settled {
+pub(crate) enum Settled {
     /// Ask the model again.
     Retry,
     /// The run has its outcome.
     Done(Box<TurnOutcome>),
     /// The round is complete; go on to the next one.
     Next,
+}
+
+/// Replies made only of malformed tool calls, in a row, end the run.
+pub(crate) fn check_malformed_reply_limit(streak: &mut usize, all_malformed: bool) -> Result<()> {
+    const MAX_MALFORMED_REPLIES: usize = 3;
+    *streak = if all_malformed { *streak + 1 } else { 0 };
+    ensure!(
+        *streak < MAX_MALFORMED_REPLIES,
+        "Three consecutive model replies contained only malformed tool calls"
+    );
+    Ok(())
 }
 
 impl Settled {
@@ -30,13 +46,13 @@ impl Settled {
 }
 
 impl RunLoop {
-    pub(super) async fn settle_reply(
+    pub(crate) async fn settle_reply(
         &self,
         inputs: &RunInputs<'_>,
         state: &mut RoundState,
         response: ModelResponse,
         dispatcher: &ToolDispatcher,
-        tools_round: runtime_reminders::ToolsRound,
+        tools_round: ToolsRound,
         declarations: Option<&[String]>,
     ) -> Result<Settled> {
         let RunInputs {
@@ -64,7 +80,7 @@ impl RunLoop {
             "Provider response exceeds configured storage size limit"
         );
         let mut message = Message::new(&run.session_id, Role::Assistant, response.text.clone());
-        message.content = crate::reply_blocks(&response.thinking, &response.text);
+        message.content = reply_blocks(&response.thinking, &response.text);
         message.tool_calls = response.tool_calls.clone();
         message.provider_state = response.provider_state;
         // The ordinary final response, result pointer, run state and its two
@@ -92,7 +108,7 @@ impl RunLoop {
                 .journal
                 .input_pending(&run.session_id, InputScope::Steering)?
         {
-            return Ok(Settled::done(runtime_result::text_outcome(message, true)));
+            return Ok(Settled::done(loop_records::text_outcome(message, true)));
         }
         // A sole Allow call batches its reply and dispatch marker.
         let prepare = |call: &ToolCall| {
@@ -143,7 +159,7 @@ impl RunLoop {
             result_message.is_error = result.is_error;
             result_message.details = result.details.clone();
             if result.terminate && terminated.is_none() {
-                terminated = Some(runtime_result::terminated(&result_message));
+                terminated = Some(loop_records::terminated(&result_message));
             }
             dispatcher.record_direct_result(
                 &run.id,
@@ -156,9 +172,9 @@ impl RunLoop {
                 *execution.result.lock().unwrap() = Some(result);
             }
         }
-        runtime_tools::check_malformed_reply_limit(&mut state.malformed_replies, all_malformed)?;
+        check_malformed_reply_limit(&mut state.malformed_replies, all_malformed)?;
         if let Some(value) = dispatcher.take_submitted_result() {
-            return runtime_result::outcome(run, value).map(Settled::done);
+            return loop_records::outcome(run, value).map(Settled::done);
         }
         if let Some(outcome) = terminated {
             return Ok(Settled::done(outcome));
@@ -194,7 +210,7 @@ impl RunLoop {
             state.user_request = self.latest_user_request(&run.session_id)?;
         }
         if options.output_schema.is_none() && response.tool_calls.is_empty() && steered == 0 {
-            return Ok(Settled::done(runtime_result::text_outcome(message, false)));
+            return Ok(Settled::done(loop_records::text_outcome(message, false)));
         }
         Ok(Settled::Next)
     }

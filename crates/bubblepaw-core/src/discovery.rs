@@ -1,7 +1,11 @@
 //! Shared discovery for native model tools and optional execution adapters.
-use crate::{Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult};
+use crate::dispatch::ToolDispatcher;
+use crate::tool::{Tool, ToolContext};
+use crate::tool_registry::ToolRegistry;
+use crate::tool_result::ToolResult;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
+use bubblepaw_ai::ToolDefinition;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -113,11 +117,12 @@ struct ToolSearch;
 impl Tool for ToolSearch {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
-            name: "tool_search".into(),
-            description: "Find available tools by name, description or MCP server. Returns names, descriptions and argument schemas. Use select:name,other to load exact tools, then invoke a discovered tool with call_tool.".into(),
-            input_schema: json!({"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"required":["query"],"additionalProperties":false}),
             read_only: true,
-            approval: Default::default(),
+            ..ToolDefinition::new(
+                "tool_search",
+                "Find available tools by name, description or MCP server. Returns names, descriptions and argument schemas. Use select:name,other to load exact tools, then invoke a discovered tool with call_tool.",
+                json!({"type":"object","properties":{"query":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50}},"required":["query"],"additionalProperties":false}),
+            )
         }
     }
     async fn invoke(&self, _: ToolContext, _: Value) -> Result<ToolResult> {
@@ -149,13 +154,15 @@ struct CallTool;
 impl Tool for CallTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
-            name: "call_tool".into(),
-            description: "Invoke an available tool by name with its JSON arguments. Call declared tools directly; use call_tool for tools found with tool_search. The target keeps its normal permissions, approval and execution limits.".into(),
-            input_schema: json!({"type":"object","properties":{"name":{"type":"string"},"arguments":{"type":"object"}},"required":["name","arguments"],"additionalProperties":false}),
             // The wrapper itself has no effect. The dispatcher classifies and
-            // approves the actual target, including in read-only runs.
+            // gates the actual target, including in read-only runs.
             read_only: true,
-            approval: Default::default(),
+            ..ToolDefinition::new(
+                "call_tool",
+                // Model-visible text: it is sent as written.
+                "Invoke an available tool by name with its JSON arguments. Call declared tools directly; use call_tool for tools found with tool_search. The target keeps its normal permissions, approval and execution limits.",
+                json!({"type":"object","properties":{"name":{"type":"string"},"arguments":{"type":"object"}},"required":["name","arguments"],"additionalProperties":false}),
+            )
         }
     }
     async fn invoke(&self, _: ToolContext, _: Value) -> Result<ToolResult> {
@@ -176,15 +183,20 @@ impl Tool for CallTool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        search_tool_definitions, search_tool_definitions_with_servers, tool_definition_summary,
+    };
+    use bubblepaw_ai::ToolDefinition;
+    use serde_json::json;
 
     fn definition(name: &str, description: &str) -> ToolDefinition {
         ToolDefinition {
-            name: name.into(),
-            description: description.into(),
-            input_schema: json!({"type":"object","properties":{"path":{"type":"string"}}}),
             read_only: true,
-            approval: Default::default(),
+            ..ToolDefinition::new(
+                name,
+                description,
+                json!({"type":"object","properties":{"path":{"type":"string"}}}),
+            )
         }
     }
 
