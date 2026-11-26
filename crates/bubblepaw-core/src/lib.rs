@@ -37,6 +37,7 @@ mod journal_sqlite;
 mod observation;
 mod provider_ext;
 mod quota;
+mod request_seam;
 mod request_usage;
 mod runtime;
 mod script;

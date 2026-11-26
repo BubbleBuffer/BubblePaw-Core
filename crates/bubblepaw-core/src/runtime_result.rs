@@ -41,11 +41,12 @@ impl Harness {
         tools: &ToolRegistry,
     ) -> Result<()> {
         if let Some(text) = self.result_schema_notice(&run.session_id, options, tools)? {
-            self.context_state().remind(
+            self.request_context.note(
                 &run.session_id,
-                "root",
-                &format!("result_schema:{}", run.id),
-                &text,
+                Note::Text {
+                    kind: &format!("result_schema:{}", run.id),
+                    text: &text,
+                },
             );
         }
         Ok(())
@@ -68,11 +69,12 @@ impl Harness {
             .get(session)
             .map(|active| active.run_id.clone());
         if let Some(run_id) = run_id {
-            self.context_state().remind_fresh(
+            self.request_context.note(
                 session,
-                "root",
-                &format!("result_schema:{run_id}"),
-                &text,
+                Note::Fresh {
+                    kind: &format!("result_schema:{run_id}"),
+                    text: &text,
+                },
             );
         }
         Ok(())
@@ -118,8 +120,14 @@ impl Harness {
             !*nudged,
             "Required structured result missing: submit_result was not called after one host reminder"
         );
-        self.context_state().remind(&run.session_id, "root", &format!("result_required:{}", run.id),
-            "This run requires a structured result. Call submit_result with arguments matching its schema to finish. A text reply does not complete this run. This is the only reminder.");
+        self.request_context.note(
+            &run.session_id,
+            Note::Text {
+                kind: &format!("result_required:{}", run.id),
+                text:
+            "This run requires a structured result. Call submit_result with arguments matching its schema to finish. A text reply does not complete this run. This is the only reminder.",
+            },
+        );
         *nudged = true;
         let steered = self
             .journal

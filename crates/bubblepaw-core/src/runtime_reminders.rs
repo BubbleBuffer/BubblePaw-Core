@@ -93,11 +93,12 @@ impl Harness {
                 "Tool calls are restricted in this run. Allowed tools: {}. A call to any other tool returns an error result without running.",
                 crate::tool_views::allowed_tools_phrase(&names)
             );
-            self.context_state().remind(
+            self.request_context.note(
                 &run.session_id,
-                "root",
-                &format!("tool_restriction:{}", run.id),
-                &text,
+                Note::Text {
+                    kind: &format!("tool_restriction:{}", run.id),
+                    text: &text,
+                },
             );
         }
         state.unavailable |= dispatcher.remaining_tool_calls() == Some(0);
@@ -107,9 +108,13 @@ impl Harness {
         if options.output_schema.is_some() {
             if !state.tools_off_reminded {
                 state.tools_off_reminded = true;
-                self.context_state().remind(
-                    &run.session_id, "root", &format!("tools_off:{}", run.id),
+                self.request_context.note(
+                    &run.session_id,
+                    Note::Text {
+                        kind: &format!("tools_off:{}", run.id),
+                        text:
                     "The work tool budget is exhausted. Ordinary tool calls are unavailable. Complete this run with submit_result; it remains available directly or through the tool wrapper.",
+                    },
                 );
             }
             return ToolsRound::Open;
@@ -117,18 +122,21 @@ impl Harness {
         if state.enforce {
             if !state.enforced {
                 state.enforced = true;
-                self.declare_context_change(&run.session_id, "tools_off_enforced");
+                self.request_context
+                    .declare_change(&run.session_id, "tools_off_enforced");
             }
             return ToolsRound::Enforced;
         }
         // The first unavailable round keeps the declarations and asks the model to answer in text.
         if !state.tools_off_reminded {
             state.tools_off_reminded = true;
-            self.context_state().remind(
+            self.request_context.note(
                 &run.session_id,
-                "root",
-                &format!("tools_off:{}", run.id),
+                Note::Text {
+                    kind: &format!("tools_off:{}", run.id),
+                    text:
                 "Tool calls are unavailable for the rest of this run. Answer in text using the information you already have.",
+                },
             );
         }
         ToolsRound::Unavailable
@@ -159,7 +167,13 @@ impl Harness {
             }
             Some(_) => return,
         };
-        self.context_state().remind(session, "root", &kind, &text);
+        self.request_context.note(
+            session,
+            Note::Text {
+                kind: &kind,
+                text: &text,
+            },
+        );
     }
     pub fn start_reminders(
         &self,
@@ -244,8 +258,8 @@ impl Harness {
     ) -> Result<ToolRegistry> {
         let tools = self.selected_tools(session, options)?;
         if self
-            .context_state()
-            .observe_tool_generation(session, tools.generation())
+            .request_context
+            .tool_generation_observed(session, tools.generation())
             && let Some(observer) = &self.config.observation
         {
             let run_id = self
@@ -264,8 +278,5 @@ impl Harness {
             );
         }
         Ok(tools)
-    }
-    pub(super) fn declare_context_change(&self, session: &str, reason: &str) {
-        self.state.cache.declare(Some(session), reason);
     }
 }

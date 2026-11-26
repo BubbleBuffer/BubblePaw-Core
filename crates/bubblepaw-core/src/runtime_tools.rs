@@ -208,8 +208,13 @@ impl Harness {
             // restart before its ordinary reminder commit recoverable. The
             // authoritative reminder metadata suppresses redelivery after apply.
             if let Some(notice) = &surface.inventory_notice {
-                self.context_state()
-                    .remind(session, "root", "tools_reloaded", notice);
+                self.request_context.note(
+                    session,
+                    Note::Text {
+                        kind: "tools_reloaded",
+                        text: notice,
+                    },
+                );
             }
         }
         Ok(tools)
@@ -223,10 +228,9 @@ impl Harness {
         surface: &mut RunToolSurface,
         request: &mut ModelRequest,
     ) -> Result<bool> {
-        let Some(reason) = self.config.context.take_prefix_change(session) else {
+        if self.request_context.take_prefix_change(session).is_none() {
             return Ok(false);
-        };
-        self.declare_context_change(session, &reason);
+        }
         *tools = self.refresh_run_tools(session, options, tools)?;
         self.update_applied_catalog(session, tools)?;
         self.refresh_result_schema_notice(session, options, tools)?;

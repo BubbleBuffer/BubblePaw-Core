@@ -38,9 +38,10 @@ impl Harness {
         self.chat_surface(session_id, &RunOptions::default(), true)?;
         let (_, request_provider) = self.provider_binding();
         let mut request = self.request_template(session_id)?;
-        request.messages = self.history(session_id)?;
+        request.messages = self.request_context.history(session_id)?;
         let prepared = self
-            .prepare_with_writer(
+            .request_context
+            .prepare(
                 session_id,
                 request,
                 request_provider,
