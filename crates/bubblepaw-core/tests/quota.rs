@@ -500,7 +500,7 @@ fn unique_active_run_index_includes_parked_runs() -> Result<()> {
         let connection = Connection::open(&chat)?;
         assert_eq!(
             connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-            14
+            15
         );
         let second = Run {
             id: uuid::Uuid::new_v4().to_string(),

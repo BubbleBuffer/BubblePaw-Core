@@ -204,7 +204,7 @@ async fn single_tool_call_cancellation_ownership_and_queued_input() -> Result<()
         store
             .queued_inputs(&session.id)?
             .iter()
-            .any(|input| input.text == "queued" && input.state == "pending")
+            .any(|input| input.text() == "queued" && input.state == "pending")
     );
     assert!(provider.requests.lock().unwrap().is_empty());
     Ok(())

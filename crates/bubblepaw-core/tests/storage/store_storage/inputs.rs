@@ -20,9 +20,9 @@ async fn accepted_input_transfers_one_blob_from_pending_queue_to_canonical_messa
         })?,
         ""
     );
-    assert_eq!(store.queued_inputs(&session.id)?[0].text, text);
+    assert_eq!(store.queued_inputs(&session.id)?[0].text(), text);
     assert_eq!(
-        store.snapshot(&session.id, 10, 10, 10)?.pending_inputs[0].text,
+        store.snapshot(&session.id, 10, 10, 10)?.pending_inputs[0].text(),
         text
     );
     input_harness(&store)
@@ -51,7 +51,7 @@ async fn accepted_input_transfers_one_blob_from_pending_queue_to_canonical_messa
             )?
             .is_none()
     );
-    assert!(store.queued_inputs(&session.id)?[0].text.is_empty());
+    assert!(store.queued_inputs(&session.id)?[0].text().is_empty());
     assert_eq!(store.messages(&session.id)?[0].text(), text);
     drop(conn);
     drop(store);

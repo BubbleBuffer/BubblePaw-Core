@@ -152,7 +152,7 @@ async fn single_tool_call_leaves_prequeued_user_input_pending() -> Result<()> {
     assert!(!result.is_error);
     let inputs = store.queued_inputs(&session.id)?;
     assert!(inputs.iter().any(|input| {
-        input.id == queued.id && input.state == "pending" && input.text == "answer this later"
+        input.id == queued.id && input.state == "pending" && input.text() == "answer this later"
     }));
     assert!(
         store

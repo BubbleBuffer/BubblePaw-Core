@@ -497,8 +497,12 @@ Durable kinds are journaled and take sequence numbers:
   tool boundaries. Nested host tool progress inside a tool cell is transient.
   `result.content` is a block list (`text` and `image` blocks, as in messages),
   not a string; image bytes are never part of an event.
-- `steering_accepted {text}` and `followup_queued {text}`: input accepted by
-  `run.steer` or `run.follow_up`.
+- `steering_accepted {text, content?}` and `followup_queued {text, content?}`: input
+  accepted by `run.steer` or `run.follow_up`. `text` is the written text without
+  files; `content` is the block list (`text` and `file` blocks) and is present only
+  when the input has files. A queued input read from the store has the same `text`
+  and `content` fields. `Harness::start`, `steer` and `followup` take a string or
+  a `MessageInput` block list.
 - `output {record}`: a durable `OutputRecord` from CodeMode.
 - `host_state_changed {key, value}`: a host state value changed, such as `todo`,
   `question` or `usage.last_request`.
@@ -747,6 +751,11 @@ them. Unavailable descendants are listed in `unavailable_session_ids` and omitte
 from the partial totals.
 
 ## Message content blocks (host protocol 5 and 6)
+
+Protocol 7 adds `file`: `{"type":"file","file":{"id","name","bytes","inline"?,"omitted"?}}`, an
+uploaded file that follows the text block. `inline` is the text the model reads;
+plain-text surfaces show `[file: <id>, <name>, <bytes> bytes]`. Older rows whose
+text ends in the attachments envelope read as the same blocks.
 
 A message's `content` is a list of blocks, not a string. There are two block
 kinds: `text`, and (protocol 6) `image`, a reference to an image stored as a

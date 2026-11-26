@@ -30,9 +30,9 @@ async fn attachment_bytes_and_inline_json_use_one_blob_with_exact_escaped_roundt
     let content =
         format!("Please inspect.\n\n<BubblePawAttachments>\n{inline}\n</BubblePawAttachments>");
     store.queue(&session.id, bubblepaw_core::InputKind::Followup, &content)?;
-    assert_eq!(store.queued_inputs(&session.id)?[0].text, content);
+    assert_eq!(store.queued_inputs(&session.id)?[0].text(), content);
     assert_eq!(
-        store.snapshot(&session.id, 10, 10, 10)?.pending_inputs[0].text,
+        store.snapshot(&session.id, 10, 10, 10)?.pending_inputs[0].text(),
         content
     );
     let conn = Connection::open(store.chat_path(&session.id)?.unwrap())?;
@@ -74,7 +74,7 @@ async fn attachment_bytes_and_inline_json_use_one_blob_with_exact_escaped_roundt
         serde_json::from_str::<serde_json::Value>(&data)?["_content_parts_blob"],
         descriptor
     );
-    assert!(store.queued_inputs(&session.id)?[0].text.is_empty());
+    assert!(store.queued_inputs(&session.id)?[0].text().is_empty());
     assert!(!data.contains(&text));
     drop(conn);
     drop(agent);

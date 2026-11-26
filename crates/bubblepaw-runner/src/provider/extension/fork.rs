@@ -82,11 +82,18 @@ pub(super) fn mapping(request: &ModelRequest) -> Value {
     })
 }
 
+/// The request as sent to the extension: plain strings show a file as a placeholder, so each
+/// file is replaced by the text its model reads first.
+pub(super) fn params(request: &mut ModelRequest) -> serde_json::Result<Value> {
+    bubblepaw_core::show_files_as_text(&mut request.messages);
+    bubblepaw_core::plain_content(|| serde_json::to_value(&*request))
+}
+
 /// What the extension is sent for the host's local size estimate: the system
 /// prompt, tools and messages, without the native provider state (opaque blocks
 /// that are never tokenized).
 pub(super) fn projection(request: &ModelRequest) -> Value {
-    let messages: Vec<Message> = request
+    let mut messages: Vec<Message> = request
         .messages
         .iter()
         .map(|message| Message {
@@ -94,6 +101,7 @@ pub(super) fn projection(request: &ModelRequest) -> Value {
             ..message.clone()
         })
         .collect();
+    bubblepaw_core::show_files_as_text(&mut messages);
     bubblepaw_core::plain_content(
         || json!({"system":request.system_prompt,"tools":request.tools,"messages":messages}),
     )

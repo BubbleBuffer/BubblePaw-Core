@@ -133,15 +133,19 @@ impl Store {
         blob_large_all_roles: bool,
     ) -> Result<()> {
         let mut data = serde_json::to_value(message)?;
-        let text = message.text();
-        // Text moved out of the row leaves its image blocks behind.
-        let images = serde_json::to_value(
+        let text = message.body_text();
+        // Text moved out of the row leaves its image and file blocks behind.
+        let mut images = serde_json::to_value(
             message
                 .content
                 .iter()
                 .filter(|block| !matches!(block, crate::ContentBlock::Text { .. }))
                 .collect::<Vec<_>>(),
         )?;
+        Self::blob_file_inline(tx, &mut images)?;
+        if message.files().next().is_some() {
+            Self::blob_file_inline(tx, &mut data["content"])?;
+        }
         if let Some(state) = &message.provider_state {
             let opaque = serde_json::to_vec(state)?;
             if opaque.len() > 4096 {

@@ -6,7 +6,7 @@ impl Store {
         &self,
         session_id: &str,
         kind: InputKind,
-        text: impl Into<String>,
+        text: impl Into<crate::MessageInput>,
     ) -> Result<QueuedInput> {
         self.queue_with_origin(session_id, kind, text, MessageOrigin::Typed)
     }
@@ -14,7 +14,7 @@ impl Store {
         &self,
         session_id: &str,
         kind: InputKind,
-        text: impl Into<String>,
+        text: impl Into<crate::MessageInput>,
         origin: MessageOrigin,
     ) -> Result<QueuedInput> {
         if let Some(store) = self.scoped(session_id)? {
@@ -25,7 +25,7 @@ impl Store {
             id: id(),
             session_id: session_id.into(),
             kind,
-            text: text.into(),
+            content: text.into().into_blocks(),
             state: "pending".into(),
             origin: Some(origin),
         };
@@ -67,7 +67,7 @@ impl Store {
         })?
         .map(|row| {
             let (id, kind, text, state, origin, content_blob, content_format) = row?;
-            let text = Self::input_text(
+            let content = Self::input_content(
                 conn,
                 &text,
                 content_blob.as_deref(),
@@ -81,7 +81,7 @@ impl Store {
                 } else {
                     InputKind::Followup
                 },
-                text,
+                content,
                 state,
                 origin: origin
                     .map(|value| serde_json::from_str(&value))
@@ -214,13 +214,18 @@ impl Store {
         };
         let mut messages = Vec::with_capacity(values.len());
         for (input_id, text, origin, content_blob, content_format) in &values {
-            let text =
-                Self::input_text(tx, text, content_blob.as_deref(), content_format.as_deref())?;
             let origin = origin.as_deref().map(serde_json::from_str).transpose()?;
             if origin == Some(MessageOrigin::Generated) {
                 if defer_generated {
                     continue;
                 }
+                let content = Self::input_content(
+                    tx,
+                    text,
+                    content_blob.as_deref(),
+                    content_format.as_deref(),
+                )?;
+                let text = crate::content_text(&content).into_owned();
                 Self::input_reminder_metadata_tx(tx, session_id, input_id, &text, true)?;
                 tx.execute(
                     "UPDATE inputs SET state='reminder_pending' WHERE id=?1",
@@ -228,12 +233,40 @@ impl Store {
                 )?;
                 continue;
             }
-            let mut message = Self::message(session_id, Role::User, text);
+            let mut message = Self::message(session_id, Role::User, String::new());
+            message.content =
+                Self::input_content(tx, text, content_blob.as_deref(), content_format.as_deref())?;
             message.origin = origin;
             Self::insert_message(tx, &message)?;
             tx.execute("UPDATE inputs SET state='consumed',text='',content_blob=NULL,content_format=NULL,message_id=?2 WHERE id=?1", params![input_id,message.id])?;
             messages.push(message);
         }
         Ok(messages)
+    }
+    /// Fills an input event's `text` (written text only) and, when the input has more than
+    /// text, its `content`, from the message the input became or from its queued row.
+    pub(crate) fn hydrate_input_event(
+        conn: &Connection,
+        session_id: &str,
+        operations: &serde_json::Value,
+        event: &mut serde_json::Value,
+    ) -> Result<()> {
+        let content = match operations["message_id"].as_str() {
+            Some(id) => Self::read_message(conn, session_id, id)?.content,
+            None => Self::input_content(
+                conn,
+                operations["text"]
+                    .as_str()
+                    .context("Input event text missing")?,
+                operations["content_blob"].as_str(),
+                operations["content_format"].as_str(),
+            )?,
+        };
+        event["text"] = crate::content_body_text(&content).into_owned().into();
+        let extra = crate::content_block::extra_content(&content);
+        if !extra.is_empty() {
+            event["content"] = serde_json::to_value(extra)?;
+        }
+        Ok(())
     }
 }

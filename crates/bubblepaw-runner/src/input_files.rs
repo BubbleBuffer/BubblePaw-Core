@@ -1,6 +1,6 @@
 //! Host-owned attachment paths with optional canonical SQLite blob backing.
 use anyhow::{Context, Result, bail, ensure};
-use bubblepaw_core::Store;
+use bubblepaw_core::{ContentBlock, MessageInput, Store};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
@@ -62,20 +62,7 @@ impl InputLimits {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct InputFileRef {
-    pub id: String,
-    pub name: String,
-    pub size: u64,
-    pub path: String,
-    pub url: String,
-    pub text: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub inline: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub omitted: Option<bool>,
-}
+pub use bubblepaw_core::InputFileRef;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Sidecar {
@@ -236,8 +223,9 @@ impl InputFiles {
         Ok((file, bytes))
     }
 
-    /// Append only host-validated references. Inline content is all-or-nothing per file.
-    pub fn prepare(&self, session: &str, text: &str, ids: &[String]) -> Result<String> {
+    /// The message body for `text` and the files `ids` name: the text, then one file block per
+    /// host-validated reference. Inline content is all-or-nothing per file.
+    pub fn prepare(&self, session: &str, text: &str, ids: &[String]) -> Result<MessageInput> {
         self.limits.validate_message(text, !ids.is_empty())?;
         ensure!(
             ids.len() <= self.limits.max_files,
@@ -295,7 +283,9 @@ impl InputFiles {
         } else {
             text
         };
-        Ok(format!("{prefix}{}", envelope(&files)?))
+        let mut blocks = bubblepaw_core::text_blocks(prefix);
+        blocks.extend(files.into_iter().map(ContentBlock::file));
+        Ok(blocks.into())
     }
 
     fn session_dir(&self, session: &str, create: bool) -> Result<PathBuf> {
@@ -317,15 +307,9 @@ fn reference(session: &str, id: &str, name: &str, size: u64, text: bool) -> Inpu
         omitted: None,
     }
 }
-fn envelope(files: &[InputFileRef]) -> Result<String> {
-    Ok(format!(
-        "\n\n<BubblePawAttachments>\n{}\n</BubblePawAttachments>",
-        serde_json::to_string(&serde_json::json!({"files":files}))?
-    ))
-}
 fn envelope_tokens(files: &[InputFileRef]) -> Result<usize> {
     Ok(tiktoken_rs::o200k_base_singleton()
-        .encode_ordinary(&envelope(files)?)
+        .encode_ordinary(&bubblepaw_core::file_envelope(files))
         .len())
 }
 fn hash(bytes: &[u8]) -> String {

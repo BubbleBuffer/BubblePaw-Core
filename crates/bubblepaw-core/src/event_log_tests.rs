@@ -340,11 +340,7 @@ async fn streaming_text_holds_the_reply_until_it_is_stored() -> Result<()> {
     agent.log().settle_text(&session.id, || Ok(()))?;
     let ((), position) = agent.snapshot_with(&session.id, || Ok(()))?;
     assert_eq!(position.streaming_text, "");
-    agent.emit(
-        &session.id,
-        &run.id,
-        EventKind::FollowupQueued { text: "x".into() },
-    );
+    agent.emit(&session.id, &run.id, EventKind::followup_queued("x"));
     let ((), position) = agent.snapshot_with(&session.id, || Ok(()))?;
     assert_eq!(position.live_seen, 0, "a durable event starts a new count");
     agent.cancel(&session.id);
@@ -518,11 +514,7 @@ async fn retention_prunes_old_events_and_session_deletion_deletes_its_events() -
     );
 
     let bare = store.create_session("bare")?;
-    agent.emit(
-        &bare.id,
-        "r",
-        EventKind::FollowupQueued { text: "x".into() },
-    );
+    agent.emit(&bare.id, "r", EventKind::followup_queued("x"));
     assert_eq!(agent.events_after(0, Some(&bare.id), 1000)?.len(), 1);
     store.delete_session(&bare.id)?;
     assert!(agent.events_after(0, Some(&bare.id), 1000)?.is_empty());
@@ -693,9 +685,9 @@ async fn consumed_input_references_replay_the_original_client_events() -> Result
             .queued_inputs(&session.id)?
             .into_iter()
             .filter(|input| input.state == "pending")
-            .map(|input| input.text)
+            .map(|input| input.text().into_owned())
             .collect::<Vec<_>>(),
-        vec![steer.text.clone(), followup.text.clone()]
+        vec![steer.text().into_owned(), followup.text().into_owned()]
     );
     store.read(|conn| {
         for input in [&steer, &followup] {
@@ -707,7 +699,7 @@ async fn consumed_input_references_replay_the_original_client_events() -> Result
             assert!(text.is_empty(), "pending content belongs to tier 1");
             assert_eq!(
                 String::from_utf8(Store::blob_get(conn, &content_blob)?)?,
-                input.text
+                input.text()
             );
         }
         Ok(())
@@ -748,7 +740,7 @@ async fn consumed_input_references_replay_the_original_client_events() -> Result
             assert!(text.is_empty());
             assert_eq!(
                 Store::read_message(conn, &session.id, &message_id)?.text(),
-                input.text
+                input.text()
             );
         }
         let data: String = conn.query_row(

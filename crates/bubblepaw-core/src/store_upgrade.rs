@@ -27,6 +27,10 @@ pub(super) const CHAT_STEPS: &[Step] = &[
         from: 13,
         run: message_image_blocks,
     },
+    Step {
+        from: 14,
+        run: message_file_blocks,
+    },
 ];
 /// Version 13 stores new message rows with `content` as a list of blocks. Old
 /// rows keep the string form and stay readable, so no data changes; only the
@@ -40,6 +44,14 @@ fn message_content_list(_tx: &Transaction) -> Result<()> {
 /// so only the version bump matters: a program that predates the block must
 /// refuse a store that may hold it.
 fn message_image_blocks(_tx: &Transaction) -> Result<()> {
+    Ok(())
+}
+/// Version 15 stores uploaded files as `file` blocks in the content list, and a
+/// queued input that holds blocks in the `blocks` content format. Rows that carry
+/// the older text envelope stay as they are and are read as file blocks, so only
+/// the version bump matters: a program that predates the block must refuse a
+/// store that may hold it.
+fn message_file_blocks(_tx: &Transaction) -> Result<()> {
     Ok(())
 }
 /// Upgrade steps for `catalog.db`.

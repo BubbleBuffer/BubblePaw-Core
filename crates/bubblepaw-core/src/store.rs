@@ -126,15 +126,69 @@ pub enum InputKind {
     Steer,
     Followup,
 }
+/// An accepted input that no run has consumed yet. As JSON it has the written
+/// `text`, and `content` (the blocks, files included) when there is more than text.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "QueuedInputWire", into = "QueuedInputWire")]
 pub struct QueuedInput {
     pub id: String,
     pub session_id: String,
     pub kind: InputKind,
-    pub text: String,
+    pub content: Vec<crate::ContentBlock>,
     pub state: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<MessageOrigin>,
+}
+impl QueuedInput {
+    /// The written text, without any files.
+    pub fn text(&self) -> std::borrow::Cow<'_, str> {
+        crate::content_body_text(&self.content)
+    }
+}
+#[derive(Serialize, Deserialize)]
+struct QueuedInputWire {
+    id: String,
+    session_id: String,
+    kind: InputKind,
+    text: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    content: Vec<crate::ContentBlock>,
+    state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin: Option<MessageOrigin>,
+}
+impl From<QueuedInput> for QueuedInputWire {
+    fn from(input: QueuedInput) -> Self {
+        let text = input.text().into_owned();
+        let more = input
+            .content
+            .iter()
+            .any(|block| !matches!(block, crate::ContentBlock::Text { .. }));
+        Self {
+            id: input.id,
+            session_id: input.session_id,
+            kind: input.kind,
+            text,
+            content: if more { input.content } else { Vec::new() },
+            state: input.state,
+            origin: input.origin,
+        }
+    }
+}
+impl From<QueuedInputWire> for QueuedInput {
+    fn from(wire: QueuedInputWire) -> Self {
+        Self {
+            id: wire.id,
+            session_id: wire.session_id,
+            kind: wire.kind,
+            content: if wire.content.is_empty() {
+                crate::text_blocks(wire.text)
+            } else {
+                wire.content
+            },
+            state: wire.state,
+            origin: wire.origin,
+        }
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageStats {

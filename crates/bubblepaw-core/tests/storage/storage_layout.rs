@@ -875,7 +875,7 @@ async fn pending_input_approval_record_and_unknown_effect_survive_serving_loss_w
         serde_json::to_vec(&store.queued_inputs(&session.id)?[0])?,
         serde_json::to_vec(&input)?
     );
-    assert_eq!(store.queued_inputs(&session.id)?[0].text, queued_text);
+    assert_eq!(store.queued_inputs(&session.id)?[0].text(), queued_text);
     assert_eq!(store.run("crashed-run")?.status, "interrupted");
     let effects = store.pending_effects(&session.id)?;
     assert_eq!(effects.len(), 1);

@@ -390,23 +390,7 @@ fn hydrate(
                 serde_json::to_value(Store::read_message(conn, &session_id, &message_id)?.content)?;
         }
         ContentRef::Input { input_id: _ } => {
-            let text = operations["text"]
-                .as_str()
-                .context("Input event text missing")?
-                .to_owned();
-            let message_id = operations["message_id"].as_str().map(str::to_owned);
-            let content_blob = operations["content_blob"].as_str().map(str::to_owned);
-            let content_format = operations["content_format"].as_str().map(str::to_owned);
-            value["text"] = match message_id {
-                Some(id) => Store::read_message(conn, &session_id, &id)?.into_text(),
-                None => Store::input_text(
-                    conn,
-                    &text,
-                    content_blob.as_deref(),
-                    content_format.as_deref(),
-                )?,
-            }
-            .into();
+            Store::hydrate_input_event(conn, &session_id, operations, &mut value)?;
         }
         ContentRef::Output { output_id } => {
             let data: String = conn.query_row(

@@ -14,7 +14,7 @@ impl Store {
     pub(crate) fn admit_tx(
         tx: &Connection,
         run: &Run,
-        text: Option<&str>,
+        content: Option<Vec<crate::ContentBlock>>,
         origin: MessageOrigin,
     ) -> Result<()> {
         if Self::has_quota_wait_tx(tx, &run.session_id)? {
@@ -24,12 +24,12 @@ impl Store {
             Self::clear_quota_wait_tx(tx, &run.session_id, None)?;
         }
         Self::start_run_tx(tx, run)?;
-        if let Some(text) = text {
+        if let Some(content) = content {
             let input = QueuedInput {
                 id: id(),
                 session_id: run.session_id.clone(),
                 kind: InputKind::Followup,
-                text: text.into(),
+                content,
                 state: "pending".into(),
                 origin: Some(origin),
             };
@@ -39,7 +39,7 @@ impl Store {
         Ok(())
     }
     pub(crate) fn queue_tx(tx: &Connection, input: &QueuedInput) -> Result<()> {
-        let (hash, format) = Self::input_content_ref(tx, &input.text)?;
+        let (hash, format) = Self::input_content_ref(tx, &input.content)?;
         tx.execute("INSERT INTO inputs(id,session_id,kind,text,state,origin,content_blob,content_format) VALUES(?1,?2,?3,'','pending',?4,?5,?6)",
             params![input.id, input.session_id, if input.kind == InputKind::Steer {"steer"} else {"followup"},
                 input.origin.map(|origin| serde_json::to_string(&origin)).transpose()?, hash, format])?;

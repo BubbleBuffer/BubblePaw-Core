@@ -69,6 +69,21 @@ the one place content is deserialized. Chat store versions 13 and 14 only mark
 that a store may hold list rows and image blocks, so an older program refuses
 it. Search text, token estimates and provider requests use the text.
 
+## Uploaded files as blocks (chat store 15)
+
+A message's uploaded files are `file` blocks beside its text: each holds the
+`InputFileRef` (id, name, byte length, and the `inline` text snapshot or
+`omitted`). A file block's `inline` text over 4 KiB moves to a blob keyed on the
+block, like other large content. Queued inputs use the `inputs` table's
+`content_format = "blocks"` for the same list. The model still reads the
+`<BubblePawAttachments>` envelope text, rendered from the blocks; search and
+summaries use that text, and plain-text surfaces show
+`[file: <id>, <name>, <bytes> bytes]`. Nothing writes the envelope. A user
+message or text-format input row written earlier is read as a text block plus
+file blocks when its text ends in a valid envelope; assistant and tool text, and
+a marker anywhere else, stay text. Rows are never rewritten, and step 15 only
+raises the version so an older program refuses the store.
+
 ## Bounded host state (2026-10-15)
 
 An additive `host_state(session_id,key,value)` table keeps small runner-owned

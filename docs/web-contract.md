@@ -270,8 +270,9 @@ limits are enforced while reading, independently of the bounded JSON body limit.
 
 Run, steer and followup JSON accept optional `attachments: string[]` IDs, with
 `text` allowed to be empty when files are present. Before admission the host
-checks ownership, duplicate IDs, count and aggregate byte limits. It appends a
-`BubblePawAttachments` JSON envelope to the canonical user message. Whole UTF-8
+checks ownership, duplicate IDs, count and aggregate byte limits. It stores the
+files as `file` blocks of the canonical user message; the model reads them as a
+`BubblePawAttachments` JSON envelope rendered from the blocks. Whole UTF-8
 text files are inlined in the envelope only when it stays within its token budget;
 otherwise the reference carries `omitted: true`. Binary files remain references.
 The original prompt text is preserved.

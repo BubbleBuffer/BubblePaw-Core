@@ -21,6 +21,15 @@ pub struct HarnessEvent {
     #[serde(flatten)]
     pub kind: EventKind,
 }
+impl EventKind {
+    /// A follow-up that is only text.
+    pub fn followup_queued(text: impl Into<String>) -> Self {
+        Self::FollowupQueued {
+            text: text.into(),
+            content: Vec::new(),
+        }
+    }
+}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EventKind {
@@ -71,11 +80,18 @@ pub enum EventKind {
         name: String,
         result: ToolResult,
     },
+    /// `text` is the written text; `content` holds the blocks, files included, when the input
+    /// has more than text.
     SteeringAccepted {
         text: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        content: Vec<crate::ContentBlock>,
     },
+    /// As `SteeringAccepted`.
     FollowupQueued {
         text: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        content: Vec<crate::ContentBlock>,
     },
     RunFinished {
         status: String,

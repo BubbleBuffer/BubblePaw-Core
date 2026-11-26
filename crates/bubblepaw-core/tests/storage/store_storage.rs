@@ -455,6 +455,8 @@ fn input_harness(store: &Store) -> bubblepaw_core::Harness {
     )
 }
 
+#[path = "store_storage/file_blocks.rs"]
+mod file_blocks;
 #[path = "store_storage/inputs.rs"]
 mod inputs;
 #[path = "store_storage/row_forms.rs"]
