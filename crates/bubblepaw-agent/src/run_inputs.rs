@@ -60,5 +60,6 @@ pub struct RunOutcome {
     pub usage: Option<Usage>,
     pub error: Option<String>,
     pub result_message_id: Option<String>,
+    /// The ordinary final reply, not yet written: the shell writes it when it ends the run.
     pub final_message: Option<Message>,
 }
