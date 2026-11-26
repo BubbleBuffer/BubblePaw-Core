@@ -45,6 +45,7 @@ mod stream;
 mod submit_result;
 mod tool_result;
 pub use tool_result::ToolResult;
+mod tool_gate;
 mod tool_notices;
 mod tool_views;
 pub mod transcript;

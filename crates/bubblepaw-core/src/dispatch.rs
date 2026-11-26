@@ -1,3 +1,4 @@
+use crate::tool_gate::{GateCall, GateSource, ToolGate};
 use crate::{
     CancellationToken, EventKind, Observation, ObservationScope, OutputRecord, Store, ToolCall,
     ToolContext, ToolRegistry, ToolResult, id, now,
@@ -20,13 +21,13 @@ pub struct ToolDispatcher {
     tools: ToolRegistry,
     log: Arc<crate::event_log::Log>,
     journal: Arc<dyn crate::journal::Journal>,
+    gate: Arc<dyn ToolGate>,
     max_result_bytes: usize,
     observation: Option<Observation>,
     scope: ObservationScope,
     approval: Arc<crate::ApprovalPolicy>,
     approval_resolver: Option<crate::ApprovalResolver>,
-    workspace_resolver: Option<crate::WorkspaceResolver>,
-    auto_approval: Option<crate::approvals::AutoApprovalContext>,
+    user_request: String,
     remaining_calls: Option<Arc<AtomicUsize>>,
     refresh_tools: Arc<AtomicBool>,
     interactive_approval: bool,
@@ -50,18 +51,19 @@ impl ToolDispatcher {
             store.clone(),
             log.clone(),
         ));
+        let gate = Arc::new(crate::approvals::StockGate::new(store.clone(), None, None));
         Self {
             store,
             tools,
             log,
             journal,
+            gate,
             max_result_bytes,
             observation,
             scope: ObservationScope::default(),
             approval: Arc::default(),
             approval_resolver: None,
-            workspace_resolver: None,
-            auto_approval: None,
+            user_request: String::new(),
             remaining_calls: None,
             refresh_tools: Arc::default(),
             interactive_approval: true,
@@ -76,6 +78,10 @@ impl ToolDispatcher {
     }
     pub(crate) fn with_journal(mut self, journal: Arc<dyn crate::journal::Journal>) -> Self {
         self.journal = journal;
+        self
+    }
+    pub(crate) fn with_gate(mut self, gate: Arc<dyn ToolGate>) -> Self {
+        self.gate = gate;
         self
     }
     pub(crate) fn with_tool_budget(mut self, limit: Option<usize>) -> Self {
@@ -115,32 +121,6 @@ impl ToolDispatcher {
         self.approval_resolver = resolve;
         self
     }
-    pub(crate) fn with_workspace_resolver(
-        mut self,
-        resolve: Option<crate::WorkspaceResolver>,
-    ) -> Self {
-        self.workspace_resolver = resolve;
-        self
-    }
-    /// Directories a session's exec calls run in, first the directory they start
-    /// from, then its root chat's workspace. Other chats' roots never become
-    /// protected roots for this session.
-    pub(crate) fn workspace_roots(&self, session_id: &str) -> Result<Vec<std::path::PathBuf>> {
-        let mut roots = Vec::new();
-        if let Some(root) = self
-            .workspace_resolver
-            .as_ref()
-            .and_then(|resolve| resolve(session_id))
-        {
-            roots.push(root);
-        }
-        if let Some(bound) = self.store.session_workspace(session_id)?
-            && !roots.contains(&bound)
-        {
-            roots.push(bound);
-        }
-        Ok(roots)
-    }
     pub(crate) fn approval_policy(&self, session_id: &str) -> crate::ApprovalPolicy {
         self.approval_resolver
             .as_ref()
@@ -172,44 +152,25 @@ impl ToolDispatcher {
         self.tools = tools;
         self
     }
-    pub(crate) fn with_auto_approval(
-        mut self,
-        config: Option<crate::AutoApprovalConfig>,
-        user_request: String,
-    ) -> Self {
-        self.auto_approval = config.map(|config| crate::approvals::AutoApprovalContext {
-            config,
-            user_request,
-        });
+    pub(crate) fn with_user_request(mut self, user_request: String) -> Self {
+        self.user_request = user_request;
         self
     }
-    /// The approval gate for a validated call, before its effect boundary.
-    async fn approve_source(
-        &self,
-        context: &ToolContext,
-        call: &ToolCall,
-        message_id: Option<&str>,
-    ) -> Result<crate::approvals::Gate> {
-        let definition = self
-            .tools
-            .get(&call.name)
-            .ok_or_else(|| anyhow!("Unknown tool: {}", call.name))?
-            .definition();
-        let workspaces = self.workspace_roots(&context.session_id)?;
-        crate::approvals::gate(
-            &self.store,
-            &context.approval,
-            self.auto_approval.as_ref(),
+    fn gate_call<'a>(
+        &'a self,
+        context: &'a ToolContext,
+        call: &'a ToolCall,
+        source: GateSource<'a>,
+    ) -> GateCall<'a> {
+        GateCall {
             context,
-            &workspaces,
-            crate::approvals::CallSource {
-                call,
-                message_id,
-                interactive: self.interactive_approval,
-            },
-            &definition,
-        )
-        .await
+            call,
+            source,
+            interactive: self.interactive_approval,
+            user_request: &self.user_request,
+            result_limit: self.max_result_bytes,
+            result_hook: self.tools.result_limiter.as_ref(),
+        }
     }
     /// Attribute host calls to the JS cell that owns them, including background work.
     pub fn with_execution(
@@ -312,12 +273,12 @@ impl ToolDispatcher {
     pub fn complete_effect_for_session(&self, session: &str, invocation: &str) -> Result<()> {
         self.store.effect_completed_for_session(session, invocation)
     }
-    fn limit_model_result(&self, context: &ToolContext, result: ToolResult) -> Result<ToolResult> {
-        let result = if let Some(limit) = &self.tools.result_limiter {
-            limit(&self.store, context, result, self.max_result_bytes)?
-        } else {
-            result
-        };
+    fn limit_model_result(
+        &self,
+        gate_call: &GateCall<'_>,
+        result: ToolResult,
+    ) -> Result<ToolResult> {
+        let result = self.gate.after(gate_call, result)?;
         if result.body().len() > self.max_result_bytes
             && let Ok(value) = serde_json::from_str::<Value>(&result.body())
         {
@@ -338,63 +299,5 @@ impl ToolDispatcher {
         let mut result = result;
         result.bound_text(self.max_result_bytes);
         Ok(result)
-    }
-}
-
-#[cfg(test)]
-mod workspace_tests {
-    use super::*;
-    use crate::ContextStrategy;
-
-    #[test]
-    fn protected_roots_follow_the_session_and_its_worktree_only() -> Result<()> {
-        let store = Store::in_memory()?;
-        let a_directory = tempfile::tempdir()?;
-        let a = a_directory.path().canonicalize()?;
-        let b_directory = tempfile::tempdir()?;
-        let b = b_directory.path().canonicalize()?;
-        let worktree_directory = tempfile::tempdir()?;
-        let worktree = worktree_directory.path().canonicalize()?;
-        store.bind_workspace(&a)?;
-        let root_a = store.create_session_with_workspace("a", &a)?;
-        let root_b = store.create_session_with_workspace("b", &b)?;
-        let child = store.create_session_with_parent(
-            "child",
-            ContextStrategy::default(),
-            Some(&root_b.id),
-        )?;
-        let dispatcher = ToolDispatcher::new(store.clone(), ToolRegistry::new(), 4096, None);
-        assert_eq!(dispatcher.workspace_roots(&root_a.id)?, vec![a.clone()]);
-        assert_eq!(dispatcher.workspace_roots(&root_b.id)?, vec![b.clone()]);
-        let child_id = child.id.clone();
-        let effective = worktree.clone();
-        let dispatcher = dispatcher.with_workspace_resolver(Some(Arc::new(move |session| {
-            (session == child_id).then(|| effective.clone())
-        })));
-        let roots = dispatcher.workspace_roots(&child.id)?;
-        assert_eq!(roots, vec![worktree.clone(), b.clone()]);
-        assert!(!dispatcher.workspace_roots(&child.id)?.contains(&a));
-        let policy = crate::ApprovalPolicy::default();
-        for root in [worktree, b] {
-            assert!(
-                policy
-                    .hardline_match(
-                        "exec",
-                        &serde_json::json!({"command": format!("rm -rf '{}'", root.display())}),
-                        &roots
-                    )
-                    .is_some()
-            );
-        }
-        assert!(
-            policy
-                .hardline_match(
-                    "exec",
-                    &serde_json::json!({"command": format!("rm -rf '{}'", a.display())}),
-                    &roots
-                )
-                .is_none()
-        );
-        Ok(())
     }
 }

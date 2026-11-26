@@ -56,6 +56,8 @@ renaming them.
 
 The run loop in `bubblepaw-core` writes things down through the `Journal` trait before it goes on: admission, queued input, replies, tool starts and finishes, outputs and run endings are each one journal call, and the call commits its rows and durable events together. The loop reads pending input and duplicate call ids through the same trait. One implementation, `SqliteJournal`, sits over the store and the event log. Writes that still ride inside a journal commit, such as the execution mode, tool surface and reminders bound at admission, stay in that implementation until they get their own seams.
 
+The dispatcher in `bubblepaw-core` asks a `ToolGate` trait about each call instead of reaching into the approval code. `admits_without_write` says whether a call needs nothing written or asked, so the reply and dispatch still commit together; `before` returns allow, deny with the text the model reads, or cancelled, and may wait for a person; `after` shapes the finished result through the host's result hook. The call travels as plain data. One implementation, the stock gate in `approvals`, holds the policy, session rules, automatic review and workspace roots. The size-limit summary and the nested-call skip stay in the dispatcher.
+
 ## Rules
 
 Normal and build dependencies obey these rules; dev-dependencies are exempt:

@@ -21,12 +21,14 @@ use tokio::sync::oneshot;
 mod blocklist;
 mod modes;
 mod rules;
+mod stock_gate;
 pub use blocklist::exec_working_directory;
 use blocklist::hardline_message;
 pub(crate) use modes::AutoApprovalContext;
 use modes::auto_reason_logged;
 pub use modes::{Approval, ApprovalMode, ApprovalPolicy, AutoApprovalConfig, DEFAULT_AUTO_PROMPT};
 use rules::has_rule;
+pub(crate) use stock_gate::StockGate;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -166,17 +168,6 @@ pub(crate) enum Gate {
     Proceed,
     Denied(String),
     Cancelled,
-}
-impl Gate {
-    /// None to proceed, the tool error for a denial, or the call site's
-    /// existing cancellation error.
-    pub(crate) fn denial(self, cancelled: &str) -> Result<Option<String>> {
-        match self {
-            Self::Proceed => Ok(None),
-            Self::Denied(message) => Ok(Some(message)),
-            Self::Cancelled => bail!("{cancelled}"),
-        }
-    }
 }
 
 fn denial(reason: Option<&str>) -> String {
