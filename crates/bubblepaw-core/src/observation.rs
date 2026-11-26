@@ -1,6 +1,8 @@
 //! Optional, disposable observations. Sinks must enqueue without blocking execution.
 //! This stream is never an effect ledger or a source of conversation history.
 use crate::cache_accounting::{CacheAccounting, request_components};
+pub use crate::observer::ObservationScope;
+use crate::observer::{Observer, ToolWatch};
 use crate::{ModelRequest, ModelResponse, RequestKind, Usage, WireShape, now};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -24,24 +26,6 @@ pub struct Observation {
     pub sink: Arc<dyn ObservationSink>,
     pub mode: ObservationMode,
     pub max_payload_bytes: usize,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ObservationScope {
-    pub session_id: String,
-    pub run_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model_request_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub call_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub invocation_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub execution_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub environment: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub generation: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -367,5 +351,47 @@ impl Drop for ToolObservation {
                 "Tool future dropped; outcome may be unknown",
             );
         }
+    }
+}
+
+impl Observer for Observation {
+    fn emit(&self, scope: ObservationScope, kind: &str, metrics: Value, payload: Option<Value>) {
+        Observation::emit(self, scope, kind, metrics, payload);
+    }
+    fn failure(
+        &self,
+        scope: ObservationScope,
+        kind: &str,
+        elapsed_ms: u64,
+        category: &str,
+        error: &str,
+    ) {
+        Observation::failure(self, scope, kind, elapsed_ms, category, error);
+    }
+    fn tool_started(
+        &self,
+        scope: ObservationScope,
+        name: &str,
+        input: &Value,
+        nested: bool,
+        origin: &str,
+    ) -> Box<dyn ToolWatch> {
+        Box::new(ToolObservation::start(
+            self.clone(),
+            scope,
+            name,
+            input,
+            nested,
+            origin,
+        ))
+    }
+}
+
+impl ToolWatch for ToolObservation {
+    fn invocation(&mut self, id: &str) {
+        ToolObservation::invocation(self, id);
+    }
+    fn finish(&mut self, result: &anyhow::Result<crate::ToolResult>) {
+        ToolObservation::finish(self, result);
     }
 }
