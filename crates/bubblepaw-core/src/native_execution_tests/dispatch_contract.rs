@@ -134,8 +134,8 @@ async fn access_wrappers_allow_named_targets_and_enforce_the_shared_budget() -> 
                 CancellationToken::new(),
             )
             .await?;
-        assert!(!result.is_error, "{route}: {}", result.content);
-        assert_eq!(result.content, "allowed");
+        assert!(!result.is_error, "{route}: {}", result.body());
+        assert_eq!(result.body(), "allowed");
         assert_eq!(capability.calls.load(Ordering::SeqCst), 1);
         if route != "read" {
             let result = harness
@@ -152,9 +152,9 @@ async fn access_wrappers_allow_named_targets_and_enforce_the_shared_budget() -> 
                 .await?;
             assert!(result.is_error);
             assert!(
-                result.content.contains("Tool call budget exhausted"),
+                result.text_has("Tool call budget exhausted"),
                 "{}",
-                result.content
+                result.body()
             );
             assert_eq!(capability.calls.load(Ordering::SeqCst), 1);
         }
@@ -247,7 +247,7 @@ async fn model_and_embedder_routes_share_the_same_rejection_contract() -> Result
             assert!(embedder.is_error);
             // The model route may append a correction hint to the shared text.
             assert!(
-                model_error.text().starts_with(&embedder.content),
+                model_error.text().starts_with(embedder.body().as_ref()),
                 "{case}/{route}"
             );
             if let Some(expected) = &expected {

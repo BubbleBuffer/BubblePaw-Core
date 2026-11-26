@@ -317,8 +317,8 @@ async fn sync_exec_backgrounds_at_configured_timeout_after_outlasting_idle_limit
                 )
                 .await
                 .unwrap();
-            assert!(!polled.is_error, "{}", polled.content);
-            let polled: Value = serde_json::from_str(&polled.content).unwrap();
+            assert!(!polled.is_error, "{}", polled.body());
+            let polled: Value = serde_json::from_str(&polled.body()).unwrap();
             assert_eq!(polled["status"], "running");
             let stdout = polled["stdout"].as_str().unwrap();
             assert!("ready".starts_with(stdout), "{polled}");

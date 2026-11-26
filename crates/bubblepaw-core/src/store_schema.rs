@@ -10,7 +10,7 @@
 use anyhow::Result;
 
 /// Version of the chat store written by this build.
-pub(super) const CHAT_VERSION: i64 = 13;
+pub(super) const CHAT_VERSION: i64 = 14;
 /// Version of `catalog.db`.
 pub(super) const CATALOG_VERSION: i64 = 2;
 /// Version of `serving.db`.

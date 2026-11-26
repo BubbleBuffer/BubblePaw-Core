@@ -61,7 +61,7 @@ async fn call(registry: &ToolRegistry, owner: &str, name: &str, input: Value) ->
         .await
         .unwrap();
     assert!(!result.is_error);
-    serde_json::from_str(&result.content).unwrap()
+    serde_json::from_str(&result.body()).unwrap()
 }
 #[cfg(windows)]
 const ECHO: &str = "<nul set /p=hello& <nul set /p=problem>&2& cmd /c exit 0";
@@ -441,7 +441,7 @@ async fn user_background_and_steer_release_only_the_owned_sync_wait() {
                 .unwrap()
                 .unwrap()
                 .unwrap()
-                .content,
+                .body(),
         )
         .unwrap();
         assert_eq!(result["status"], "backgrounded");

@@ -237,7 +237,7 @@ impl Tool for Composite {
         let read = dispatcher
             .invoke(context.clone(), "guarded", serde_json::json!({"count":1}))
             .await?;
-        assert_eq!(read.content, "nested read payload");
+        assert_eq!(read.body(), "nested read payload");
         dispatcher.emit_output(
             &context,
             "cell-1",
@@ -1894,7 +1894,7 @@ fn legacy_session_and_checkpoint_default_without_rewriting_archive() -> Result<(
     assert_eq!(after, originals);
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        13
+        14
     );
     Ok(())
 }

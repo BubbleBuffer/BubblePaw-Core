@@ -37,7 +37,7 @@ impl Tool for ReloadTool {
             .ok_or_else(|| anyhow!("Config host was released"))?;
         let report = live.reload(input["server"].as_str()).await;
         Ok(bubblepaw_core::ToolResult {
-            content: serde_json::to_string(&report)?,
+            content: bubblepaw_core::text_blocks(serde_json::to_string(&report)?),
             is_error: !report.applied || !report.errors.is_empty(),
             details: None,
             terminate: false,

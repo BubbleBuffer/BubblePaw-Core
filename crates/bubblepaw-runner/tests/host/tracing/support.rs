@@ -101,9 +101,9 @@ impl Tool for Composite {
             .await?;
         anyhow::ensure!(rejected.is_error, "invalid nested arguments were accepted");
         anyhow::ensure!(
-            rejected.content.contains("Invalid arguments for exec"),
+            rejected.text_has("Invalid arguments for exec"),
             "nested dispatch returned the wrong rejection: {}",
-            rejected.content
+            rejected.body()
         );
         dispatcher.emit_output(
             &context,

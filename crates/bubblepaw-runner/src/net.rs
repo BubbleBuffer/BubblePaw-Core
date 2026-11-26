@@ -1970,11 +1970,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert!(
-                reply
-                    .content
-                    .contains(&format!("\"id\":\"s{}\"", index + 1))
-            );
+            assert!(reply.text_has(&format!("\"id\":\"s{}\"", index + 1)));
             maximum_wal = maximum_wal.max(client.cache.measurements().unwrap().2);
         }
         let stats = client.cache.measurements().unwrap();
@@ -2053,7 +2049,7 @@ mod tests {
             .invoke(context(), json!({"id":"s7","max_chars":100}))
             .await
             .unwrap();
-        let reply: Value = serde_json::from_str(&reply.content).unwrap();
+        let reply: Value = serde_json::from_str(&reply.body()).unwrap();
         assert_eq!(reply["id"], "s7");
         assert_eq!(reply["source"]["url"], format!("{base}/p6"));
         assert_eq!(hits.load(Ordering::Relaxed), 51);
@@ -2121,7 +2117,7 @@ mod tests {
                 .invoke(context(), json!({"query":"second root cache fixture"}))
                 .await
                 .unwrap();
-            let searched: Value = serde_json::from_str(&searched.content).unwrap();
+            let searched: Value = serde_json::from_str(&searched.body()).unwrap();
             assert_eq!(searched["results"][0]["id"], "s1");
             let fetched = registry
                 .get_host("web_fetch")
@@ -2129,7 +2125,7 @@ mod tests {
                 .invoke(context(), json!({"id":"s1"}))
                 .await
                 .unwrap();
-            let fetched: Value = serde_json::from_str(&fetched.content).unwrap();
+            let fetched: Value = serde_json::from_str(&fetched.body()).unwrap();
             assert_eq!(fetched["source"]["url"], page_url);
             assert_eq!(fetched["source"]["title"], "Saved lead title");
             let query = json!({"id":"s1","query":"platypus aqueduct","top_k":1});
@@ -2139,7 +2135,7 @@ mod tests {
                 .invoke(context(), query.clone())
                 .await
                 .unwrap();
-            let ranked: Value = serde_json::from_str(&ranked.content).unwrap();
+            let ranked: Value = serde_json::from_str(&ranked.body()).unwrap();
             assert_eq!(ranked["passages"][0]["number"], 7);
             let repeated = registry
                 .get_host("web_fetch")
@@ -2147,7 +2143,7 @@ mod tests {
                 .invoke(context(), query)
                 .await
                 .unwrap();
-            let repeated: Value = serde_json::from_str(&repeated.content).unwrap();
+            let repeated: Value = serde_json::from_str(&repeated.body()).unwrap();
             assert_eq!(repeated["passages"], ranked["passages"]);
             if let Some(original) = &original_passages {
                 assert_eq!(&ranked["passages"], original);

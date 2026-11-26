@@ -134,6 +134,14 @@ impl Store {
     ) -> Result<()> {
         let mut data = serde_json::to_value(message)?;
         let text = message.text();
+        // Text moved out of the row leaves its image blocks behind.
+        let images = serde_json::to_value(
+            message
+                .content
+                .iter()
+                .filter(|block| !matches!(block, crate::ContentBlock::Text { .. }))
+                .collect::<Vec<_>>(),
+        )?;
         if let Some(state) = &message.provider_state {
             let opaque = serde_json::to_vec(state)?;
             if opaque.len() > 4096 {
@@ -145,7 +153,7 @@ impl Store {
         // Failed script runs expose this same body as Run.error. Blob-back
         // even a small error so the terminal record can share its exact hash.
         if let Some(parts) = Self::attachment_content_parts(tx, &text)? {
-            data["content"] = serde_json::json!([]);
+            data["content"] = images.clone();
             let hash = Self::blob_put(tx, &serde_json::to_vec(&parts)?)?;
             data["_content_parts_blob"] = serde_json::Value::String(hash);
         } else if (message.role == Role::Tool && message.is_error)
@@ -155,7 +163,7 @@ impl Store {
                     || text.contains("<BubblePawAttachments>")))
         {
             let hash = Self::blob_put(tx, text.as_bytes())?;
-            data["content"] = serde_json::json!([]);
+            data["content"] = images.clone();
             data["_content_blob"] = serde_json::Value::String(hash);
         } else if message.role == Role::User {
             let hash = crate::fingerprint(text.as_bytes());
@@ -165,7 +173,7 @@ impl Store {
                 |row| row.get(0),
             )?;
             if exists {
-                data["content"] = serde_json::json!([]);
+                data["content"] = images.clone();
                 data["_content_blob"] = serde_json::Value::String(hash);
             }
         }
@@ -337,7 +345,7 @@ impl Store {
         if pending.is_empty() {
             return Ok(());
         }
-        self.write(|tx|{for call in pending {let dispatched:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM effects WHERE run_id=?1 AND call_id=?2)",params![run_id,call.id],|r|r.get(0))?;let result=ToolResult::error(if dispatched {"Tool outcome unknown after interruption; effect may have occurred. Do not replay automatically."} else {"Tool was not dispatched because the run was interrupted."});let mut msg=Self::message(session_id,Role::Tool,result.content);msg.tool_call_id=Some(call.id);msg.is_error=true;Self::insert_message(tx,&msg)?;}tx.execute("UPDATE effects SET state='unknown' WHERE run_id=?1 AND state='dispatched'",[run_id])?;Ok(())})
+        self.write(|tx|{for call in pending {let dispatched:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM effects WHERE run_id=?1 AND call_id=?2)",params![run_id,call.id],|r|r.get(0))?;let result=ToolResult::error(if dispatched {"Tool outcome unknown after interruption; effect may have occurred. Do not replay automatically."} else {"Tool was not dispatched because the run was interrupted."});let mut msg=Self::message(session_id,Role::Tool,String::new());msg.content=result.content;msg.tool_call_id=Some(call.id);msg.is_error=true;Self::insert_message(tx,&msg)?;}tx.execute("UPDATE effects SET state='unknown' WHERE run_id=?1 AND state='dispatched'",[run_id])?;Ok(())})
     }
 }
 

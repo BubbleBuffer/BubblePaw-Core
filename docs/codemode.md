@@ -195,8 +195,8 @@ execution/publication summary. Intermediate native results remain inside JS.
 Image reads are the exception: `await tools.read({path:"diagram.png"})` attaches
 supported image input to the `js` result automatically, even when the cell returns
 another value. Images are deduplicated, limited to four per call and 5,000,000
-bytes each, and never resized. Omission notes identify the limits. The bounded
-image-reference metadata is appended outside the text-preview token budget;
+bytes each, and never resized. Omission notes identify the limits. The images
+are `image` blocks of the result, outside the text-preview token budget;
 original bytes stay in SQLite and are encoded only for the provider request.
 See [provider image input](providers.md#image-input-2026-10-15).
 Defined returns are JSON values. The entire model-facing reply defaults to

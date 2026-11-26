@@ -156,7 +156,7 @@ async fn shapes(kind: Kind) {
         let body = &requests[1];
         let encoded = STANDARD.encode(PNG);
         assert_eq!(body.to_string().matches(&encoded).count(), 1);
-        assert!(!body.to_string().contains("BubblePawImageWire"));
+        assert!(!body.to_string().contains("BubblePawImage"));
         match kind {
             Kind::Chat => {
                 let messages = body["messages"].as_array().unwrap();
@@ -344,10 +344,7 @@ async fn live(kind: Kind) {
             .messages(&fixture.session)
             .unwrap()
             .iter()
-            .any(|message| message.role == Role::Tool
-                && !bubblepaw_runner::images::split_refs(&message.text())
-                    .1
-                    .is_empty()),
+            .any(|message| message.role == Role::Tool && message.images().next().is_some()),
         "live model did not read the image through js; answer: {text}"
     );
     let orientation = text

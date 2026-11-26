@@ -33,7 +33,11 @@ async fn publishes_server_identity_and_updates_deferral_without_reconnecting() {
     );
     let pid_name = bubblepaw_mcp::tool_name(server, "pid");
     let pid_tool = registry.get_host(&pid_name).unwrap();
-    let pid = pid_tool.invoke(context(), json!({})).await.unwrap().content;
+    let pid = pid_tool
+        .invoke(context(), json!({}))
+        .await
+        .unwrap()
+        .owned_text();
 
     settings.servers.get_mut(server).unwrap().defer = false;
     let diff = host.reload(&settings, None).await.unwrap();
@@ -56,7 +60,7 @@ async fn publishes_server_identity_and_updates_deferral_without_reconnecting() {
         2
     );
     assert_eq!(
-        pid_tool.invoke(context(), json!({})).await.unwrap().content,
+        pid_tool.invoke(context(), json!({})).await.unwrap().body(),
         pid
     );
     host.shutdown(Duration::from_millis(100)).await;
@@ -93,22 +97,22 @@ async fn discovers_pages_preserves_approval_and_converts_results() {
         );
     }
     assert_eq!(
-        invoke(&host, "echo", json!({"text":"hello"})).await.content,
+        invoke(&host, "echo", json!({"text":"hello"})).await.body(),
         "hello"
     );
     assert!(invoke(&host, "fail", json!({})).await.is_error);
     let rpc = invoke(&host, "rpc_error", json!({})).await;
     assert!(rpc.is_error);
-    assert!(rpc.content.contains("fake RPC failure"));
+    assert!(rpc.text_has("fake RPC failure"));
     assert_eq!(
-        invoke(&host, "structured", json!({})).await.content,
+        invoke(&host, "structured", json!({})).await.body(),
         "{\"answer\":42}"
     );
     assert_eq!(
-        invoke(&host, "image", json!({})).await.content,
+        invoke(&host, "image", json!({})).await.body(),
         "[MCP image: 4 bytes omitted]"
     );
-    let binary = invoke(&host, "binary", json!({})).await.content;
+    let binary = invoke(&host, "binary", json!({})).await.owned_text();
     assert!(binary.contains("audio: 1 bytes omitted"));
     assert!(binary.contains("resource:"));
     assert!(!binary.contains("YWJjZA"));

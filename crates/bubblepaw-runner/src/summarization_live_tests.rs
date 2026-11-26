@@ -123,7 +123,7 @@ async fn reload_changes_threshold_auto_and_model_window_but_retains_lcm() -> Res
 
 #[test]
 fn image_attachments_count_once_toward_the_estimate() -> Result<()> {
-    use crate::images::{ImageRef, append_refs};
+    use crate::images::{ImageRef, blocks_with_images};
     let provider = crate::provider::ChatCompletionsProvider::without_key("http://127.0.0.1:1")?;
     let context = SummarizingContext::new(
         Store::in_memory()?,
@@ -138,8 +138,8 @@ fn image_attachments_count_once_toward_the_estimate() -> Result<()> {
         bytes: 1000,
     };
     let tool = |call: &str, images: &[ImageRef]| {
-        let mut message =
-            SummarizingContext::synthetic("s", Role::Tool, append_refs("ok".into(), images));
+        let mut message = SummarizingContext::synthetic("s", Role::Tool, String::new());
+        message.content = blocks_with_images("ok".into(), images);
         message.tool_call_id = Some(call.into());
         message
     };

@@ -46,7 +46,7 @@ async fn one_shot_delete_suppresses_wake_and_cancels_only_its_jobs() -> Result<(
                 CancellationToken::new(),
             )
             .await?;
-        assert!(!reply.is_error, "{}", reply.content);
+        assert!(!reply.is_error, "{}", reply.body());
     }
     assert_eq!(job_count(&processes, &session.id)?, 1);
     assert_eq!(job_count(&processes, &other.id)?, 1);

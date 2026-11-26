@@ -1,5 +1,6 @@
 //! Run-owned structured completion and its single missing-submission reminder.
 use super::*;
+use crate::ContentBlock;
 
 impl Harness {
     fn result_schema_notice(
@@ -84,22 +85,20 @@ impl Harness {
     ) -> ToolResult {
         let footer = dispatcher
             .remaining_tool_calls()
-            .map(|remaining| {
-                format!(
-                    "
-
-{remaining} tool calls left"
-                )
-            })
+            .map(|remaining| format!("\n\n{remaining} tool calls left"))
             .unwrap_or_default();
         let limit = self
             .config
             .max_tool_result_bytes
             .saturating_sub(footer.len());
-        ToolResult {
-            content: format!("{}{}", bounded(&result.content, limit), footer),
-            ..result
+        let mut result = result;
+        result.bound_text(limit);
+        if !footer.is_empty() {
+            // After the last block: the text reads body then footer, and an image
+            // block never sits inside either.
+            result.content.push(ContentBlock::Text { text: footer });
         }
+        result
     }
     pub(super) fn nudge_required_result(
         &self,

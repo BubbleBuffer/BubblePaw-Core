@@ -210,12 +210,8 @@ async fn native_never_executes_the_js_adapter() {
         )
         .await
         .unwrap();
-    assert!(result.is_error, "{}", result.content);
-    assert!(
-        result.content.contains("Unknown tool"),
-        "{}",
-        result.content
-    );
+    assert!(result.is_error, "{}", result.body());
+    assert!(result.text_has("Unknown tool"), "{}", result.body());
     assert!(f.provider.requests.lock().unwrap().is_empty());
     assert!(f.store.pending_effects(&f.session).unwrap().is_empty());
     f.shutdown().await;
@@ -331,7 +327,7 @@ async fn model_free_js_call_matches_existing_script_return_without_provider_call
         )
         .await
         .unwrap();
-    assert!(!tool.is_error, "{}", tool.content);
+    assert!(!tool.is_error, "{}", tool.body());
     let script_session = f.store.create_session("script-equivalent").unwrap().id;
     let script = f
         .harness
@@ -346,7 +342,7 @@ async fn model_free_js_call_matches_existing_script_return_without_provider_call
         .await
         .unwrap();
     assert_eq!(script.status, "completed", "{:?}", script.error);
-    assert_eq!(script.text.as_deref(), Some(tool.content.as_str()));
+    assert_eq!(script.text.as_deref(), Some(tool.body().as_ref()));
     assert!(f.provider.requests.lock().unwrap().is_empty());
     assert!(f.store.pending_effects(&f.session).unwrap().is_empty());
     assert!(f.store.pending_effects(&script_session).unwrap().is_empty());
@@ -363,13 +359,11 @@ async fn model_free_js_refuses_nested_interactive_and_auto_approval() {
             &f.session, "js", json!({"code":"return await tools.write({path:'blocked.txt',content:'must not write'});"}),
             RunOptions { approval: Some(approval), ..Default::default() }, CancellationToken::new(),
         )).await.expect("model-free nested approval waited for a person or model").unwrap();
-        assert!(result.is_error, "{}", result.content);
+        assert!(result.is_error, "{}", result.body());
         assert!(
-            result
-                .content
-                .contains("Interactive approval is unavailable"),
+            result.text_has("Interactive approval is unavailable"),
             "{}",
-            result.content
+            result.body()
         );
         assert!(!f.root.path().join("blocked.txt").exists());
         assert!(f.harness.pending_approvals(&f.session).unwrap().is_empty());
@@ -393,7 +387,7 @@ async fn model_free_native_write_uses_workspace_checkpoints_and_effect_journal()
         )
         .await
         .unwrap();
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.body());
     assert_eq!(
         std::fs::read_to_string(f.root.path().join("written.txt")).unwrap(),
         "checkpointed\n"

@@ -193,7 +193,7 @@ async fn owner_backgrounds_its_blocked_command_and_other_sessions_cannot() {
 
     let result = reply.unwrap().unwrap();
     assert!(!result.is_error);
-    let blocked: Value = serde_json::from_str(&result.content).unwrap();
+    let blocked: Value = serde_json::from_str(&result.body()).unwrap();
     assert_eq!(blocked["status"], "backgrounded");
     assert_eq!(blocked["reason"], "user");
     assert_eq!(blocked["handle"], handle);

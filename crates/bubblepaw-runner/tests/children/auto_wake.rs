@@ -534,7 +534,7 @@ async fn idle_and_busy_background_exec_use_the_same_completion_inbox() -> Result
                 json!({"command":completed_command(),"background":true}),
             )
             .await?;
-        let receipt: Value = serde_json::from_str(&receipt.content)?;
+        let receipt: Value = serde_json::from_str(&receipt.body())?;
         assert_completed_exec(&fixture, &tools, &receipt["handle"]).await?;
         if busy {
             fixture.probe.release.notify_waiters();
@@ -579,7 +579,7 @@ async fn mixed_child_and_exec_completions_batch_into_one_parent_turn() -> Result
                 "timeoutMs":exec_test_timeout().as_millis()}),
         )
         .await?;
-    let receipt: Value = serde_json::from_str(&receipt.content)?;
+    let receipt: Value = serde_json::from_str(&receipt.body())?;
     eventually(|| workspace.path().join("ready").exists()).await;
     let child = fixture.start("gate")?;
     assert_eq!(
@@ -786,7 +786,7 @@ async fn concurrent_steering_and_exec_completion_do_not_deadlock_or_duplicate() 
                     "timeoutMs":exec_test_timeout().as_millis()}),
             )
             .await?;
-        let receipt: Value = serde_json::from_str(&receipt.content)?;
+        let receipt: Value = serde_json::from_str(&receipt.body())?;
         eventually(|| workspace.path().join("ready").exists()).await;
         let root = fixture.root.clone();
         let parent = fixture.parent.clone();
@@ -886,7 +886,7 @@ async fn known_exec_completion_recovers_next_turn_without_proactive_restart_wake
             json!({"command":completed_command(),"background":true}),
         )
         .await?;
-    let handle: Value = serde_json::from_str(&receipt.content)?;
+    let handle: Value = serde_json::from_str(&receipt.body())?;
     let result = tools
         .get("wait")
         .unwrap()
@@ -896,7 +896,7 @@ async fn known_exec_completion_recovers_next_turn_without_proactive_restart_wake
                 "timeoutMs":if cfg!(windows) { 15_000 } else { 3_000 }}),
         )
         .await?;
-    let result: Value = serde_json::from_str(&result.content)?;
+    let result: Value = serde_json::from_str(&result.body())?;
     assert_eq!(result["status"], "exited", "{result}");
     assert_eq!(result["exitCode"], 0, "{result}");
     assert_completed_exec(&fixture, &tools, &handle["handle"]).await?;

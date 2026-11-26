@@ -79,7 +79,7 @@ impl Tool for Capability {
             std::future::pending::<()>().await;
         }
         Ok(ToolResult {
-            content: input["value"].as_str().unwrap().into(),
+            content: crate::text_blocks(input["value"].as_str().unwrap()),
             is_error: false,
             details: None,
             terminate: false,

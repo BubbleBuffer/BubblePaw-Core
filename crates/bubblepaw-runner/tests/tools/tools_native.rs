@@ -30,7 +30,7 @@ async fn call(registry: &ToolRegistry, name: &str, input: Value) -> Value {
         .invoke(context(), input)
         .await
         .unwrap();
-    serde_json::from_str(&output.content).unwrap()
+    serde_json::from_str(&output.body()).unwrap()
 }
 #[tokio::test]
 async fn root_and_exact_edit_contract() {
@@ -186,7 +186,7 @@ async fn process_deadline_and_run_token_kill_children() {
         .invoke(run, json!({"command":command(script),"yieldMs":0}))
         .await
         .unwrap();
-    let result: Value = serde_json::from_str(&result.content).unwrap();
+    let result: Value = serde_json::from_str(&result.body()).unwrap();
     token.cancel();
     let result = tokio::time::timeout(Duration::from_secs(8), finished(&registry, result))
         .await

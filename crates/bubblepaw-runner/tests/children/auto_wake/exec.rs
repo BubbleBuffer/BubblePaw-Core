@@ -77,7 +77,7 @@ pub(super) async fn assert_completed_exec(
                 "cursor":{"stdout":0,"stderr":0}}),
         )
         .await?;
-    let result: Value = serde_json::from_str(&result.content)?;
+    let result: Value = serde_json::from_str(&result.body())?;
     assert_eq!(result["status"], "exited", "{result}");
     assert_eq!(result["exitCode"], 0, "{result}");
     assert_eq!(result["stdout"], "completed", "{result}");

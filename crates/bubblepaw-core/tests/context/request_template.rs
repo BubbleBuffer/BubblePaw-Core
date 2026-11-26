@@ -50,7 +50,7 @@ impl Tool for Named {
     }
     async fn invoke(&self, _: ToolContext, _: Value) -> Result<ToolResult> {
         Ok(ToolResult {
-            content: "ok".into(),
+            content: bubblepaw_core::text_blocks("ok"),
             is_error: false,
             details: None,
             terminate: false,

@@ -177,6 +177,23 @@ impl Store {
     pub(crate) fn decode_message_body(conn: &Connection, data: &str) -> Result<serde_json::Value> {
         cold::decode_body(conn, data)
     }
+    /// `text` as the first block of a stored `content`, ahead of its image
+    /// blocks. A stored body that is not a list (older rows) is the text itself.
+    pub(crate) fn content_with_text(stored: &serde_json::Value, text: String) -> serde_json::Value {
+        match stored {
+            serde_json::Value::Array(blocks) => {
+                let mut content = vec![serde_json::json!({"type":"text","text":text})];
+                content.extend(
+                    blocks
+                        .iter()
+                        .filter(|block| block["type"] != "text")
+                        .cloned(),
+                );
+                serde_json::Value::Array(content)
+            }
+            _ => serde_json::Value::String(text),
+        }
+    }
     pub(crate) fn message_from_data(conn: &Connection, data: &str) -> Result<Message> {
         let mut value = Self::decode_message_body(conn, data)?;
         if let Some(hash) = value
@@ -186,22 +203,20 @@ impl Store {
             value["provider_state"] = serde_json::from_slice(&Self::blob_get(conn, hash)?)?;
         }
         if let Some(hash) = value.get("_content_blob").and_then(|hash| hash.as_str()) {
-            value["content"] =
-                serde_json::Value::String(String::from_utf8(Self::blob_get(conn, hash)?)?);
+            let text = String::from_utf8(Self::blob_get(conn, hash)?)?;
+            value["content"] = Self::content_with_text(&value["content"], text);
         }
         if let Some(hash) = value
             .get("_content_parts_blob")
             .and_then(|value| value.as_str())
         {
-            value["content"] =
-                serde_json::Value::String(Self::input_text(conn, "", Some(hash), Some("parts"))?);
+            let text = Self::input_text(conn, "", Some(hash), Some("parts"))?;
+            value["content"] = Self::content_with_text(&value["content"], text);
         } else if let Some(parts) = value.get("_content_parts") {
-            value["content"] = serde_json::Value::String(Self::render_content_parts(
-                conn,
-                serde_json::from_value(parts.clone())?,
-            )?);
+            let text = Self::render_content_parts(conn, serde_json::from_value(parts.clone())?)?;
+            value["content"] = Self::content_with_text(&value["content"], text);
         }
-        Ok(serde_json::from_value(value)?)
+        Ok(serde_json::from_value::<Message>(value)?.upgraded())
     }
 
     pub(crate) fn read_message(

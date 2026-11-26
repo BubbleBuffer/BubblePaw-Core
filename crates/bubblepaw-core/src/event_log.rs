@@ -386,9 +386,8 @@ fn hydrate(
             value["call"] = serde_json::to_value(call)?;
         }
         ContentRef::ToolResult { message_id } => {
-            value["result"]["content"] = Store::read_message(conn, &session_id, &message_id)?
-                .text()
-                .into();
+            value["result"]["content"] =
+                serde_json::to_value(Store::read_message(conn, &session_id, &message_id)?.content)?;
         }
         ContentRef::Input { input_id: _ } => {
             let text = operations["text"]

@@ -187,13 +187,13 @@ async fn timeout_cancels_without_replay_and_parallel_calls_are_correlated() {
     assert_eq!(
         invoke(&host, "echo", json!({"text":"parallel"}))
             .await
-            .content,
+            .body(),
         "parallel"
     );
     let timed_out = pending.await.unwrap();
     assert!(timed_out.is_error);
     assert!(!timed_out.pending);
-    assert!(timed_out.content.contains("outcome unknown"));
+    assert!(timed_out.text_has("outcome unknown"));
     eventually(|| {
         requests(&log)
             .iter()
@@ -210,7 +210,7 @@ async fn timeout_cancels_without_replay_and_parallel_calls_are_correlated() {
     assert_eq!(
         invoke(&host, "echo", json!({"text":"still alive"}))
             .await
-            .content,
+            .body(),
         "still alive"
     );
     host.shutdown(Duration::ZERO).await;
@@ -248,7 +248,7 @@ async fn dropping_a_call_sends_cancelled_notification() {
     })
     .await;
     let cancelled: Value =
-        serde_json::from_str(&invoke(&host, "cancelled", json!({})).await.content).unwrap();
+        serde_json::from_str(&invoke(&host, "cancelled", json!({})).await.body()).unwrap();
     assert!(cancelled.as_array().unwrap().contains(&id));
     host.shutdown(Duration::ZERO).await;
 }
@@ -262,11 +262,11 @@ async fn crash_fails_pending_call_and_next_call_reinitializes_and_relists() {
         root.path(),
     )
     .await;
-    let first_pid = invoke(&host, "pid", json!({})).await.content;
+    let first_pid = invoke(&host, "pid", json!({})).await.owned_text();
     let crash = invoke(&host, "crash", json!({})).await;
     assert!(crash.is_error);
-    assert!(crash.content.contains("server exited; outcome unknown"));
-    let second_pid = invoke(&host, "pid", json!({})).await.content;
+    assert!(crash.text_has("server exited; outcome unknown"));
+    let second_pid = invoke(&host, "pid", json!({})).await.owned_text();
     assert_ne!(first_pid, second_pid);
     assert_eq!(
         requests(&log)
@@ -321,7 +321,7 @@ async fn cancelling_restart_setup_cannot_reuse_a_half_initialized_connection() {
     pending.abort();
     let _ = pending.await;
     assert_eq!(
-        invoke(&host, "echo", json!({"text":"fresh"})).await.content,
+        invoke(&host, "echo", json!({"text":"fresh"})).await.body(),
         "fresh"
     );
     let lines = requests(&log);
@@ -360,16 +360,16 @@ async fn spawn_environment_and_cwd_are_resolved_without_secret_results_or_warnin
     assert_eq!(
         invoke(&host, "env", json!({"name":"CHILD_SECRET"}))
             .await
-            .content,
+            .body(),
         "[redacted]"
     );
     assert_eq!(
         invoke(&host, "env", json!({"name":"PLAIN_VALUE"}))
             .await
-            .content,
+            .body(),
         "ordinary"
     );
-    let cwd = invoke(&host, "cwd", json!({})).await.content;
+    let cwd = invoke(&host, "cwd", json!({})).await.owned_text();
     assert_eq!(Path::new(&cwd), root.path().join("child"));
     host.shutdown(Duration::ZERO).await;
     settings.args = vec![
@@ -433,7 +433,7 @@ async fn shutdown_and_drop_kill_owned_unix_process_groups_and_disable_retained_t
         .await
         .unwrap();
     assert!(result.is_error);
-    assert!(result.content.contains("not sent"));
+    assert!(result.text_has("not sent"));
     let host = start(config(args), root.path()).await;
     let parent_pid = pid_file(&parent);
     let child_pid = pid_file(&child);
@@ -465,7 +465,11 @@ async fn reload_add_remove_change_and_force_preserve_unchanged_servers() {
     let mut config = settings(config(Vec::new()));
     let host = McpHost::start(&config, root.path()).await;
     let retained = tool(&host, "pid");
-    let first = retained.invoke(context(), json!({})).await.unwrap().content;
+    let first = retained
+        .invoke(context(), json!({}))
+        .await
+        .unwrap()
+        .owned_text();
     assert!(host.reload(&config, None).await.unwrap().is_empty());
     config
         .servers
@@ -474,7 +478,7 @@ async fn reload_add_remove_change_and_force_preserve_unchanged_servers() {
     assert_eq!(added.started, ["other"]);
     assert_eq!(added.added.len(), 13);
     assert_eq!(
-        retained.invoke(context(), json!({})).await.unwrap().content,
+        retained.invoke(context(), json!({})).await.unwrap().body(),
         first
     );
     config.servers.get_mut("other").unwrap().exclude_tools = vec!["echo".into()];
@@ -483,25 +487,21 @@ async fn reload_add_remove_change_and_force_preserve_unchanged_servers() {
     assert_eq!(changed.filtered, ["other"]);
     assert_eq!(changed.removed, ["mcp__other__echo"]);
     assert_eq!(
-        retained.invoke(context(), json!({})).await.unwrap().content,
+        retained.invoke(context(), json!({})).await.unwrap().body(),
         first
     );
     let forced = host.reload(&config, Some("fixture")).await.unwrap();
     assert_eq!(forced.restarted, ["fixture"]);
     assert!(forced.added.is_empty() && forced.removed.is_empty() && forced.changed.is_empty());
     assert_ne!(
-        retained.invoke(context(), json!({})).await.unwrap().content,
+        retained.invoke(context(), json!({})).await.unwrap().body(),
         first
     );
     config.servers.remove("fixture");
     let removed = host.reload(&config, None).await.unwrap();
     assert_eq!(removed.stopped, ["fixture"]);
     let result = retained.invoke(context(), json!({})).await.unwrap();
-    assert!(
-        result.is_error
-            && result.content.contains("removed")
-            && result.content.contains("not sent")
-    );
+    assert!(result.is_error && result.text_has("removed") && result.text_has("not sent"));
     assert!(host.reload(&config, Some("missing")).await.is_err());
     host.shutdown(Duration::from_millis(100)).await;
 }
@@ -511,11 +511,11 @@ async fn reload_validation_failure_preserves_old_generation_and_inventory() {
     let root = tempfile::tempdir().unwrap();
     let mut config = settings(config(Vec::new()));
     let host = McpHost::start(&config, root.path()).await;
-    let pid = invoke(&host, "pid", json!({})).await.content;
+    let pid = invoke(&host, "pid", json!({})).await.owned_text();
     let names: Vec<_> = host.tools().iter().map(|t| t.definition().name).collect();
     config.servers.get_mut("fixture").unwrap().url = Some("https://example.invalid/mcp".into());
     assert!(host.reload(&config, None).await.is_err());
-    assert_eq!(invoke(&host, "pid", json!({})).await.content, pid);
+    assert_eq!(invoke(&host, "pid", json!({})).await.body(), pid);
     assert_eq!(
         host.tools()
             .iter()
@@ -591,15 +591,14 @@ async fn filters_apply_to_discovery_notifications_and_live_reload_without_reconn
             .invoke(context(), json!({}))
             .await
             .unwrap()
-            .content
-            .contains("not sent")
+            .text_has("not sent")
     );
     assert_eq!(
         retained
             .invoke(context(), json!({"text":"retained"}))
             .await
             .unwrap()
-            .content,
+            .body(),
         "retained"
     );
     assert_eq!(names(&host), ["mcp__fixture__echo", "mcp__fixture__other"]);
@@ -628,8 +627,7 @@ async fn filters_apply_to_discovery_notifications_and_live_reload_without_reconn
             .invoke(context(), json!({}))
             .await
             .unwrap()
-            .content
-            .contains("not sent")
+            .text_has("not sent")
     );
     // Removing the new allowlist restores unrestricted discovery from the raw list.
     config.servers.get_mut("fixture").unwrap().include_tools = None;
@@ -683,7 +681,11 @@ async fn stdio_notification_refreshes_validated_tools_without_restarting() {
     .await;
     let old_echo = tool(&host, "echo");
     let old_pid = tool(&host, "pid");
-    let pid = old_pid.invoke(context(), json!({})).await.unwrap().content;
+    let pid = old_pid
+        .invoke(context(), json!({}))
+        .await
+        .unwrap()
+        .owned_text();
     assert!(host.refresh_tools().await.is_empty());
     write_tools(
         &tools,
@@ -718,21 +720,19 @@ async fn stdio_notification_refreshes_validated_tools_without_restarting() {
             .invoke(context(), json!({}))
             .await
             .unwrap()
-            .content
-            .contains("removed")
+            .text_has("removed")
     );
     assert!(
         old_echo
             .invoke(context(), json!({}))
             .await
             .unwrap()
-            .content
-            .contains("definition changed")
+            .text_has("definition changed")
     );
     assert_eq!(
         invoke(&host, "echo", json!({"text":"new schema"}))
             .await
-            .content,
+            .body(),
         "new schema"
     );
     // Restoring the exact pid definition verifies the connection was retained.
@@ -745,7 +745,7 @@ async fn stdio_notification_refreshes_validated_tools_without_restarting() {
     );
     invoke(&host, "echo", json!({"notify_tools_changed":true})).await;
     host.refresh_tools().await;
-    assert_eq!(invoke(&host, "pid", json!({})).await.content, pid);
+    assert_eq!(invoke(&host, "pid", json!({})).await.body(), pid);
     assert!(host.refresh_tools().await.is_empty());
     host.shutdown(Duration::ZERO).await;
 }
@@ -759,7 +759,7 @@ async fn in_flight_call_survives_other_session_reload_and_generation_drains() {
     let host = Arc::new(McpHost::start(&config, root.path()).await);
     let old_pid: u32 = invoke(&host, "pid", json!({}))
         .await
-        .content
+        .body()
         .parse()
         .unwrap();
     let slow = tool(&host, "slow");
@@ -778,15 +778,15 @@ async fn in_flight_call_survives_other_session_reload_and_generation_drains() {
         .unwrap();
     let new_pid: u32 = invoke(&host, "pid", json!({}))
         .await
-        .content
+        .body()
         .parse()
         .unwrap();
     assert_ne!(new_pid, old_pid);
     #[cfg(unix)]
     assert!(running(old_pid));
     let result = pending.await.unwrap();
-    assert!(!result.is_error, "{}", result.content);
-    assert_eq!(result.content, "slept 400");
+    assert!(!result.is_error, "{}", result.body());
+    assert_eq!(result.body(), "slept 400");
     #[cfg(unix)]
     eventually(|| !running(old_pid)).await;
     assert_eq!(
@@ -805,7 +805,7 @@ async fn cancelling_reload_keeps_current_generation_and_stops_unpublished_candid
     let candidate_log = root.path().join("candidate.jsonl");
     let mut config = settings(config(Vec::new()));
     let host = Arc::new(McpHost::start(&config, root.path()).await);
-    let pid = invoke(&host, "pid", json!({})).await.content;
+    let pid = invoke(&host, "pid", json!({})).await.owned_text();
     config.servers.insert(
         "candidate".into(),
         McpServerSettings {
@@ -830,7 +830,7 @@ async fn cancelling_reload_keeps_current_generation_and_stops_unpublished_candid
     let candidate_pid = requests(&candidate_log)[0]["pid"].as_u64().unwrap() as u32;
     pending.abort();
     assert!(pending.await.unwrap_err().is_cancelled());
-    assert_eq!(invoke(&host, "pid", json!({})).await.content, pid);
+    assert_eq!(invoke(&host, "pid", json!({})).await.body(), pid);
     assert!(
         host.tools()
             .iter()
@@ -880,27 +880,27 @@ async fn client_env_overlays_stdio_child_and_env_from_resolves_only_from_the_sna
     assert_eq!(
         invoke(&host, "env", json!({"name":"CHILD_SECRET"}))
             .await
-            .content,
+            .body(),
         "[redacted]"
     );
     // A snapshot entry this server's env_from does not name never reaches it.
     assert_eq!(
         invoke(&host, "env", json!({"name":"CLIENT_FORWARDED"}))
             .await
-            .content,
+            .body(),
         ""
     );
     // Config env is not displaced by a snapshot entry of the same name.
     assert_eq!(
         invoke(&host, "env", json!({"name":"CLIENT_OVERRIDDEN"}))
             .await
-            .content,
+            .body(),
         "config-wins"
     );
     assert_eq!(
         invoke(&host, "env", json!({"name":"PLAIN_VALUE"}))
             .await
-            .content,
+            .body(),
         "ordinary"
     );
     host.shutdown(Duration::ZERO).await;
@@ -947,19 +947,19 @@ async fn client_snapshot_survives_forced_reload_and_crash_reconnect() {
     )
     .await;
     assert!(host.warnings().is_empty(), "{:?}", host.warnings());
-    let first_pid = invoke(&host, "pid", json!({})).await.content;
+    let first_pid = invoke(&host, "pid", json!({})).await.owned_text();
     assert_eq!(child_secret(&host).await, "[redacted]");
 
     // A forced reload starts a new child from the same settings and the same snapshot.
     let diff = host.reload(&settings, Some("fixture")).await.unwrap();
     assert_eq!(diff.restarted, ["fixture"]);
-    let reloaded_pid = invoke(&host, "pid", json!({})).await.content;
+    let reloaded_pid = invoke(&host, "pid", json!({})).await.owned_text();
     assert_ne!(first_pid, reloaded_pid);
     assert_eq!(child_secret(&host).await, "[redacted]");
 
     // A crash fails the pending call; the next call reconnects from the retained snapshot.
     assert!(invoke(&host, "crash", json!({})).await.is_error);
-    let reconnected_pid = invoke(&host, "pid", json!({})).await.content;
+    let reconnected_pid = invoke(&host, "pid", json!({})).await.owned_text();
     assert_ne!(reloaded_pid, reconnected_pid);
     assert_eq!(child_secret(&host).await, "[redacted]");
     host.shutdown(Duration::ZERO).await;
@@ -969,7 +969,7 @@ async fn client_snapshot_survives_forced_reload_and_crash_reconnect() {
 async fn child_secret(host: &McpHost) -> String {
     invoke(host, "env", json!({"name":"CHILD_SECRET"}))
         .await
-        .content
+        .owned_text()
 }
 
 #[tokio::test]
@@ -999,7 +999,7 @@ async fn client_value_reaches_only_the_server_whose_env_from_names_it() {
     let read = |server: &str, name: &str| {
         let tool = env(server);
         let input = json!({ "name": name });
-        async move { tool.invoke(context(), input).await.unwrap().content }
+        async move { tool.invoke(context(), input).await.unwrap().owned_text() }
     };
     // Server A receives the value through its own env_from (redacted in results).
     assert_eq!(read("a", "GITHUB_TOKEN").await, "[redacted]");

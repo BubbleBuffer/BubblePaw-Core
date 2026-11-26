@@ -34,10 +34,10 @@ impl Tool for EnvironmentTool {
             .0
             .control(&context.session_id, input.clone())?
             .to_string();
-        Ok(ToolResult::text(
+        Ok(ToolResult::blocks(
             self.0
                 .inspected_images(&context.session_id, &input)
-                .attach(content),
+                .blocks(content),
         ))
     }
 }

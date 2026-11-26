@@ -102,8 +102,8 @@ impl Observed {
             EventKind::ToolFinished {
                 call_id, result, ..
             } => {
-                let content = serde_json::from_str(&result.content)
-                    .unwrap_or_else(|_| Value::String(result.content.clone()));
+                let content = serde_json::from_str(&result.body())
+                    .unwrap_or_else(|_| Value::String(result.owned_text()));
                 self.finished
                     .insert(call_id.clone(), (content, result.is_error, at));
             }
@@ -608,7 +608,7 @@ mod tests {
                 call_id: id.into(),
                 name: String::new(),
                 result: ToolResult {
-                    content: content.to_string(),
+                    content: bubblepaw_core::text_blocks(content.to_string()),
                     is_error,
                     ..ToolResult::text("")
                 },

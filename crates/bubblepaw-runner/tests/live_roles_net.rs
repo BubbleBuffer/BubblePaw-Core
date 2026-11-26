@@ -329,14 +329,14 @@ async fn live_fetch_changes_preserve_source_ids_and_shared_miss_budget() {
         .invoke(context(), json!({"url":"https://example.com/page"}))
         .await
         .unwrap();
-    let first: Value = serde_json::from_str(&first.content).unwrap();
+    let first: Value = serde_json::from_str(&first.body()).unwrap();
     assert!(first["content"].as_str().unwrap().contains("old"));
     apply(&live, configuration(root.path(), &new_base, "new", ""));
     let second = tool
         .invoke(context(), json!({"id":first["id"]}))
         .await
         .unwrap();
-    let second: Value = serde_json::from_str(&second.content).unwrap();
+    let second: Value = serde_json::from_str(&second.body()).unwrap();
     assert!(second["content"].as_str().unwrap().contains("new"));
     assert_eq!(first["id"], second["id"]);
     assert_eq!(first["source"], second["source"]);

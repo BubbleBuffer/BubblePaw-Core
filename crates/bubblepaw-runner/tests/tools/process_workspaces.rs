@@ -42,8 +42,8 @@ async fn call(tools: &ToolRegistry, owner: &str, command: &str, background: bool
             json!({"command":command,"background":background}),
         )
         .await?;
-    assert!(!result.is_error, "{}", result.content);
-    Ok(serde_json::from_str(&result.content)?)
+    assert!(!result.is_error, "{}", result.body());
+    Ok(serde_json::from_str(&result.body())?)
 }
 
 #[tokio::test]

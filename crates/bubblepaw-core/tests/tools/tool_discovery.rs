@@ -114,8 +114,8 @@ async fn native_search_discovers_deferred_mcp_by_name_description_and_original_s
         let result = fixture
             .call("tool_search", json!({"query":query}), None)
             .await;
-        assert!(!result.is_error, "{}", result.content);
-        let result: Value = serde_json::from_str(&result.content).unwrap();
+        assert!(!result.is_error, "{}", result.body());
+        let result: Value = serde_json::from_str(&result.body()).unwrap();
         assert_eq!(result["tools"][0]["name"], MCP_TOOL);
         assert_eq!(result["tools"][0]["server"], MCP_SERVER);
         assert_eq!(
@@ -136,9 +136,9 @@ async fn native_named_call_invokes_deferred_mcp_and_keeps_argument_validation() 
             None,
         )
         .await;
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.body());
     assert_eq!(
-        serde_json::from_str::<Value>(&result.content).unwrap()["day"],
+        serde_json::from_str::<Value>(&result.body()).unwrap()["day"],
         "Monday"
     );
     assert_eq!(fixture.calls.load(Ordering::Relaxed), 1);
@@ -149,8 +149,8 @@ async fn native_named_call_invokes_deferred_mcp_and_keeps_argument_validation() 
             None,
         )
         .await;
-    assert!(invalid.is_error, "{}", invalid.content);
-    assert!(invalid.content.contains("day"), "{}", invalid.content);
+    assert!(invalid.is_error, "{}", invalid.body());
+    assert!(invalid.text_has("day"), "{}", invalid.body());
     assert_eq!(fixture.calls.load(Ordering::Relaxed), 1);
     assert!(
         fixture
@@ -167,9 +167,9 @@ async fn native_discovery_wrappers_stay_available_and_refuse_hidden_targets() {
     let hidden = fixture
         .call("tool_search", json!({"query":"appointments"}), Some(vec![]))
         .await;
-    assert!(!hidden.is_error, "{}", hidden.content);
+    assert!(!hidden.is_error, "{}", hidden.body());
     assert_eq!(
-        serde_json::from_str::<Value>(&hidden.content).unwrap()["tools"],
+        serde_json::from_str::<Value>(&hidden.body()).unwrap()["tools"],
         json!([])
     );
     let denied = fixture
@@ -179,11 +179,11 @@ async fn native_discovery_wrappers_stay_available_and_refuse_hidden_targets() {
             Some(vec![]),
         )
         .await;
-    assert!(denied.is_error, "{}", denied.content);
+    assert!(denied.is_error, "{}", denied.body());
     assert!(
-        denied.content.contains("not available in this run"),
+        denied.text_has("not available in this run"),
         "{}",
-        denied.content
+        denied.body()
     );
     assert_eq!(fixture.calls.load(Ordering::Relaxed), 0);
     let allowed = fixture
@@ -193,9 +193,9 @@ async fn native_discovery_wrappers_stay_available_and_refuse_hidden_targets() {
             Some(vec![MCP_TOOL.into()]),
         )
         .await;
-    assert!(!allowed.is_error, "{}", allowed.content);
+    assert!(!allowed.is_error, "{}", allowed.body());
     assert_eq!(
-        serde_json::from_str::<Value>(&allowed.content).unwrap()["tools"][0]["name"],
+        serde_json::from_str::<Value>(&allowed.body()).unwrap()["tools"][0]["name"],
         MCP_TOOL
     );
 }
@@ -211,11 +211,11 @@ async fn fork_delivery_targets_keep_the_normal_unknown_tool_error() {
                 None,
             )
             .await;
-        assert!(result.is_error, "{}", result.content);
+        assert!(result.is_error, "{}", result.body());
         assert!(
-            result.content.contains(&format!("Unknown tool: {target}")),
+            result.text_has(&format!("Unknown tool: {target}")),
             "{}",
-            result.content
+            result.body()
         );
     }
     assert_eq!(fixture.calls.load(Ordering::Relaxed), 0);

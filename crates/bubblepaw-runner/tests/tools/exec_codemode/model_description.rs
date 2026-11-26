@@ -45,8 +45,8 @@ async fn js_tool_description_the_model_sees_names_sync_background_steer_and_poll
         )
         .await
         .unwrap();
-    assert!(!discovered.is_error, "{}", discovered.content);
-    let discovered: Value = serde_json::from_str(&discovered.content).unwrap();
+    assert!(!discovered.is_error, "{}", discovered.body());
+    let discovered: Value = serde_json::from_str(&discovered.body()).unwrap();
     let definitions = discovered["tools"].as_array().unwrap();
     assert_eq!(definitions.len(), 5);
     let description = |name| {

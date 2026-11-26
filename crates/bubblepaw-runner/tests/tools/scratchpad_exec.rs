@@ -114,12 +114,12 @@ async fn scratch_scripts_execute_with_literal_argv_in_chat_and_project_workdirs(
         let write = fixture
             .call("write", json!({"path":script,"content":SCRIPT}))
             .await?;
-        assert!(!write.is_error, "{}", write.content);
+        assert!(!write.is_error, "{}", write.body());
         let read = fixture
             .call("read", json!({"path":ordinary_path(&script)}))
             .await?;
-        assert!(!read.is_error, "{}", read.content);
-        assert_eq!(read.content, SCRIPT);
+        assert!(!read.is_error, "{}", read.body());
+        assert_eq!(read.body(), SCRIPT);
         // One argument with spaces and shell syntax proves this is a literal
         // argv invocation of the file, rather than source concatenation.
         let argument = "literal value & no-shell-effect";
@@ -133,8 +133,8 @@ async fn scratch_scripts_execute_with_literal_argv_in_chat_and_project_workdirs(
                 }),
             )
             .await?;
-        assert!(!executed.is_error, "{}", executed.content);
-        let value: Value = serde_json::from_str(&executed.content)?;
+        assert!(!executed.is_error, "{}", executed.body());
+        let value: Value = serde_json::from_str(&executed.body())?;
         assert_eq!(value["status"], "exited", "{value}");
         assert_eq!(value["exitCode"], 0, "{value}");
         assert_eq!(value["stdout"], argument, "{value}");
@@ -151,9 +151,9 @@ async fn scratch_scripts_execute_with_literal_argv_in_chat_and_project_workdirs(
                 }),
             )
             .await?;
-        assert!(!equivalent.is_error, "{}", equivalent.content);
+        assert!(!equivalent.is_error, "{}", equivalent.body());
         assert_eq!(
-            serde_json::from_str::<Value>(&equivalent.content)?["exitCode"],
+            serde_json::from_str::<Value>(&equivalent.body())?["exitCode"],
             0
         );
         assert_eq!(
@@ -183,7 +183,7 @@ async fn exec_scratch_workdir_refuses_parent_components_before_normalization() -
             assert!(
                 result.is_error,
                 "{alias} accepted scratch traversal: {}",
-                result.content
+                result.body()
             );
         }
         assert!(!root.join("escaped.txt").exists());
@@ -230,9 +230,9 @@ async fn independent_process_workspace_views_keep_the_hosts_configured_scratch_d
             CancellationToken::new(),
         )
         .await?;
-    assert!(!result.is_error, "{}", result.content);
+    assert!(!result.is_error, "{}", result.body());
     assert_eq!(
-        serde_json::from_str::<Value>(&result.content)?["exitCode"],
+        serde_json::from_str::<Value>(&result.body())?["exitCode"],
         0
     );
     assert_eq!(
@@ -259,7 +259,7 @@ async fn reject_workdir_link(link: impl Fn(&Path, &Path)) -> Result<()> {
         assert!(
             result.is_error,
             "scratch workdir followed link into workspace: {}",
-            result.content
+            result.body()
         );
     }
     assert!(!fixture.root.path().join("escaped.txt").exists());

@@ -30,7 +30,7 @@ async fn call(registry: &ToolRegistry, name: &str, input: Value) -> Value {
         .invoke(context(), input)
         .await
         .unwrap();
-    serde_json::from_str(&output.content).unwrap()
+    serde_json::from_str(&output.body()).unwrap()
 }
 #[cfg(windows)]
 const ECHO: &str = "<nul set /p=hello& <nul set /p=problem>&2& cmd /c exit 0";
@@ -69,7 +69,7 @@ async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
         !result.is_error,
         "nonzero process exit remains an ordinary result"
     );
-    let result: Value = serde_json::from_str(&result.content).unwrap();
+    let result: Value = serde_json::from_str(&result.body()).unwrap();
     assert!(result["diagnostic"].as_str().unwrap().contains("code 7"));
     let started = call(
         &registry,

@@ -36,10 +36,10 @@ impl Tool for Compose {
         while let Some(result) = jobs.join_next().await {
             let result = result??;
             if result.is_error {
-                assert!(result.content.contains("budget exhausted"));
+                assert!(result.text_has("budget exhausted"));
                 denied += 1;
             } else {
-                assert_eq!(serde_json::from_str::<Value>(&result.content)?["ok"], true);
+                assert_eq!(serde_json::from_str::<Value>(&result.body())?["ok"], true);
                 allowed += 1;
             }
         }

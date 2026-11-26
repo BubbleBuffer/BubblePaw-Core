@@ -1057,14 +1057,14 @@ async fn uncovered_results_and_arguments_stay_exact_with_responses_reasoning() -
         .unwrap()
         .invoke(context.clone(), json!({"message_id":output.id}))
         .await?;
-    let recovered: serde_json::Value = serde_json::from_str(&result.content)?;
+    let recovered: serde_json::Value = serde_json::from_str(&result.body())?;
     assert_eq!(recovered["messages"][0]["text"], &*output.text());
     let result = registry
         .get_host("history_read")
         .unwrap()
         .invoke(context, json!({"tool_call_id":"huge-call"}))
         .await?;
-    let recovered: serde_json::Value = serde_json::from_str(&result.content)?;
+    let recovered: serde_json::Value = serde_json::from_str(&result.body())?;
     assert_eq!(
         recovered["messages"][0]["tool_calls"][0]["arguments"],
         arguments

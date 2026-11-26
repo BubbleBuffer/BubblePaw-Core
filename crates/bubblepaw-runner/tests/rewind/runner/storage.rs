@@ -48,7 +48,7 @@ fn native_demo_persists_and_reopens_a_session() {
         .find(|v| v["type"] == "tool_finished" && v["name"] == "exec")
         .unwrap();
     let process: Value = serde_json::from_str(
-        exec["result"]["content"]
+        exec["result"]["content"][0]["text"]
             .as_str()
             .unwrap()
             .split("\n[---]\n")

@@ -154,7 +154,7 @@ impl Tool for WorkspaceTool {
             })
             .await??
             {
-                return Ok(ToolResult::text(content));
+                return Ok(ToolResult::blocks(content));
             }
             return self
                 .invoke_resolved(context, input, Some(read_path), dispatcher.origin() != "js")

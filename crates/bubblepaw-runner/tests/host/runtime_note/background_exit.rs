@@ -16,7 +16,7 @@ async fn background_exit_is_listed_until_its_result_is_polled() {
             )
             .await
             .unwrap()
-            .content,
+            .body(),
     )
     .unwrap();
     let handle = started["handle"].as_str().unwrap().to_owned();
@@ -58,7 +58,7 @@ async fn background_exit_is_listed_until_its_result_is_polled() {
                     .invoke(fixture.context(), json!({"handle":handle,"yieldMs":200}))
                     .await
                     .unwrap()
-                    .content,
+                    .body(),
             )
             .unwrap();
             if value["status"] != "running" {

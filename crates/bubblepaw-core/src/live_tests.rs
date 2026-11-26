@@ -317,7 +317,7 @@ impl Tool for AdmittedPolicyProbe {
             .invoke(context, "effect", serde_json::json!({}))
             .await?;
         assert!(nested.is_error);
-        assert!(nested.content.contains("Denied by the user: policy"));
+        assert!(nested.text_has("Denied by the user: policy"));
         Ok(ToolResult::text("admission captured; nested call denied"))
     }
 }
@@ -391,7 +391,7 @@ async fn removed_tool_reasons_are_unadvertised_and_cleared_when_registered_again
         .await?;
     assert!(error.is_error);
     assert_eq!(
-        error.content,
+        error.body(),
         "Tool removed is unavailable: server config removed"
     );
     tools.register_host(value("removed", "new"))?;

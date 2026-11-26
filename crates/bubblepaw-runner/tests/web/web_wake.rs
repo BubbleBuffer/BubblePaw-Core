@@ -358,8 +358,8 @@ async fn idle_background_exec_completion_uses_the_existing_sse_and_generated_not
             json!({"command":command,"background":true}),
         )
         .await?;
-    assert!(!result.is_error, "{}", result.content);
-    let job: Value = serde_json::from_str(&result.content)?;
+    assert!(!result.is_error, "{}", result.body());
+    let job: Value = serde_json::from_str(&result.body())?;
     std::fs::write(fixture.directory.path().join("release-exec"), "release")?;
     assert_completed_stream(
         &parent_run(&mut events, &fixture.parent).await?,

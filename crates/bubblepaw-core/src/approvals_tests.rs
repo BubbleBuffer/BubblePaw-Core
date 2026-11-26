@@ -1320,7 +1320,7 @@ impl Tool for DenyFlip {
             .invoke(context.clone(), "write", serde_json::json!({}))
             .await?;
         assert!(blocked.is_error);
-        assert!(blocked.content.contains("deny rule write"));
+        assert!(blocked.text_has("deny rule write"));
         self.0.lock().unwrap().deny.clear();
         let allowed = dispatcher
             .invoke(context, "write", serde_json::json!({}))
