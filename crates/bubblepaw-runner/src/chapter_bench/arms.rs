@@ -194,8 +194,8 @@ mod tests {
                 tool_call_id: None,
                 provider_state: None,
                 is_error: false,
-                details: None,
                 created_at: String::new(),
+                ..Default::default()
             })
             .collect();
         let episodes = (0..3).map(|index| serde_json::from_value(json!({

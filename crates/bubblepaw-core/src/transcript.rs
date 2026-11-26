@@ -582,9 +582,9 @@ impl Normalizer<'_> {
             tool_calls: calls,
             tool_call_id: call_id,
             is_error: error,
-            details: None,
             provider_state: Some(state),
             created_at: timestamp(event),
+            ..Default::default()
         };
         self.stats.messages += 1;
         self.stats.tool_calls += message.tool_calls.len() as u64;

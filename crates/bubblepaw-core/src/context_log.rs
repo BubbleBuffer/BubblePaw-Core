@@ -411,6 +411,7 @@ mod tests {
                     provider_state: None,
                     is_error: false,
                     details: None,
+                    incomplete: None,
                     created_at: String::new(),
                 })
                 .collect(),

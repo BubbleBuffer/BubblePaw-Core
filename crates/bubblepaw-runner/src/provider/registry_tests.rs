@@ -236,8 +236,8 @@ fn request() -> ModelRequest {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
-            details: None,
             created_at: "now".into(),
+            ..Default::default()
         }],
         ..Default::default()
     }

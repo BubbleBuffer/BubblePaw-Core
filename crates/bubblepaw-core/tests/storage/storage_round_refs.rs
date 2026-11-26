@@ -19,8 +19,8 @@ fn message(session: &str, index: usize, role: Role) -> Message {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "2026-10-12T00:00:00Z".into(),
+        ..Default::default()
     }
 }
 fn call() -> ToolCall {

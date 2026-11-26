@@ -225,8 +225,8 @@ async fn selected_haiku_roles_probes_and_judge_use_messages_and_cache_aware_mete
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: String::new(),
+        ..Default::default()
     };
     store.append_batch(std::slice::from_ref(&source))?;
     store.save_context_checkpoint(&bubblepaw_core::ContextCheckpoint {

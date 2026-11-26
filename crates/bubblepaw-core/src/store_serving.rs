@@ -263,7 +263,7 @@ impl Store {
                 let role = match row.get::<_,String>(2)?.as_str() { "system" => Role::System, "user" => Role::User, "assistant" => Role::Assistant, "tool" => Role::Tool, _ => anyhow::bail!("Unknown canonical message header role") };
                 let origin: Option<String> = row.get(3)?;
                 let origin = origin.map(|origin| serde_json::from_str(&origin)).transpose()?;
-                let mut message = Message { id: row.get(1)?, session_id: session.into(), role, origin, content: crate::text_blocks(String::new()), tool_calls: Vec::new(), tool_call_id: None, provider_state: None, is_error: row.get(5)?, details: None, created_at: row.get(4)? };
+                let mut message = Message { id: row.get(1)?, session_id: session.into(), role, origin, content: crate::text_blocks(String::new()), tool_calls: Vec::new(), tool_call_id: None, provider_state: None, is_error: row.get(5)?, details: None, incomplete: None, created_at: row.get(4)? };
                 for call in calls.query_map(params![session,seq], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?)))? {
                     let (id,kind) = call?;
                     if kind == "call" { message.tool_calls.push(ToolCall {id,name:String::new(),arguments:serde_json::Value::Null}); } else { message.tool_call_id=Some(id); }
@@ -347,6 +347,7 @@ impl Store {
                     provider_state: None,
                     is_error: false,
                     details: None,
+                    incomplete: None,
                     created_at: record.created_at,
                 }],
             ));

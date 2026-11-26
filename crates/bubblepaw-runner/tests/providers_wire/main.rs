@@ -10,6 +10,7 @@ mod http_server;
 mod worker_jobs;
 
 mod decision_providers;
+mod incomplete_replies;
 mod provider_chat;
 mod provider_continuation;
 mod provider_images;

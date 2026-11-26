@@ -449,8 +449,8 @@ mod compaction_tests {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
-            details: None,
             created_at: "2026-10-30T00:00:00Z".into(),
+            ..Default::default()
         };
         store.append_batch(std::slice::from_ref(&message))?;
         let through = store.message_seq(&session, &message.id)?;

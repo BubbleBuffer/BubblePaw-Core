@@ -105,8 +105,8 @@ async fn unavailable_haiku_summary_falls_back_to_flash_for_summary_probe_and_jud
                 json!({"adapter":"responses","items":[{"encrypted_content":"opaque encrypted state"}]}),
             ),
             is_error: false,
-            details: None,
             created_at: String::new(),
+            ..Default::default()
         }],
         ..Default::default()
     };

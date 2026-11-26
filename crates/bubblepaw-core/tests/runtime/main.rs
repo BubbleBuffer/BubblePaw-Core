@@ -6,6 +6,7 @@ mod host_notices;
 mod host_writer;
 mod layering;
 mod panic_in_run;
+mod partial_replies;
 mod reminder_runtime;
 mod reminder_store;
 mod reminders;

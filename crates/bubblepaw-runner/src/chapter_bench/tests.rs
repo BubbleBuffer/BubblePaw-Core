@@ -60,8 +60,8 @@ fn corpus(chat: &str, prefix: &str, transition: bool) -> ReplayCorpus {
                 tool_call_id: None,
                 provider_state: None,
                 is_error: false,
-                details: None,
                 created_at: "2026-10-23T00:00:00Z".into(),
+                ..Default::default()
             }
         })
         .collect();

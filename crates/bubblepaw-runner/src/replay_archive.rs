@@ -102,8 +102,8 @@ pub(super) fn normalize_archive(corpus: &mut ReplayCorpus) -> Result<ArchiveNorm
                 tool_call_id: Some(call.id.clone()),
                 provider_state: None,
                 is_error: false,
-                details: None,
                 created_at: message.created_at.clone(),
+                ..Default::default()
             });
         }
     }

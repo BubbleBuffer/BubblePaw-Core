@@ -215,7 +215,8 @@ reasoning and details containing the same text, both fields are stored and
 replayed. See [OpenRouter's reasoning and streaming contract](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens).
 Unknown stream extensions remain in the opaque journal without an invented
 assembly or replay rule. These rules apply to every completed continuation
-round and JSON fallback; failed or cancelled streams keep no assistant state.
+round and JSON fallback; failed or cancelled streams keep no assistant state
+(the loop stores their streamed text, without state, as an incomplete reply).
 Standard SSE completion metadata (`id`, `object`, `created`, `model`,
 `system_fingerprint`, `service_tier`) is retained once in response metadata,
 rather than copied into the opaque journal for every token. A differing later
@@ -415,8 +416,10 @@ usage including cache reads and writes, and the stop reason. Chat requests
   through the same listener, so the registry then emits `StreamEvent::ThinkingDiscarded`
   and listeners drop the thinking shown so far. Thinking never blocks a retry.
 - `StreamCallback` replaces the SDK's `TextCallback`.
-- Nothing partial is persisted. A cancelled call returns `cancelled`; a stream
-  that fails mid-way returns its error and keeps what the listener already got.
+- An adapter persists nothing partial. A cancelled call returns `cancelled`; a stream
+  that fails mid-way returns its error and keeps what the listener already got. The
+  loop keeps that streamed text as an incomplete assistant message (see
+  [thinking-tool-loop](thinking-tool-loop.md)); adapters do not return it in errors.
 - A dropped or silent stream is transient only before any text reached the
   listener. After that it is fatal, since a retry would repeat text. Every
   adapter makes one attempt per call; the registry's single retry policy
@@ -494,7 +497,9 @@ request by the adapter, in `bubblepaw_core::provider_state_replay_compatible`:
   `unsigned_cut`, and never sent to the provider, in a continuation, a later
   tool round or a later turn.
 - **Failed streams:** partial reasoning of a stream that fails or is cancelled is not kept (decision 2026-10-14),
-  because the response never completed. A retry produces fresh reasoning.
+  because the response never completed. A retry produces fresh reasoning. The
+  readable thinking that streamed is kept only in the thinking block of an
+  incomplete reply that also streamed text.
 - **Compaction:** reasoning of turns a summary replaced stays stored but is not
   replayed, consistent with the summary replacing those turns. Rewind, branch
   and LCM expansion use the stored originals.

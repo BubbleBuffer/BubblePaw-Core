@@ -15,8 +15,8 @@ pub(super) fn empty_summary_retry(session: &str) -> Message {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: String::new(),
+        ..Default::default()
     }
 }
 
@@ -58,8 +58,8 @@ impl HttpEpisodeModels {
                         tool_call_id: None,
                         provider_state: None,
                         is_error: false,
-                        details: None,
                         created_at: String::new(),
+                        ..Default::default()
                     }],
                     tools: Vec::new(),
                     disabled_tools: Vec::new(),

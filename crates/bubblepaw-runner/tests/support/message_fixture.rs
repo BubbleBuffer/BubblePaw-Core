@@ -12,7 +12,7 @@ pub fn message(id: &str, role: Role, content: String) -> Message {
         origin: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "2026-10-09T00:00:00Z".into(),
+        ..Default::default()
     }
 }
