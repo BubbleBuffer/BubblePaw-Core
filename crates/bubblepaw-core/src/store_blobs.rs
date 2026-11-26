@@ -217,9 +217,13 @@ impl Store {
         match content_format.unwrap_or("text") {
             "text" => Ok(String::from_utf8(bytes)?),
             "parts" => Self::render_content_parts(conn, serde_json::from_slice(&bytes)?),
-            "blocks" => Ok(crate::content_body_text(&serde_json::from_slice::<
-                Vec<crate::ContentBlock>,
-            >(&bytes)?)
+            // The model text, files included, as a text-format row would hold it.
+            "blocks" => Ok(crate::content_text(&Self::input_content(
+                conn,
+                text,
+                content_blob,
+                content_format,
+            )?)
             .into_owned()),
             _ => bail!("Unknown accepted input content encoding"),
         }
