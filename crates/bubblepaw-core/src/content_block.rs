@@ -5,7 +5,7 @@ use crate::Message;
 mod content_file;
 mod content_image;
 mod message_input;
-pub use content_file::{InputFileRef, file_envelope, show_files_as_text};
+pub use content_file::{InputFileRef, file_envelope};
 pub use content_image::{ImageRef, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL};
 pub use message_input::MessageInput;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -67,8 +67,8 @@ fn join_text(content: &[ContentBlock]) -> String {
         .collect()
 }
 
-/// The plain-string form: text blocks joined, each image and file as its
-/// placeholder on a line of its own.
+/// The plain-string form: text blocks joined, each image as its placeholder on a line of its
+/// own, then the files as the envelope the model reads (the same text `content_text` gives).
 fn join_plain(content: &[ContentBlock]) -> String {
     let mut out = String::new();
     for block in content {
@@ -78,12 +78,15 @@ fn join_plain(content: &[ContentBlock]) -> String {
                 continue;
             }
             ContentBlock::Image { image, .. } => content_image::placeholder(image),
-            ContentBlock::File { file } => content_file::placeholder(file),
+            ContentBlock::File { .. } => continue,
         };
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
         }
         out.push_str(&placeholder);
+    }
+    if content_files(content).next().is_some() {
+        out.push_str(&content_file::render(content_files(content)));
     }
     out
 }
@@ -207,7 +210,7 @@ thread_local! {
 }
 
 /// Runs `f` (a synchronous closure, so no await can run inside) with every `Message.content` serialized as the plain string older
-/// readers expect, each image as `[image: <id>, <mime>, <bytes> bytes]` and each file as `[file: <id>, <name>, <bytes> bytes]`. Size
+/// readers expect, each image as `[image: <id>, <mime>, <bytes> bytes]` and the files as the model-text envelope. Size
 /// accounting and the formats read by programs outside this repository use it, so their bytes do not depend on the list form.
 pub fn plain_content<R>(f: impl FnOnce() -> R) -> R {
     struct Restore(bool);

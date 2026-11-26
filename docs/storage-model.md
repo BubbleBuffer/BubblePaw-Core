@@ -72,13 +72,13 @@ it. Search text, token estimates and provider requests use the text.
 ## Uploaded files as blocks (chat store 15)
 
 A message's uploaded files are `file` blocks beside its text: each holds the
-`InputFileRef` (id, name, byte length, and the `inline` text snapshot or
+`InputFileRef` (id, name, size, path, url, text flag, and the `inline` text snapshot or
 `omitted`). A file block's `inline` text over 4 KiB moves to a blob keyed on the
 block, like other large content. Queued inputs use the `inputs` table's
 `content_format = "blocks"` for the same list. The model still reads the
 `<BubblePawAttachments>` envelope text, rendered from the blocks; search and
-summaries use that text, and plain-text surfaces show
-`[file: <id>, <name>, <bytes> bytes]`. Nothing writes the envelope. A user
+summaries and plain-string forms (size accounting, exports, the extension
+protocol) use that text too. Nothing writes the envelope. A user
 message or text-format input row written earlier is read as a text block plus
 file blocks when its text ends in a valid envelope; assistant and tool text, and
 a marker anywhere else, stay text. Rows are never rewritten, and step 15 only

@@ -27,11 +27,6 @@ impl ContentBlock {
     }
 }
 
-/// The placeholder that stands for a file wherever a plain string is needed.
-pub(crate) fn placeholder(file: &InputFileRef) -> String {
-    format!("[file: {}, {}, {} bytes]", file.id, file.name, file.size)
-}
-
 const OPEN: &str = "\n\n<BubblePawAttachments>\n";
 const CLOSE: &str = "\n</BubblePawAttachments>";
 
@@ -74,23 +69,4 @@ pub(crate) fn upgrade_legacy(mut blocks: Vec<ContentBlock>) -> Vec<ContentBlock>
 /// The envelope text for `files`, as the model reads it after a message's written text.
 pub fn file_envelope<'a>(files: impl IntoIterator<Item = &'a InputFileRef>) -> String {
     render(files)
-}
-
-/// Replaces the file blocks of each message with the text the model reads for them, so a
-/// consumer that serializes messages as plain strings (which show a file as a placeholder)
-/// still hands its model the file's text.
-pub fn show_files_as_text(messages: &mut [crate::Message]) {
-    for message in messages
-        .iter_mut()
-        .filter(|message| message.files().next().is_some())
-    {
-        let mut content = crate::text_blocks(message.text().into_owned());
-        content.extend(
-            message
-                .content
-                .drain(..)
-                .filter(|block| matches!(block, ContentBlock::Image { .. })),
-        );
-        message.content = content;
-    }
 }

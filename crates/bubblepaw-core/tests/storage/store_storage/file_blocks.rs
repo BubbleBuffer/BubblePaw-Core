@@ -1,7 +1,7 @@
 //! Uploaded files are stored as file blocks. Rows and queued inputs written before
 //! that, with the files as a text envelope, read as the same blocks.
 use super::*;
-use bubblepaw_core::{ContentBlock, InputFileRef, InputKind, MessageInput};
+use bubblepaw_core::{ContentBlock, InputFileRef, InputKind, Message, MessageInput};
 
 fn file(id: &str, inline: &str) -> InputFileRef {
     InputFileRef {
@@ -174,4 +174,21 @@ async fn queued_file_inputs_keep_their_blocks_and_old_text_rows_read_as_the_same
             .contains(&serde_json::to_string(&big)?[1..100])
     );
     Ok(())
+}
+
+#[test]
+fn a_file_block_counts_as_its_model_text_in_request_bytes() {
+    let files = [file("f", "some file text")];
+    let mut with_blocks = stored_message("s", "blocks", Role::User, "");
+    with_blocks.content = blocks(&files);
+    let mut as_text = stored_message("s", "blocks", Role::User, "");
+    as_text.set_text(with_blocks.text().into_owned());
+    let size = |message: Message| {
+        let request = bubblepaw_core::ModelRequest {
+            messages: vec![message],
+            ..Default::default()
+        };
+        bubblepaw_core::prepared_request_bytes(&request).unwrap()
+    };
+    assert_eq!(size(with_blocks), size(as_text));
 }

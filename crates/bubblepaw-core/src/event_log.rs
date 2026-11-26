@@ -307,6 +307,7 @@ fn encode(tx: &Connection, event: &HarnessEvent, reference: Option<ContentRef>) 
             }
             ContentRef::Input { .. } => {
                 value.as_object_mut().unwrap().remove("text");
+                value.as_object_mut().unwrap().remove("content");
             }
             ContentRef::Output { .. } => {
                 value["record"].as_object_mut().unwrap().remove("output");
