@@ -9,6 +9,24 @@
 //!
 //! The API is unstable. `bubblepaw-core` re-exports what embedders use, and
 //! embedders should import from there.
+//!
+//! [`memory`] holds in-memory implementations of every seam, for running the loop
+//! without persistence:
+//!
+//! ```no_run
+//! use bubblepaw_agent::loop_options::LoopOptions;
+//! use bubblepaw_agent::memory::MemoryHost;
+//! use bubblepaw_agent::ToolRegistry;
+//! use bubblepaw_ai::{CancellationToken, Provider};
+//! use std::sync::Arc;
+//!
+//! # async fn demo(provider: Arc<dyn Provider>) {
+//! let host = MemoryHost::new("model-name", provider, ToolRegistry::new(), "Be brief.");
+//! let token = CancellationToken::new();
+//! let outcome = host.run("Hello", &LoopOptions::default(), &token).await;
+//! println!("{:?}", outcome.text);
+//! # }
+//! ```
 pub mod discovery;
 pub mod dispatch;
 pub mod execution_mode;
@@ -18,6 +36,7 @@ pub mod live_events;
 pub mod loop_hooks;
 pub mod loop_options;
 pub mod loop_records;
+pub mod memory;
 pub mod model_stream;
 pub mod observer;
 pub mod overflow;

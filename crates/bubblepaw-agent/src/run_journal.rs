@@ -24,11 +24,13 @@ pub enum Consumed {
 pub trait RunJournal: Send + Sync {
     /// Whether input of this scope is pending.
     fn input_pending(&self, session_id: &str, scope: InputScope) -> Result<bool>;
-    /// Pending input of this kind consumed; the number consumed.
+    /// Pending input of this kind consumed; the number consumed. Consumed input is in the
+    /// history from the next `RequestContext::history` on.
     fn inputs_consumed(&self, session_id: &str, which: Consumed) -> Result<usize>;
-    /// The pending steering batch consumed into messages, in order.
+    /// The pending steering batch consumed into messages, in order. The messages are in
+    /// the history from the next `RequestContext::history` on.
     fn steering_batch_consumed(&self, session_id: &str) -> Result<Vec<Message>>;
-    /// Whether a tool call id is already recorded for the session.
+    /// Whether a tool call id is already recorded for the session, in a stored reply's calls.
     fn tool_call_recorded(&self, session_id: &str, call_id: &str) -> Result<bool>;
     /// A reply with no tool dispatch to follow in the same commit. The request
     /// usage the run is waiting to write goes with it.
@@ -51,7 +53,8 @@ pub trait RunJournal: Send + Sync {
         call: &ToolCall,
         dispatched: bool,
     ) -> Result<Option<String>>;
-    /// A call finished: the tool message, its effect state and ToolFinished.
+    /// A call finished: the tool message, its effect state and ToolFinished. The message
+    /// follows its reply in the history, as the next request needs it.
     fn tool_finished(
         &self,
         run_id: &str,

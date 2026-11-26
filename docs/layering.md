@@ -125,6 +125,15 @@ definitions and messages the loop writes.
 store and everything durable. Its `lib.rs` aliases the moved modules (`crate::tool`,
 `crate::dispatch` and so on) so the shell's code keeps its paths.
 
+The `memory` module holds in-memory implementations of the seams, for embedders who want
+the loop without persistence: `MemoryJournal` (transcript, steering and tool events behind
+a mutex), `MemoryContext` (each request is the transcript sent whole, with no compaction,
+budget or notes), `AllowAll`, `FixedTools`, `CollectedEvents` and `NoLiveEvents`, and
+`NoObserver`. `MemoryHost` assembles them into a `RunLoop` and runs one prompt per call.
+`crates/bubblepaw-agent/tests/memory_run.rs` drives the loop through them with the scripted
+provider and no database: a single reply, a tool round, a denying gate, the round limit and
+cancellation. Core's tests of the shell are untouched.
+
 Two guards in `tests/runtime/layering.rs` and `layering_agent.rs` protect the crate. The dependency rule
 above keeps `bubblepaw-agent` to `bubblepaw-ai` among workspace crates and forbids
 `rusqlite` and `reqwest`. `agent_crate_holds_no_shell_vocabulary` keeps every file
