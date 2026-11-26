@@ -1021,7 +1021,7 @@ impl Harness {
                 let prepared = async {
                     loop {
                     let system_prompt = tool_surface.prompt();
-                    let mut messages = self.config.context.project_history(&history)?;
+                    let mut messages = self.project_request_history(&history)?;
                     // The new batch must reach token/window admission intact,
                     // even if the ordinary history projection drops older input.
                     messages.retain(|saved| !steering_batch.iter().any(|steer| steer.id == saved.id));

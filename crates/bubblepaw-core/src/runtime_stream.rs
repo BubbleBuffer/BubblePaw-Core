@@ -43,8 +43,17 @@ impl PartialReply {
 
     /// The incomplete assistant message, unless nothing but whitespace or
     /// thinking streamed.
-    fn message(&self, session_id: &str, reason: IncompleteReason) -> Option<Message> {
+    fn message(&self, session_id: &str, reason: IncompleteReason, limit: usize) -> Option<Message> {
         if self.text.trim().is_empty() {
+            return None;
+        }
+        // A reply this large could not have been stored; drop it whole.
+        let reply = crate::ModelResponse {
+            text: self.text.clone(),
+            thinking: self.thinking.clone(),
+            ..Default::default()
+        };
+        if reply.storage_bytes().map_or(true, |bytes| bytes > limit) {
             return None;
         }
         let mut message = Store::message(session_id, Role::Assistant, self.text.clone());
@@ -55,6 +64,22 @@ impl PartialReply {
 }
 
 impl Harness {
+    /// The history a request is built from. An incomplete reply with no user
+    /// message after it (a resumed run) is left out; it stays in the store.
+    pub(super) fn project_request_history(
+        &self,
+        history: &[Message],
+    ) -> anyhow::Result<Vec<Message>> {
+        let mut messages = self.config.context.project_history(history)?;
+        if messages
+            .last()
+            .is_some_and(|last| last.incomplete.is_some())
+        {
+            messages.pop();
+        }
+        Ok(messages)
+    }
+
     /// Store what streamed before the request failed or was cancelled. The run's
     /// outcome stays as it was, so a failure to store is not reported.
     pub(super) fn keep_partial_reply(
@@ -68,7 +93,8 @@ impl Harness {
         } else {
             IncompleteReason::Error
         };
-        let Some(message) = partial.lock().unwrap().message(session_id, reason) else {
+        let limit = self.config.max_request_bytes;
+        let Some(message) = partial.lock().unwrap().message(session_id, reason, limit) else {
             return;
         };
         let _ = self.state.log.settle_text(session_id, || {

@@ -286,5 +286,10 @@ as a text block after the thinking block, no tool calls, no `provider_state`,
 and `incomplete` set to `error` or `cancelled`. A started tool call is not
 stored or run. Thinking alone, or blank text, stores nothing. The run's status,
 error, events, retries and fallbacks are as before; only the extra message is
-new. Later requests send it as an ordinary assistant text message and never
-merge it with a later reply. Nothing resumes it or tells the model it was cut.
+new. A partial too large for a stored reply (`max_request_bytes`) is dropped whole.
+Later requests send it as plain assistant text under every adapter and replay
+policy (no adapter reads the thinking block) and never merge it with a later
+reply. A resumed run, whose history ends on the incomplete message, leaves it out
+of the request so the retry asks what it always asked; it stays stored. It is
+never a run's result text (`Run.text`, child results skip it). Nothing resumes it
+or tells the model it was cut.

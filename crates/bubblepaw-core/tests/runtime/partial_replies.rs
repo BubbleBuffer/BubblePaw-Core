@@ -199,3 +199,70 @@ fn a_message_without_the_field_is_complete_and_a_complete_one_writes_none() -> R
     assert_eq!(old.incomplete, None);
     Ok(())
 }
+
+#[tokio::test]
+async fn a_resume_leaves_a_trailing_incomplete_reply_out_and_a_user_turn_sends_it() -> Result<()> {
+    let store = Store::in_memory()?;
+    let session = store.create_session("resume")?;
+    let provider = Scripted::new(vec![
+        (vec![Ev::Text("Hello")], End::Fail),
+        (vec![], End::Reply("again")),
+        (vec![], End::Reply("fine")),
+    ]);
+    let harness = Harness::new(
+        store.clone(),
+        provider.clone(),
+        ToolRegistry::new(),
+        HarnessConfig::default(),
+    );
+    harness
+        .prompt(&session.id, "one", RunOptions::default())
+        .await?;
+    harness.start_resume(&session.id, RunOptions::default())?;
+    harness.wait_for_idle(&session.id).await?;
+    harness
+        .prompt(&session.id, "two", RunOptions::default())
+        .await?;
+    let requests = provider.requests.lock().unwrap();
+    // Resumed: the request is what a retry always sent, ending on the user message.
+    assert_eq!(shape(&requests[1]), shape(&requests[0]));
+    assert_eq!(shape(&requests[2]).len(), 4, "{:?}", shape(&requests[2]));
+    assert!(
+        store
+            .messages(&session.id)?
+            .iter()
+            .any(|m| m.incomplete.is_some())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_partial_larger_than_a_stored_reply_may_be_is_dropped_whole() -> Result<()> {
+    let store = Store::in_memory()?;
+    let session = store.create_session("big")?;
+    let provider = Scripted::new(vec![(
+        vec![Ev::Text(Box::leak("x".repeat(2000).into_boxed_str()))],
+        End::Fail,
+    )]);
+    let harness = Harness::new(
+        store.clone(),
+        provider,
+        ToolRegistry::new(),
+        HarnessConfig {
+            max_request_bytes: 1000,
+            ..Default::default()
+        },
+    );
+    harness
+        .prompt(&session.id, "one", RunOptions::default())
+        .await?;
+    assert_eq!(store.messages(&session.id)?.len(), 1);
+    Ok(())
+}
+
+fn shape(request: &ModelRequest) -> Vec<(Role, String)> {
+    let messages = request.messages.iter();
+    messages
+        .map(|m| (m.role.clone(), m.text().into_owned()))
+        .collect()
+}

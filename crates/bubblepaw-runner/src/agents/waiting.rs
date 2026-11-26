@@ -201,7 +201,7 @@ pub(super) fn restore_text(store: &Store, run: &mut Run) -> Result<()> {
             break;
         }
         if created <= end
-            && (message.role == Role::Assistant
+            && ((message.role == Role::Assistant && message.incomplete.is_none())
                 || (run.model == bubblepaw_core::SCRIPT_MODEL && message.role == Role::Tool))
         {
             run.text = Some(message.text().into_owned());
