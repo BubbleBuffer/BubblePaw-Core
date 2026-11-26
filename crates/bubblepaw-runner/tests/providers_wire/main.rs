@@ -26,5 +26,6 @@ mod reasoning_replay;
 mod reasoning_storage;
 mod reasoning_thinking;
 mod reasoning_tool_loops;
+mod reply_facts;
 mod tool_error_prefix;
 mod tools_off_budget_wire;

@@ -56,15 +56,13 @@ impl RequestLogRow {
     pub const BREAKPOINTS_KEY: &'static str = "_bubblepaw_cache_breakpoints";
     /// The breakpoints an adapter reported on this response.
     pub fn reported_breakpoints(response: &ModelResponse) -> Option<Vec<String>> {
-        let state = response
-            .provider_state
-            .as_ref()?
-            .get(Self::BREAKPOINTS_KEY)?;
-        serde_json::from_value(state.clone()).ok()
+        response.reported_cache_breakpoints()
     }
-    /// Remove the report so it is not persisted with the message.
+    /// Take the report off the response and remove its blob key so it is not
+    /// persisted with the message.
     pub fn take_breakpoints(response: &mut ModelResponse) -> Option<Vec<String>> {
         let breakpoints = Self::reported_breakpoints(response);
+        response.cache_breakpoints = None;
         let state = response
             .provider_state
             .as_mut()

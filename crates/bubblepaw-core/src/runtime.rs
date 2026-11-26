@@ -1310,7 +1310,7 @@ impl Harness {
                 );
             }
             ensure!(
-                serde_json::to_vec(&response)?.len() <= self.config.max_request_bytes,
+                response.storage_bytes()? <= self.config.max_request_bytes,
                 "Provider response exceeds configured storage size limit"
             );
             let mut message =

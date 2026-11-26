@@ -126,16 +126,13 @@ impl SummarizingContext {
     }
     pub(super) fn observe_context_response(&self, session: &str, response: &ModelResponse) {
         self.observe_episode_route(session, response);
-        let multiple = response.provider_state.as_ref().is_some_and(|state| {
-            state["rounds"]
-                .as_array()
-                .is_some_and(|rounds| rounds.len() > 1)
-        }) || response
-            .last_request_usage
-            .as_ref()
-            .and_then(|last| last.input_tokens)
-            .zip(response.usage.as_ref())
-            .is_some_and(|(last, total)| total.input_tokens != last);
+        let multiple = response.multiple_requests()
+            || response
+                .last_request_usage
+                .as_ref()
+                .and_then(|last| last.input_tokens)
+                .zip(response.usage.as_ref())
+                .is_some_and(|(last, total)| total.input_tokens != last);
         let physical = if multiple {
             None
         } else {

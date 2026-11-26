@@ -32,6 +32,7 @@ mod dispatch;
 mod event_log;
 mod events;
 mod host_state;
+mod model_response;
 mod observation;
 mod output_schema;
 mod provider_ext;
@@ -51,7 +52,7 @@ pub use tool_result::ToolResult;
 mod tool_notices;
 mod tool_views;
 pub mod transcript;
-use anyhow::{Context, Result, ensure};
+use anyhow::Result;
 pub use approvals::{
     Approval, ApprovalMode, ApprovalPolicy, ApprovalRecord, ApprovalState, AutoApprovalConfig,
     DEFAULT_AUTO_PROMPT, Decision, exec_working_directory, track_approval_waits,
@@ -78,6 +79,7 @@ pub use discovery::{search_tool_definitions_with_servers, tool_definition_summar
 pub use dispatch::ToolDispatcher;
 pub use event_log::{ClientInfo, EVENTS_AFTER_LIMIT, LogPosition, client_param};
 pub use events::{EventKind, HarnessEvent};
+pub use model_response::{ModelResponse, ServedRoute, StopReason};
 pub use observation::{
     Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink,
     fingerprint, hex_lower,
@@ -371,34 +373,6 @@ pub struct ModelRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_tiers: Option<CacheTiers>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ModelResponse {
-    pub text: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub thinking: String,
-    #[serde(default)]
-    pub tool_calls: Vec<ToolCall>,
-    pub usage: Option<Usage>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub quota: Vec<QuotaReading>,
-    /// The final physical request, apart from cumulative continuation usage; absent for one logical response.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_request_usage: Option<LastRequestUsage>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_state: Option<Value>,
-}
-impl ModelResponse {
-    /// Deserialize a complete JSON reply into a host-owned type (serde enforces the contract, not JSON Schema).
-    pub fn parse_json<T: serde::de::DeserializeOwned>(&self) -> Result<T> {
-        ensure!(
-            self.tool_calls.is_empty(),
-            "cannot parse a tool-call response as a JSON reply"
-        );
-        serde_json::from_str(&self.text)
-            .context("model reply is not valid JSON for the requested type")
-    }
-}
-
 #[async_trait]
 pub trait Provider: Send + Sync {
     /// Ordered, explicitly configured routes for an isolated summary branch.

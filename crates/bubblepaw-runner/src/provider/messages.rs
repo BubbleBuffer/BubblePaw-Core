@@ -21,7 +21,10 @@ const UNSIGNED_CUT: &str = "unsigned_cut";
 mod cache;
 #[path = "messages_fork.rs"]
 mod fork;
+#[path = "messages_rounds.rs"]
+mod rounds;
 use fork::unfinished_tool_loop;
+use rounds::JoinedRounds;
 
 pub struct MessagesProvider {
     pub(in crate::provider) client: stream::Client,
@@ -238,6 +241,7 @@ impl MessagesProvider {
         let mut partial_input = std::collections::BTreeMap::<u64, String>::new();
         let mut usage = serde_json::Map::new();
         let mut stop_reason = Value::Null;
+        let mut model = Value::Null;
         let mut published = false;
         let mut thinking_block = None::<u64>;
         let outcome = stream::pump(
@@ -253,7 +257,10 @@ impl MessagesProvider {
                     )
                 })?;
                 match event["type"].as_str().unwrap_or("") {
-                    "message_start" => merge_usage(&mut usage, &event["message"]["usage"]),
+                    "message_start" => {
+                        model = event["message"]["model"].clone();
+                        merge_usage(&mut usage, &event["message"]["usage"]);
+                    }
                     "content_block_start" => {
                         let index = event["index"].as_u64().unwrap_or(0);
                         blocks.insert(index, event["content_block"].clone());
@@ -369,6 +376,7 @@ impl MessagesProvider {
             }
         }
         Ok(json!({
+            "model": model,
             "stop_reason": stop_reason,
             "usage": Value::Object(usage),
             "content": blocks.into_values().collect::<Vec<_>>(),
@@ -490,11 +498,12 @@ impl MessagesProvider {
                         .map(|_| usage.input_tokens),
                     output_tokens: raw_usage["output_tokens"].as_u64(),
                 }),
+                request_usages: vec![usage.clone()],
                 usage: Some(usage.clone()),
-                quota: Vec::new(),
                 provider_state: Some(
                     json!({"adapter":"anthropic-messages","content":kept,"stop_reason":payload["stop_reason"],"cache_creation_input_tokens":cache_creation}),
                 ),
+                ..super::reply_facts::messages(&payload)
             })
         })();
         parsed.map_err(|error| {
@@ -549,62 +558,6 @@ fn with_usage(error: anyhow::Error, usage: Option<Usage>) -> anyhow::Error {
         .cloned()
         .unwrap_or_else(|| ProviderError::new(ProviderErrorKind::Fatal, error.to_string()));
     error.context(typed.with_usage(usage))
-}
-
-/// The rounds of one reply that a length stop split. A single round is
-/// returned unchanged; several rounds join their text, usage and content.
-#[derive(Default)]
-struct JoinedRounds {
-    text: String,
-    thinking: String,
-    usage: Usage,
-    content: Vec<Value>,
-    rounds: usize,
-    quota: Vec<bubblepaw_core::QuotaReading>,
-}
-
-impl JoinedRounds {
-    fn push(&mut self, response: &ModelResponse) {
-        self.quota.extend(response.quota.iter().cloned());
-        self.rounds += 1;
-        self.text.push_str(&response.text);
-        self.thinking.push_str(&response.thinking);
-        if let Some(usage) = &response.usage {
-            self.usage.add(usage);
-        }
-        if let Some(blocks) = response
-            .provider_state
-            .as_ref()
-            .and_then(|state| state["content"].as_array())
-        {
-            self.content.extend(blocks.iter().cloned());
-        }
-    }
-
-    fn finish(self, last: ModelResponse) -> ModelResponse {
-        if self.rounds <= 1 {
-            return last;
-        }
-        let stop_reason = last
-            .provider_state
-            .as_ref()
-            .map(|state| state["stop_reason"].clone())
-            .unwrap_or(Value::Null);
-        ModelResponse {
-            text: self.text,
-            thinking: self.thinking,
-            tool_calls: last.tool_calls,
-            last_request_usage: last.last_request_usage,
-            usage: Some(self.usage.clone()),
-            quota: self.quota,
-            provider_state: Some(json!({
-                "adapter": "anthropic-messages",
-                "content": self.content,
-                "stop_reason": stop_reason,
-                "cache_creation_input_tokens": self.usage.cache_creation_tokens,
-            })),
-        }
-    }
 }
 
 /// Stores a tool block's parsed input, or marks the block when the input is not JSON.

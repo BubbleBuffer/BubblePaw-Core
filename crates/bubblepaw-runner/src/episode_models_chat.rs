@@ -115,10 +115,7 @@ impl HttpEpisodeModels {
                         .to_owned();
                     match response {
                         Ok(response) => {
-                            let reasoning = response
-                                .provider_state
-                                .as_ref()
-                                .and_then(ProviderRegistry::reasoning);
+                            let reasoning = ProviderRegistry::reply_reasoning(&response);
                             let result = ChatResult {
                                 text: response.text,
                                 model: actual,

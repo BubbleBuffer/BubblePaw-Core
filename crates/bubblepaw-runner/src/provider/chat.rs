@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::atomic::Ordering;
 #[path = "chat_http.rs"]
 mod http;
+use http::chat_error_kind;
 
 pub(crate) fn is_loopback_url(base: &str) -> bool {
     reqwest::Url::parse(base).ok().is_some_and(|url| {
@@ -566,36 +567,6 @@ fn append_call_fragment(
     Ok(())
 }
 
-/// Error bodies are used for classification only; provider text never reaches
-/// the host's error message (it can contain private prompts or credentials).
-fn chat_error_kind(error: &Value) -> ProviderErrorKind {
-    let code = error["status"].as_u64().or_else(|| error["code"].as_u64());
-    let label = format!(
-        "{} {}",
-        error["type"].as_str().unwrap_or_default(),
-        error["code"].as_str().unwrap_or_default()
-    )
-    .to_ascii_lowercase();
-    if super::is_context_overflow(&error.to_string()) {
-        ProviderErrorKind::Context
-    } else if matches!(code, Some(401 | 403))
-        || label.contains("authentication")
-        || label.contains("invalid_api_key")
-        || label.contains("permission")
-    {
-        ProviderErrorKind::Auth
-    } else if code == Some(429) || label.contains("rate_limit") {
-        ProviderErrorKind::RateLimit { resets_at: None }
-    } else if matches!(code, Some(408 | 409 | 500..=599))
-        || label.contains("server_error")
-        || label.contains("overloaded")
-    {
-        ProviderErrorKind::Transient
-    } else {
-        ProviderErrorKind::Fatal
-    }
-}
-
 pub(super) fn response_usage(payload: &Value) -> (Usage, Option<u64>) {
     let usage = &payload["usage"];
     let last_request_input = usage["prompt_tokens"]
@@ -812,7 +783,7 @@ impl ChatCompletionsProvider {
                     on_text(StreamEvent::TextDelta(&text));
                 }
                 Ok(ModelResponse {
-                    quota: Vec::new(),
+                    request_usages: vec![usage.clone()],
                     text,
                     thinking,
                     tool_calls: calls,
@@ -829,6 +800,7 @@ impl ChatCompletionsProvider {
                         Some(&request.model),
                         "native",
                     )?),
+                    ..super::reply_facts::chat(&payload)
                 })
             })();
             parse.map(|response| (response, length)).map_err(|error| {
@@ -902,6 +874,7 @@ impl Provider for ChatCompletionsProvider {
             let mut continuations = 0;
             let mut thinking = String::new();
             let mut rounds = Vec::new();
+            let mut request_usages = Vec::new();
             loop {
                 let (round, length) = self.round(&request, &on_text, &cancellation).await?;
                 let start = text.len();
@@ -919,6 +892,7 @@ impl Provider for ChatCompletionsProvider {
                 if let Some(part) = &round.usage {
                     usage.get_or_insert_with(Usage::default).add(part);
                 }
+                request_usages.extend(round.request_usages.iter().cloned());
                 if continuation::should_continue(
                     length,
                     !round.tool_calls.is_empty(),
@@ -946,11 +920,13 @@ impl Provider for ChatCompletionsProvider {
                     );
                 }
                 return Ok(ModelResponse {
-                    quota: Vec::new(),
                     text,
                     thinking,
                     tool_calls: round.tool_calls,
                     last_request_usage: round.last_request_usage,
+                    model: round.model,
+                    stop_reason: round.stop_reason,
+                    request_usages,
                     usage: usage.clone(),
                     provider_state: if rounds.len() == 1 {
                         round.provider_state
@@ -962,6 +938,7 @@ impl Provider for ChatCompletionsProvider {
                             "native",
                         )?)
                     },
+                    ..Default::default()
                 });
             }
         }

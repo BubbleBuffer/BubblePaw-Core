@@ -271,6 +271,7 @@ impl Provider for RouteFixture {
             last_request_usage: None,
             quota: Vec::new(),
             provider_state: None,
+            ..Default::default()
         })
     }
 }
@@ -333,6 +334,9 @@ async fn configured_fallback_is_sticky_metered_and_records_selected_route_for_st
         response.provider_state.as_ref().unwrap()["_bubblepaw_fallback_from"],
         serde_json::json!(["free/flash-free"])
     );
+    let route = response.route.as_ref().unwrap();
+    assert_eq!(route.selected, "paid/flash");
+    assert_eq!(route.fallback_from, ["free/flash-free"]);
     registry
         .generate(req, Arc::new(|_| {}), CancellationToken::new())
         .await

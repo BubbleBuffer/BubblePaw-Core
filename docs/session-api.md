@@ -711,6 +711,12 @@ If that final request omits input usage, the count remains `null` even when
 earlier continuations reported tokens. The generic optional
 `ModelResponse.last_request_usage` carries this distinction; custom providers
 without it fall back to their returned response usage.
+`ModelResponse.request_usages` lists the usage of each physical request an
+adapter made for the reply, `stop_reason` and `model` report why the final
+request stopped and which model the provider says served it, and `route` names
+the configured `provider/model` that answered after fallbacks. The
+`model_finished` observation record carries `stop_reason` and `model` when
+present.
 Its optional `output_tokens` records output from that same final physical
 request. Compaction calibration uses the final physical input plus output,
 never cumulative continuation billing. Missing physical counts clear an older

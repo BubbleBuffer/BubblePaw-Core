@@ -196,22 +196,23 @@ impl Observation {
         let output = json!({"text":response.text,"tool_calls":response.tool_calls});
         let mut metadata = json!({"elapsed_ms":elapsed_ms,"first_text_ms":first_text_ms,"text_bytes":response.text.len(),"tool_call_count":response.tool_calls.len(),"usage":response.usage,"fingerprint":fingerprint(output.to_string().as_bytes())});
         // Model fallback routes and their classified reasons (no raw provider text).
-        if let Some(state) = &response.provider_state {
-            for (key, name) in [
-                ("_bubblepaw_fallback_from", "fallback_from"),
-                ("_bubblepaw_fallback_reasons", "fallback_reasons"),
-            ] {
-                if let Some(value) = state.get(key) {
-                    metadata[name] = value.clone();
-                }
-            }
+        let (fallback_from, fallback_reasons) = response.fallbacks();
+        if !fallback_from.is_empty() {
+            metadata["fallback_from"] = json!(fallback_from);
+            metadata["fallback_reasons"] = json!(fallback_reasons);
+        }
+        if let Some(stop_reason) = &response.stop_reason {
+            metadata["stop_reason"] = match stop_reason {
+                crate::StopReason::Other(raw) => json!(raw),
+                other => json!(other),
+            };
+        }
+        if let Some(model) = &response.model {
+            metadata["model"] = json!(model);
         }
         let mut bust = None;
         if let Some(id) = &scope.model_request_id {
-            let state = response.provider_state.as_ref();
-            let selected = state
-                .and_then(|state| state.get("_bubblepaw_selected_model"))
-                .and_then(Value::as_str);
+            let selected = response.selected_route();
             let single_round = match (&response.last_request_usage, &response.usage) {
                 (Some(last), Some(usage)) => last
                     .input_tokens

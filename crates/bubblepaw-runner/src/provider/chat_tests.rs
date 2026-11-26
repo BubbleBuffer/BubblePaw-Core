@@ -40,17 +40,32 @@ async fn stream_envelope_is_not_repeated_per_token_but_extensions_survive() -> R
     server.abort();
     let response = result?;
     assert_eq!(response.text, "x".repeat(256));
-    let state = response.provider_state.unwrap();
+    let state = response.provider_state.clone().unwrap();
     assert_eq!(response.thinking, "thought ".repeat(256));
     assert_eq!(
         state["message_fields"]["reasoning_content"],
         "thought ".repeat(256)
     );
-    // The registry still reads Chat reasoning from the state.
-    assert_eq!(
-        crate::provider::ProviderRegistry::reasoning(&state),
-        Some("thought ".repeat(256))
-    );
+    // The registry reads a reply's reasoning from its state, or from its thinking
+    // when the state carries none.
+    let legacy = bubblepaw_core::ModelResponse {
+        thinking: String::new(),
+        ..response.clone()
+    };
+    let typed_only = bubblepaw_core::ModelResponse {
+        provider_state: None,
+        ..response.clone()
+    };
+    let differing = bubblepaw_core::ModelResponse {
+        thinking: "other".into(),
+        ..response.clone()
+    };
+    for reply in [&response, &legacy, &typed_only, &differing] {
+        assert_eq!(
+            crate::provider::ProviderRegistry::reply_reasoning(reply),
+            Some("thought ".repeat(256))
+        );
+    }
     let fragments = state["opaque_stream_fragments"].as_array().unwrap();
     assert_eq!(
         fragments.len(),

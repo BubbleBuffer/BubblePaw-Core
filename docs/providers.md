@@ -397,6 +397,20 @@ usage including cache reads and writes, and the stop reason. Chat requests
   `ContentBlock::Thinking` before the text, a second readable copy for hosts:
   `provider_state` is unchanged for every adapter and the adapters never read the
   block, so the reasoning is stored twice until the adapters move.
+- A reply carries the facts the loop and core need as typed fields of
+  `ModelResponse`, so nothing outside an adapter reads them out of
+  `provider_state`: `model` (the id the provider reports), `stop_reason` (a
+  `#[non_exhaustive]` `StopReason`: `EndTurn`, `ToolUse`, `MaxOutputTokens`,
+  `ContentFilter`, `Other(raw)`), `request_usages` (the usage of each physical
+  request behind the reply, beside the `usage` total), `route` (the `provider/model`
+  that served it and the routes that failed before it, set by the registry when
+  fallbacks are configured) and `cache_breakpoints` (the cache marks the Messages
+  adapter sent). An adapter fills what its provider reports; a provider that
+  reports nothing leaves `None` or empty. `provider_state` is unchanged. Core reads
+  each fact through one accessor (`selected_route`, `fallbacks`,
+  `multiple_requests`, `reported_cache_breakpoints`) that falls back to the old
+  `provider_state` key for replies that carry only the blob, such as an
+  extension provider's. Readable reasoning is read from `thinking` first.
 - A failed attempt that streamed thinking but no text is retried or falls back
   through the same listener, so the registry then emits `StreamEvent::ThinkingDiscarded`
   and listeners drop the thinking shown so far. Thinking never blocks a retry.

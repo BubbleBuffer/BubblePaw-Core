@@ -171,10 +171,7 @@ pub(super) async fn summarize_fork_attempt(
         &|text| summary_output_reason("summary_fork", text).is_none(),
     )
     .await?;
-    let reasoning = response
-        .provider_state
-        .as_ref()
-        .and_then(ProviderRegistry::reasoning);
+    let reasoning = ProviderRegistry::reply_reasoning(&response);
     let response = ChatResult {
         text: response.text,
         model,
@@ -286,8 +283,7 @@ pub(super) async fn dispatch_fork(
         let selected_route = response
             .as_ref()
             .ok()
-            .and_then(|response| response.provider_state.as_ref())
-            .and_then(|state| state["_bubblepaw_selected_model"].as_str());
+            .and_then(ModelResponse::selected_route);
         // Without usage there is nothing to attribute, so the pending entry is dropped.
         let cache_outcome = cache_pending.and_then(|(cache, id)| match &observed_usage {
             Some(usage) => cache.finish(&id, Some(usage), selected_route, true),
