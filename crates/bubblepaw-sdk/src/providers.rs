@@ -9,6 +9,6 @@ pub use bubblepaw_runner::{
     model_roles::ModelRole,
     provider::{
         ExtensionConfig, ExtensionProvider, ProviderEndpoints, ProviderRegistry, ResponsesProvider,
-        ScriptedProvider, ScriptedStep,
+        ScriptedProvider, ScriptedStep, extension_provider,
     },
 };
