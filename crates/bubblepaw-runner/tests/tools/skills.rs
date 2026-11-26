@@ -427,7 +427,7 @@ fn context(session: &str) -> ToolContext {
         run_id: "run".into(),
         invocation_id: "invoke".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 

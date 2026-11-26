@@ -53,7 +53,7 @@ async fn timeout_awaits_descendant_cleanup_and_all_spawn_effects_settle() -> Res
         run_id: "parent-run".into(),
         invocation_id: "spawn".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let branch = manager.start(&owner, json!({"task":"branch","timeout":1500}))?;
     let grandchild = tokio::time::timeout(Duration::from_secs(3), entered.recv())

@@ -108,7 +108,7 @@ async fn rewind_uses_target_todo_and_omits_an_ended_question_waiter_after_reopen
             run_id: "ended-question-waiter".into(),
             invocation_id: "ended-question-waiter".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         };
         let waiter = tokio::spawn(async move {
             question_tool

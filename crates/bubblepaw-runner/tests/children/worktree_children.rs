@@ -159,7 +159,7 @@ fn context(session: &str) -> ToolContext {
         run_id: String::new(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 fn task(code: &str) -> String {

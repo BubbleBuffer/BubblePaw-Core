@@ -12,7 +12,7 @@ async fn mcp_is_deferred_by_default_and_defer_false_declares_native_without_rest
         run_id: "deferral-probe".into(),
         invocation_id: String::new(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let registry = fixture.live.registry();
     assert!(registry.is_deferred("mcp__fixture__echo"));

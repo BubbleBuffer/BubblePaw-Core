@@ -100,7 +100,7 @@ mod tests {
             run_id: "todo-test".into(),
             invocation_id: "todo-test".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         }
     }
 

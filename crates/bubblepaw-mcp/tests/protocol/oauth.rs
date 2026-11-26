@@ -81,7 +81,7 @@ async fn call(host: &McpHost) -> String {
         run_id: "oauth-run".into(),
         invocation_id: "oauth-invocation".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let result = tool.invoke(context, json!({})).await.unwrap();
     serde_json::to_string(&result).unwrap()

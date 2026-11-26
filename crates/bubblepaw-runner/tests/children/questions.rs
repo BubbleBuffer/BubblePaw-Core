@@ -186,7 +186,7 @@ async fn child_question_case(optional_wakes: bool, parent_waits: bool) -> Result
         run_id: "launch-fixture".into(),
         invocation_id: "launch".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let child_id = if parent_waits {
         root.start(&root_session, "Delegate and wait", RunOptions::default())?;

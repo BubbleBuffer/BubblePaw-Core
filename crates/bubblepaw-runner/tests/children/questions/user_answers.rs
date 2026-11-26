@@ -88,7 +88,7 @@ async fn user_answer_resumes_child_neutrally_and_rejects_late_parent_answer() ->
         run_id: "launch".into(),
         invocation_id: "launch-child".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let receipt = agents.start(&context, json!({"task":"Ask about colour"}))?;
     let child = receipt["sessionId"].as_str().unwrap();

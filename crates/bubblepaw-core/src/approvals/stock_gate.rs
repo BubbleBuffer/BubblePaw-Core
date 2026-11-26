@@ -1,6 +1,6 @@
 //! The stock `ToolGate`: the approval policy, session rules and automatic review
 //! behind the dispatcher's questions, and the host's result hook after a call.
-use super::{AutoApprovalConfig, AutoApprovalContext, Gate};
+use super::{ApprovalPolicy, AutoApprovalConfig, AutoApprovalContext, Gate};
 use crate::tool_gate::{GateCall, GateSource, ToolGate, Verdict};
 use crate::{ApprovalMode, Store, ToolDefinition, ToolResult, WorkspaceResolver};
 use anyhow::Result;
@@ -53,7 +53,7 @@ impl ToolGate for StockGate {
         call: &GateCall<'_>,
         definition: &ToolDefinition,
     ) -> Result<bool> {
-        let policy = &call.context.approval;
+        let policy = ApprovalPolicy::of(call.context);
         let workspaces = self.workspace_roots(&call.context.session_id)?;
         Ok(
             policy.mode(&call.call.name, definition.approval) == ApprovalMode::Allow
@@ -73,7 +73,7 @@ impl ToolGate for StockGate {
             });
         let gate = super::gate(
             &self.store,
-            &call.context.approval,
+            ApprovalPolicy::of(call.context),
             auto.as_ref(),
             call.context,
             &workspaces,

@@ -673,7 +673,7 @@ async fn run_research_child(transport: Transport, key: String, case: ProbeCase) 
         run_id: "live400-parent-run".into(),
         invocation_id: "live400-child-launch".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let outcome = async {
         let child = manager.start(

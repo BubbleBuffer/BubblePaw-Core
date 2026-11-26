@@ -51,7 +51,10 @@ impl Tool for Inspect {
         }
     }
     async fn invoke(&self, context: ToolContext, _: Value) -> Result<ToolResult> {
-        self.0.lock().unwrap().push(context.approval);
+        self.0
+            .lock()
+            .unwrap()
+            .push(ApprovalPolicy::of(&context).clone());
         Ok(ToolResult::text("recorded"))
     }
 }
@@ -106,4 +109,25 @@ async fn tools_receive_effective_run_approval_policy() -> Result<()> {
         vec![default_policy.clone(), merged_policy, default_policy]
     );
     Ok(())
+}
+
+#[test]
+fn context_without_a_policy_reads_as_the_default_policy() {
+    let context = ToolContext {
+        session_id: "session".into(),
+        run_id: String::new(),
+        invocation_id: String::new(),
+        cancellation: CancellationToken::new(),
+        extensions: Default::default(),
+    };
+    assert_eq!(*ApprovalPolicy::of(&context), ApprovalPolicy::default());
+    let allow = ApprovalPolicy {
+        confirm: ApprovalMode::Allow,
+        ..Default::default()
+    };
+    let context = ToolContext {
+        extensions: allow.clone().into_extensions(),
+        ..context
+    };
+    assert_eq!(*ApprovalPolicy::of(&context), allow);
 }

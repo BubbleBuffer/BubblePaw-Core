@@ -148,7 +148,7 @@ impl Fixture {
             run_id: "parent-run".into(),
             invocation_id: "spawn-invocation".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         };
         Self {
             root,

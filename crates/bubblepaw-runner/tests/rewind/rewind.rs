@@ -180,7 +180,7 @@ async fn direct_tool_invocation_cannot_bypass_durable_checkpoints() {
         run_id: "run".into(),
         invocation_id: "call".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let error = tools
         .get("write")

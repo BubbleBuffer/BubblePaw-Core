@@ -96,7 +96,7 @@ async fn live_limits_are_shared_and_leave_running_turn_controls_unchanged() -> R
         run_id: "fixture".into(),
         invocation_id: "fixture".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let started = manager.start(
         &context,
@@ -149,7 +149,7 @@ async fn stale_notices_repeat_at_interval_and_interaction_restarts_interval() ->
         run_id: "parent".into(),
         invocation_id: "spawn".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let started = manager.start(&context, json!({"task":"wait"}))?;
     let child = manager.child(&context.session_id, started["handle"].as_str().unwrap())?;
@@ -269,7 +269,7 @@ async fn disabled_stale_notices_never_emit() -> Result<()> {
         run_id: "parent".into(),
         invocation_id: "spawn".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     manager.start(&context, json!({"task":"wait"}))?;
     assert!(
@@ -302,7 +302,7 @@ async fn stale_cancellation_finalizer_cannot_wait_for_or_change_a_continuation()
         run_id: "parent".into(),
         invocation_id: "spawn".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let started = manager.start(&context, json!({"task":"old turn"}))?;
     let child = manager.child(&context.session_id, started["handle"].as_str().unwrap())?;

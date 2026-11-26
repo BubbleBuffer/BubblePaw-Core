@@ -31,7 +31,7 @@ enum CallJournal<'a> {
 
 impl ToolDispatcher {
     /// Prepare against the effective registry and reserve the shared run budget.
-    /// Validation precedes approval and every durable effect boundary.
+    /// Validation precedes the gate and every durable effect boundary.
     pub(crate) fn prepare_call(
         &self,
         mut context: ToolContext,
@@ -40,7 +40,7 @@ impl ToolDispatcher {
         declarations: Option<&[String]>,
     ) -> Result<PreparedToolCall> {
         ensure!(!context.cancellation.is_cancelled(), "Execution cancelled");
-        context.approval = self.approval_policy(&context.session_id);
+        self.prepare_context(&mut context);
         let validation = match declarations {
             Some(declarations) => self.tools.validate_direct_model_call(&call, declarations),
             None => self
@@ -88,7 +88,7 @@ impl ToolDispatcher {
             malformed: budget_allowed && malformed,
         })
     }
-    /// Admit an unconditional Allow call without an intervening approval write,
+    /// Admit an unconditional Allow call without an intervening gate write,
     /// permitting the reply and dispatch boundary to share one transaction.
     pub(crate) fn admit_fast_path(&self, prepared: &mut PreparedToolCall) -> Result<bool> {
         if prepared.rejection.is_some() {
@@ -123,7 +123,7 @@ impl ToolDispatcher {
             &prepared.call,
         )
     }
-    /// Invoke a target through the shared validation, budget, approval and effect
+    /// Invoke a target through the shared validation, budget, gate and effect
     /// path. Full nested results remain inside the host; the enclosing model call
     /// applies the model reply limit.
     pub async fn invoke(
@@ -221,7 +221,7 @@ impl ToolDispatcher {
         }
         if let Some(result) = prepared.rejection.take() {
             // Invalid model calls retain their ordinary correctable reply event,
-            // but never create an effect. Approval and budget refusals do not start.
+            // but never create an effect. Gate and budget refusals do not start.
             if prepared.validation_rejected
                 && let CallJournal::Model { message_id, .. } = journal
             {

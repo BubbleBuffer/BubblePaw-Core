@@ -172,9 +172,10 @@ impl AgentTools {
                 && !binding.worker)
         {
             let source = match dispatcher {
-                Some(dispatcher) => dispatcher.approval_resolver(&context.session_id),
+                // A dispatched call carries its run's resolver in the context.
+                Some(_) => ApprovalPolicy::resolver_of(context),
                 None => {
-                    let policy = context.approval.clone();
+                    let policy = ApprovalPolicy::of(context).clone();
                     Arc::new(move |_: &str| policy.clone()) as ApprovalResolver
                 }
             };

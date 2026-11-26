@@ -24,7 +24,7 @@ fn context(owner: &str) -> ToolContext {
         run_id: "fixture".into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 fn registry(processes: &Arc<ProcessTools>) -> Result<ToolRegistry> {

@@ -373,7 +373,7 @@ async fn auto_usage_shares_the_existing_approval_transaction() -> Result<()> {
         run_id: "run-for-approval".into(),
         invocation_id: String::new(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let response = direct("call-for-approval", "write");
     let before = store.storage_stats()?.transaction_count;

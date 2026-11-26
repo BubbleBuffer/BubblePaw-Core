@@ -63,7 +63,7 @@ async fn completion_wake_keeps_exec_output_and_stream_fragments_out_of_sqlite() 
             run_id: "synthetic-launch".into(),
             invocation_id: "synthetic-invocation".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         },
         json!({"command":"head -c 2097152 /dev/zero", "background":true}),
     )

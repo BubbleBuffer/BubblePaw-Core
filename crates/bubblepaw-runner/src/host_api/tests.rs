@@ -282,7 +282,7 @@ async fn cancel_cascades_to_question_and_running_child() -> Result<()> {
             run_id: run.into(),
             invocation_id: "fixture-child".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         },
         json!({"task":"wait"}),
     )?;

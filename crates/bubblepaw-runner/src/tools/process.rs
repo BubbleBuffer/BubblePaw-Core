@@ -1629,7 +1629,7 @@ mod tests {
             run_id: String::new(),
             invocation_id: uuid::Uuid::new_v4().to_string(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         };
 
         processes.set_inherited_env(Some(vec![

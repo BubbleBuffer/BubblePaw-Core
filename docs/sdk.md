@@ -544,3 +544,14 @@ release.
 Non-Rust programs do not need a client library. They use the stdio JSON-RPC
 interface described in [session-api](session-api.md), or the optional HTTP host
 described in [web-contract](web-contract.md).
+
+## Upgrading: `ToolContext` carries extensions
+
+`ToolContext` has no `approval` field. It has `extensions: Extensions`, a small
+type-keyed map that the core fills with the run's policy. In a `ToolContext`
+literal, `approval: Default::default()` becomes `extensions: Default::default()`
+(an unset slot reads as the default policy), and a real policy becomes
+`extensions: policy.into_extensions()`. A tool that read `context.approval` calls
+`ApprovalPolicy::of(&context)`. `ApprovalPolicy::resolver_of(&context)` replaces
+`ToolDispatcher::approval_resolver`, which is removed. `Extensions` is
+re-exported from `bubblepaw_sdk::tools`.

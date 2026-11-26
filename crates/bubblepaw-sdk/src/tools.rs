@@ -4,8 +4,8 @@
 //! capabilities go in with [`ToolRegistry::register_host`].
 
 pub use bubblepaw_core::{
-    JsonSchema, Tool, ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry,
-    ToolResult,
+    Extensions, JsonSchema, Tool, ToolCall, ToolContext, ToolDefinition, ToolDispatcher,
+    ToolRegistry, ToolResult,
 };
 pub use bubblepaw_runner::{
     artifacts::ArtifactStore,

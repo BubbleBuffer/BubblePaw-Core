@@ -199,7 +199,7 @@ impl Fixture {
             run_id: "fixture".into(),
             invocation_id: "fixture".into(),
             cancellation: CancellationToken::new(),
-            approval: allow(),
+            extensions: allow().into_extensions(),
         };
         Ok(Self {
             _directory: directory,
@@ -426,7 +426,7 @@ async fn live_research_profile_can_enable_after_startup_without_exposing_parent_
         run_id: "fixture".into(),
         invocation_id: "fixture".into(),
         cancellation: CancellationToken::new(),
-        approval: allow(),
+        extensions: allow().into_extensions(),
     };
     assert!(manager.profile("research").is_none());
     assert!(manager.profile("workspace").is_none());

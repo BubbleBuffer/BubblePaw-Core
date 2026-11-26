@@ -229,23 +229,32 @@ async fn single_call_applies_live_denial_with_and_without_run_options() -> Resul
 fn inherited_approval_resolver_keeps_origin_session_and_pinned_policy() -> Result<()> {
     let deny = Arc::new(AtomicBool::new(false));
     let state = deny.clone();
-    let dispatcher = ToolDispatcher::new(Store::in_memory()?, ToolRegistry::new(), 1024, None)
-        .with_approval(policy(ApprovalMode::Deny))
-        .with_approval_resolver(Some(Arc::new(move |session| {
+    let session_context = || ToolContext {
+        session_id: "parent".into(),
+        run_id: String::new(),
+        invocation_id: String::new(),
+        cancellation: CancellationToken::new(),
+        extensions: Default::default(),
+    };
+    let mut context = session_context();
+    ApprovalPolicy::context_setup(
+        policy(ApprovalMode::Deny),
+        Some(Arc::new(move |session| {
             assert_eq!(session, "parent");
             policy(if state.load(Ordering::SeqCst) {
                 ApprovalMode::Deny
             } else {
                 ApprovalMode::Allow
             })
-        })));
-    let inherited = dispatcher.approval_resolver("parent");
+        })),
+    )(&mut context);
+    let inherited = ApprovalPolicy::resolver_of(&context);
     assert_eq!(inherited("child").confirm, ApprovalMode::Allow);
     deny.store(true, Ordering::SeqCst);
     assert_eq!(inherited("child").confirm, ApprovalMode::Deny);
-    let pinned = dispatcher
-        .with_approval_resolver(None)
-        .approval_resolver("parent");
+    let mut context = session_context();
+    ApprovalPolicy::context_setup(policy(ApprovalMode::Deny), None)(&mut context);
+    let pinned = ApprovalPolicy::resolver_of(&context);
     deny.store(false, Ordering::SeqCst);
     assert_eq!(pinned("child").confirm, ApprovalMode::Deny);
     Ok(())
@@ -312,7 +321,7 @@ impl Tool for AdmittedPolicyProbe {
         _: Value,
         dispatcher: ToolDispatcher,
     ) -> Result<ToolResult> {
-        assert_eq!(context.approval.confirm, ApprovalMode::Allow);
+        assert_eq!(ApprovalPolicy::of(&context).confirm, ApprovalMode::Allow);
         let nested = dispatcher
             .invoke(context, "effect", serde_json::json!({}))
             .await?;
@@ -375,7 +384,20 @@ async fn removed_tool_reasons_are_unadvertised_and_cleared_when_registered_again
             .to_string()
             .contains("server config removed")
     );
-    let dispatcher = ToolDispatcher::new(Store::in_memory()?, tools.clone(), 1024, None);
+    let store = Store::in_memory()?;
+    let log = store.runtime().log.clone();
+    let dispatcher = ToolDispatcher::from_seams(
+        tools.clone(),
+        1024,
+        None,
+        Arc::new(crate::journal_sqlite::SqliteJournal::new(
+            store.clone(),
+            log.clone(),
+        )),
+        Arc::new(crate::approvals::StockGate::new(store, None, None)),
+        log,
+        ApprovalPolicy::context_setup(Default::default(), None),
+    );
     let error = dispatcher
         .invoke(
             ToolContext {
@@ -383,7 +405,7 @@ async fn removed_tool_reasons_are_unadvertised_and_cleared_when_registered_again
                 run_id: "run".into(),
                 invocation_id: String::new(),
                 cancellation: CancellationToken::new(),
-                approval: ApprovalPolicy::default(),
+                extensions: Default::default(),
             },
             "removed",
             serde_json::json!({}),

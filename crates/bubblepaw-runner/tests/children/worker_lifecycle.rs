@@ -120,7 +120,7 @@ impl Fixture {
                 run_id: "parent-run".into(),
                 invocation_id: "worker-launch".into(),
                 cancellation: CancellationToken::new(),
-                approval: Default::default(),
+                extensions: Default::default(),
             },
             probe,
             entered,

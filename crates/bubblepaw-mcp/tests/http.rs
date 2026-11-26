@@ -339,7 +339,7 @@ fn context() -> ToolContext {
         run_id: "http-test-run".into(),
         invocation_id: "http-test-invocation".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 async fn invoke(host: &McpHost, input: Value) -> ToolResult {

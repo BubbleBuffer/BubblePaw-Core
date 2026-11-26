@@ -30,6 +30,7 @@ mod discovery;
 mod dispatch;
 mod event_log;
 mod events;
+mod extensions;
 mod host_state;
 mod journal;
 mod journal_admission;
@@ -92,6 +93,7 @@ pub use discovery::{search_tool_definitions_with_servers, tool_definition_summar
 pub use dispatch::ToolDispatcher;
 pub use event_log::{ClientInfo, EVENTS_AFTER_LIMIT, LogPosition, client_param};
 pub use events::{EventKind, HarnessEvent};
+pub use extensions::Extensions;
 pub use observation::{
     Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink,
     fingerprint, hex_lower,
@@ -179,8 +181,9 @@ pub struct ToolContext {
     pub run_id: String,
     pub invocation_id: String,
     pub cancellation: CancellationToken,
-    /// Effective run policy; tools may inspect it to constrain delegated work.
-    pub approval: ApprovalPolicy,
+    /// Typed values the shell attaches to a call, read through accessors such as
+    /// `ApprovalPolicy::of`.
+    pub extensions: Extensions,
 }
 
 #[async_trait]

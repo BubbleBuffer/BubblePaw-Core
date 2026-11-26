@@ -15,7 +15,7 @@ fn context() -> ToolContext {
         run_id: "test-run".into(),
         invocation_id: "test-call".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 async fn call(

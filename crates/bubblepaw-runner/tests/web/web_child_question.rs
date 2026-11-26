@@ -323,7 +323,7 @@ async fn answering_a_question_on_a_child_session_is_a_409_and_changes_nothing() 
         run_id: "host-question-launch".into(),
         invocation_id: "child-question".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let started = manager.start_worker(&owner, profile, json!({"task": "child question"}))?;
     let child = started["sessionId"].as_str().unwrap().to_string();
