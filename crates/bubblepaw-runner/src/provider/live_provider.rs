@@ -1,5 +1,5 @@
 //! One immutable provider/config generation per request, replaced as a unit.
-use super::{ExtensionProvider, ProviderRegistry};
+use super::{ProviderRegistry, extension_provider};
 use crate::{
     config::{EffectiveConfig, LoadOptions, Settings, selected_main_provider},
     net::NetBackendSnapshot,
@@ -513,7 +513,7 @@ fn startup_extensions(
         .extensions
         .iter()
         .map(|extension| {
-            let provider = ExtensionProvider::new(extension.clone());
+            let provider = extension_provider(extension.clone());
             let provider = match &inherited {
                 Some(env) => provider.with_inherited_env(env.clone()),
                 None => provider,

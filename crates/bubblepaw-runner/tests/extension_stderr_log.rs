@@ -6,7 +6,7 @@
 //! callsite interest and the max level globally, and the line was sometimes
 //! never captured.
 use bubblepaw_core::{CancellationToken, HistoryCursor, Message, ModelRequest, Provider, Role};
-use bubblepaw_runner::provider::{ExtensionConfig, ExtensionProvider};
+use bubblepaw_runner::provider::{ExtensionConfig, extension_provider};
 use std::{
     io::Write,
     sync::{Arc, Mutex},
@@ -34,7 +34,7 @@ async fn extension_stderr_is_logged_at_warn_with_secrets_redacted() {
         .with_ansi(false)
         .with_writer(move || writer.clone())
         .init();
-    let provider = ExtensionProvider::new(ExtensionConfig {
+    let provider = extension_provider(ExtensionConfig {
         id: "fake".into(),
         command: env!("CARGO_BIN_EXE_bubblepaw-fake-extension").into(),
         env: [("FAKE_API_TOKEN".into(), "configured-secret-value".into())].into(),

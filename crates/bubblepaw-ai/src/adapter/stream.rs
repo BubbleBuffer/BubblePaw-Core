@@ -2,19 +2,15 @@
 //! with an idle timeout instead of a whole-request timeout, so a long answer
 //! can finish. Text fragments reach the listener in batches; they are transient
 //! and never stored.
+pub use super::text_batch::TextBatch;
 use super::{classify, http_dump};
-use crate::{CancellationToken, ProviderErrorKind, StreamCallback, StreamEvent};
+use crate::{CancellationToken, ProviderErrorKind};
 use anyhow::{Result, anyhow};
 use std::time::Duration;
-use tokio::time::Instant;
 
 /// Longest silence allowed before response headers and between body chunks.
 /// Replaces the old 300 s whole-request timeout, which cut long answers short.
 pub(super) const IDLE_TIMEOUT: Duration = Duration::from_secs(300);
-/// Pending text reaches the listener at least this often while it streams.
-pub(super) const FLUSH_INTERVAL: Duration = Duration::from_millis(75);
-/// Pending text reaches the listener once it holds this many characters.
-pub(super) const FLUSH_CHARS: usize = 512;
 /// Memory-safety limit on one streamed body. Not an output-size limit: output
 /// length never rejects a reply, and no other size cap applies to it.
 const MAX_STREAM_BYTES: usize = 32 * 1024 * 1024;
@@ -240,73 +236,6 @@ fn frame_data(frame: &[u8]) -> std::result::Result<Option<String>, StreamError> 
 
 /// Separates the parts of one reply's thinking (Messages blocks, Responses summary parts).
 pub(super) const THINKING_BREAK: &str = "\n\n";
-
-/// Collects text and thinking fragments and hands them to the listener in
-/// batches. A batch holds one kind, so the listener sees both in streamed order.
-pub struct TextBatch {
-    listener: StreamCallback,
-    pending: String,
-    thinking: bool,
-    chars: usize,
-    since: Option<Instant>,
-}
-
-impl TextBatch {
-    pub fn new(listener: StreamCallback) -> Self {
-        Self {
-            listener,
-            pending: String::new(),
-            thinking: false,
-            chars: 0,
-            since: None,
-        }
-    }
-
-    /// Queue a text fragment; delivers at once when the batch is full or old enough.
-    pub fn push(&mut self, fragment: &str) {
-        self.queue(false, fragment);
-    }
-
-    /// Queue a fragment of readable thinking, as `push` does for text.
-    pub fn push_thinking(&mut self, fragment: &str) {
-        self.queue(true, fragment);
-    }
-
-    fn queue(&mut self, thinking: bool, fragment: &str) {
-        if fragment.is_empty() {
-            return;
-        }
-        if self.thinking != thinking {
-            self.flush();
-            self.thinking = thinking;
-        }
-        let since = *self.since.get_or_insert_with(Instant::now);
-        self.pending.push_str(fragment);
-        self.chars += fragment.chars().count();
-        if self.chars >= FLUSH_CHARS || since.elapsed() >= FLUSH_INTERVAL {
-            self.flush();
-        }
-    }
-
-    /// When pending text is due for delivery, if any is pending.
-    pub fn due(&self) -> Option<Instant> {
-        self.since.map(|since| since + FLUSH_INTERVAL)
-    }
-
-    /// Deliver pending text now: at block ends, at the terminal event, on errors.
-    pub fn flush(&mut self) {
-        self.since = None;
-        self.chars = 0;
-        if !self.pending.is_empty() {
-            let text = std::mem::take(&mut self.pending);
-            (self.listener)(if self.thinking {
-                StreamEvent::ThinkingDelta(&text)
-            } else {
-                StreamEvent::TextDelta(&text)
-            });
-        }
-    }
-}
 
 /// Feed events to `handle` until it reports the terminal event (`Ok(true)`).
 /// Pending text is delivered when its interval is due. Whatever ends the call,

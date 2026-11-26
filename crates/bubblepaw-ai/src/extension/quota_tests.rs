@@ -22,10 +22,7 @@ fn sdk_warning_and_rejection_survive_typed_rpc_error() {
     assert_eq!(error.quota.len(), 2);
     assert_eq!(error.quota[0].used_percent, 72.0);
     assert_eq!(error.quota[1].used_percent, 100.0);
-    assert_eq!(
-        error.quota[1].source,
-        bubblepaw_core::QuotaSource::Rejection
-    );
+    assert_eq!(error.quota[1].source, crate::QuotaSource::Rejection);
     assert!(!error.message.contains("raw SDK"));
 }
 #[test]
@@ -34,6 +31,6 @@ fn terminal_sdk_billing_signal_stays_fatal() {
         &json!({"message":"private SDK diagnostic","data":{"kind":"fatal","terminal_quota":true}}),
         &[],
     );
-    assert!(super::super::is_terminal_quota_error(&error));
+    assert!(crate::adapter::is_terminal_quota_error(&error));
     assert!(!error.retryable());
 }

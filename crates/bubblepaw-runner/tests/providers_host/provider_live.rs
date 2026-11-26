@@ -95,8 +95,8 @@ use bubblepaw_core::{
 use bubblepaw_runner::{
     config::{EffectiveConfig, LoadOptions},
     provider::{
-        ChatCompletionsProvider, ExtensionConfig, ExtensionProvider, MessagesProvider,
-        ResponsesProvider,
+        ChatCompletionsProvider, ExtensionConfig, MessagesProvider, ResponsesProvider,
+        extension_provider,
     },
 };
 use futures_util::StreamExt;
@@ -618,7 +618,7 @@ impl Fixture {
                     })
                     .map(|p| Arc::new(p) as Arc<dyn Provider>)
             }
-            Kind::ClaudeCode => Ok(Arc::new(ExtensionProvider::new(ExtensionConfig {
+            Kind::ClaudeCode => Ok(Arc::new(extension_provider(ExtensionConfig {
                 id: "claude-code".into(),
                 command: "bun".into(),
                 args: vec!["run".into(), "src/main.ts".into()],

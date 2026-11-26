@@ -1,45 +1,13 @@
 //! Provider rate-limit headers as validated quota readings. Tokens and response
 //! bodies never become quota state.
+pub use super::quota_events::{reading, timestamp};
 use crate::{ProviderError, ProviderErrorKind, QuotaReading, QuotaSource};
 use chrono::{DateTime, Duration, Utc};
 use reqwest::header::HeaderMap;
 
-fn percent(value: f64) -> Option<f64> {
-    (value.is_finite() && (0.0..=100.0).contains(&value)).then_some(value)
-}
-#[doc(hidden)]
-pub fn timestamp(value: &str) -> Option<String> {
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|at| at.with_timezone(&Utc).to_rfc3339())
-}
 fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     Some(headers.get(name)?.to_str().ok()?.trim())
 }
-#[allow(clippy::too_many_arguments)]
-#[doc(hidden)]
-pub fn reading(
-    provider: &str,
-    account: &str,
-    window: &str,
-    used: f64,
-    resets_at: Option<String>,
-    now: DateTime<Utc>,
-    source: QuotaSource,
-) -> Option<QuotaReading> {
-    let reading = QuotaReading {
-        provider: provider.into(),
-        account: account.into(),
-        window: window.into(),
-        used_percent: percent(used)?,
-        resets_at,
-        observed_at: now.to_rfc3339(),
-        source,
-        balance: None,
-    };
-    reading.validate().ok().map(|()| reading)
-}
-
 /// Anthropic API request and token buckets are independent windows. Missing or
 /// malformed limit/remaining pairs are unknown, never zero or exhausted.
 pub fn parse_anthropic_headers(

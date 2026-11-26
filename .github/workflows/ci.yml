@@ -79,9 +79,12 @@ jobs:
       - name: ai crate builds alone with the http adapters
         if: ${{ !cancelled() }}
         run: cargo check -p bubblepaw-ai --all-targets --features http --locked
-      - name: ai http adapter tests
+      - name: ai crate builds alone with the extension provider
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-ai --features http --locked --no-fail-fast
+        run: cargo check -p bubblepaw-ai --all-targets --features extension --locked
+      - name: ai adapter and extension tests
+        if: ${{ !cancelled() }}
+        run: cargo test -p bubblepaw-ai --features http,extension --locked --no-fail-fast
       - name: ai, core, mcp, process and sdk tests
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-ai -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
@@ -178,7 +181,7 @@ jobs:
           cargo test -p bubblepaw-runner --features web,bench --locked --no-run
       - name: core, mcp, process, remote and sdk tests (platform-sensitive)
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-ai --features http -p bubblepaw-core --test storage --test tools -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
+        run: cargo test -p bubblepaw-ai --features http,extension -p bubblepaw-core --test storage --test tools -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
       - name: runner tests (platform-sensitive, web, bench)
         if: ${{ !cancelled() }}
         run: >
