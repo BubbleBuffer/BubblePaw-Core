@@ -298,6 +298,14 @@ impl RequestContext for StockRequestContext {
         Some(reason)
     }
 
+    fn context_prefix(&self, session: &str) -> Result<Vec<Message>> {
+        Ok(self
+            .store
+            .context_view(session)?
+            .map(|view| view.prefix)
+            .unwrap_or_default())
+    }
+
     fn tool_generation_observed(&self, session: &str, generation: u64) -> bool {
         self.context().observe_tool_generation(session, generation)
     }

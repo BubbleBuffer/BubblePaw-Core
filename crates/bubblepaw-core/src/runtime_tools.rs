@@ -1,6 +1,6 @@
 //! The chat's persisted provider prefix and its independently refreshed inventory.
+use super::tool_source::ToolSurface;
 use super::*;
-use crate::ToolDefinition;
 use crate::store::tool_surface::ChatToolSurface;
 use std::collections::BTreeMap;
 
@@ -14,27 +14,10 @@ pub(super) fn check_malformed_reply_limit(streak: &mut usize, all_malformed: boo
     Ok(())
 }
 
-pub(super) struct RunToolSurface {
-    saved: ChatToolSurface,
-}
-
-impl RunToolSurface {
-    pub(super) fn load(harness: &Harness, session: &str, options: &RunOptions) -> Result<Self> {
-        Ok(Self {
-            saved: harness.chat_surface(session, options, true)?,
-        })
-    }
-    pub(super) fn declarations(&self) -> Vec<ToolDefinition> {
-        self.saved.declarations.clone()
-    }
-    pub(super) fn prompt(&self) -> String {
-        self.saved.system_prompt.clone()
-    }
-    pub(super) fn restore(&self, request: &mut ModelRequest) {
-        request.system_prompt = self.prompt();
-        request.tools = self.declarations();
-        request.disabled_tools.clear();
-        request.output_schema = None;
+fn surface_of(saved: ChatToolSurface) -> ToolSurface {
+    ToolSurface {
+        system_prompt: saved.system_prompt,
+        declarations: saved.declarations,
     }
 }
 
@@ -88,6 +71,11 @@ pub(super) fn deferred_anchors(tools: &ToolRegistry) -> String {
 }
 
 impl Harness {
+    /// The chat's saved surface, bound on first use, as the run sends it.
+    pub(super) fn run_surface(&self, session: &str, options: &RunOptions) -> Result<ToolSurface> {
+        Ok(surface_of(self.chat_surface(session, options, true)?))
+    }
+
     /// Missing snapshots on legacy chats bind from their first use; an existing
     /// snapshot is never replaced by a config reload or model switch. Applied
     /// compaction may rebind host-owned prompt content through the store.
@@ -169,7 +157,6 @@ impl Harness {
         &self,
         session: &str,
         options: &RunOptions,
-        _previous: &ToolRegistry,
     ) -> Result<ToolRegistry> {
         let tools = self.run_tool_snapshot(session, options)?;
         if let Some(mut surface) = self.store.chat_tool_surface(session)? {
@@ -225,16 +212,16 @@ impl Harness {
         session: &str,
         options: &RunOptions,
         tools: &mut ToolRegistry,
-        surface: &mut RunToolSurface,
+        surface: &mut ToolSurface,
         request: &mut ModelRequest,
     ) -> Result<bool> {
         if self.request_context.take_prefix_change(session).is_none() {
             return Ok(false);
         }
-        *tools = self.refresh_run_tools(session, options, tools)?;
+        *tools = self.refresh_run_tools(session, options)?;
         self.update_applied_catalog(session, tools)?;
         self.refresh_result_schema_notice(session, options, tools)?;
-        surface.saved = self.chat_surface(session, options, true)?;
+        *surface = surface_of(self.chat_surface(session, options, true)?);
         surface.restore(request);
         Ok(true)
     }

@@ -1,6 +1,7 @@
 //! One run of the loop: rounds of model request and tool dispatch until the run
 //! has an outcome. The shell in `runtime.rs` owns the session around it.
 use super::run_settle::{RoundState, Settled};
+use super::tool_source::{RunTools, ToolSource};
 use super::*;
 
 /// What one run needs to start: the run, its options and how it is stopped.
@@ -10,6 +11,12 @@ pub(super) struct RunInputs<'a> {
     pub(super) options: &'a RunOptions,
     pub(super) cancellation: &'a CancellationToken,
     pub(super) single_tool: Option<&'a SingleToolRun>,
+    /// The tools each round offers.
+    pub(super) tools: &'a dyn ToolSource,
+    /// Decides whether a call may run, and shapes its result.
+    pub(super) gate: &'a Arc<dyn ToolGate>,
+    /// Whether the gate is told the user's latest request, kept current as steering arrives.
+    pub(super) wants_user_request: bool,
 }
 
 /// How a run ended, for the shell to record on the run and commit.
@@ -73,9 +80,11 @@ impl Harness {
             return Ok(message.text().into_owned());
         }
         Ok(self
-            .store
-            .context_view(session_id)?
-            .and_then(|view| view.prefix.into_iter().rev().find(is_user_request))
+            .request_context
+            .context_prefix(session_id)?
+            .into_iter()
+            .rev()
+            .find(is_user_request)
             .map(|message| message.text().into_owned())
             .unwrap_or_default())
     }
@@ -90,6 +99,9 @@ impl Harness {
             options,
             cancellation,
             single_tool,
+            tools: tool_source,
+            gate,
+            wants_user_request,
         } = *inputs;
         // The host's view of the run's turn, for as long as this future lives.
         let _turn = self.request_context.turn_scope(run);
@@ -105,28 +117,24 @@ impl Harness {
         // Capture the consumed run input before a provider or host can append
         // other messages. Nested calls retain the same approval scope.
         let mut state = RoundState {
-            user_request: if self.config.auto_approval.is_some() {
+            user_request: if wants_user_request {
                 self.latest_user_request(&run.session_id)?
             } else {
                 String::new()
             },
             ..Default::default()
         };
-        let snapshot = || self.run_tool_snapshot(&run.session_id, options);
-        let mut tools = snapshot()?;
-        let native = self.execution_mode(&run.session_id)? == crate::ExecutionMode::Native;
-        let mut tool_surface = runtime_tools::RunToolSurface::load(self, &run.session_id, options)?;
-        self.queue_result_schema_notice(run, options, &tools)?;
+        let RunTools {
+            mut tools,
+            surface: mut tool_surface,
+            refresh_each_round,
+        } = tool_source.open_run(run, options)?;
         let mut dispatcher = ToolDispatcher::from_seams(
             tools.clone(),
             self.config.max_tool_result_bytes,
             self.config.observation.clone(),
             self.journal.clone(),
-            Arc::new(crate::approvals::StockGate::new(
-                self.store.clone(),
-                self.config.auto_approval.clone(),
-                self.config.workspace_resolver.clone(),
-            )),
+            gate.clone(),
             self.live.clone(),
         )
         .with_approval(self.config.approval.clone())
@@ -150,8 +158,8 @@ impl Harness {
             let round = rounds;
             rounds = rounds.saturating_add(1);
             let refresh = dispatcher.take_tools_refresh();
-            if native || refresh || round == 0 {
-                tools = self.refresh_run_tools(&run.session_id, options, &tools)?;
+            if refresh_each_round || refresh || round == 0 {
+                tools = tool_source.round_tools(run, options)?;
                 dispatcher = dispatcher.with_tools(tools.clone());
             }
             let budget_final_round = max_rounds.is_some_and(|limit| round >= limit)
@@ -187,7 +195,12 @@ impl Harness {
                 (crate::script::response(code), dispatcher.clone())
             } else {
                 let (default_model, request_provider) = self.provider_binding();
-                tools_round = self.queue_run_reminders(run, options, &dispatcher, &mut reminders);
+                tools_round = tool_source.queue_round_reminders(
+                    run,
+                    options,
+                    dispatcher.remaining_tool_calls(),
+                    &mut reminders,
+                );
                 for reminder in tools.take_reminders(&run.session_id) {
                     self.request_context
                         .note(&run.session_id, Note::Reminder(reminder));
@@ -206,14 +219,14 @@ impl Harness {
                 let mut rejected_frontier = None;
                 let prepared = async {
                     loop {
-                    let system_prompt = tool_surface.prompt();
+                    let system_prompt = tool_surface.system_prompt.clone();
                     let Draft { messages, preview } =
                         self.request_context.draft(&run.session_id, &history, &steering_batch)?;
                     let request = ModelRequest {
                         model: options.model.clone().unwrap_or_else(|| default_model.clone()),
                         system_prompt,
                         messages,
-                        tools: tool_surface.declarations(),
+                        tools: tool_surface.declarations.clone(),
                         max_output_tokens: options.max_output_tokens,
                         ..Default::default()
                     };
@@ -230,7 +243,7 @@ impl Harness {
                     if let Some(notice) = prepared.notice.take() {
                         context_notices.push(notice);
                     }
-                    if self.apply_tool_surface_change(&run.session_id, options, &mut tools, &mut tool_surface, &mut prepared.request)? {
+                    if tool_source.surface_changed(run, options, &mut tools, &mut tool_surface, &mut prepared.request)? {
                         dispatcher = dispatcher.clone().with_tools(tools.clone());
                     }
                     // These are run controls, independent of the host's disposable context view.
@@ -306,7 +319,7 @@ impl Harness {
                     );
                 }
                 let prepared = prepared.map_err(|error| overflow.failed(error))?;
-                if late_steering && self.config.auto_approval.is_some() {
+                if late_steering && wants_user_request {
                     state.user_request = self.latest_user_request(&run.session_id)?;
                     dispatcher = dispatcher.with_user_request(state.user_request.clone());
                 }
