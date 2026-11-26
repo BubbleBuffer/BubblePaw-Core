@@ -278,7 +278,7 @@ async fn direct_workspace_invocation_names_valid_arguments() -> Result<()> {
                 run_id: "direct-run".into(),
                 invocation_id: "direct-call".into(),
                 cancellation: CancellationToken::new(),
-                approval: Default::default(),
+                extensions: Default::default(),
             },
             json!({"path":"missing.txt","typo":"private-value"}),
         )

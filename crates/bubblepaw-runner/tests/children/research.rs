@@ -147,7 +147,7 @@ impl Fixture {
             run_id: "parent-run".into(),
             invocation_id: uuid::Uuid::new_v4().to_string(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         }
     }
     async fn shutdown(&self) {
@@ -456,7 +456,7 @@ async fn main_model_uses_ordinary_research_child_and_follows_up_in_its_persisted
         run_id: "reopened-run".into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let fetched = reopened_tools
         .get_host("web_fetch")

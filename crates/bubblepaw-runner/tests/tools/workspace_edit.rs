@@ -310,7 +310,7 @@ async fn read_only_registration_omits_mutators_and_direct_invocation_cannot_bypa
                     run_id: "direct-run".into(),
                     invocation_id: "direct-call".into(),
                     cancellation: CancellationToken::new(),
-                    approval: Default::default(),
+                    extensions: Default::default(),
                 },
                 json!({"path":"a.txt","content":"unsafe","old_string":"a","new_string":"b"}),
             )

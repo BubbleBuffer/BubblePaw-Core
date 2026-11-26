@@ -453,7 +453,7 @@ async fn actual_child_spawn_marks_unwrapped_and_wrapped_prompts_as_child_task() 
         run_id: "parent-run".into(),
         invocation_id: "spawn-invocation".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     for input in [
         json!({"task":"plain child"}),

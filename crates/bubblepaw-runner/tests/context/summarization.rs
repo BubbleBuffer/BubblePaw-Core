@@ -1050,7 +1050,7 @@ async fn uncovered_results_and_arguments_stay_exact_with_responses_reasoning() -
         run_id: "read-test".into(),
         invocation_id: id(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let result = registry
         .get_host("history_read")

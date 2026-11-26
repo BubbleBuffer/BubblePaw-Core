@@ -171,7 +171,7 @@ impl Fixture {
             run_id: "synthetic-parent-launch".into(),
             invocation_id: "synthetic-host-call".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         }
     }
     async fn post(&self, action: &str, value: Value) -> Result<Value> {

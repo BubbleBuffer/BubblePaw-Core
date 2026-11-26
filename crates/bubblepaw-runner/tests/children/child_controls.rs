@@ -161,16 +161,14 @@ impl Fixture {
                 .with_repl(repl.clone())
                 .with_processes(processes.clone()),
         );
-        let owner = ToolContext {
+        let mut owner = ToolContext {
             session_id: parent.id,
             run_id: "parent-run".into(),
             invocation_id: "child-launch".into(),
             cancellation: CancellationToken::new(),
-            approval: ApprovalPolicy {
-                confirm: ApprovalMode::Allow,
-                ..Default::default()
-            },
+            extensions: Default::default(),
         };
+        ApprovalPolicy::edit(&mut owner, |policy| policy.confirm = ApprovalMode::Allow);
         Ok(Self {
             _directory: directory,
             store,

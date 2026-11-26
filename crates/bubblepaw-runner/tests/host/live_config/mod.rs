@@ -321,7 +321,7 @@ async fn notified_tool_list_applies_on_turn_start_without_a_config_edit() {
         run_id: "probe".into(),
         invocation_id: String::new(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let pid = fixture
         .live

@@ -144,7 +144,8 @@ impl Tool for CountedEffect {
         }
     }
     async fn invoke(&self, context: ToolContext, _: Value) -> Result<ToolResult> {
-        self.policies.lock().unwrap().push(context.approval);
+        let policy = ApprovalPolicy::of(&context).clone();
+        self.policies.lock().unwrap().push(policy);
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(ToolResult::text("effect completed"))
     }
@@ -224,7 +225,7 @@ impl Fixture {
             run_id: "parent-probe-run".into(),
             invocation_id: "probe-call".into(),
             cancellation: CancellationToken::new(),
-            approval: parent_policy,
+            extensions: parent_policy.into_extensions(),
         };
         Ok(Self {
             _directory: directory,
@@ -860,7 +861,7 @@ async fn per_tool_clamp_preserves_parent_timeout_and_resolves_mixed_defaults() -
         assert_eq!(policies[0].timeout_secs, Some(37));
     }
     let mut next_owner = fixture.owner.clone();
-    next_owner.approval.timeout_secs = Some(17);
+    ApprovalPolicy::edit(&mut next_owner, |policy| policy.timeout_secs = Some(17));
     fixture.manager.send(
         &next_owner,
         json!({"sessionId":child["sessionId"],"text":"effect"}),
@@ -987,7 +988,7 @@ async fn restart_marks_parent_and_child_unknown_reattaches_and_send_never_replay
         run_id: "restart-parent".into(),
         invocation_id: "resume-send".into(),
         cancellation: CancellationToken::new(),
-        approval: allow(),
+        extensions: allow().into_extensions(),
     };
     let discovered = manager.status(&parent_id, &json!({}))?;
     assert_eq!(discovered["children"].as_array().unwrap().len(), 1);
@@ -1089,7 +1090,7 @@ async fn reattached_real_child_keeps_original_profile_capabilities() -> Result<(
         run_id: "profile-parent".into(),
         invocation_id: "profile-spawn".into(),
         cancellation: CancellationToken::new(),
-        approval: allow(),
+        extensions: allow().into_extensions(),
     };
     let manager = AgentTools::from_profiles(store.clone(), profiles()?)?;
     let child = manager.start(&owner, json!({"task":"first","profile":"restricted"}))?;
@@ -1906,11 +1907,10 @@ impl Tool for RecursiveDenyEffect {
             .unwrap()
             .entry((context.session_id.clone(), self.name.into()))
             .or_default() += 1;
-        self.effects
-            .policies
-            .lock()
-            .unwrap()
-            .insert(context.session_id, context.approval);
+        self.effects.policies.lock().unwrap().insert(
+            context.session_id.clone(),
+            ApprovalPolicy::of(&context).clone(),
+        );
         Ok(ToolResult::text("effect completed"))
     }
 }

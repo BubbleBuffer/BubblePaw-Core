@@ -77,7 +77,7 @@ async fn hidden_workers_are_omitted_from_sidebar_and_live_and_replayed_sse() -> 
         run_id: "host-worker-launch".into(),
         invocation_id: "internal-task".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     // A hidden run precedes the visible run, so replay must filter existing journal rows.
     let before_server = manager.start_worker(

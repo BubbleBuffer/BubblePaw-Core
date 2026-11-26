@@ -204,7 +204,7 @@ impl Fixture {
             run_id: "fixture".into(),
             invocation_id: "fixture".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         }
     }
     fn start(&self, task: &str) -> Result<Value> {

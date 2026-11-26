@@ -314,7 +314,7 @@ async fn sync_exec_backgrounds_at_configured_timeout_after_outlasting_idle_limit
                         run_id: "readiness".into(),
                         invocation_id: "readiness-poll".into(),
                         cancellation: bubblepaw_core::CancellationToken::new(),
-                        approval: Default::default(),
+                        extensions: Default::default(),
                     },
                     json!({"handle":result["handle"],"cursor":{"stdout":0,"stderr":0}}),
                 )

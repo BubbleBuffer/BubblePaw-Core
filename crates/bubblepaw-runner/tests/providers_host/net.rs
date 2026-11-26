@@ -224,7 +224,7 @@ async fn registrations_are_read_only_host_tools_and_cancel_requests() {
         run_id: "r".into(),
         invocation_id: "i".into(),
         cancellation,
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     assert!(
         child

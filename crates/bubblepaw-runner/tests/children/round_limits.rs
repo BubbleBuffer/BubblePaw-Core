@@ -106,7 +106,7 @@ async fn child_paths_inherit_optional_limits_without_a_twelve_round_ceiling() ->
             run_id: "parent-run".into(),
             invocation_id: "child-call".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         };
         let expected_status = if limit.is_none() {
             "completed"
@@ -237,7 +237,7 @@ async fn reattached_child_refreshes_saved_round_policy_from_the_current_profile(
             run_id: "parent-run".into(),
             invocation_id: "child-call".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         };
         let old_host = AgentTools::from_profiles(store.clone(), profiles(Some(12))?)?;
         let child = old_host.start(&context, json!({"task":"fourteen tool rounds"}))?;

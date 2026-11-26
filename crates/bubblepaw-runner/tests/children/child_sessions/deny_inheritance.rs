@@ -333,7 +333,7 @@ async fn real_child_honours_the_host_hardline_floor_in_both_spawn_shapes() -> Re
                 run_id: "hardline-run".into(),
                 invocation_id: "hardline-call".into(),
                 cancellation: CancellationToken::new(),
-                approval: allow(),
+                extensions: allow().into_extensions(),
             };
             manager.start_worker(&owner, profile, json!({"task":"hardline"}))?
         } else {

@@ -323,7 +323,7 @@ async fn live_fetch_changes_preserve_source_ids_and_shared_miss_budget() {
         run_id: "fixture".into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let first = tool
         .invoke(context(), json!({"url":"https://example.com/page"}))
@@ -451,7 +451,7 @@ async fn exposed_parent_and_research_profile_keep_independent_web_budgets() {
         run_id: "fixture".into(),
         invocation_id: uuid::Uuid::new_v4().to_string(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let tool = tools.get_host("web_search").unwrap();
     for index in 0..3 {

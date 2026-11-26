@@ -2,9 +2,9 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
-    Approval, ApprovalMode, CancellationToken, Harness, HarnessConfig, MessageOrigin, ModelRequest,
-    ModelResponse, Provider, Role, Store, StreamCallback, Tool, ToolCall, ToolContext,
-    ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    Approval, ApprovalMode, ApprovalPolicy, CancellationToken, Harness, HarnessConfig,
+    MessageOrigin, ModelRequest, ModelResponse, Provider, Role, Store, StreamCallback, Tool,
+    ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
     agents::{AgentProfile, AgentRegistry, AgentTools},
@@ -208,7 +208,7 @@ impl Fixture {
                 .unwrap_or_default(),
             invocation_id: uuid::Uuid::new_v4().to_string(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         }
     }
     async fn wait(&self, owner: &str, child: &str) -> Result<Value> {
@@ -509,10 +509,9 @@ fn said(messages: &[bubblepaw_core::Message], text: &str) -> bool {
 async fn nested_approvals_and_profile_restrictions_remain_clamped() -> Result<()> {
     let fixture = Fixture::new(false)?;
     let mut context = fixture.context(&fixture.root);
-    context
-        .approval
-        .tools
-        .insert("noop".into(), ApprovalMode::Deny);
+    ApprovalPolicy::edit(&mut context, |policy| {
+        policy.tools.insert("noop".into(), ApprovalMode::Deny);
+    });
     fixture.agents.start(
         &context,
         json!({"task":task(json!({"spawn":{"task":task(json!({"spend":true}))}}))}),

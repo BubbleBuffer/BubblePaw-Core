@@ -85,10 +85,11 @@ impl Harness {
         let (journal, live, gate) = (self.journal.clone(), self.live.clone(), self.stock_gate());
         let observation = self.config.observation.clone();
         let max_result_bytes = self.config.max_tool_result_bytes;
-        let approval = self.config.approval.clone();
-        let resolver = self
-            .config
-            .run_approval_resolver(options.approval.clone(), single_tool);
+        let setup = crate::ApprovalPolicy::context_setup(
+            self.config.approval.clone(),
+            self.config
+                .run_approval_resolver(options.approval.clone(), single_tool),
+        );
         let budget = options.max_tool_calls;
         Box::new(move |tools| {
             ToolDispatcher::from_seams(
@@ -98,11 +99,10 @@ impl Harness {
                 journal.clone(),
                 gate.clone(),
                 live.clone(),
+                setup.clone(),
             )
-            .with_approval(approval.clone())
-            .with_approval_resolver(resolver.clone())
             .with_tool_budget(budget)
-            .with_interactive_approval(!single_tool)
+            .with_interactive(!single_tool)
         })
     }
 }

@@ -85,7 +85,7 @@ async fn cli_cancel_reaches_running_child_and_pending_question() -> Result<()> {
                 run_id: run_id.clone(),
                 invocation_id: "cli-child".into(),
                 cancellation: CancellationToken::new(),
-                approval: Default::default(),
+                extensions: Default::default(),
             },
             json!({"task":"wait"}),
         )?;

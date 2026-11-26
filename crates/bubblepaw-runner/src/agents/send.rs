@@ -137,7 +137,7 @@ impl AgentTools {
             run_id: String::new(),
             invocation_id: String::new(),
             cancellation: CancellationToken::new(),
-            approval: approval.clone(),
+            extensions: approval.clone().into_extensions(),
         };
         let mut resume_binding = child.binding.clone();
         if resume_binding.model.is_none() && latest.model != bubblepaw_core::SCRIPT_MODEL {
@@ -367,7 +367,7 @@ impl AgentTools {
             profile.max_rounds
         };
         let approval = clamp_approval(
-            &clamp_approval(&context.approval, binding.approval.as_ref()),
+            &clamp_approval(ApprovalPolicy::of(context), binding.approval.as_ref()),
             profile.approval.as_ref(),
         );
         let events = child.harness.subscribe();

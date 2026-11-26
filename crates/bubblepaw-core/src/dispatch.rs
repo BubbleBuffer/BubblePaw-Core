@@ -13,6 +13,9 @@ use std::sync::{
 
 mod calls;
 
+/// Prepares a call context for its session; the shell builds it.
+pub(crate) type ContextSetup = Arc<dyn Fn(&mut ToolContext) + Send + Sync>;
+
 /// One dispatch path for direct model calls and host calls composed inside a cell.
 /// Nested reads stay transient. Nested effects retain boundaries, without inventing
 /// provider tool messages for calls that the provider did not make.
@@ -25,36 +28,19 @@ pub struct ToolDispatcher {
     max_result_bytes: usize,
     observation: Option<Observation>,
     scope: ObservationScope,
-    approval: Arc<crate::ApprovalPolicy>,
-    approval_resolver: Option<crate::ApprovalResolver>,
+    context_setup: ContextSetup,
     user_request: String,
     remaining_calls: Option<Arc<AtomicUsize>>,
     refresh_tools: Arc<AtomicBool>,
-    interactive_approval: bool,
+    interactive: bool,
     origin: &'static str,
     pub(crate) submitted_result: Arc<std::sync::Mutex<Option<Value>>>,
 }
 
 impl ToolDispatcher {
-    /// The stock journal, gate and live sink over one store; the run loop builds
-    /// the same three itself and uses `from_seams`.
-    #[cfg(test)]
-    pub(crate) fn new(
-        store: crate::Store,
-        tools: ToolRegistry,
-        max_result_bytes: usize,
-        observation: Option<Observation>,
-    ) -> Self {
-        let log = store.runtime().log.clone();
-        let journal = Arc::new(crate::journal_sqlite::SqliteJournal::new(
-            store.clone(),
-            log.clone(),
-        ));
-        let gate = Arc::new(crate::approvals::StockGate::new(store, None, None));
-        Self::from_seams(tools, max_result_bytes, observation, journal, gate, log)
-    }
     /// A dispatcher over its three seams: the journal for durable writes, the
-    /// gate for approval and result shaping, and the sink for live events.
+    /// gate that may ask the user and shapes results, and the sink for live
+    /// events; plus the shell's hook that prepares each call context.
     pub(crate) fn from_seams(
         tools: ToolRegistry,
         max_result_bytes: usize,
@@ -62,6 +48,7 @@ impl ToolDispatcher {
         journal: Arc<dyn crate::journal::Journal>,
         gate: Arc<dyn ToolGate>,
         live: Arc<dyn LiveEvents>,
+        context_setup: ContextSetup,
     ) -> Self {
         Self {
             tools,
@@ -71,12 +58,11 @@ impl ToolDispatcher {
             max_result_bytes,
             observation,
             scope: ObservationScope::default(),
-            approval: Arc::default(),
-            approval_resolver: None,
+            context_setup,
             user_request: String::new(),
             remaining_calls: None,
             refresh_tools: Arc::default(),
-            interactive_approval: true,
+            interactive: true,
             origin: "model",
             submitted_result: Arc::default(),
         }
@@ -90,12 +76,12 @@ impl ToolDispatcher {
         self.remaining_calls = limit.map(|limit| Arc::new(AtomicUsize::new(limit)));
         self
     }
-    pub(crate) fn with_interactive_approval(mut self, enabled: bool) -> Self {
-        self.interactive_approval = enabled;
+    pub(crate) fn with_interactive(mut self, enabled: bool) -> Self {
+        self.interactive = enabled;
         self.origin = if enabled { "model" } else { "embedder" };
         self
     }
-    /// Reserve before approval and durable dispatch. Clones share the same run budget.
+    /// Reserve before the gate and durable dispatch. Clones share the same run budget.
     #[allow(deprecated)] // fetch_update supports the workspace's Rust 1.88 MSRV.
     pub(crate) fn reserve_tool_call(&self) -> bool {
         self.remaining_calls.as_ref().is_none_or(|remaining| {
@@ -112,16 +98,10 @@ impl ToolDispatcher {
             .as_ref()
             .map(|remaining| remaining.load(Ordering::Relaxed))
     }
-    pub(crate) fn with_approval(mut self, policy: crate::ApprovalPolicy) -> Self {
-        self.approval = Arc::new(policy);
-        self
-    }
-    pub(crate) fn with_approval_resolver(
-        mut self,
-        resolve: Option<crate::ApprovalResolver>,
-    ) -> Self {
-        self.approval_resolver = resolve;
-        self
+    /// Run the shell's hook that prepares a call context for its session before
+    /// the gate sees it.
+    pub(crate) fn prepare_context(&self, context: &mut ToolContext) {
+        (self.context_setup)(context);
     }
     /// The context of a call the loop prepares for a run, without an invocation.
     pub(crate) fn call_context(
@@ -134,38 +114,18 @@ impl ToolDispatcher {
             run_id: run.id.clone(),
             invocation_id: String::new(),
             cancellation: cancellation.clone(),
-            approval: Default::default(),
+            extensions: Default::default(),
         }
     }
-    /// The context of an output the loop emits itself, under the run's policy.
+    /// The context of an output the loop emits itself, under the run's setup.
     pub(crate) fn notice_context(
         &self,
         run: &crate::Run,
         cancellation: &CancellationToken,
     ) -> ToolContext {
-        ToolContext {
-            approval: self.approval_policy(&run.session_id),
-            ..self.call_context(run, cancellation)
-        }
-    }
-    pub(crate) fn approval_policy(&self, session_id: &str) -> crate::ApprovalPolicy {
-        self.approval_resolver
-            .as_ref()
-            .map(|resolve| resolve(session_id))
-            .unwrap_or_else(|| (*self.approval).clone())
-    }
-    /// Inherit this call's approval scope, preserving an explicit run override.
-    /// A host may further restrict the returned policy for a nested session.
-    pub fn approval_resolver(&self, session_id: &str) -> crate::ApprovalResolver {
-        let resolve = self.approval_resolver.clone();
-        let policy = self.approval.clone();
-        let session_id = session_id.to_owned();
-        Arc::new(move |_| {
-            resolve
-                .as_ref()
-                .map(|resolve| resolve(&session_id))
-                .unwrap_or_else(|| (*policy).clone())
-        })
+        let mut context = self.call_context(run, cancellation);
+        self.prepare_context(&mut context);
+        context
     }
     /// Request a fresh host registry at the next model round of this turn only.
     /// Existing calls and clones retain their snapshot until that boundary.
@@ -193,7 +153,7 @@ impl ToolDispatcher {
             context,
             call,
             source,
-            interactive: self.interactive_approval,
+            interactive: self.interactive,
             user_request: &self.user_request,
             result_limit: self.max_result_bytes,
             result_hook: self.tools.result_limiter.as_ref(),

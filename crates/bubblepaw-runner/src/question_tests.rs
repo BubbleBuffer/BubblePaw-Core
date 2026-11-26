@@ -35,7 +35,7 @@ fn context(session: &str) -> ToolContext {
         run_id: "question-test".into(),
         invocation_id: "question-call".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 async fn pending(tools: &QuestionTools, session: &str) -> Result<Value> {

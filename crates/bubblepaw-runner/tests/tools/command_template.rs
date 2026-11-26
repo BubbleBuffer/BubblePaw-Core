@@ -11,7 +11,7 @@ fn context() -> ToolContext {
         run_id: "run".into(),
         invocation_id: "call".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 

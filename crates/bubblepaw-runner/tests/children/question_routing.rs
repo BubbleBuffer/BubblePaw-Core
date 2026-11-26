@@ -224,7 +224,7 @@ async fn routing_case(hidden_worker: bool) -> Result<()> {
         run_id: "fixture-launch".into(),
         invocation_id: "fixture-launch".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     };
     let parent = if hidden_worker {
         let mut profile = agents.profile("read-only").unwrap().clone();

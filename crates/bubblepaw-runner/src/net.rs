@@ -1959,7 +1959,7 @@ mod tests {
             run_id: "fixture".into(),
             invocation_id: "fetch".into(),
             cancellation: CancellationToken::new(),
-            approval: Default::default(),
+            extensions: Default::default(),
         };
         let mut maximum_wal = 0;
         for index in 0..50 {
@@ -2109,7 +2109,7 @@ mod tests {
                 run_id: "fixture".into(),
                 invocation_id: "source".into(),
                 cancellation: CancellationToken::new(),
-                approval: Default::default(),
+                extensions: Default::default(),
             };
             let searched = registry
                 .get_host("web_search")

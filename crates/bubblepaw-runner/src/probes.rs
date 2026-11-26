@@ -821,7 +821,7 @@ pub async fn answer_with_policy(
             run_id: "recall-probe".into(),
             invocation_id: probe.id.clone(),
             cancellation: cancellation.clone(),
-            approval: Default::default(),
+            extensions: Default::default(),
         };
         let receipt = agents.start_worker(&context, profile, json!({"task":probe.question}))?;
         let address = receipt["sessionId"].as_str().context("Worker receipt lacks session")?.to_owned();

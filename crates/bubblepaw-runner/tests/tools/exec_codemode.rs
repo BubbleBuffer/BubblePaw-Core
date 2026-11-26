@@ -210,7 +210,7 @@ fn context(owner: &str) -> ToolContext {
         run_id: "run".into(),
         invocation_id: "invocation".into(),
         cancellation: CancellationToken::new(),
-        approval: Default::default(),
+        extensions: Default::default(),
     }
 }
 async fn call(registry: &ToolRegistry, owner: &str, name: &str, input: Value) -> Value {

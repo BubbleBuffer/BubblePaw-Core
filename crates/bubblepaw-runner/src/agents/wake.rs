@@ -237,7 +237,7 @@ impl AgentTools {
             run_id: String::new(),
             invocation_id: String::new(),
             cancellation: CancellationToken::new(),
-            approval,
+            extensions: approval.into_extensions(),
         };
         self.observe_turn(child, &context, None, events);
         Ok(run)

@@ -203,3 +203,75 @@ impl ApprovalPolicy {
         }
     }
 }
+
+/// The policy a call context carries, and the resolver its dispatcher was given.
+/// Both ride in the context's extensions; the dispatcher knows only an opaque hook.
+struct InheritedResolver(Option<crate::ApprovalResolver>);
+
+impl ApprovalPolicy {
+    /// The effective policy of a call context. An unset slot reads as the default
+    /// policy, the strictest one the run could have, never a more permissive one.
+    pub fn of(context: &ToolContext) -> &ApprovalPolicy {
+        static DEFAULT: std::sync::LazyLock<ApprovalPolicy> =
+            std::sync::LazyLock::new(ApprovalPolicy::default);
+        context
+            .extensions
+            .get::<ApprovalPolicy>()
+            .unwrap_or(&DEFAULT)
+    }
+    /// Typed extensions that carry this policy, for building a `ToolContext`.
+    pub fn into_extensions(self) -> crate::Extensions {
+        let mut extensions = crate::Extensions::default();
+        extensions.insert(self);
+        extensions
+    }
+    /// Change the effective policy of `context` in place.
+    pub fn edit(context: &mut ToolContext, change: impl FnOnce(&mut ApprovalPolicy)) {
+        let mut policy = Self::of(context).clone();
+        change(&mut policy);
+        policy.set_in(context);
+    }
+    /// Make this the effective policy of `context`.
+    pub fn set_in(self, context: &mut ToolContext) {
+        context.extensions.insert(self);
+    }
+    /// Record the resolver the context's run was configured with, or none.
+    pub(crate) fn set_resolver_in(
+        context: &mut ToolContext,
+        resolver: Option<crate::ApprovalResolver>,
+    ) {
+        context.extensions.insert(InheritedResolver(resolver));
+    }
+    /// The hook a dispatcher runs over each call context: it sets the run's
+    /// policy (the resolver's answer for the context's session, else `baseline`)
+    /// and records the resolver for nested sessions to inherit.
+    pub(crate) fn context_setup(
+        baseline: ApprovalPolicy,
+        resolver: Option<crate::ApprovalResolver>,
+    ) -> crate::dispatch::ContextSetup {
+        Arc::new(move |context: &mut ToolContext| {
+            resolver
+                .as_ref()
+                .map(|resolve| resolve(&context.session_id))
+                .unwrap_or_else(|| baseline.clone())
+                .set_in(context);
+            Self::set_resolver_in(context, resolver.clone());
+        })
+    }
+    /// Inherit this call's scope for a nested session: the run's resolver, asked
+    /// for the context's session, else the context's policy pinned now.
+    pub fn resolver_of(context: &ToolContext) -> crate::ApprovalResolver {
+        let resolve = context
+            .extensions
+            .get::<InheritedResolver>()
+            .and_then(|slot| slot.0.clone());
+        let policy = Self::of(context).clone();
+        let session_id = context.session_id.clone();
+        Arc::new(move |_| {
+            resolve
+                .as_ref()
+                .map(|resolve| resolve(&session_id))
+                .unwrap_or_else(|| policy.clone())
+        })
+    }
+}
