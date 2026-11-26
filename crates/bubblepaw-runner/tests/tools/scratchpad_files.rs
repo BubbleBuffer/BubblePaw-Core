@@ -248,17 +248,17 @@ async fn file_tools_accept_ordinary_windows_absolute_scratch_paths() -> Result<(
         let result = fixture
             .call("write", json!({"path":path,"content":"before"}))
             .await?;
-        assert!(!result.is_error, "{}", result.content);
+        assert!(!result.is_error, "{}", result.body());
         let result = fixture
             .call(
                 "edit",
                 json!({"path":path,"old_string":"before","new_string":"after"}),
             )
             .await?;
-        assert!(!result.is_error, "{}", result.content);
+        assert!(!result.is_error, "{}", result.body());
         let result = fixture.call("read", json!({"path":path})).await?;
-        assert!(!result.is_error, "{}", result.content);
-        assert_eq!(result.content, "after");
+        assert!(!result.is_error, "{}", result.body());
+        assert_eq!(result.body(), "after");
         assert_eq!(fs::read_to_string(target)?, "after");
     }
     Ok(())

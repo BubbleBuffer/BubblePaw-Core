@@ -495,6 +495,8 @@ Durable kinds are journaled and take sequence numbers:
 - `run_waiting_for_quota {wait}` and `run_quota_resumed {}`: see Quota waits.
 - `tool_started {call}` and `tool_finished {call_id, name, result}`: direct model
   tool boundaries. Nested host tool progress inside a tool cell is transient.
+  `result.content` is a block list (`text` and `image` blocks, as in messages),
+  not a string; image bytes are never part of an event.
 - `steering_accepted {text}` and `followup_queued {text}`: input accepted by
   `run.steer` or `run.follow_up`.
 - `output {record}`: a durable `OutputRecord` from CodeMode.
