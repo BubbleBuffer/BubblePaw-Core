@@ -128,7 +128,7 @@ impl ToolDispatcher {
             .unwrap_or_else(|| (*self.approval).clone())
     }
     /// Inherit this call's approval scope, preserving an explicit run override.
-    /// A host may further restrict the returned policy for a child session.
+    /// A host may further restrict the returned policy for a nested session.
     pub fn approval_resolver(&self, session_id: &str) -> crate::ApprovalResolver {
         let resolve = self.approval_resolver.clone();
         let policy = self.approval.clone();

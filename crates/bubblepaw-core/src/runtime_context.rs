@@ -309,6 +309,10 @@ impl RequestContext for StockRequestContext {
         })
     }
 
+    fn turn_scope(&self, run: &Run) -> Box<dyn std::any::Any + Send> {
+        Box::new(crate::quota::TurnScope::enter(&run.session_id, &run.id))
+    }
+
     fn requester(&self, run: &Run, provider: Arc<dyn Provider>) -> Arc<dyn Provider> {
         Arc::new(crate::request_metering::Metered {
             inner: provider,

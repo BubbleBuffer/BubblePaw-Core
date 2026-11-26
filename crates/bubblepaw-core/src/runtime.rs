@@ -341,7 +341,7 @@ impl Harness {
     pub fn max_rounds(&self) -> Option<usize> {
         self.config.max_rounds
     }
-    /// Events of every harness on this store, child agents included.
+    /// Events of every harness on this store, nested agents included.
     pub fn subscribe(&self) -> broadcast::Receiver<HarnessEvent> {
         self.state.log.subscribe()
     }
@@ -597,7 +597,7 @@ impl Harness {
             };
         // A host hook may unblock a tool or provider and wait for its result.
         // Signal the run first so that work cannot finish as a successful turn,
-        // then release admission before hooks recurse into child cancellation.
+        // then release admission before hooks recurse into nested cancellation.
         // A restored quota marker has no live future: cancel its marker while
         // admission is still excluded so a scheduler cannot win in between.
         let cancelled_quota = if cancelled_run {
@@ -683,20 +683,16 @@ impl Harness {
             let _hold = self.request_context.run_hold(&run);
             let mut usage = None;
             let partial = runtime_stream::SharedPartial::default();
-            let result = crate::quota::with_quota_wait_context(
-                &self.store,
-                &run.session_id,
-                &run.id,
-                self.turn(
+            let result = self
+                .turn(
                     &run,
                     &options,
                     &cancellation,
                     &mut usage,
                     &partial,
                     single_tool.as_ref(),
-                ),
-            )
-            .await;
+                )
+                .await;
             let mut result_message_id = None;
             let mut final_message = None;
             match result {
@@ -823,6 +819,8 @@ impl Harness {
         partial: &runtime_stream::SharedPartial,
         single_tool: Option<&SingleToolRun>,
     ) -> Result<TurnOutcome> {
+        // The host's view of the run's turn, for as long as this future lives.
+        let _turn = self.request_context.turn_scope(run);
         ensure!(!cancellation.is_cancelled(), "Cancelled");
         if let Some(hook) = &self.config.turn_start {
             tokio::select! {

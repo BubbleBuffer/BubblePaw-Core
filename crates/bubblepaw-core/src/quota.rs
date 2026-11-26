@@ -2,6 +2,7 @@
 use crate::{EventKind, QuotaWait, Store};
 use anyhow::Result;
 use std::future::Future;
+use std::sync::Arc;
 
 /// A scheduled resume lost ownership to a cancel, explicit run or newer wait.
 #[derive(Clone, Debug)]
@@ -20,29 +21,49 @@ impl std::fmt::Display for QuotaWaitChanged {
 }
 impl std::error::Error for QuotaWaitChanged {}
 
+/// Who owns a wait at this moment: the run whose turn is being polled.
+type Current = Arc<std::sync::Mutex<Option<(String, String)>>>;
+
 struct WaitContext {
     store: Store,
-    session_id: String,
-    run_id: String,
+    current: Current,
 }
 tokio::task_local! { static WAIT_CONTEXT: WaitContext; }
 
-pub(crate) async fn with_quota_wait_context<F: Future>(
-    store: &Store,
-    session_id: &str,
-    run_id: &str,
-    future: F,
-) -> F::Output {
+/// Enter the wait context for a whole drive task. A wait finds an owner only while
+/// a `TurnScope` is alive, so each run of the task is its own owner.
+pub(crate) async fn with_wait_context<F: Future>(store: &Store, future: F) -> F::Output {
     WAIT_CONTEXT
         .scope(
             WaitContext {
                 store: store.clone(),
-                session_id: session_id.into(),
-                run_id: run_id.into(),
+                current: Current::default(),
             },
             future,
         )
         .await
+}
+
+/// Names the run as the owner of waits for as long as it lives; dropping it, or
+/// the future that holds it, leaves no owner.
+pub(crate) struct TurnScope(Option<Current>);
+
+impl TurnScope {
+    pub(crate) fn enter(session_id: &str, run_id: &str) -> Self {
+        let current = WAIT_CONTEXT.try_with(|c| c.current.clone()).ok();
+        if let Some(current) = &current {
+            *current.lock().unwrap() = Some((session_id.into(), run_id.into()));
+        }
+        Self(current)
+    }
+}
+
+impl Drop for TurnScope {
+    fn drop(&mut self) {
+        if let Some(current) = &self.0 {
+            *current.lock().unwrap() = None;
+        }
+    }
 }
 
 /// Persist a wait before sleeping. False means there is no owning harness turn;
@@ -50,9 +71,12 @@ pub(crate) async fn with_quota_wait_context<F: Future>(
 pub fn set_quota_wait(account: &str, window: &str, resume_at: &str, reason: &str) -> Result<bool> {
     WAIT_CONTEXT
         .try_with(|c| {
+            let Some((session_id, run_id)) = c.current.lock().unwrap().clone() else {
+                return Ok(false);
+            };
             let wait = QuotaWait {
-                session_id: c.session_id.clone(),
-                run_id: c.run_id.clone(),
+                session_id,
+                run_id,
                 account: account.into(),
                 window: window.into(),
                 resume_at: resume_at.into(),
@@ -68,7 +92,13 @@ pub fn set_quota_wait(account: &str, window: &str, resume_at: &str, reason: &str
 /// ordinary interruption and cannot trigger automatic quota recovery.
 pub fn clear_current_quota_wait() -> Result<bool> {
     WAIT_CONTEXT
-        .try_with(|c| c.store.clear_quota_wait(&c.session_id, &c.run_id))
+        .try_with(|c| {
+            let owner = c.current.lock().unwrap().clone();
+            match owner {
+                Some((session_id, run_id)) => c.store.clear_quota_wait(&session_id, &run_id),
+                None => Ok(false),
+            }
+        })
         .unwrap_or(Ok(false))
 }
 
