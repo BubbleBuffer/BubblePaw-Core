@@ -203,9 +203,7 @@ impl ToolDispatcher {
             "Execution cancelled"
         );
         let source = match &journal {
-            CallJournal::Model { message_id, .. } => GateSource::Model {
-                message_id: *message_id,
-            },
+            CallJournal::Model { message_id, .. } => GateSource::Model { message_id },
             CallJournal::Nested => GateSource::Nested,
         };
         if prepared.rejection.is_none() && !prepared.approved {
