@@ -27,7 +27,7 @@ impl Harness {
         text: Option<MessageInput>,
         mut options: RunOptions,
         active_storage_only: bool,
-        single_tool: Option<SingleToolRun>,
+        single_tool: Option<SingleToolHandle>,
         cancellation: Option<CancellationToken>,
         expected_wait: Option<&crate::QuotaWait>,
         reminders: Vec<crate::Reminder>,
