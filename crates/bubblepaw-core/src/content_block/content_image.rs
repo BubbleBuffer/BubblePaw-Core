@@ -51,7 +51,10 @@ impl ContentBlock {
 
 /// The placeholder that stands for an image wherever a plain string is needed.
 pub(crate) fn placeholder(image: &ImageRef) -> String {
-    format!("[image: {}, {} bytes]", image.mime_type, image.bytes)
+    format!(
+        "[image: {}, {}, {} bytes]",
+        image.id, image.mime_type, image.bytes
+    )
 }
 
 const OPEN: &str = "\n<BubblePawImages>\n";

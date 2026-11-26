@@ -10,7 +10,7 @@ use crate::{ContentBlock, text_blocks};
 /// run once every result of the model reply is recorded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
-    #[serde(with = "crate::content_block::wire")]
+    #[serde(with = "crate::content_block::wire::tool")]
     pub content: Vec<ContentBlock>,
     #[serde(default)]
     pub is_error: bool,

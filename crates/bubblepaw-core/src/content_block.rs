@@ -6,7 +6,7 @@ pub use content_image::{ImageRef, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{borrow::Cow, sync::Arc};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ContentBlock {
@@ -20,6 +20,20 @@ pub enum ContentBlock {
         #[serde(skip)]
         data: Option<Arc<[u8]>>,
     },
+}
+
+/// Hydrated image bytes are never printed: only their length.
+impl std::fmt::Debug for ContentBlock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Text { text } => f.debug_struct("Text").field("text", text).finish(),
+            Self::Image { image, data } => f
+                .debug_struct("Image")
+                .field("image", image)
+                .field("data_len", &data.as_ref().map(|data| data.len()))
+                .finish(),
+        }
+    }
 }
 
 /// The body for a message that holds `text`: one text block, or none when the
@@ -109,6 +123,14 @@ impl Message {
     }
 
     /// The images the message names, in order.
+    /// A message read from a store: a tool message's legacy image envelope
+    /// becomes image blocks. Other roles keep their text as written.
+    pub(crate) fn upgraded(mut self) -> Self {
+        if self.role == crate::Role::Tool {
+            self.content = content_image::upgrade_legacy(self.content);
+        }
+        self
+    }
     pub fn images(&self) -> impl Iterator<Item = &ImageRef> {
         content_images(&self.content)
     }
@@ -119,7 +141,7 @@ thread_local! {
 }
 
 /// Runs `f` (a synchronous closure, so no await can run inside) with every `Message.content` serialized as the plain string older
-/// readers expect, each image as `[image: <mime>, <bytes> bytes]`. Size accounting and the formats read by programs outside this
+/// readers expect, each image as `[image: <id>, <mime>, <bytes> bytes]`. Size accounting and the formats read by programs outside this
 /// repository use it, so their bytes do not depend on the list form.
 pub fn plain_content<R>(f: impl FnOnce() -> R) -> R {
     struct Restore(bool);
@@ -137,8 +159,8 @@ pub(crate) mod wire {
     use super::*;
 
     /// Reads the list form, or a plain string (the form older stores and exports
-    /// wrote) as one text block. A legacy image envelope at the end of the text
-    /// becomes image blocks here, the one place content is deserialized.
+    /// wrote) as one text block. Legacy image envelopes are not read here: only
+    /// tool content has them (see `tool` and `Message::upgraded`).
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Vec<ContentBlock>, D::Error> {
@@ -148,7 +170,7 @@ pub(crate) mod wire {
             Text(String),
             Blocks(Vec<ContentBlock>),
         }
-        let blocks = match Form::deserialize(deserializer)? {
+        Ok(match Form::deserialize(deserializer)? {
             Form::Text(text) => text_blocks(text),
             Form::Blocks(mut blocks) => {
                 blocks.retain(
@@ -156,8 +178,21 @@ pub(crate) mod wire {
                 );
                 blocks
             }
-        };
-        Ok(content_image::upgrade_legacy(blocks))
+        })
+    }
+
+    /// Tool content: as `wire`, and a legacy image envelope at the end of the
+    /// text becomes image blocks.
+    pub(crate) mod tool {
+        use super::*;
+        pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+            deserializer: D,
+        ) -> Result<Vec<ContentBlock>, D::Error> {
+            Ok(content_image::upgrade_legacy(super::deserialize(
+                deserializer,
+            )?))
+        }
+        pub(crate) use super::serialize;
     }
 
     pub(crate) fn serialize<S: serde::Serializer>(

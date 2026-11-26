@@ -1894,7 +1894,7 @@ fn legacy_session_and_checkpoint_default_without_rewriting_archive() -> Result<(
     assert_eq!(after, originals);
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        13
+        14
     );
     Ok(())
 }

@@ -134,7 +134,7 @@ impl Store {
                             conn, session_id, pointers,
                         )?)?;
                     }
-                    prefix.push(serde_json::from_value(value)?);
+                    prefix.push(serde_json::from_value::<Message>(value)?.upgraded());
                 }
             }
         }

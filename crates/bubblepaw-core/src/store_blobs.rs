@@ -216,7 +216,7 @@ impl Store {
             let text = Self::render_content_parts(conn, serde_json::from_value(parts.clone())?)?;
             value["content"] = Self::content_with_text(&value["content"], text);
         }
-        Ok(serde_json::from_value(value)?)
+        Ok(serde_json::from_value::<Message>(value)?.upgraded())
     }
 
     pub(crate) fn read_message(

@@ -761,7 +761,7 @@ the text blocks instead; Rust embedders call `message.text()`. A message with
 no text has an empty list. New block kinds may be added, so clients ignore kinds
 they do not know. `bubblepaw history`, `bubblepaw export` and the provider
 extension protocol keep the plain string, with each image written as
-`[image: <mime>, <bytes> bytes]` (for example `[image: image/png, 4096 bytes]`).
+`[image: <id>, <mime>, <bytes> bytes]` (for example `[image: image-<sha256>, image/png, 4096 bytes]`).
 
 ```json
 {"id":"m1","session_id":"s1","role":"user","content":[{"type":"text","text":"Fix the failing test"}],"tool_calls":[]}

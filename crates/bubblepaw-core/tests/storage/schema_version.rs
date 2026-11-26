@@ -209,11 +209,26 @@ fn image_messages_read_the_same_from_every_stored_form_and_write_blocks() -> Res
         let conn = Connection::open(chat)?;
         let mut data = raw_message(chat)?;
         data["content"] = stored;
+        data["role"] = json!("tool");
         conn.execute("UPDATE messages SET data=?1", [data.to_string()])?;
         drop(conn);
         let store = Store::open_data_dir(dir.path())?;
         assert_eq!(store.messages(&session)?[0].content, expected, "{name}");
     }
+
+    // Only tool messages carry the legacy envelope: a user's text is kept as written.
+    let dir = tempfile::tempdir()?;
+    let (session, files) = populated(dir.path())?;
+    let conn = Connection::open(&files[0].1)?;
+    let mut data = raw_message(&files[0].1)?;
+    data["content"] = json!(format!("look{envelope}"));
+    conn.execute("UPDATE messages SET data=?1", [data.to_string()])?;
+    drop(conn);
+    let store = Store::open_data_dir(dir.path())?;
+    let user = store.messages(&session)?.remove(0);
+    assert_eq!(user.role, Role::User);
+    assert_eq!(user.text(), format!("look{envelope}"));
+    assert_eq!(user.images().count(), 0);
 
     // A write keeps the image block in the row, also when the text moves to a blob.
     for (name, text) in [("small", "look".to_owned()), ("large", "x".repeat(5000))] {
