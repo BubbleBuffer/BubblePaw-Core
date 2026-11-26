@@ -1,5 +1,5 @@
 //! Error and retry-after helpers shared by the adapters.
-use crate::{ProviderError, ProviderErrorKind, QuotaReading, Usage};
+use crate::{ModelRequest, ProviderError, ProviderErrorKind, QuotaReading, Usage};
 use std::time::{Duration, Instant};
 
 /// Remaining server-requested delay, preserved through the provider error chain.
@@ -124,4 +124,14 @@ pub fn metered_model_error(error: anyhow::Error, usage: Option<Usage>) -> anyhow
         usage,
     };
     error.context(source).context(metadata)
+}
+
+/// The runtime owns submission validation, including runs whose frozen
+/// declarations omit this reserved capability or retain an older schema.
+pub(super) fn accepts_call(name: &str, declared: bool) -> bool {
+    name == "submit_result" || declared
+}
+
+pub fn accepts_request_call(request: &ModelRequest, name: &str) -> bool {
+    accepts_call(name, request.tools.iter().any(|tool| tool.name == name))
 }

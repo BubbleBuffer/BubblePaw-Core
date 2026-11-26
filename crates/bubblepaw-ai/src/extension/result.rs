@@ -10,7 +10,7 @@ pub(super) fn decode_step_result(
         object.remove("quota_events");
     }
     let mut response: ModelResponse = serde_json::from_value(value).map_err(|_| {
-        crate::quota_sources::with_error_quota(
+        crate::adapter::with_error_quota(
             ProviderError::new(
                 ProviderErrorKind::Fatal,
                 format!("extension {provider} sent an invalid step result"),
@@ -31,10 +31,10 @@ pub(super) fn validate_calls(
     if response
         .tool_calls
         .iter()
-        .any(|call| !bubblepaw_ai::adapter::accepts_request_call(request, &call.name))
+        .any(|call| !crate::adapter::accepts_request_call(request, &call.name))
     {
-        return Err(crate::quota_sources::with_error_quota(
-            bubblepaw_ai::adapter::metered_model_error(
+        return Err(crate::adapter::with_error_quota(
+            crate::adapter::metered_model_error(
                 anyhow::anyhow!("extension {provider} returned an unavailable tool"),
                 response.usage.clone(),
             ),

@@ -1,4 +1,5 @@
 //! Tool declarations on the wire. A tools-off round keeps the declarations and turns the choice off.
+pub(super) use super::accepts_call;
 use crate::{CancellationToken, ModelRequest, ModelResponse, Provider, ToolDefinition};
 use serde_json::{Value, json};
 
@@ -44,16 +45,6 @@ pub(super) fn chat_declaration(tool: &ToolDefinition) -> Value {
 /// Responses non-strict function calling accepts optional fields without altering the schema.
 pub(super) fn responses_declaration(tool: &ToolDefinition) -> Value {
     json!({"type":"function","name":tool.name,"description":tool.description,"parameters":tool.input_schema,"strict":false})
-}
-
-/// The runtime owns submission validation, including runs whose frozen
-/// declarations omit this reserved capability or retain an older schema.
-pub(super) fn accepts_call(name: &str, declared: bool) -> bool {
-    name == "submit_result" || declared
-}
-
-pub fn accepts_request_call(request: &ModelRequest, name: &str) -> bool {
-    accepts_call(name, request.tools.iter().any(|tool| tool.name == name))
 }
 
 /// Retain malformed argument text for a model-visible validation failure, bounded in Unicode chars.

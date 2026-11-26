@@ -1,6 +1,7 @@
 # Files over 500 lines: the number is the ceiling. Split a listed file rather than raising it, lower it when the file shrinks, delete the line at 500 or fewer. Enforced by crates/bubblepaw-core/tests/file_size.rs.
 crates/bubblepaw-ai/src/adapter/chat.rs 954
 crates/bubblepaw-ai/src/adapter/messages.rs 736
+crates/bubblepaw-ai/src/extension.rs 581
 crates/bubblepaw-core/src/approvals/mod.rs 592
 crates/bubblepaw-core/src/approvals_tests.rs 1376
 crates/bubblepaw-core/src/event_log.rs 645
@@ -30,11 +31,10 @@ crates/bubblepaw-runner/src/net.rs 2760
 crates/bubblepaw-runner/src/opencode_console.rs 676
 crates/bubblepaw-runner/src/probes.rs 1433
 crates/bubblepaw-runner/src/provider/decisions.rs 714
-crates/bubblepaw-runner/src/provider/extension.rs 596
 crates/bubblepaw-runner/src/provider/live_provider.rs 604
 crates/bubblepaw-runner/src/provider/registry.rs 1085
 crates/bubblepaw-runner/src/quota.rs 618
-crates/bubblepaw-runner/src/quota_sources.rs 595
+crates/bubblepaw-runner/src/quota_sources.rs 514
 crates/bubblepaw-runner/src/session_host.rs 644
 crates/bubblepaw-runner/src/summarization.rs 1634
 crates/bubblepaw-runner/src/tools/process.rs 1689

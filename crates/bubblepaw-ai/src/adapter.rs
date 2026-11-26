@@ -29,6 +29,16 @@ mod messages;
 pub use messages::MessagesProvider;
 mod metering;
 pub use metering::{PhysicalRequest, response_output_reported};
+#[cfg(any(feature = "http", feature = "extension"))]
+mod publication;
+#[cfg(any(feature = "http", feature = "extension"))]
+pub use publication::{mark_published, track_text_publication};
+#[cfg(any(feature = "http", feature = "extension"))]
+pub mod quota_events;
+#[cfg(any(feature = "http", feature = "extension"))]
+mod redact;
+#[cfg(any(feature = "http", feature = "extension"))]
+pub use redact::redacted_line;
 #[cfg(feature = "http")]
 mod opencode_session;
 #[cfg(feature = "http")]
@@ -56,14 +66,16 @@ mod retry;
 pub use retry::{RetryPolicy, add_usage, with_retry};
 mod scripted;
 pub use scripted::{ScriptedProvider, ScriptedStep};
+#[cfg(any(feature = "http", feature = "extension"))]
+mod text_batch;
+#[cfg(any(feature = "http", feature = "extension"))]
+pub use text_batch::TextBatch;
 #[cfg(feature = "http")]
 pub mod stream;
 #[cfg(feature = "http")]
 pub use stream::{EgressFailure, ModelEgress};
 #[cfg(feature = "http")]
 mod tool_wire;
-#[cfg(feature = "http")]
-pub use tool_wire::accepts_request_call;
 #[cfg(feature = "http")]
 use {
     crate::{
@@ -79,5 +91,5 @@ use {
         path::{Path, PathBuf},
         sync::atomic::{AtomicBool, Ordering},
     },
-    stream::{SseReader, TextBatch},
+    stream::SseReader,
 };

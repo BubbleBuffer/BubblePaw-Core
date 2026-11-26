@@ -7,6 +7,8 @@
 pub mod adapter;
 mod cancellation;
 mod content_block;
+#[cfg(feature = "extension")]
+pub mod extension;
 mod hash;
 mod incomplete;
 mod message;

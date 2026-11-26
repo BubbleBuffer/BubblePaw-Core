@@ -10,7 +10,7 @@ use bubblepaw_runner::{
         EpisodeFork, EpisodeModelConfig, EpisodeModels, HttpEpisodeModels, SummaryInput,
     },
     model_roles::ModelRoles,
-    provider::{ExtensionConfig, ExtensionProvider, ProviderRegistry},
+    provider::{ExtensionConfig, ExtensionProvider, ProviderRegistry, extension_provider},
 };
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
@@ -66,7 +66,7 @@ fn request(session: &str) -> ModelRequest {
 }
 
 fn extension(capabilities: Option<Value>, log: &std::path::Path) -> ExtensionProvider {
-    ExtensionProvider::new(ExtensionConfig {
+    extension_provider(ExtensionConfig {
         id: "fake".into(),
         command: env!("CARGO_BIN_EXE_bubblepaw-fake-extension").into(),
         args: capabilities

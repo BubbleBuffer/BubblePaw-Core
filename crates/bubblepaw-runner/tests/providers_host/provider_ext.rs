@@ -280,7 +280,7 @@ fn fake() -> ExtensionProvider {
     fake_with_capabilities(None)
 }
 fn fake_with_capabilities(capabilities: Option<Value>) -> ExtensionProvider {
-    ExtensionProvider::new(ExtensionConfig {
+    bubblepaw_runner::provider::extension_provider(ExtensionConfig {
         id: "fake".into(),
         command: env!("CARGO_BIN_EXE_bubblepaw-fake-extension").into(),
         args: capabilities
@@ -784,7 +784,7 @@ fn extensions_file_resolves_relative_cwd() {
 }
 
 fn fake_with_env(id: &str, env: &[(&str, &str)]) -> ExtensionProvider {
-    ExtensionProvider::new(ExtensionConfig {
+    bubblepaw_runner::provider::extension_provider(ExtensionConfig {
         id: id.into(),
         command: env!("CARGO_BIN_EXE_bubblepaw-fake-extension").into(),
         env: env

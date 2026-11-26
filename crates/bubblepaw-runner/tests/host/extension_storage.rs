@@ -4,7 +4,7 @@ use bubblepaw_core::{
     CancellationToken, ContextCheckpoint, Message, ModelRequest, Provider, Role, Store,
     StoreOptions,
 };
-use bubblepaw_runner::provider::{ExtensionConfig, ExtensionProvider};
+use bubblepaw_runner::provider::{ExtensionConfig, extension_provider};
 use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -99,7 +99,7 @@ async fn extension_opaque_bytes_survive_sqlite_reopen_cold_archive_export_and_re
     let baseline = serde_json::to_vec(&native)?;
     let fixture_state = directory.path().join("provider-state.json");
     std::fs::write(&fixture_state, &baseline)?;
-    let provider = ExtensionProvider::new(ExtensionConfig {
+    let provider = extension_provider(ExtensionConfig {
         id: "fake".into(),
         command: env!("CARGO_BIN_EXE_bubblepaw-fake-extension").into(),
         args: vec![format!("--provider-state-file={}", fixture_state.display())],

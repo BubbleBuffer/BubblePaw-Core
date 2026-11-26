@@ -35,7 +35,7 @@ pub(super) fn env_secrets(env: &BTreeMap<String, String>) -> Vec<String> {
 pub(super) fn diagnostic_line(text: &str, secrets: &[String]) -> String {
     let line = text.lines().map(str::trim).find(|line| !line.is_empty());
     let secrets: Vec<&str> = secrets.iter().map(String::as_str).collect();
-    super::super::http_error::redacted_line(line.unwrap_or(""), &secrets, MAX_DIAGNOSTIC_BYTES)
+    crate::adapter::redacted_line(line.unwrap_or(""), &secrets, MAX_DIAGNOSTIC_BYTES)
 }
 
 /// A JSON-RPC error whose `data` carries the provider error kind. A rate limit
@@ -136,14 +136,14 @@ pub(super) fn extension_quota(
     value: Option<&Value>,
     provider: &str,
     account: &str,
-) -> Vec<bubblepaw_core::QuotaReading> {
+) -> Vec<crate::QuotaReading> {
     value
         .and_then(|value| value.get("quota_events"))
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .flat_map(|event| {
-            crate::quota_sources::parse_claude_rate_limit(
+            crate::adapter::quota_events::parse_claude_rate_limit(
                 provider,
                 account,
                 event,

@@ -483,6 +483,10 @@ path or git dependency, so this works for both.
 `ExtensionConfig`: `bun run <dir>/src/main.ts` with `dir` as its working
 directory.
 
+`providers::extension_provider(config)` builds an `ExtensionProvider` from an
+`ExtensionConfig`; it starts the extension in a process tree that is killed with
+the provider. `ExtensionProvider::new` itself takes a launcher.
+
 ## Stability
 
 Everything reachable through the named modules, `Host` and `HostBuilder`

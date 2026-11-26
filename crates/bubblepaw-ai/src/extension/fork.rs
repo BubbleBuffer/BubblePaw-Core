@@ -1,15 +1,15 @@
 //! Summary forks over the extension protocol (docs/providers.md): the
 //! `summary_fork` request an extension answers, the source mapping and the size
 //! projection the host's fork admission uses.
+use crate::{Message, MessageOrigin, ModelRequest, Role, is_ephemeral};
 use anyhow::{Result, ensure};
-use bubblepaw_core::{Message, MessageOrigin, ModelRequest, Role, is_ephemeral};
 use serde_json::{Value, json};
 
 /// The fork request as the extension gets it. The host's controls (the branch
 /// instruction, then the return control) follow the last message of the captured
 /// conversation, the last one with an id. Claude Code has no system-role tail,
 /// so they travel as one user message, in that order, and the request names the
-/// session the fork branches (the host clears it on every fork request).
+/// conversation the fork branches (the host clears it on every fork request).
 pub(super) fn request(mut request: ModelRequest) -> Result<ModelRequest> {
     let cut = request
         .messages
@@ -26,7 +26,7 @@ pub(super) fn request(mut request: ModelRequest) -> Result<ModelRequest> {
                 .all(|message| matches!(message.role, Role::System | Role::User)),
         "a summary fork request ends in the host's branch controls"
     );
-    let session = controls[controls.len() - 1].session_id.clone();
+    let owner = controls[controls.len() - 1].session_id.clone();
     let content = controls
         .iter()
         .map(|message| message.text().into_owned())
@@ -34,10 +34,10 @@ pub(super) fn request(mut request: ModelRequest) -> Result<ModelRequest> {
         .join("\n\n");
     request.messages.push(Message {
         id: String::new(),
-        session_id: session.clone(),
+        session_id: owner.clone(),
         role: Role::User,
         origin: Some(MessageOrigin::Generated),
-        content: bubblepaw_core::text_blocks(content),
+        content: crate::text_blocks(content),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,
@@ -45,7 +45,7 @@ pub(super) fn request(mut request: ModelRequest) -> Result<ModelRequest> {
         created_at: String::new(),
         ..Default::default()
     });
-    request.session_id = session;
+    request.session_id = owner;
     Ok(request)
 }
 
@@ -68,7 +68,7 @@ pub(super) fn mapping(request: &ModelRequest) -> Value {
             };
             json!({
                 "source_id":message.id,"prepared_position":index,"role":message.role,
-                "origin":message.origin,"is_typed_user":bubblepaw_core::is_typed_user(message),
+                "origin":message.origin,"is_typed_user":crate::is_typed_user(message),
                 "wire_positions":positions,
                 "tool_call_ids":message.tool_calls.iter().map(|call| &call.id).collect::<Vec<_>>(),
                 "tool_call_id":message.tool_call_id,
@@ -94,7 +94,7 @@ pub(super) fn projection(request: &ModelRequest) -> Value {
             ..message.clone()
         })
         .collect();
-    bubblepaw_core::plain_content(
+    crate::plain_content(
         || json!({"system":request.system_prompt,"tools":request.tools,"messages":messages}),
     )
 }

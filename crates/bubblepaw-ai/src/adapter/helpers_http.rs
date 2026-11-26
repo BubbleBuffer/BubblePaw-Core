@@ -1,32 +1,10 @@
 //! Helpers of the HTTP adapters: publication tracking, retained usage and quota
 //! across continuation rounds, Retry-After parsing and the Codex auth file.
 use super::{RejectionQuotaBoundary, classify, current_rejection_quota_count, with_error_quota};
-use crate::{
-    ProviderError, ProviderErrorKind, ReasoningEffort, StreamCallback, StreamEvent, Usage,
-};
+use crate::{ProviderError, ProviderErrorKind, ReasoningEffort, Usage};
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
-use std::{
-    path::Path,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
-};
-
-/// Publication follows listener delivery, including prior continuation rounds.
-pub fn track_text_publication(on_text: StreamCallback) -> (StreamCallback, Arc<AtomicBool>) {
-    let published = Arc::new(AtomicBool::new(false));
-    let signal = published.clone();
-    let listener: StreamCallback = Arc::new(move |event| {
-        if matches!(event, StreamEvent::TextDelta(text) if !text.is_empty()) {
-            signal.store(true, Ordering::Release);
-        }
-        on_text(event);
-    });
-    (listener, published)
-}
+use std::{path::Path, time::Duration};
 
 /// Keep accepted physical continuation usage when a later response fails.
 pub(super) fn retain_prior_usage(error: anyhow::Error, prior: Option<&Usage>) -> anyhow::Error {
@@ -41,21 +19,6 @@ pub(super) fn retain_prior_usage(error: anyhow::Error, prior: Option<&Usage>) ->
         total.add(usage);
     }
     error.context(typed.with_usage(total))
-}
-
-/// Preserve the error chain so usage and provider Retry-After remain available.
-pub fn mark_published(error: anyhow::Error, published: bool) -> anyhow::Error {
-    if !published {
-        return error;
-    }
-    let typed = ProviderError::of(&error)
-        .cloned()
-        .unwrap_or_else(|| ProviderError::new(ProviderErrorKind::Fatal, error.to_string()));
-    if typed.published {
-        error
-    } else {
-        error.context(typed.with_published(true))
-    }
 }
 
 /// Parse Retry-After delta-seconds or an HTTP date. Past dates mean no delay.

@@ -26,11 +26,24 @@ adapters reach the host through injected seams: a `ModelEgress` trait for proxie
 egress, a `UsageSink` that the core capture scope installs, and a host-policy flag for
 quota stops. `bubblepaw-runner` re-exports every moved name at its old path.
 
-Still to move: the provider registry, the extension provider and the model catalog,
-which live in `bubblepaw-runner` today. Some ai types carry a `session_id` that the
-ai layer treats as an opaque key; the adapters add the `x-opencode-session` and
-Codex cache-key plumbing, the replay-state and continuation code that handle that
-key; the guard records all of these occurrences as ceilings rather than renaming them.
+The extension provider, which speaks line-delimited JSON-RPC to a subprocess,
+lives in `bubblepaw-ai/src/extension`, behind the `extension` feature; the runner's
+`host` feature enables it. The provider builds the command and runs the protocol,
+and a launcher the host passes to `ExtensionProvider::new` starts it. The launcher
+returns the pipes and a `LaunchedProcess` that kills the whole process tree on
+demand and on drop; the runner's launcher uses `bubblepaw-process`, so ai depends
+on no workspace crate. The runner builds the provider with `extension_provider`,
+reads the extensions file, and re-exports the moved names at their old paths. The
+Claude Agent SDK rate-limit events the extension reports are parsed in
+`adapter/quota_events.rs`.
+
+Still to move: the provider registry and the model catalog, which live in
+`bubblepaw-runner` today. Some ai types carry a `session_id` that the ai layer
+treats as an opaque key; the adapters add the `x-opencode-session` and Codex
+cache-key plumbing, the replay-state and continuation code that handle that key,
+and the extension provider keeps a cursor reset per `session_id` and sends
+`session.close`; the guard records all of these occurrences as ceilings rather than
+renaming them.
 
 ## Rules
 

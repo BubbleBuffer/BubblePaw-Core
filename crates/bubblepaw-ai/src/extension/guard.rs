@@ -1,10 +1,9 @@
 //! The guard that cancels an abandoned step.
-use super::Connection;
-use bubblepaw_process::ProcessTree;
+use super::{Connection, LaunchedProcess};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::{process::Child, sync::mpsc, task::JoinHandle};
+use tokio::{sync::mpsc, task::JoinHandle};
 
 /// How long a dropped connection's writer may take to send what is queued.
 const FLUSH: Duration = Duration::from_secs(1);
@@ -45,25 +44,26 @@ pub(super) fn retire(connection: &mut Connection) {
         &mut connection.outgoing,
         mpsc::unbounded_channel().0,
     ));
-    let child = connection._child.take();
-    let tree = connection.tree.clone();
+    let process = connection.process.take();
     let tasks = std::mem::take(&mut connection.tasks);
     let Ok(runtime) = tokio::runtime::Handle::try_current() else {
-        return kill(child, &tree, tasks);
+        return kill(process, tasks);
     };
     runtime.spawn(async move {
         let mut tasks = tasks;
         if let Some(writer) = tasks.first_mut() {
             let _ = tokio::time::timeout(FLUSH, writer).await;
         }
-        kill(child, &tree, tasks);
+        kill(process, tasks);
     });
 }
 
-fn kill(child: Option<Child>, tree: &ProcessTree, tasks: Vec<JoinHandle<()>>) {
-    tree.kill();
+fn kill(process: Option<Box<dyn LaunchedProcess>>, tasks: Vec<JoinHandle<()>>) {
+    if let Some(process) = &process {
+        process.kill_tree();
+    }
     for task in tasks {
         task.abort();
     }
-    drop(child);
+    drop(process);
 }

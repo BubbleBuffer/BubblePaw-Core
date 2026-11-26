@@ -8,6 +8,6 @@ word bubblepaw-core child 181
 word bubblepaw-core opencode 1
 word bubblepaw-core quota 174
 word bubblepaw-core "js" 32
-word bubblepaw-ai session 79
+word bubblepaw-ai session 94
 word bubblepaw-ai approval 5
 word bubblepaw-ai child 2

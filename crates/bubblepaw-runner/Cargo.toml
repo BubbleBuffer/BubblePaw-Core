@@ -16,6 +16,7 @@ default = ["host"]
 # client over a tunnel or a published endpoint).
 host = [
     "bubblepaw-ai/http",
+    "bubblepaw-ai/extension",
     "dep:bubblepaw-mcp",
     "dep:bubblepaw-process",
     "dep:getrandom",
