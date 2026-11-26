@@ -1,18 +1,33 @@
 //! One run of the loop: rounds of model request and tool dispatch until the run
 //! has an outcome. The shell in `runtime.rs` owns the session around it.
-use super::run_inputs::{RunInputs, RunLoop, RunOutcome};
-use super::run_settle::{RoundState, Settled};
-use super::tool_source::RunTools;
-use super::*;
-use crate::IncompleteReason;
+use crate::ids::id;
+use crate::live_events::LiveEvent;
+use crate::loop_records::{CallbackLifetime, TurnOutcome};
+use crate::observer::ObservationScope;
+use crate::prepare_types::PrepareMode;
+use crate::request_seam::{Built, Draft, Note};
+use crate::round_reminders::{RunReminders, ToolsRound};
+use crate::run_inputs::{RunInputs, RunLoop, RunOutcome};
+use crate::run_settle::{RoundState, Settled};
+use crate::runtime_overflow::OverflowRetry;
+use crate::runtime_stream::{ModelStream, SharedPartial};
+use crate::stream::Paragraphs;
+use crate::tool_source::RunTools;
+use anyhow::{Result, anyhow, ensure};
+use bubblepaw_ai::{
+    IncompleteReason, Message, MessageOrigin, ModelRequest, ModelResponse, ProviderError, Role,
+    Usage,
+};
+use std::sync::{Arc, Mutex, atomic::AtomicBool};
+use std::time::Instant;
 
 impl RunLoop {
     /// Run exactly one run. A failure keeps the partial reply and closes the run's
     /// open records through the journal before the outcome is returned.
-    pub(super) async fn run_once(&self, inputs: &RunInputs<'_>) -> RunOutcome {
+    pub(crate) async fn run_once(&self, inputs: &RunInputs<'_>) -> RunOutcome {
         let run = inputs.run;
         let mut usage = None;
-        let partial = runtime_stream::SharedPartial::default();
+        let partial = SharedPartial::default();
         match self.turn(inputs, &mut usage, &partial).await {
             Ok(outcome) => RunOutcome {
                 status: "completed".into(),
@@ -50,12 +65,7 @@ impl RunLoop {
     }
     /// Store what streamed before the request failed or was cancelled. The run's
     /// outcome stays as it was, so a failure to store is not reported.
-    fn keep_partial_reply(
-        &self,
-        session_id: &str,
-        partial: &runtime_stream::SharedPartial,
-        cancelled: bool,
-    ) {
+    fn keep_partial_reply(&self, session_id: &str, partial: &SharedPartial, cancelled: bool) {
         let reason = if cancelled {
             IncompleteReason::Cancelled
         } else {
@@ -67,9 +77,9 @@ impl RunLoop {
         };
         let _ = self.journal.partial_reply_kept(&message);
     }
-    pub(super) fn latest_user_request(&self, session_id: &str) -> Result<String> {
+    pub(crate) fn latest_user_request(&self, session_id: &str) -> Result<String> {
         let is_user_request = |message: &Message| {
-            message.role == Role::User && message.origin != Some(crate::MessageOrigin::Generated)
+            message.role == Role::User && message.origin != Some(MessageOrigin::Generated)
         };
         let history = self.request_context.history(session_id)?;
         if let Some(message) = history.into_iter().rev().find(is_user_request) {
@@ -88,7 +98,7 @@ impl RunLoop {
         &self,
         inputs: &RunInputs<'_>,
         usage: &mut Option<Usage>,
-        partial: &runtime_stream::SharedPartial,
+        partial: &SharedPartial,
     ) -> Result<TurnOutcome> {
         let RunInputs {
             run,
@@ -134,8 +144,8 @@ impl RunLoop {
             + usize::from(options.max_tool_calls.is_some())
             + 1;
         let mut rounds = 0usize;
-        let mut reminders = runtime_reminders::RunReminders::default();
-        let mut overflow = runtime_overflow::OverflowRetry::default();
+        let mut reminders = RunReminders::default();
+        let mut overflow = OverflowRetry::default();
         loop {
             let round = rounds;
             rounds = rounds.saturating_add(1);
@@ -163,7 +173,7 @@ impl RunLoop {
             let mut dispatcher = dispatcher
                 .clone()
                 .with_user_request(state.user_request.clone());
-            let mut tools_round = runtime_reminders::ToolsRound::Open;
+            let mut tools_round = ToolsRound::Open;
             let mut declarations = None;
             let (response, dispatcher) = if let Some(execution) = single_tool {
                 (
@@ -319,7 +329,7 @@ impl RunLoop {
                     self.live.transient(
                         &run.session_id,
                         &run.id,
-                        EventKind::Paragraph { text: notice },
+                        LiveEvent::Paragraph { text: notice },
                     );
                 }
                 ensure!(
@@ -353,7 +363,7 @@ impl RunLoop {
                 let max = self.limits.max_paragraph_bytes.max(4);
                 let callback_live = Arc::new(AtomicBool::new(true));
                 let callback_lifetime = CallbackLifetime(callback_live.clone());
-                let callback = runtime_stream::ModelStream {
+                let callback = ModelStream {
                     // A provider retaining the callback must not retain the archive or engine.
                     events: self.live.clone(),
                     session: run.session_id.clone(),
@@ -368,7 +378,7 @@ impl RunLoop {
                 }
                 .callback();
                 self.live
-                    .transient(&run.session_id, &run.id, EventKind::ModelRequestStarted {});
+                    .transient(&run.session_id, &run.id, LiveEvent::ModelRequestStarted);
                 self.request_context.request_sent(
                     &run.session_id,
                     &request,
@@ -411,7 +421,7 @@ impl RunLoop {
                     Ok(response) => response,
                     Err(error) => {
                         if let Some(value) =
-                            crate::ProviderError::of(&error).and_then(|error| error.usage.as_ref())
+                            ProviderError::of(&error).and_then(|error| error.usage.as_ref())
                         {
                             usage.get_or_insert_with(Usage::default).add(value);
                         }
@@ -442,7 +452,7 @@ impl RunLoop {
                         self.live.transient(
                             &run.session_id,
                             &run.id,
-                            EventKind::Paragraph { text: piece },
+                            LiveEvent::Paragraph { text: piece },
                         );
                     }
                 }

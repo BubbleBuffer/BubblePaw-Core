@@ -2,8 +2,10 @@
 //! journal. Each method is one atomic unit named by what happened in the run; the
 //! durable events that belong to it are emitted by the implementation, in the same
 //! commit. The shell's own writes (admission, finish) are the session journal.
-use crate::{Message, OutputRecord, ToolCall, ToolResult};
+use crate::run_data::OutputRecord;
+use crate::tool_result::ToolResult;
 use anyhow::Result;
+use bubblepaw_ai::{Message, ToolCall};
 
 /// Which pending inputs a query asks about.
 #[derive(Clone, Copy)]

@@ -62,7 +62,7 @@ The run loop asks a `RequestContext` trait what to send to the model: the histor
 
 The loop never holds per-request usage records. The request context hands it a provider that captures them around `generate`, settles them when the request ends, and keeps them per run; the journal writes whatever a run has waiting in the commit of its reply or of its end, and the records are let go with the run when it ends unwritten.
 
-The run loop and the dispatcher show live events through the `LiveEvents` trait: `transient` for tool starts and finishes, paragraphs and request starts, `progress` and `paragraph` for the streamed text. Live events reach subscribers only and are never stored; durable events stay with the journal. The stock implementation is the event log. A `ToolDispatcher` is built from a journal, a gate and a live sink (`from_seams`); `new` builds the stock three from a store.
+The run loop and the dispatcher show live events through the `LiveEvents` trait, passing a `LiveEvent` enum (tool starts and finishes, paragraphs, request starts, text and thinking deltas): `transient`, `progress` and `paragraph`. `live_log.rs` maps `LiveEvent` to the event log's kinds. Live events reach subscribers only and are never stored; durable events stay with the journal. The stock implementation is the event log. A `ToolDispatcher` is built from a journal, a gate and a live sink (`from_seams`); `new` builds the stock three from a store.
 
 ## The run loop and its shell
 
@@ -89,3 +89,7 @@ and `"js"` (including the quotes). AI tracks `session`, `rusqlite`, `approval`,
 `episode`, `chapter` and `child`. Missing entries have a ceiling of zero.
 An increase fails and reports the ten files with the most hits. When a count falls,
 lower its ceiling in `layering-allowlist.txt` to the new total; never raise it.
+
+## The moving set
+
+The files that make up one run in memory (the loop, the dispatcher, the tools and the plain data between them) form a set that is self-contained inside `bubblepaw-core`, so it can move to a crate of its own that depends only on `bubblepaw-ai`. `tests/runtime/layering_loop.rs` lists the files and guards two things: none holds the session shell's vocabulary (harness, approval, sqlite, quota, child, the store, the event log), except lines the model reads, which are listed there with the reason; and `crate::` paths in them name only files of the set, with no glob imports. What the loop needs from the shell comes through traits and plain types: `LoopOptions` (model, round and token limits, output schema, script) for `ToolSource`, `Observer` and `ToolWatch` for the observation value, `LiveEvent` for live events, and `SingleToolRun` (call and result only; the shell keeps the completion channel in its own wrapper). `ToolDefinition::new` in the ai crate builds the definitions the set declares. The shell halves stay beside `runtime.rs`: `stock_tool_source.rs`, `run_loop_build.rs` and `live_log.rs`. The set has its own `id()` and `now()` in `ids.rs`.

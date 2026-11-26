@@ -1,10 +1,14 @@
+use crate::ids::{id, now};
 use crate::live_events::LiveEvents;
+use crate::observer::{ObservationScope, Observer, ToolWatch};
+use crate::run_data::{OutputRecord, Run};
+use crate::run_journal::RunJournal;
+use crate::tool::ToolContext;
 use crate::tool_gate::{GateCall, GateSource, ToolGate};
-use crate::{
-    CancellationToken, Observation, ObservationScope, OutputRecord, ToolCall, ToolContext,
-    ToolRegistry, ToolResult, id, now,
-};
-use anyhow::{Result, anyhow, ensure};
+use crate::tool_registry::ToolRegistry;
+use crate::tool_result::ToolResult;
+use anyhow::{Result, ensure};
+use bubblepaw_ai::{CancellationToken, ToolCall, ToolDefinition, fingerprint, text_blocks};
 use serde_json::Value;
 use std::sync::{
     Arc,
@@ -22,11 +26,11 @@ pub(crate) type ContextSetup = Arc<dyn Fn(&mut ToolContext) + Send + Sync>;
 #[derive(Clone)]
 pub struct ToolDispatcher {
     tools: ToolRegistry,
-    journal: Arc<dyn crate::run_journal::RunJournal>,
+    journal: Arc<dyn RunJournal>,
     gate: Arc<dyn ToolGate>,
     live: Arc<dyn LiveEvents>,
     max_result_bytes: usize,
-    observation: Option<Observation>,
+    observation: Option<Arc<dyn Observer>>,
     scope: ObservationScope,
     context_setup: ContextSetup,
     user_request: String,
@@ -44,8 +48,8 @@ impl ToolDispatcher {
     pub(crate) fn from_seams(
         tools: ToolRegistry,
         max_result_bytes: usize,
-        observation: Option<Observation>,
-        journal: Arc<dyn crate::run_journal::RunJournal>,
+        observation: Option<Arc<dyn Observer>>,
+        journal: Arc<dyn RunJournal>,
         gate: Arc<dyn ToolGate>,
         live: Arc<dyn LiveEvents>,
         context_setup: ContextSetup,
@@ -104,11 +108,7 @@ impl ToolDispatcher {
         (self.context_setup)(context);
     }
     /// The context of a call the loop prepares for a run, without an invocation.
-    pub(crate) fn call_context(
-        &self,
-        run: &crate::Run,
-        cancellation: &CancellationToken,
-    ) -> ToolContext {
+    pub(crate) fn call_context(&self, run: &Run, cancellation: &CancellationToken) -> ToolContext {
         ToolContext {
             session_id: run.session_id.clone(),
             run_id: run.id.clone(),
@@ -120,7 +120,7 @@ impl ToolDispatcher {
     /// The context of an output the loop emits itself, under the run's setup.
     pub(crate) fn notice_context(
         &self,
-        run: &crate::Run,
+        run: &Run,
         cancellation: &CancellationToken,
     ) -> ToolContext {
         let mut context = self.call_context(run, cancellation);
@@ -184,7 +184,7 @@ impl ToolDispatcher {
         name: &str,
         input: &Value,
         nested: bool,
-    ) -> Option<crate::observation::ToolObservation> {
+    ) -> Option<Box<dyn ToolWatch>> {
         self.observation.as_ref().map(|observer| {
             let mut scope = self.scope.clone();
             scope.session_id = context.session_id.clone();
@@ -200,17 +200,10 @@ impl ToolDispatcher {
             } else {
                 self.origin
             };
-            crate::observation::ToolObservation::start(
-                observer.clone(),
-                scope,
-                name,
-                input,
-                nested,
-                origin,
-            )
+            observer.tool_started(scope, name, input, nested, origin)
         })
     }
-    pub fn definitions(&self) -> Vec<crate::ToolDefinition> {
+    pub fn definitions(&self) -> Vec<ToolDefinition> {
         self.tools.capabilities()
     }
     /// Original server identity for host discovery, independent of wire names.
@@ -248,7 +241,7 @@ impl ToolDispatcher {
             scope.run_id = context.run_id.clone();
             scope.execution_id = Some(execution_id.into());
             let bytes = record.output.to_string();
-            observer.emit(scope, "output_emitted", serde_json::json!({"output_type":record.output.get("type").and_then(Value::as_str),"status":record.output.get("status").and_then(Value::as_str),"output_bytes":bytes.len(),"fingerprint":crate::fingerprint(bytes.as_bytes())}), None);
+            observer.emit(scope, "output_emitted", serde_json::json!({"output_type":record.output.get("type").and_then(Value::as_str),"status":record.output.get("status").and_then(Value::as_str),"output_bytes":bytes.len(),"fingerprint":fingerprint(bytes.as_bytes())}), None);
         }
         let output_id = record.id.clone();
         Ok(output_id)
@@ -277,7 +270,7 @@ impl ToolDispatcher {
                 }
             }
             return Ok(ToolResult {
-                content: crate::text_blocks(summary.to_string()),
+                content: text_blocks(summary.to_string()),
                 is_error: true,
                 details: None,
                 terminate: result.terminate,

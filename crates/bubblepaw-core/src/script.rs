@@ -1,6 +1,7 @@
 //! Model-less script runs: one synthesized `js` round in place of a provider call.
-use crate::{Message, ModelResponse, Role, ToolCall, id};
+use crate::ids::id;
 use anyhow::{Result, anyhow};
+use bubblepaw_ai::{Message, ModelResponse, Role, ToolCall};
 use serde_json::json;
 
 /// The `model` recorded on a script run.

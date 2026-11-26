@@ -2,12 +2,15 @@
 //! one question named by the loop's need; the implementation owns the history it
 //! keeps, the notes it queues and the records and hook calls that answering needs.
 //! The loop decides when to ask and what to do with the answer.
-use crate::{
-    CancellationToken, HistoryCursor, Message, ModelRequest, ModelResponse, ObservationScope,
-    PrepareMode, PreparedContext, Provider, Reminder, Run,
-};
+use crate::observer::ObservationScope;
+use crate::prepare_types::{PrepareMode, PreparedContext};
+use crate::reminder_types::Reminder;
+use crate::run_data::Run;
 use anyhow::Result;
 use async_trait::async_trait;
+use bubblepaw_ai::{
+    CancellationToken, HistoryCursor, Message, ModelRequest, ModelResponse, Provider,
+};
 use std::sync::Arc;
 
 /// A note for the model, queued for the next request.

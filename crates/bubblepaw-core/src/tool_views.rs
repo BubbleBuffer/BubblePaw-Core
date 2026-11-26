@@ -1,5 +1,7 @@
 //! Registry views: model and host restrictions, read-only subsets and the publish generation.
-use crate::*;
+use crate::execution_mode::ExecutionMode;
+use crate::tool_registry::ToolRegistry;
+use bubblepaw_ai::{ToolCall, ToolDefinition};
 impl ToolRegistry {
     /// Select the model entrypoints while preserving host capability policy.
     /// JavaScript mode exposes only `js`; Native never exposes that adapter.
@@ -157,7 +159,7 @@ impl ToolRegistry {
         }
     }
     /// Enforce a run's `tool_names` at call time. Declarations are not filtered by it.
-    pub(crate) fn with_model_allowlist(mut self, names: Option<&[String]>) -> Self {
+    pub fn with_model_allowlist(mut self, names: Option<&[String]>) -> Self {
         self.model_allowlist = names.map(<[String]>::to_vec);
         self
     }
@@ -171,7 +173,7 @@ impl ToolRegistry {
         self.generation
     }
     /// The single model-call gate, shared by model turns and `call_tool`. Entrypoints
-    /// outside the run's allowlist are refused before any approval or effect.
+    /// outside the run's allowlist are refused before any permission check or effect.
     pub(crate) fn validate_model_call(&self, call: &ToolCall) -> anyhow::Result<()> {
         if self.get(&call.name).is_none() {
             return Err(self.unavailable_error(&call.name, "Unknown tool"));

@@ -1,4 +1,6 @@
 use super::*;
+use crate::Role;
+use crate::request_seam::Built;
 use crate::{Tool, ToolContext};
 
 struct VersionedTool(&'static str);
