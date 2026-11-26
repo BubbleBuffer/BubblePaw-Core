@@ -6,6 +6,7 @@
 //! workspace crate and knows no store, run or tool registry.
 pub mod adapter;
 mod cancellation;
+pub mod catalog;
 mod content_block;
 #[cfg(feature = "extension")]
 pub mod extension;

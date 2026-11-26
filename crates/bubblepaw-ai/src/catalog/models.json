@@ -3,6 +3,7 @@
   "checked": "2026-10-19",
   "unit": "USD per million tokens",
   "source": "worker bench price table (list prices only)",
+  "defaults": { "max_output_tokens": 64000 },
   "models": {
     "deepseek-v4.1-flash": {
       "billing": "list_price",
@@ -13,6 +14,7 @@
       "peak_hours_utc": { "weekdays": [0, 1, 2, 3, 4], "hours": [[1, 4], [6, 10]] }
     },
     "claude-haiku-5-5": {
+      "max_output_tokens": 128000,
       "billing": "list_price",
       "periods": {
         "off_peak": { "uncached_input": 0.1, "cache_read": 0.01, "cache_write": 0.125, "output": 0.5 }

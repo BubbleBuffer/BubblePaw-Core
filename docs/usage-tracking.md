@@ -98,7 +98,7 @@ current exports contain 17.
 
 ## One dated price table
 
-`crates/bubblepaw-runner/src/prices.json` is the shared dated source for delegation
+`crates/bubblepaw-ai/src/catalog/models.json` (the model catalog; `pricing::` in the runner re-exports its price types) is the shared dated source for delegation
 ledger prices, native reports/exports and the existing retained session projection.
 The current table date is 2026-10-19. Usage rows store no cost; reports compute it
 at read time, selecting the request's time period and long-prompt rule. Changing

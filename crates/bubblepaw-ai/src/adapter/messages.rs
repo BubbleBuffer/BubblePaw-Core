@@ -513,15 +513,9 @@ impl MessagesProvider {
     }
 }
 
-/// Largest synchronous output a model accepts, used when a role sets no
-/// `max_output_tokens`. claude-haiku-5-5 is 128K in the Anthropic models
-/// overview; other models fall back to 64000, which every listed model accepts.
-/// Unknown models are not gated here; the provider decides whether to accept them.
+/// Largest synchronous output a model accepts, from the model catalog.
 fn messages_output_ceiling(model: &str) -> u32 {
-    match model.rsplit('/').next().unwrap_or(model) {
-        "claude-haiku-5-5" => 128_000,
-        _ => 64_000,
-    }
+    crate::catalog::lookup(model).max_output_tokens
 }
 
 /// Copies every reported usage field. Stream usage is cumulative, so later values win.

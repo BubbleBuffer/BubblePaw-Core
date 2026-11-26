@@ -101,5 +101,4 @@ pub enum RequestKind {
     Decider,
 }
 
-/// OpenCode Go reuses cached input in 64-token blocks.
-pub const DEFAULT_CACHE_BLOCK_TOKENS: u64 = 64;
+pub use crate::catalog::DEFAULT_CACHE_BLOCK_TOKENS;

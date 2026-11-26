@@ -16,7 +16,7 @@ mod transition;
 fn example_prices() -> &'static PriceTable {
     static TABLE: std::sync::OnceLock<PriceTable> = std::sync::OnceLock::new();
     TABLE.get_or_init(|| {
-        let mut table: Value = serde_json::from_str(include_str!("../prices.json")).unwrap();
+        let mut table: Value = serde_json::from_str(bubblepaw_ai::catalog::EMBEDDED_JSON).unwrap();
         table["models"]["example-decider"] = json!({"billing":"list_price","periods":{"off_peak":{"uncached_input":0.1,"cache_read":0.1,"cache_write":0.1,"output":0.0}}});
         PriceTable::from_json(&table.to_string()).unwrap()
     })
