@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelInfo, ModelRequest, ModelResponse, Provider,
-    Role, Store, TextCallback, ToolCall, ToolRegistry,
+    Role, Store, StreamCallback, ToolCall, ToolRegistry,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -522,7 +522,7 @@ impl Provider for BlockingProvider {
     async fn generate(
         &self,
         _request: ModelRequest,
-        _on_text: TextCallback,
+        _on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> anyhow::Result<ModelResponse> {
         self.calls.fetch_add(1, Ordering::SeqCst);

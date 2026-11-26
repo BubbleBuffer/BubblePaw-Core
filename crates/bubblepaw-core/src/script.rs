@@ -10,6 +10,7 @@ pub const SCRIPT_MODEL: &str = "script";
 pub(crate) fn response(code: &str) -> ModelResponse {
     ModelResponse {
         text: String::new(),
+        thinking: String::new(),
         tool_calls: vec![ToolCall {
             id: format!("script_{}", id()),
             name: "js".into(),

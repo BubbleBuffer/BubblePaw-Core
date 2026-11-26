@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, MessageOrigin, ModelRequest, ModelResponse,
-    Provider, Role, RunOptions, Store, TextCallback, ToolCall, ToolRegistry, is_typed_user,
+    Provider, Role, RunOptions, Store, StreamCallback, ToolCall, ToolRegistry, is_typed_user,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -32,7 +32,7 @@ impl Provider for Edits {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let last = request.messages.last().unwrap();
@@ -743,7 +743,7 @@ async fn fifty_edits_report_store_cost_and_compressed_preimages() {
         async fn generate(
             &self,
             request: ModelRequest,
-            callback: TextCallback,
+            callback: StreamCallback,
             cancellation: CancellationToken,
         ) -> Result<ModelResponse> {
             self.peak

@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextChapter, ContextEpisode, ContextPreparation, ContextSubjectChapter,
     EpisodeBatch, Message, ModelRequest, ModelResponse, PreparedContext, Provider, Role, Store,
-    SubjectChapterStatus, TextCallback, ToolCall, Usage,
+    StreamCallback, SubjectChapterStatus, ToolCall, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -43,7 +43,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         bail!("main provider must not be called during compaction")
@@ -1428,7 +1428,7 @@ impl Provider for RecordingProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         {

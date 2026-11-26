@@ -259,3 +259,12 @@ A tool returns a `ToolResult`:
 - `is_error` marks a failure. Anthropic requests carry it as the tool result's error flag. Chat Completions and Responses have no such field, so their requests send an error result as `Error: <content>` (left alone when it already starts with "error" in any case); the stored content is unchanged.
 - `details` is optional JSON for user interfaces. It is stored on the tool message (`Message.details`) and returned with the message by the host API, but it is dropped from the model-facing history, so no provider request carries it. The `edit` tool puts `{path, replacements}` there.
 - `terminate` ends the run once every tool result of the model reply is recorded; no further model request is made. If results in one reply disagree, any `terminate` ends the run after the whole batch has run. `submit_result` sets it; its structured value still comes from the call's arguments.
+
+## Readable thinking as a block (2026-11-26)
+
+The readable part of a reply's reasoning is a first-class stream: adapters emit
+`StreamEvent::ThinkingDelta`, hosts see the live `thinking_delta` event, and the
+loop stores the reply's thinking as a `thinking` content block before its text.
+The block is display data only. Replay still comes from `provider_state` for every adapter and the adapters never
+read the block, so no request changes; the block is a second readable copy. See
+[providers](providers.md) and [storage-model](storage-model.md#thinking-blocks-chat-store-16).

@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Store,
-    TextCallback, ToolRegistry,
+    StreamCallback, ToolRegistry,
 };
 use bubblepaw_runner::{
     input_files::{InputFiles, InputLimits},
@@ -43,7 +43,7 @@ impl Provider for Capture {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request.clone());

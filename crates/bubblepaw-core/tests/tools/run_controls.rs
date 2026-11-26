@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Capabilities, ContextPreparation, EventKind, Harness, HarnessConfig,
     JsonSchema, Message, MessageOrigin, ModelRequest, ModelResponse, PrepareCall, PreparedContext,
-    Provider, Role, RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition,
-    ToolDispatcher, ToolRegistry, ToolResult, ToolSurface,
+    Provider, Role, RunOptions, Store, StreamCallback, StreamEvent, Tool, ToolCall, ToolContext,
+    ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult, ToolSurface,
 };
 use serde_json::{Value, json};
 use std::{
@@ -35,7 +35,7 @@ impl Provider for Scripted {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -125,14 +125,14 @@ impl Provider for Streamed {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let response = self
             .0
             .generate(request, on_text.clone(), cancellation)
             .await?;
-        on_text(&response.text);
+        on_text(StreamEvent::TextDelta(&response.text));
         Ok(response)
     }
 }

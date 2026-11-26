@@ -4,7 +4,7 @@
 //! and never stored.
 use super::{classify, http_dump};
 use anyhow::{Result, anyhow};
-use bubblepaw_core::{CancellationToken, ProviderErrorKind, TextCallback};
+use bubblepaw_core::{CancellationToken, ProviderErrorKind, StreamCallback, StreamEvent};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -237,28 +237,47 @@ fn frame_data(frame: &[u8]) -> std::result::Result<Option<String>, StreamError> 
     Ok((!data.is_empty()).then_some(data))
 }
 
-/// Collects text fragments and hands them to the listener in batches.
+/// Separates the parts of one reply's thinking (Messages blocks, Responses summary parts).
+pub(super) const THINKING_BREAK: &str = "\n\n";
+
+/// Collects text and thinking fragments and hands them to the listener in
+/// batches. A batch holds one kind, so the listener sees both in streamed order.
 pub(super) struct TextBatch {
-    listener: TextCallback,
+    listener: StreamCallback,
     pending: String,
+    thinking: bool,
     chars: usize,
     since: Option<Instant>,
 }
 
 impl TextBatch {
-    pub(super) fn new(listener: TextCallback) -> Self {
+    pub(super) fn new(listener: StreamCallback) -> Self {
         Self {
             listener,
             pending: String::new(),
+            thinking: false,
             chars: 0,
             since: None,
         }
     }
 
-    /// Queue a fragment; delivers at once when the batch is full or old enough.
+    /// Queue a text fragment; delivers at once when the batch is full or old enough.
     pub(super) fn push(&mut self, fragment: &str) {
+        self.queue(false, fragment);
+    }
+
+    /// Queue a fragment of readable thinking, as `push` does for text.
+    pub(super) fn push_thinking(&mut self, fragment: &str) {
+        self.queue(true, fragment);
+    }
+
+    fn queue(&mut self, thinking: bool, fragment: &str) {
         if fragment.is_empty() {
             return;
+        }
+        if self.thinking != thinking {
+            self.flush();
+            self.thinking = thinking;
         }
         let since = *self.since.get_or_insert_with(Instant::now);
         self.pending.push_str(fragment);
@@ -279,7 +298,11 @@ impl TextBatch {
         self.chars = 0;
         if !self.pending.is_empty() {
             let text = std::mem::take(&mut self.pending);
-            (self.listener)(&text);
+            (self.listener)(if self.thinking {
+                StreamEvent::ThinkingDelta(&text)
+            } else {
+                StreamEvent::TextDelta(&text)
+            });
         }
     }
 }

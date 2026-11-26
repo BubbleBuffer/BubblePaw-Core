@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role,
-    RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolRegistry,
+    RunOptions, Store, StreamCallback, ToolCall, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agents::AgentTools,
@@ -20,7 +20,7 @@ impl Provider for Cells {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         assert!(request.tools.iter().all(|tool| tool.name == "js"));

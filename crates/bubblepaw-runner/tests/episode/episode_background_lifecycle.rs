@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, EventKind, HarnessEvent, Message, MessageOrigin, ModelRequest,
-    ModelResponse, Provider, Role, Store, TextCallback, ToolCall, Usage,
+    ModelResponse, Provider, Role, Store, StreamCallback, ToolCall, Usage,
 };
 use bubblepaw_runner::{
     episode_background::EpisodeBackground,
@@ -35,7 +35,7 @@ impl Provider for UnusedProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("background gathering must use the episode models");

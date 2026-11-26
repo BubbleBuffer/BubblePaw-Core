@@ -9,3 +9,4 @@ mod panic_in_run;
 mod reminder_runtime;
 mod reminder_store;
 mod reminders;
+mod thinking;

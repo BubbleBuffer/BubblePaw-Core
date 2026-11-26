@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions,
-    Store, TextCallback, ToolRegistry,
+    Store, StreamCallback, ToolRegistry,
 };
 use bubblepaw_runner::{
     config::{EffectiveConfig, LoadOptions, Override},
@@ -23,7 +23,7 @@ impl Provider for Done {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

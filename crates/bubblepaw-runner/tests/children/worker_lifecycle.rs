@@ -3,7 +3,7 @@ use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role, Store,
-    TextCallback, ToolContext, ToolRegistry,
+    StreamCallback, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agents::{AgentProfile, AgentTools},
@@ -35,7 +35,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);

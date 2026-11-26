@@ -10,7 +10,7 @@ use axum::{
 };
 use bubblepaw_core::{
     CancellationToken, Message, ModelRequest, Provider, ProviderError, ProviderErrorKind, Role,
-    TextCallback, ToolDefinition, Usage,
+    StreamCallback, StreamEvent, ToolDefinition, Usage,
 };
 use bubblepaw_runner::provider::{ChatCompletionsProvider, MessagesProvider, ResponsesProvider};
 use serde_json::{Value, json};
@@ -98,8 +98,8 @@ fn workspace_read_tool() -> ToolDefinition {
     }
 }
 
-fn noop() -> TextCallback {
-    Arc::new(|_: &str| {})
+fn noop() -> StreamCallback {
+    Arc::new(|_: StreamEvent| {})
 }
 
 // Messages replies.

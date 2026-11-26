@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bubblepaw_core::{
     CancellationToken, Capabilities, ContentBlock, Harness, HarnessConfig, ImageRef, Message,
-    ModelRequest, ModelResponse, Provider, Role, RunOptions, Store, TextCallback, ToolCall,
+    ModelRequest, ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, ToolCall,
     ToolRegistry,
 };
 use bubblepaw_runner::{
@@ -45,7 +45,7 @@ impl Provider for Cells {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request.clone());

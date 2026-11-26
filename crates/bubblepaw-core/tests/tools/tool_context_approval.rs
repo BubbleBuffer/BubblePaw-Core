@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     ApprovalMode, ApprovalPolicy, CancellationToken, Harness, HarnessConfig, ModelRequest,
-    ModelResponse, Provider, Role, RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext,
+    ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, Tool, ToolCall, ToolContext,
     ToolDefinition, ToolRegistry, ToolResult,
 };
 use serde_json::{Value, json};
@@ -14,7 +14,7 @@ impl Provider for CallTool {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

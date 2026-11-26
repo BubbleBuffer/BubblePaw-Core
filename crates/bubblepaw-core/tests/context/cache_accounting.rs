@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextPreparation, Harness, HarnessConfig, Message, ModelRequest,
     ModelResponse, Observation, ObservationMode, ObservationRecord, ObservationSink, Provider,
-    RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry,
+    RunOptions, Store, StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry,
     ToolResult, Usage, WireShape,
 };
 use serde_json::{Value, json};
@@ -44,7 +44,7 @@ impl Provider for Replay {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let input = body(&request).to_string().len() as u64 / 4;

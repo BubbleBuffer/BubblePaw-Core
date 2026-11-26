@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ExecutionMode, Harness, HarnessConfig, ModelRequest, ModelResponse,
-    Provider, RunOptions, Store, TextCallback, ToolRegistry,
+    Provider, RunOptions, Store, StreamCallback, ToolRegistry,
 };
 use bubblepaw_runner::execution_mode::configure_prompts;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ impl Provider for Unused {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         unreachable!("reads make no model calls")

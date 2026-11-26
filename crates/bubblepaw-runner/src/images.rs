@@ -3,7 +3,7 @@ use anyhow::{Context, Result, ensure};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bubblepaw_core::{
     CancellationToken, Capabilities, ContentBlock, Message, ModelInfo, ModelRequest, ModelResponse,
-    Provider, Role, Store, TextCallback, text_blocks,
+    Provider, Role, Store, StreamCallback, text_blocks,
 };
 pub use bubblepaw_core::{ImageRef, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL};
 use serde_json::{Value, json};
@@ -258,7 +258,7 @@ impl Provider for ImageProvider {
     async fn generate(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let image_input = self.inner.capabilities(&request.model).image_input;
@@ -268,7 +268,7 @@ impl Provider for ImageProvider {
     async fn generate_decision(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let image_input = self.inner.capabilities(&request.model).image_input;

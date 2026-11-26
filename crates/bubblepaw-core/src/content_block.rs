@@ -1,6 +1,8 @@
 //! The typed blocks a message body is made of: text, images that name
-//! attachments, and uploaded files. Marker tags inside a text stay part of its
-//! text block.
+//! attachments, uploaded files, and the readable thinking of a reply. Marker tags
+//! inside a text stay part of its text block. Thinking is for readers of the
+//! history only: it is never part of the text a model reads, of any plain form or
+//! of any size or hash taken from one.
 use crate::Message;
 mod content_file;
 mod content_image;
@@ -29,6 +31,10 @@ pub enum ContentBlock {
     File {
         file: InputFileRef,
     },
+    /// The readable thinking of an assistant reply, before its text.
+    Thinking {
+        text: String,
+    },
 }
 
 /// Hydrated image bytes are never printed: only their length.
@@ -42,6 +48,7 @@ impl std::fmt::Debug for ContentBlock {
                 .field("data_len", &data.as_ref().map(|data| data.len()))
                 .finish(),
             Self::File { file } => f.debug_struct("File").field("file", file).finish(),
+            Self::Thinking { text } => f.debug_struct("Thinking").field("text", text).finish(),
         }
     }
 }
@@ -78,7 +85,7 @@ fn join_plain(content: &[ContentBlock]) -> String {
                 continue;
             }
             ContentBlock::Image { image, .. } => content_image::placeholder(image),
-            ContentBlock::File { .. } => continue,
+            ContentBlock::File { .. } | ContentBlock::Thinking { .. } => continue,
         };
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
@@ -121,6 +128,33 @@ pub fn content_images(content: &[ContentBlock]) -> impl Iterator<Item = &ImageRe
     })
 }
 
+/// The readable thinking in `content`: its thinking blocks joined.
+pub fn content_thinking(content: &[ContentBlock]) -> Cow<'_, str> {
+    let mut parts = content.iter().filter_map(|block| match block {
+        ContentBlock::Thinking { text } => Some(text.as_str()),
+        _ => None,
+    });
+    let Some(first) = parts.next() else {
+        return Cow::Borrowed("");
+    };
+    match parts.next() {
+        None => Cow::Borrowed(first),
+        Some(second) => Cow::Owned([first, second].into_iter().chain(parts).collect()),
+    }
+}
+
+/// The blocks of a reply: its thinking, if any, then its text.
+pub fn reply_blocks(thinking: &str, text: &str) -> Vec<ContentBlock> {
+    let mut blocks = Vec::new();
+    if !thinking.is_empty() {
+        blocks.push(ContentBlock::Thinking {
+            text: thinking.to_owned(),
+        });
+    }
+    blocks.extend(text_blocks(text));
+    blocks
+}
+
 /// The files `content` names, in order.
 pub fn content_files(content: &[ContentBlock]) -> impl Iterator<Item = &InputFileRef> {
     content.iter().filter_map(|block| match block {
@@ -146,6 +180,11 @@ impl Message {
     /// it the message's files. Images contribute nothing.
     pub fn text(&self) -> Cow<'_, str> {
         content_text(&self.content)
+    }
+
+    /// The readable thinking of a reply, empty when it has none.
+    pub fn thinking(&self) -> Cow<'_, str> {
+        content_thinking(&self.content)
     }
 
     /// Only the written text, without the files.

@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     Approval, ApprovalMode, CancellationToken, Harness, HarnessConfig, MessageOrigin, ModelRequest,
-    ModelResponse, Provider, Role, Store, TextCallback, Tool, ToolCall, ToolContext,
+    ModelResponse, Provider, Role, Store, StreamCallback, Tool, ToolCall, ToolContext,
     ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
@@ -30,7 +30,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let task = request

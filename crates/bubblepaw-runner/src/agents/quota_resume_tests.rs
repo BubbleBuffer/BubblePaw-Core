@@ -1,5 +1,5 @@
 use super::*;
-use bubblepaw_core::{ModelRequest, ModelResponse, Provider, QuotaWait, TextCallback};
+use bubblepaw_core::{ModelRequest, ModelResponse, Provider, QuotaWait, StreamCallback};
 use std::sync::atomic::AtomicUsize;
 
 struct Probe(AtomicUsize);
@@ -8,7 +8,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         assert_eq!(request.model, "original/model");

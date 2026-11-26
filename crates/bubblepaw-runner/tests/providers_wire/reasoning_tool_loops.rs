@@ -12,7 +12,7 @@ use axum::{
 use bubblepaw_core::{
     CancellationToken, Capabilities, ContextPreparation, Harness, HarnessConfig, Message,
     ModelRequest, ModelResponse, Provider, ProviderError, ProviderErrorKind, Role, RunOptions,
-    Store, TextCallback, Tool, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
+    Store, StreamCallback, Tool, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::provider::{ChatCompletionsProvider, MessagesProvider, ResponsesProvider};
 use serde_json::{Value, json};
@@ -407,7 +407,7 @@ impl Provider for AuditedProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let result = self.inner.generate(request, on_text, cancellation).await;

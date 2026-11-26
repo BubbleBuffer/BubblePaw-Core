@@ -164,7 +164,7 @@ impl crate::Provider for NoModelCalls {
     async fn generate(
         &self,
         _: crate::ModelRequest,
-        _: crate::TextCallback,
+        _: crate::StreamCallback,
         _: crate::CancellationToken,
     ) -> Result<crate::ModelResponse> {
         bail!("This storage test must not call a model")

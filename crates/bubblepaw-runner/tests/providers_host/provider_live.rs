@@ -89,7 +89,7 @@ use axum::{
 use bubblepaw_core::{
     CancellationToken, Capabilities, Harness, HarnessConfig, JsonSchema, ModelRequest,
     ModelResponse, Provider, ProviderError, ProviderErrorKind, ReasoningEffort, ReasoningReplay,
-    Role, RunOptions, Store, TextCallback, Tool, ToolContext, ToolDefinition, ToolRegistry,
+    Role, RunOptions, Store, StreamCallback, Tool, ToolContext, ToolDefinition, ToolRegistry,
     ToolResult, provider_state_replay_compatible,
 };
 use bubblepaw_runner::{
@@ -436,7 +436,7 @@ impl Provider for ObservedProvider {
     async fn generate(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         request.reasoning_effort = Some(ReasoningEffort::Low);
@@ -455,12 +455,13 @@ impl Provider for ObservedProvider {
             .inner
             .generate(
                 request,
-                Arc::new(move |text| {
+                Arc::new(move |event| {
+                    let text = event.text().unwrap_or("");
                     if !text.is_empty() {
                         witness.chunks.fetch_add(1, Ordering::SeqCst);
                         witness.text.lock().unwrap().push_str(text);
                     }
-                    on_text(text);
+                    on_text(event);
                     if cancel_first
                         && !text.is_empty()
                         && !witness.cancellation_sent.swap(true, Ordering::SeqCst)
@@ -484,7 +485,6 @@ impl Provider for ObservedProvider {
             .push(response.clone());
         Ok(response)
     }
-
     async fn close_session(&self, session_id: &str) -> Result<()> {
         self.inner.close_session(session_id).await
     }

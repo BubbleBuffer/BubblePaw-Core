@@ -7,7 +7,7 @@ use axum::{Json, Router, extract::State, routing::post};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bubblepaw_core::{
     CancellationToken, Capabilities, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider,
-    Role, RunOptions, Store, TextCallback, ToolRegistry,
+    Role, RunOptions, Store, StreamCallback, ToolRegistry,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -279,7 +279,7 @@ impl Provider for Limited {
     async fn generate(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let step = self.calls.fetch_add(1, Ordering::SeqCst);

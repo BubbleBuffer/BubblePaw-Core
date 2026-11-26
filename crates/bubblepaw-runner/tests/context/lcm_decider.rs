@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     Answer, AnswerKind, CancellationToken, DecisionProvider, DecisionRequest, DecisionResponse,
     DecisionUsage, Message, ModelRequest, ModelResponse, Provider, ProviderError,
-    ProviderErrorKind, RequestKind, Role, Store, SubjectChapterStatus, TextCallback, Usage,
+    ProviderErrorKind, RequestKind, Role, Store, StreamCallback, SubjectChapterStatus, Usage,
 };
 use bubblepaw_runner::{
     config::{EffectiveConfig, LoadOptions, Override},
@@ -33,7 +33,7 @@ impl Provider for CountingProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let text = match request.model.as_str() {

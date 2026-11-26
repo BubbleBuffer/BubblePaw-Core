@@ -5,7 +5,7 @@ use anyhow::{Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, HarnessConfig, ModelRequest, ModelResponse, Provider, Role, Store,
-    TextCallback, ToolCall, ToolContext, ToolRegistry,
+    StreamCallback, ToolCall, ToolContext, ToolRegistry,
 };
 use bubblepaw_mcp::McpHost;
 use bubblepaw_runner::{
@@ -49,7 +49,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let task = request

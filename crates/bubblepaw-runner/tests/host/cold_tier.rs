@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextStrategy, Harness, HarnessConfig, ModelRequest, ModelResponse,
     Observation, ObservationMode, ObservationRecord, ObservationSink, Provider, Role, RunOptions,
-    Store, TextCallback, ToolRegistry, Usage,
+    Store, StreamCallback, ToolRegistry, Usage,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -33,7 +33,7 @@ impl Provider for Main {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.lock().unwrap().push(request);

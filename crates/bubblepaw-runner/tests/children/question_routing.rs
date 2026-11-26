@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role, Store,
-    TextCallback, ToolCall, ToolContext, ToolRegistry,
+    StreamCallback, ToolCall, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agent_handles::{register_agent_handles, register_agent_handles_weak},
@@ -39,7 +39,7 @@ impl Provider for RoutingScript {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let session = self.store.session(&request.session_id)?;

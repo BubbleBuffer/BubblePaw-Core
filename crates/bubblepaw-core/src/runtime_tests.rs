@@ -1,4 +1,5 @@
 use super::*;
+use crate::StreamCallback;
 
 #[test]
 fn cached_request_size_distinguishes_signed_zero_in_same_id_json_fields() -> Result<()> {
@@ -127,7 +128,7 @@ async fn prepared_guard_preserves_large_chat_journal_and_rejects_active_payload(
         async fn generate(
             &self,
             request: ModelRequest,
-            _: TextCallback,
+            _: StreamCallback,
             _: CancellationToken,
         ) -> Result<crate::ModelResponse> {
             self.0.fetch_add(1, Ordering::SeqCst);

@@ -15,7 +15,7 @@ fn chapter_rollover_is_an_explicit_optional_policy() {
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, Message, MessageOrigin, ModelRequest, ModelResponse,
-    Provider, Role, RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolRegistry,
+    Provider, Role, RunOptions, Store, StreamCallback, ToolCall, ToolContext, ToolRegistry,
     is_typed_user,
 };
 use bubblepaw_runner::agents::AgentTools;
@@ -426,7 +426,7 @@ impl Provider for ImmediateProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

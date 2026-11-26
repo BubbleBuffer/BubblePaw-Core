@@ -6,7 +6,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, EventKind, Harness, HarnessConfig, HarnessEvent, ModelRequest,
-    ModelResponse, Provider, RunOptions, Store, TextCallback, ToolRegistry, Usage,
+    ModelResponse, Provider, RunOptions, Store, StreamCallback, ToolRegistry, Usage,
 };
 use bubblepaw_runner::{
     episode_background::EpisodeBackground,
@@ -32,7 +32,7 @@ impl Provider for MainModel {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

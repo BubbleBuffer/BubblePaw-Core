@@ -12,7 +12,7 @@ impl Provider for MeteredRounds {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let mut total = Usage::default();

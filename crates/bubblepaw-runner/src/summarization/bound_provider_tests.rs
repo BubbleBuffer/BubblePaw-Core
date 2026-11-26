@@ -13,7 +13,7 @@ impl Provider for Projection {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         anyhow::bail!("local projection fixture must not make a model call")

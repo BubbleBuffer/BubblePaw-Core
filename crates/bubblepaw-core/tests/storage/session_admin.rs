@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     Approval, ApprovalMode, ApprovalPolicy, CancellationToken, Decision, EventKind, Harness,
     HarnessConfig, ModelRequest, ModelResponse, Provider, Role, RunOptions, SessionBusy, Store,
-    TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
+    StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
 };
 use serde_json::{Value, json};
 use std::sync::{
@@ -22,7 +22,7 @@ impl Provider for Model {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let last = request.messages.last().expect("a message");

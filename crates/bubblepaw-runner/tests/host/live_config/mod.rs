@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, MessageOrigin, ModelRequest, ModelResponse,
-    Provider, Role, RunOptions, Store, TextCallback, ToolCall, ToolRegistry,
+    Provider, Role, RunOptions, Store, StreamCallback, ToolCall, ToolRegistry,
 };
 use bubblepaw_mcp::McpHost;
 use bubblepaw_runner::{
@@ -41,7 +41,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let prompt = request

@@ -1,8 +1,8 @@
 use super::*;
 use crate::{
     Approval, ApprovalPolicy, CancellationToken, Decision, HarnessConfig, ModelRequest,
-    ModelResponse, Provider, RunOptions, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition,
-    ToolRegistry, ToolResult,
+    ModelResponse, Provider, RunOptions, StreamCallback, StreamEvent, Tool, ToolCall, ToolContext,
+    ToolDefinition, ToolRegistry, ToolResult,
 };
 use async_trait::async_trait;
 use std::{
@@ -26,13 +26,13 @@ impl Provider for Talk {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let round = self.round.fetch_add(1, Ordering::SeqCst);
-        on_text("First paragraph.\n\n");
+        on_text(StreamEvent::TextDelta("First paragraph.\n\n"));
         tokio::time::sleep(Duration::from_millis(1)).await;
-        on_text("Second paragraph.\n\n");
+        on_text(StreamEvent::TextDelta("Second paragraph.\n\n"));
         let text = "First paragraph.\n\nSecond paragraph.".to_string();
         if round < self.rounds {
             return Ok(ModelResponse {
@@ -59,7 +59,7 @@ impl Provider for Hang {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         cancellation.cancelled().await;
@@ -74,7 +74,7 @@ impl Provider for Write {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if self.0.fetch_add(1, Ordering::SeqCst) == 0 {

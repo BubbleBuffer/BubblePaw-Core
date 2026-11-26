@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Message, MessageOrigin, ModelRequest, ModelResponse, Provider,
-    ProviderError, ReasoningEffort, Role, TextCallback, ToolCall, ToolDefinition, Usage,
+    ProviderError, ReasoningEffort, Role, StreamCallback, ToolCall, ToolDefinition, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{

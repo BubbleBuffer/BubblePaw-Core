@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, EventKind, Harness, HarnessConfig, HarnessEvent, MessageOrigin,
-    ModelRequest, ModelResponse, Provider, Role, Store, TextCallback, ToolContext, ToolRegistry,
+    ModelRequest, ModelResponse, Provider, Role, Store, StreamCallback, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agents::AgentTools,

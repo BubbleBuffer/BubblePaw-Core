@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextBudgetExceeded, ContextPreparation, Harness, HarnessConfig, Message,
     ModelRequest, ModelResponse, PrepareCall, PrepareMode, PreparedContext, Provider,
-    ProviderError, ProviderErrorKind, Role, Run, RunOptions, Store, TextCallback, Tool, ToolCall,
+    ProviderError, ProviderErrorKind, Role, Run, RunOptions, Store, StreamCallback, Tool, ToolCall,
     ToolContext, ToolDefinition, ToolRegistry, ToolResult, Usage,
 };
 use bubblepaw_runner::{
@@ -99,7 +99,7 @@ impl Provider for Scripted {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let answered = request.messages.iter().any(|m| m.role == Role::Tool);

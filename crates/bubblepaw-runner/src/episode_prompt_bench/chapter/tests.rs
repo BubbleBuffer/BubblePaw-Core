@@ -1,7 +1,7 @@
 use super::*;
 use crate::episode_models::EpisodeModels;
 use async_trait::async_trait;
-use bubblepaw_core::{CancellationToken, ModelRequest, ModelResponse, Provider, TextCallback};
+use bubblepaw_core::{CancellationToken, ModelRequest, ModelResponse, Provider, StreamCallback};
 use std::sync::Mutex;
 
 const FIXTURES: &str = include_str!("../../../tests/fixtures/chapter-prompt-bench.json");
@@ -16,7 +16,7 @@ impl Provider for Recording {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request.clone());

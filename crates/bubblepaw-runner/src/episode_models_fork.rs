@@ -375,9 +375,10 @@ fn refuse_tool_calls(
         created_at: String::new(),
     };
     request.messages.push(Message {
+        content: bubblepaw_core::reply_blocks(&response.thinking, &response.text),
         tool_calls: response.tool_calls.clone(),
         provider_state: response.provider_state,
-        ..message(Role::Assistant, response.text)
+        ..message(Role::Assistant, String::new())
     });
     for call in response.tool_calls {
         request.messages.push(Message {

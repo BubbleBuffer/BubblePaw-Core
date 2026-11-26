@@ -12,7 +12,7 @@ async fn probe_registry_preserves_worker_namespace_cursor_and_closes_its_mirror(
         async fn generate(
             &self,
             request: ModelRequest,
-            _: bubblepaw_core::TextCallback,
+            _: bubblepaw_core::StreamCallback,
             _: CancellationToken,
         ) -> Result<bubblepaw_core::ModelResponse> {
             self.requests.lock().unwrap().push(request);

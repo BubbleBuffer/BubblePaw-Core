@@ -228,7 +228,7 @@ impl bubblepaw_core::Provider for PendingProvider {
     async fn generate(
         &self,
         _request: bubblepaw_core::ModelRequest,
-        _text: bubblepaw_core::TextCallback,
+        _text: bubblepaw_core::StreamCallback,
         cancel: CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         cancel.cancelled().await;

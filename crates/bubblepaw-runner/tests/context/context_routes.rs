@@ -4,7 +4,7 @@ use crate::chat_messages;
 use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, ModelRequest, ModelResponse, Provider, TextCallback, Usage,
+    CancellationToken, ModelRequest, ModelResponse, Provider, StreamCallback, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -50,7 +50,7 @@ impl Provider for Capture {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let decision = request.system_prompt.contains("Allowed options:");

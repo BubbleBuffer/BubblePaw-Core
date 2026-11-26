@@ -33,7 +33,7 @@ impl Provider for CodeSurface {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.generate(request, on_text, cancellation).await

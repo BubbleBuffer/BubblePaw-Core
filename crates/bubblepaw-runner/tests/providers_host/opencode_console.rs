@@ -671,11 +671,7 @@ async fn opencode_429_with_exhausted_five_hour_parks_until_reset() {
                     } else {
                         Ok(ModelResponse {
                             text: "ok".into(),
-                            tool_calls: Vec::new(),
-                            usage: None,
-                            quota: Vec::new(),
-                            last_request_usage: None,
-                            provider_state: None,
+                            ..Default::default()
                         })
                     }
                 }

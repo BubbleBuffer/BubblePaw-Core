@@ -43,6 +43,7 @@ mod runtime;
 mod script;
 mod store;
 mod stream;
+mod stream_event;
 mod submit_result;
 mod tool_result;
 use request_usage::deserialize_cache_read_tokens;
@@ -119,12 +120,11 @@ pub use store::{
     SearchIndexProgress, SessionCleanup, SessionRecord, SessionSnapshot, StorageStats, Store,
     StoreError, StoreOptions, StoreSchemaError, SubjectChapterStatus,
 };
+pub use stream_event::{StreamCallback, StreamEvent, text_callback};
 use tokio::sync::watch;
 pub use transcript::{
     ImportDerivedRecord, ImportFormat, ImportOptions, ImportResult, ImportStats, import_file,
 };
-
-pub type TextCallback = Arc<dyn Fn(&str) + Send + Sync>;
 
 #[derive(Clone, Debug)]
 pub struct CancellationToken(Arc<watch::Sender<bool>>);
@@ -374,21 +374,21 @@ pub struct ModelRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelResponse {
     pub text: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub thinking: String,
     #[serde(default)]
     pub tool_calls: Vec<ToolCall>,
     pub usage: Option<Usage>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub quota: Vec<QuotaReading>,
-    /// Distinguishes the final physical request from cumulative continuation usage.
-    /// Absent metadata retains compatibility with providers returning one logical response.
+    /// The final physical request, apart from cumulative continuation usage; absent for one logical response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_request_usage: Option<LastRequestUsage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_state: Option<Value>,
 }
 impl ModelResponse {
-    /// Deserialize a complete JSON reply into a host-owned type. This does not
-    /// validate JSON Schema; serde enforces the destination type's contract.
+    /// Deserialize a complete JSON reply into a host-owned type (serde enforces the contract, not JSON Schema).
     pub fn parse_json<T: serde::de::DeserializeOwned>(&self) -> Result<T> {
         ensure!(
             self.tool_calls.is_empty(),
@@ -442,14 +442,14 @@ pub trait Provider: Send + Sync {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse>;
     /// Generate one JSON decision sample using the request's reasoning effort.
     async fn generate_decision(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.generate(request, on_text, cancellation).await

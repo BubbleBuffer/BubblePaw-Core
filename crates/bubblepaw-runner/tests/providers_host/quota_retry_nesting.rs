@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ModelRequest, ModelResponse, Provider, ProviderError, ProviderErrorKind,
-    Store, TextCallback,
+    Store, StreamCallback,
 };
 use bubblepaw_runner::{
     provider::{ProviderRegistry, RetryPolicy},
@@ -25,7 +25,7 @@ impl Provider for AlwaysRateLimited {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.fetch_add(1, Ordering::SeqCst);

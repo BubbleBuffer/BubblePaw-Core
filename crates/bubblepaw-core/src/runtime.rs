@@ -2,8 +2,8 @@ use crate::event_log::ContentRef;
 use crate::{
     CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
     ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput,
-    RequestUsage, Role, Run, RunOptions, Store, TextCallback, ToolCall, ToolContext,
-    ToolDispatcher, ToolRegistry, ToolResult, Usage, id, now, stream::Paragraphs,
+    RequestUsage, Role, Run, RunOptions, Store, ToolCall, ToolContext, ToolDispatcher,
+    ToolRegistry, ToolResult, Usage, id, now, stream::Paragraphs,
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use async_trait::async_trait;
@@ -41,6 +41,8 @@ mod runtime_input;
 mod runtime_reminders;
 #[path = "runtime_result.rs"]
 mod runtime_result;
+#[path = "runtime_stream.rs"]
+mod runtime_stream;
 #[path = "runtime_supervision.rs"]
 mod runtime_supervision;
 #[path = "runtime_tools.rs"]
@@ -1185,38 +1187,22 @@ impl Harness {
                         .and_then(|s| s.model_request_id.clone()),
                 );
                 let paragraphs = Arc::new(Mutex::new(Paragraphs::default()));
-                let buffer = paragraphs.clone();
-                // A provider retaining a callback must not retain the archive or engine.
-                let log = self.state.log.clone();
-                let session = run.session_id.clone();
-                let run_id = run.id.clone();
                 let max = self.config.max_paragraph_bytes.max(4);
                 let callback_live = Arc::new(AtomicBool::new(true));
                 let callback_lifetime = CallbackLifetime(callback_live.clone());
-                let callback_cancellation = cancellation.clone();
-                let callback_first_text = first_text.clone();
-                let callback: TextCallback = Arc::new(move |text| {
-                    if !callback_live.load(Ordering::Relaxed)
-                        || callback_cancellation.is_cancelled()
-                    {
-                        return;
-                    }
-                    if !text.is_empty()
-                        && let Some(first) = &callback_first_text
-                    {
-                        first
-                            .lock()
-                            .unwrap()
-                            .get_or_insert(request_started.elapsed().as_millis() as u64);
-                    }
-                    if !text.is_empty() {
-                        log.progress(&session, &run_id, text.to_owned());
-                    }
-                    let mut buffer = buffer.lock().unwrap();
-                    for piece in buffer.push_bounded(text, max) {
-                        log.paragraph(&session, &run_id, piece);
-                    }
-                });
+                let callback = runtime_stream::ModelStream {
+                    // A provider retaining the callback must not retain the archive or engine.
+                    log: self.state.log.clone(),
+                    session: run.session_id.clone(),
+                    run_id: run.id.clone(),
+                    live: callback_live,
+                    cancellation: cancellation.clone(),
+                    paragraphs: paragraphs.clone(),
+                    max_paragraph_bytes: max,
+                    started: request_started,
+                    first_text: first_text.clone(),
+                }
+                .callback();
                 self.state.log.transient(
                     &run.session_id,
                     &run.id,
@@ -1329,6 +1315,7 @@ impl Harness {
             );
             let mut message =
                 Store::message(&run.session_id, Role::Assistant, response.text.clone());
+            message.content = crate::reply_blocks(&response.thinking, &response.text);
             message.tool_calls = response.tool_calls.clone();
             message.provider_state = response.provider_state;
             // The ordinary final response, result pointer, run state and its two

@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Store,
-    TextCallback, ToolContext, ToolRegistry,
+    StreamCallback, StreamEvent, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     config::ExecConfig,
@@ -19,11 +19,11 @@ impl Provider for Fragments {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         for _ in 0..1000 {
-            on_text("stream ");
+            on_text(StreamEvent::TextDelta("stream "));
         }
         Ok(ModelResponse {
             text: "stream ".repeat(1000),

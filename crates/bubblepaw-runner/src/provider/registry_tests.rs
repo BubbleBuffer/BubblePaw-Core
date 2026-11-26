@@ -14,7 +14,7 @@ impl Provider for ForkOnly {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("fork must use its isolated dispatch boundary");
@@ -170,7 +170,7 @@ impl Provider for Fixture {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.calls.lock().unwrap().push(self.name.into());
@@ -386,7 +386,7 @@ impl Provider for IdentityFixture {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.seen.lock().unwrap().push(request.model);

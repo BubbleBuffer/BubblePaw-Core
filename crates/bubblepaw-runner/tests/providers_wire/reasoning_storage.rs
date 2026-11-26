@@ -221,7 +221,7 @@ async fn history(fixture: &Fixture, kind: Kind, session: &str) -> Result<Vec<Mes
         )
         .await?;
     let mut messages: Vec<_> = (0..41).map(|index| message(session, index)).collect();
-    messages[1].content = bubblepaw_core::text_blocks(response.text);
+    messages[1].content = bubblepaw_core::reply_blocks(&response.thinking, &response.text);
     messages[1].tool_calls = response.tool_calls;
     messages[1].provider_state = response.provider_state;
     let state = messages[1].provider_state.as_ref().unwrap();
@@ -351,7 +351,6 @@ fn compress(store: &Store, session: &str, messages: &[Message]) -> Result<()> {
     );
     Ok(())
 }
-
 #[derive(Clone, Copy)]
 enum Pathway {
     Store,
@@ -551,7 +550,6 @@ path_test!(
     Messages,
     Reimport
 );
-
 path_test!(chat_store_keeps_opaque_and_next_native_bytes, Chat, Store);
 path_test!(
     chat_dictionary_keeps_opaque_and_next_native_bytes,
@@ -575,7 +573,6 @@ path_test!(
     Chat,
     Reimport
 );
-
 async fn incompatible(kind: Kind, foreign_kind: bool) -> Result<()> {
     let source = fixture(kind).await?;
     let original = history(&source, kind, "synthetic-filter").await?;

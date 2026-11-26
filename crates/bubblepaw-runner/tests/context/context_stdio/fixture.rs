@@ -2,7 +2,7 @@ use super::*;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextStrategy, Harness, HarnessConfig, ModelRequest, ModelResponse,
-    Provider, Role, RunOptions, TextCallback, ToolRegistry, Usage,
+    Provider, Role, RunOptions, StreamCallback, ToolRegistry, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -22,7 +22,7 @@ impl Provider for Main {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> anyhow::Result<ModelResponse> {
         let index = self.0.fetch_add(1, Ordering::SeqCst);

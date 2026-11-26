@@ -240,12 +240,12 @@ impl Provider for RouteFixture {
     async fn generate(
         &self,
         request: ModelRequest,
-        text: bubblepaw_core::TextCallback,
+        text: bubblepaw_core::StreamCallback,
         cancellation: CancellationToken,
     ) -> anyhow::Result<bubblepaw_core::ModelResponse> {
         self.calls.lock().unwrap().push(request);
         if self.visible {
-            text("already visible");
+            text(bubblepaw_core::StreamEvent::TextDelta("already visible"));
         }
         if self.cancel {
             cancellation.cancel();
@@ -260,6 +260,7 @@ impl Provider for RouteFixture {
             return Err(error.into());
         }
         Ok(bubblepaw_core::ModelResponse {
+            thinking: String::new(),
             text: "paid or free success".into(),
             tool_calls: vec![],
             usage: Some(bubblepaw_core::Usage {

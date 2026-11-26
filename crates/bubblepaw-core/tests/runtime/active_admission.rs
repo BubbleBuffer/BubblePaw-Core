@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions,
-    Store, TextCallback, ToolRegistry,
+    Store, StreamCallback, StreamEvent, ToolRegistry,
 };
 use std::sync::Arc;
 
@@ -12,10 +12,10 @@ impl Provider for Answer {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
-        on_text("complete");
+        on_text(StreamEvent::TextDelta("complete"));
         Ok(ModelResponse {
             text: "complete".into(),
             ..Default::default()

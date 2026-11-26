@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role,
-    RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry,
+    RunOptions, Store, StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry,
     ToolResult,
 };
 use bubblepaw_runner::{
@@ -19,7 +19,7 @@ impl Provider for Cells {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if let Some(message) = request

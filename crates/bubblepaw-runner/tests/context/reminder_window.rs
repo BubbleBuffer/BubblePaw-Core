@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Capabilities, ContextPreparation, ContextState, ModelRequest, ModelResponse,
-    Provider, Reminder, Store, TextCallback, Usage,
+    Provider, Reminder, Store, StreamCallback, Usage,
 };
 use bubblepaw_runner::{
     summarization::{LcmConfig, SummarizingContext, SummaryConfig},
@@ -45,7 +45,7 @@ impl Provider for Estimate {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("pure final validation must never dispatch")

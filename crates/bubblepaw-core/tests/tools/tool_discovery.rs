@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ExecutionMode, Harness, HarnessConfig, ModelRequest, ModelResponse,
-    Provider, RunOptions, Store, TextCallback, Tool, ToolContext, ToolDefinition, ToolRegistry,
+    Provider, RunOptions, Store, StreamCallback, Tool, ToolContext, ToolDefinition, ToolRegistry,
     ToolResult,
 };
 use serde_json::{Value, json};
@@ -22,7 +22,7 @@ impl Provider for NoProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("model-free tool calls must not invoke the provider")

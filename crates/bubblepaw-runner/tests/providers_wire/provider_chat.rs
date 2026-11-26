@@ -307,7 +307,7 @@ async fn fragmented_single_and_parallel_calls_have_native_result_round_trips() {
         let first = provider
             .generate(
                 req.clone(),
-                Arc::new(|_| panic!("tool-only text published")),
+                bubblepaw_core::text_callback(|_| panic!("tool-only text published")),
                 CancellationToken::new(),
             )
             .await
@@ -496,7 +496,7 @@ async fn native_error_finish_is_fatal_metered_and_never_an_empty_success() {
             let error = provider
                 .generate(
                     request(),
-                    Arc::new(move |text| sink.lock().unwrap().push_str(text)),
+                    bubblepaw_core::text_callback(move |t| sink.lock().unwrap().push_str(t)),
                     CancellationToken::new(),
                 )
                 .await
@@ -747,7 +747,7 @@ async fn chat_failure_keeps_publication_across_continuation_rounds() {
             .unwrap()
             .generate(
                 request(),
-                Arc::new(move |text| sink.lock().unwrap().push_str(text)),
+                bubblepaw_core::text_callback(move |t| sink.lock().unwrap().push_str(t)),
                 CancellationToken::new(),
             )
             .await

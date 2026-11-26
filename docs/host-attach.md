@@ -23,7 +23,7 @@ temporary store.
 The host publishes `<data-dir>/host.json` only after opening its control endpoint:
 
 ```json
-{"pid":1234,"endpoint":"/path/to/data/host.sock","protocol_version":7}
+{"pid":1234,"endpoint":"/path/to/data/host.sock","protocol_version":8}
 ```
 
 On Unix, the socket is inside the data directory. The directory is owned by the
@@ -110,7 +110,7 @@ be auto-denied or cleaned up by another request's event listener. Providers and
 request resources drain independently; shared `Harness::shutdown` runs once at
 host exit.
 
-## Control protocol, version 7
+## Control protocol, version 8
 
 The endpoint carries newline-delimited JSON-RPC 2.0, reusing stdio's envelopes and
 `event` records. It is private local process control, not a network service.

@@ -103,7 +103,7 @@ impl Provider for ShapedChat {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

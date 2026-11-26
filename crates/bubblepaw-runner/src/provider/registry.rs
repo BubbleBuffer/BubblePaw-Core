@@ -1,5 +1,6 @@
 //! Qualified `provider/model` routes share one harness provider; unqualified models use the default.
 //! Explicit missing prefixes fail at dispatch instead of falling back.
+use super::registry_stream;
 use super::{RetryPolicy, metering::record_model_result, retry::add_usage, with_retry};
 use anyhow::{Result, ensure};
 use async_trait::async_trait;
@@ -7,7 +8,7 @@ use bubblepaw_core::{
     CancellationToken, Capabilities, CursorResets, DecisionProvider, DecisionRequest,
     DecisionResponse, DecisionUsage, LastRequestUsage, ModelInfo, ModelRequest, ModelResponse,
     Provider, ProviderError, ProviderErrorKind, QuotaReading, RequestKind, RequestUsage, Store,
-    TextCallback, Usage,
+    StreamCallback, Usage,
 };
 use std::{
     collections::{BTreeSet, HashMap},
@@ -529,7 +530,7 @@ impl ProviderRegistry {
     async fn generate_routed(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
         decision: bool,
         retry_base_delay: Option<Duration>,
@@ -629,12 +630,7 @@ impl ProviderRegistry {
             let published = Arc::new(AtomicBool::new(false));
             let visible = published.clone();
             let callback = on_text.clone();
-            let guarded: TextCallback = Arc::new(move |text| {
-                if !text.is_empty() {
-                    visible.store(true, Ordering::Release);
-                }
-                callback(text);
-            });
+            let (guarded, thinking) = registry_stream::guard(callback, visible);
             let account = self.account(&id);
             let attempt_state = Arc::new(Mutex::new(Attempts::default()));
             // One nesting order for main turns and forks: the quota host drives
@@ -643,6 +639,7 @@ impl ProviderRegistry {
             let call = || {
                 let request = next.clone();
                 let on_text = guarded.clone();
+                let (discard, thinking) = (on_text.clone(), thinking.clone());
                 let cancellation = cancellation.clone();
                 let published = published.clone();
                 let id = id.clone();
@@ -661,6 +658,7 @@ impl ProviderRegistry {
                     let result = result.map_err(|error| {
                         super::mark_published(error, published.load(Ordering::Acquire))
                     });
+                    registry_stream::discard_abandoned(&result, &published, &thinking, &discard);
                     if bubblepaw_core::request_usage_count() == before {
                         record_model_result(record, &result);
                     }
@@ -1032,7 +1030,7 @@ impl Provider for ProviderRegistry {
     async fn generate_decision(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let session = request.session_id.clone();
@@ -1080,7 +1078,7 @@ impl Provider for ProviderRegistry {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let session = request.session_id.clone();

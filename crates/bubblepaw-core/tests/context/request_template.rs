@@ -4,8 +4,8 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Observation,
-    ObservationMode, ObservationRecord, ObservationSink, Provider, RunOptions, Store, TextCallback,
-    Tool, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
+    ObservationMode, ObservationRecord, ObservationSink, Provider, RunOptions, Store,
+    StreamCallback, Tool, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
 };
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -17,7 +17,7 @@ impl Provider for Answer {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.lock().unwrap().push(request);

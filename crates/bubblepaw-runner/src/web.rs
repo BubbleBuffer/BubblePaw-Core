@@ -527,8 +527,8 @@ mod tests {
         response::IntoResponse,
     };
     use bubblepaw_core::{
-        HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions, TextCallback, Tool,
-        ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
+        HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions, StreamCallback,
+        StreamEvent, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
     };
     use serde_json::{Value, json};
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -540,12 +540,12 @@ mod tests {
         async fn generate(
             &self,
             _request: ModelRequest,
-            on_text: TextCallback,
+            on_text: StreamCallback,
             _cancellation: CancellationToken,
         ) -> Result<ModelResponse> {
             let round = self.0.fetch_add(1, Ordering::Relaxed);
             let text = format!("Persisted round {round}.");
-            on_text(&format!("{text}\n\n"));
+            on_text(StreamEvent::TextDelta(&format!("{text}\n\n")));
             Ok(ModelResponse {
                 text,
                 tool_calls: vec![ToolCall {

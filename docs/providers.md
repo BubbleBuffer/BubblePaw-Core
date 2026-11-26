@@ -385,6 +385,22 @@ usage including cache reads and writes, and the stop reason. Chat requests
   Each batch is forwarded to host subscribers as a live `text_delta` progress
   event (`EventKind::TextDelta`): never stored, not part of `streaming_text`,
   and not counted in `live_seen`. The `paragraph` events are unchanged.
+- Adapters report through one typed listener, `StreamCallback`, which takes a
+  `StreamEvent` (`#[non_exhaustive]`): `TextDelta` for reply text and
+  `ThinkingDelta` for readable reasoning. Readable reasoning streams from Chat
+  `reasoning_content` deltas, Anthropic `thinking_delta` blocks and Responses
+  reasoning-summary deltas; a break of two newlines joins separate blocks or
+  summary parts. Encrypted or redacted reasoning reports nothing, and the
+  extension provider forwards text only. A batch never mixes the two kinds, so
+  their order is kept. `bubblepaw_core::text_callback` wraps a text-only closure.
+- The readable thinking is in `ModelResponse.thinking`. The loop stores it as a
+  `ContentBlock::Thinking` before the text, a second readable copy for hosts:
+  `provider_state` is unchanged for every adapter and the adapters never read the
+  block, so the reasoning is stored twice until the adapters move.
+- A failed attempt that streamed thinking but no text is retried or falls back
+  through the same listener, so the registry then emits `StreamEvent::ThinkingDiscarded`
+  and listeners drop the thinking shown so far. Thinking never blocks a retry.
+- `StreamCallback` replaces the SDK's `TextCallback`.
 - Nothing partial is persisted. A cancelled call returns `cancelled`; a stream
   that fails mid-way returns its error and keeps what the listener already got.
 - A dropped or silent stream is transient only before any text reached the

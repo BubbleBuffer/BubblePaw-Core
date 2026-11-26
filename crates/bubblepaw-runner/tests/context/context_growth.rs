@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, Message, ModelRequest, ModelResponse, Provider,
-    Role, RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition,
+    Role, RunOptions, Store, StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition,
     ToolRegistry, ToolResult, Usage,
 };
 use bubblepaw_runner::{
@@ -61,7 +61,7 @@ impl Provider for OfflineActions {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let summary = request.system_prompt == SUMMARY_PROMPT;

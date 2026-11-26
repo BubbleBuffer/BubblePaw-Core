@@ -338,7 +338,7 @@ mod tests {
         async fn generate(
             &self,
             _request: bubblepaw_core::ModelRequest,
-            _text: bubblepaw_core::TextCallback,
+            _text: bubblepaw_core::StreamCallback,
             cancellation: bubblepaw_core::CancellationToken,
         ) -> anyhow::Result<bubblepaw_core::ModelResponse> {
             cancellation.cancelled().await;

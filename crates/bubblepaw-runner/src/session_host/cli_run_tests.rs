@@ -15,7 +15,7 @@ impl bubblepaw_core::Provider for Pending {
     async fn generate(
         &self,
         _request: bubblepaw_core::ModelRequest,
-        _text: bubblepaw_core::TextCallback,
+        _text: bubblepaw_core::StreamCallback,
         cancel: CancellationToken,
     ) -> anyhow::Result<bubblepaw_core::ModelResponse> {
         cancel.cancelled().await;

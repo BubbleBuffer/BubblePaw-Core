@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, FullHistory, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider,
-    RunOptions, Store, TextCallback, ToolRegistry, Usage,
+    RunOptions, Store, StreamCallback, ToolRegistry, Usage,
 };
 use bubblepaw_runner::usage::{UsageContext, UsageSettings, session_usage};
 use std::sync::{Arc, Mutex};
@@ -13,7 +13,7 @@ impl Provider for Responses {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(self
@@ -33,7 +33,7 @@ impl Provider for Outcomes {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0
@@ -53,7 +53,7 @@ impl Provider for AwaitCancellation {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         if let Some(response) = self.first.lock().unwrap().take() {
@@ -185,7 +185,7 @@ impl Provider for Metered {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

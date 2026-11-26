@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextPreparation, Harness, HarnessConfig, Message, ModelRequest,
     ModelResponse, PrepareCall, PreparedContext, Provider, ReasoningEffort, Role, Store,
-    TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult, Usage,
+    StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult, Usage,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -671,7 +671,7 @@ impl Provider for ProbeProvider {
     async fn generate(
         &self,
         request_view: ModelRequest,
-        _on_text: TextCallback,
+        _on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let mut messages = vec![json!({"role":"system","content":request_view.system_prompt})];
@@ -726,10 +726,8 @@ impl Provider for ProbeProvider {
             "Probe answer has no text"
         );
         Ok(ModelResponse {
-            quota: Vec::new(),
             text,
             tool_calls: calls,
-            last_request_usage: None,
             provider_state: item.get("provider_state").cloned().filter(|v| !v.is_null()),
             usage: Some(Usage {
                 input_tokens: usage(&payload)["input_tokens"].as_u64().unwrap_or_default(),
@@ -745,6 +743,7 @@ impl Provider for ProbeProvider {
                 reasoning_tokens: payload["usage"]["completion_tokens_details"]["reasoning_tokens"]
                     .as_u64(),
             }),
+            ..Default::default()
         })
     }
     async fn close_session(&self, session_id: &str) -> Result<()> {

@@ -4,8 +4,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, Message, ModelRequest, ModelResponse, Provider,
-    Role, RunOptions, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry,
-    ToolResult, Usage,
+    Role, RunOptions, StreamCallback, StreamEvent, Tool, ToolCall, ToolContext, ToolDefinition,
+    ToolRegistry, ToolResult, Usage,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -466,7 +466,7 @@ async fn messages_before_pages_older_history_and_validates_cursors_and_limits() 
 struct GatedProvider {
     entered: Semaphore,
     release: Semaphore,
-    callback: Mutex<Option<TextCallback>>,
+    callback: Mutex<Option<StreamCallback>>,
     requests: Mutex<Vec<ModelRequest>>,
 }
 impl GatedProvider {
@@ -482,7 +482,7 @@ impl GatedProvider {
         self.entered.acquire().await.unwrap().forget();
     }
     fn emit(&self, text: &str) {
-        self.callback.lock().unwrap().as_ref().unwrap()(text);
+        self.callback.lock().unwrap().as_ref().unwrap()(StreamEvent::TextDelta(text));
     }
 }
 #[async_trait]
@@ -490,12 +490,12 @@ impl Provider for GatedProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
         *self.callback.lock().unwrap() = Some(on_text.clone());
-        on_text("A live paragraph.\n\n");
+        on_text(StreamEvent::TextDelta("A live paragraph.\n\n"));
         self.entered.add_permits(1);
         tokio::select! { _ = cancellation.cancelled() => anyhow::bail!("cancelled"), permit = self.release.acquire() => permit.unwrap().forget() }
         Ok(ModelResponse {
@@ -1094,7 +1094,7 @@ impl Provider for LargeWebModel {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

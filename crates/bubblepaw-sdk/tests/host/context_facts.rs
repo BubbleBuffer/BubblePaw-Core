@@ -2,7 +2,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_sdk::harness::{CancellationToken, Harness, HarnessConfig, RunOptions};
-use bubblepaw_sdk::providers::{ModelRequest, ModelResponse, Provider, TextCallback, Usage};
+use bubblepaw_sdk::providers::{ModelRequest, ModelResponse, Provider, StreamCallback, Usage};
 use bubblepaw_sdk::store::{
     ContextBlock, ContextBlockKind, ContextChapter, ContextEpisode, ContextEvent, ContextEventKind,
     ContextSubjectChapter, ContextTrigger, ContextView, HistoryRange, MessageTokenSource,
@@ -19,7 +19,7 @@ impl Provider for ReportedAnswer {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

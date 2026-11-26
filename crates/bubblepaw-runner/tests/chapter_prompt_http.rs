@@ -3,8 +3,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use axum::{Json, Router, extract::State, routing::post};
 use bubblepaw_core::{
-    CancellationToken, Message, ModelRequest, ModelResponse, Provider, Store, SubjectChapterStatus,
-    TextCallback, Usage,
+    CancellationToken, Message, ModelRequest, ModelResponse, Provider, Store, StreamCallback,
+    SubjectChapterStatus, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{EpisodeModelConfig, HttpEpisodeModels},
@@ -29,7 +29,7 @@ impl Provider for NoMainCalls {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("unexpected main model request")
@@ -47,7 +47,7 @@ impl Provider for ScriptedTransport {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests

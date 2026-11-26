@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextStrategy, Harness, HarnessConfig, Message, ModelRequest,
-    ModelResponse, Provider, Role, RunOptions, Store, TextCallback, ToolRegistry, Usage,
+    ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, ToolRegistry, Usage,
 };
 use bubblepaw_runner::{
     context_strategies::compact_command,
@@ -37,7 +37,7 @@ impl Provider for NoMain {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         bail!("manual compaction must not invoke the main model")

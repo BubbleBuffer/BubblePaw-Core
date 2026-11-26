@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextCheckpoint, ContextPreparation, EventKind, Harness, HarnessConfig,
     Message, ModelRequest, ModelResponse, PrepareCall, PreparedContext, Provider, RunOptions,
-    Store, TextCallback, ToolRegistry, Usage,
+    Store, StreamCallback, ToolRegistry, Usage,
 };
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
@@ -15,7 +15,7 @@ impl Provider for RecordingProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.lock().unwrap().push(request);
@@ -358,7 +358,7 @@ impl Provider for FailedProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         anyhow::bail!("provider request failed")

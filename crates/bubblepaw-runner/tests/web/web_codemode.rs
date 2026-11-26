@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role,
-    RunOptions, Store, TextCallback, ToolCall, ToolRegistry,
+    RunOptions, Store, StreamCallback, ToolCall, ToolRegistry,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -27,7 +27,7 @@ impl Provider for Capture {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         assert_eq!(

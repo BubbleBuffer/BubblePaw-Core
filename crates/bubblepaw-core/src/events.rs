@@ -72,6 +72,15 @@ pub enum EventKind {
     TextDelta {
         text: String,
     },
+    /// Live progress: one batch of the model's readable thinking, in order with
+    /// the text deltas. Live only, like `TextDelta`; the stored reply carries it
+    /// as a thinking block.
+    ThinkingDelta {
+        text: String,
+    },
+    /// The thinking streamed so far for this model request belongs to an attempt
+    /// that was retried or fell back: hosts discard it. Live only.
+    ThinkingDiscarded {},
     ToolStarted {
         call: ToolCall,
     },

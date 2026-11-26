@@ -1,6 +1,6 @@
 use super::*;
 use bubblepaw_core::{
-    CancellationToken, HarnessConfig, ModelRequest, ModelResponse, Provider, TextCallback,
+    CancellationToken, HarnessConfig, ModelRequest, ModelResponse, Provider, StreamCallback,
 };
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ impl Provider for Idle {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse::default())

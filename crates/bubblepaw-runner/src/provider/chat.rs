@@ -5,8 +5,8 @@ use anyhow::{Result, anyhow, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CacheMode, CancellationToken, Capabilities, ModelRequest, ModelResponse, Provider,
-    ProviderError, ProviderErrorKind, ReasoningReplay, Role, TextCallback, ToolCall, ToolSurface,
-    Usage,
+    ProviderError, ProviderErrorKind, ReasoningReplay, Role, StreamCallback, StreamEvent, ToolCall,
+    ToolSurface, Usage,
 };
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
@@ -286,7 +286,7 @@ impl ChatCompletionsProvider {
     /// JSON reply. Text reaches the listener in batches as it arrives.
     async fn read_stream(
         response: reqwest::Response,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: &CancellationToken,
     ) -> Result<Value> {
         let mut reader = SseReader::new(response);
@@ -364,6 +364,7 @@ impl ChatCompletionsProvider {
                 }
                 if let Some(fragment) = delta["reasoning_content"].as_str() {
                     reasoning.get_or_insert_with(String::new).push_str(fragment);
+                    batch.push_thinking(fragment);
                 }
                 if let Some(fragment) = delta["reasoning"].as_str() {
                     openrouter_reasoning.get_or_insert_with(String::new).push_str(fragment);
@@ -499,6 +500,7 @@ fn chat_compatible(state: &Value, model: &str) -> bool {
             && state.as_object().is_some_and(|fields| fields.len() == 1 && fields.contains_key("reasoning_content")))
 }
 
+/// One assistant wire message from a stored state.
 fn chat_wire_message(state: &Value, text: &str) -> Value {
     let mut fields = state["message_fields"]
         .as_object()
@@ -664,7 +666,7 @@ impl ChatCompletionsProvider {
     async fn round(
         &self,
         request: &ModelRequest,
-        on_text: &TextCallback,
+        on_text: &StreamCallback,
         cancellation: &CancellationToken,
     ) -> Result<(ModelResponse, bool)> {
         let body = self.round_body(request)?;
@@ -799,12 +801,20 @@ impl ChatCompletionsProvider {
                         ));
                     }
                 };
+                let thinking = message["reasoning_content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned();
+                if !streamed && !thinking.is_empty() {
+                    on_text(StreamEvent::ThinkingDelta(&thinking));
+                }
                 if !streamed && !text.is_empty() {
-                    on_text(&text);
+                    on_text(StreamEvent::TextDelta(&text));
                 }
                 Ok(ModelResponse {
                     quota: Vec::new(),
                     text,
+                    thinking,
                     tool_calls: calls,
                     last_request_usage: Some(bubblepaw_core::LastRequestUsage {
                         input_tokens: last_request_input,
@@ -881,7 +891,7 @@ impl Provider for ChatCompletionsProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let (on_text, published) = super::track_text_publication(on_text);
@@ -890,11 +900,13 @@ impl Provider for ChatCompletionsProvider {
             let mut request = request;
             let mut text = String::new();
             let mut continuations = 0;
+            let mut thinking = String::new();
             let mut rounds = Vec::new();
             loop {
                 let (round, length) = self.round(&request, &on_text, &cancellation).await?;
                 let start = text.len();
                 text.push_str(&round.text);
+                thinking.push_str(&round.thinking);
                 if let Some(mut state) = round.provider_state.clone() {
                     state.as_object_mut().unwrap().remove("adapter");
                     state
@@ -936,6 +948,7 @@ impl Provider for ChatCompletionsProvider {
                 return Ok(ModelResponse {
                     quota: Vec::new(),
                     text,
+                    thinking,
                     tool_calls: round.tool_calls,
                     last_request_usage: round.last_request_usage,
                     usage: usage.clone(),
@@ -963,155 +976,5 @@ impl Provider for ChatCompletionsProvider {
 }
 
 #[cfg(test)]
-mod prepared_accounting_tests {
-    use super::*;
-    use std::sync::Arc;
-
-    #[tokio::test]
-    async fn stream_envelope_is_not_repeated_per_token_but_extensions_survive() -> Result<()> {
-        let mut body = String::new();
-        for index in 0..256 {
-            let mut delta = json!({"content":"x", "reasoning_content":"thought "});
-            if matches!(index, 4 | 5) {
-                delta["vendor_signature_delta"] = json!("same opaque fragment");
-            }
-            let event = json!({"id":"completion-1", "object":"chat.completion.chunk",
-                "created":123, "model":"test", "system_fingerprint":"fp",
-                "choices":[{"index":0,"delta":delta,"finish_reason":null}]});
-            body.push_str(&format!("data: {event}\n\n"));
-        }
-        body.push_str("data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":512}}\n\ndata: [DONE]\n\n");
-        let app = axum::Router::new().route(
-            "/chat/completions",
-            axum::routing::post(move || {
-                let body = body.clone();
-                async move { ([("content-type", "text/event-stream")], body) }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-        let base = format!("http://{}", listener.local_addr()?);
-        let server = tokio::spawn(async move { axum::serve(listener, app).await });
-        let provider = ChatCompletionsProvider::without_key(base)?;
-        let result = provider
-            .generate(
-                ModelRequest {
-                    model: "test".into(),
-                    ..Default::default()
-                },
-                Arc::new(|_| {}),
-                CancellationToken::new(),
-            )
-            .await;
-        server.abort();
-        let response = result?;
-        assert_eq!(response.text, "x".repeat(256));
-        let state = response.provider_state.unwrap();
-        assert_eq!(
-            state["message_fields"]["reasoning_content"],
-            "thought ".repeat(256)
-        );
-        let fragments = state["opaque_stream_fragments"].as_array().unwrap();
-        assert_eq!(
-            fragments.len(),
-            2,
-            "ordinary SSE framing must not become a token-by-token archive"
-        );
-        for fragment in fragments {
-            assert_eq!(
-                fragment["choices"][0]["delta"]["vendor_signature_delta"],
-                "same opaque fragment"
-            );
-            assert!(fragment.get("id").is_none());
-        }
-        assert_eq!(state["response_fields"]["id"], "completion-1");
-        assert_eq!(state["response_fields"]["model"], "test");
-        assert_eq!(state["response_fields"]["system_fingerprint"], "fp");
-        Ok(())
-    }
-
-    #[test]
-    fn counting_large_canonical_journal_does_not_change_native_chat_wire() -> Result<()> {
-        let provider = ChatCompletionsProvider::without_key("http://127.0.0.1:1")?
-            .with_reasoning_replay(BTreeMap::from([("test".into(), ReasoningReplay::All)]))?;
-        let state = json!({"adapter":"chat-completions","message_fields":{"reasoning_content":"native reasoning"},
-            "opaque_stream_fragments":[{"event":"x".repeat(3 * 1024 * 1024)}]});
-        let mut message = bubblepaw_core::Message {
-            id: "a".into(),
-            session_id: "s".into(),
-            role: Role::Assistant,
-            origin: None,
-            content: bubblepaw_core::text_blocks("visible"),
-            provider_state: Some(state),
-            created_at: "now".into(),
-            ..Default::default()
-        };
-        let mut request = ModelRequest {
-            model: "test".into(),
-            messages: vec![message.clone()],
-            ..Default::default()
-        };
-        let canonical = request.clone();
-        let before = provider.wire_messages(&request)?;
-        assert!(serde_json::to_vec(&request)?.len() > 2 * 1024 * 1024);
-        assert!(bubblepaw_core::prepared_request_bytes(&request)? < 2 * 1024 * 1024);
-        assert_eq!(request.messages, canonical.messages);
-        assert_eq!(provider.wire_messages(&request)?, before);
-        message
-            .provider_state
-            .as_mut()
-            .unwrap()
-            .as_object_mut()
-            .unwrap()
-            .remove("opaque_stream_fragments");
-        request.messages[0] = message;
-        assert_eq!(provider.wire_messages(&request)?, before);
-        assert_eq!(before[1]["reasoning_content"], "native reasoning");
-        Ok(())
-    }
-
-    #[test]
-    fn wire_shape_hashes_the_sent_body_and_appends_extend_its_prefix() -> Result<()> {
-        let provider = ChatCompletionsProvider::without_key("http://127.0.0.1:1")?;
-        let message = |id: &str, content: &str| bubblepaw_core::Message {
-            id: id.into(),
-            session_id: "s".into(),
-            role: Role::User,
-            origin: None,
-            content: bubblepaw_core::text_blocks(content),
-            created_at: "now".into(),
-            ..Default::default()
-        };
-        let first_request = ModelRequest {
-            model: "test".into(),
-            messages: vec![message("1", "a")],
-            ..Default::default()
-        };
-        let second_request = ModelRequest {
-            model: "test".into(),
-            messages: vec![message("1", "a"), message("2", "b")],
-            ..Default::default()
-        };
-        let first = provider.wire_shape(&first_request).unwrap();
-        let second = provider.wire_shape(&second_request).unwrap();
-        // Appending one message keeps every earlier boundary and adds one.
-        assert!(second.boundaries.starts_with(&first.boundaries));
-        assert_eq!(second.boundaries.len(), first.boundaries.len() + 1);
-        assert!(second.wire_bytes > first.wire_bytes);
-        // The shape is built from the same body helper that `round` posts.
-        let body = provider.round_body(&second_request)?;
-        assert_eq!(body["model"], json!("test"));
-        assert_eq!(body["stream"], json!(true));
-        let mut expected = bubblepaw_core::WireShape::from_body(
-            &body,
-            "messages",
-            bubblepaw_core::DEFAULT_CACHE_BLOCK_TOKENS,
-        );
-        expected.model = "test".into();
-        assert_eq!(second, expected);
-        assert!(
-            second.provider.is_empty(),
-            "adapters leave the route id empty"
-        );
-        Ok(())
-    }
-}
+#[path = "chat_tests.rs"]
+mod prepared_accounting_tests;

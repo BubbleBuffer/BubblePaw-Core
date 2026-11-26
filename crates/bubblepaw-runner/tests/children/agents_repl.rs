@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role,
-    RunOptions, Store, TextCallback, ToolCall, ToolRegistry, Usage,
+    RunOptions, Store, StreamCallback, ToolCall, ToolRegistry, Usage,
 };
 use bubblepaw_runner::{
     agent_handles::register_agent_handles, agents::AgentTools, artifacts::ArtifactStore,
@@ -19,7 +19,7 @@ impl Provider for FamilyProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         assert_eq!(request.tools.len(), 1);
@@ -231,7 +231,7 @@ impl Provider for CellProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let (index, input) = request

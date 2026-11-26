@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, TextCallback,
-    ToolRegistry,
+    CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider,
+    StreamCallback, ToolRegistry,
 };
 use async_trait::async_trait;
 use serde_json::json;
@@ -13,7 +13,7 @@ impl Provider for Idle {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse::default())

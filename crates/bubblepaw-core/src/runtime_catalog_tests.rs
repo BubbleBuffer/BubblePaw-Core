@@ -1,4 +1,5 @@
 use super::*;
+use crate::StreamCallback;
 use crate::{ObservationMode, ObservationRecord, ObservationSink};
 
 #[derive(Default)]
@@ -15,7 +16,7 @@ impl Provider for Answer {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

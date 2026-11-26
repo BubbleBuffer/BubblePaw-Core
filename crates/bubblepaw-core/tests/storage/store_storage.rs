@@ -436,7 +436,7 @@ impl bubblepaw_core::Provider for InputProvider {
     async fn generate(
         &self,
         _: bubblepaw_core::ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         Ok(bubblepaw_core::ModelResponse {

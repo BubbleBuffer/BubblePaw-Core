@@ -11,8 +11,8 @@ use axum::{
 };
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, Message, ModelRequest, Provider, ReasoningReplay,
-    Role, RunOptions, Store, TextCallback, Tool, ToolContext, ToolDefinition, ToolRegistry,
-    ToolResult,
+    Role, RunOptions, Store, StreamCallback, StreamEvent, Tool, ToolContext, ToolDefinition,
+    ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::provider::{ChatCompletionsProvider, MessagesProvider, ResponsesProvider};
 use serde_json::{Value, json};
@@ -25,9 +25,9 @@ use std::{
 };
 
 #[derive(Clone, Default)]
-struct Mock {
+pub(super) struct Mock {
     replies: Arc<Mutex<VecDeque<String>>>,
-    requests: Arc<Mutex<Vec<Value>>>,
+    pub(super) requests: Arc<Mutex<Vec<Value>>>,
 }
 
 async fn handle(State(mock): State<Mock>, Json(body): Json<Value>) -> Response {
@@ -36,7 +36,7 @@ async fn handle(State(mock): State<Mock>, Json(body): Json<Value>) -> Response {
     ([(header::CONTENT_TYPE, "text/event-stream")], reply).into_response()
 }
 
-async fn start(replies: Vec<String>) -> (String, Mock) {
+pub(super) async fn start(replies: Vec<String>) -> (String, Mock) {
     let mock = Mock {
         replies: Arc::new(Mutex::new(replies.into())),
         requests: Arc::default(),
@@ -52,18 +52,18 @@ async fn start(replies: Vec<String>) -> (String, Mock) {
     (base, mock)
 }
 
-fn sse(values: &[Value]) -> String {
+pub(super) fn sse(values: &[Value]) -> String {
     values
         .iter()
         .map(|value| format!("data: {value}\n\n"))
         .collect()
 }
 
-fn noop() -> TextCallback {
-    Arc::new(|_: &str| {})
+pub(super) fn noop() -> StreamCallback {
+    Arc::new(|_: StreamEvent| {})
 }
 
-fn message(role: Role, content: &str) -> Message {
+pub(super) fn message(role: Role, content: &str) -> Message {
     Message {
         id: format!("m-{content}"),
         session_id: "synthetic-session".into(),
@@ -78,13 +78,21 @@ fn message(role: Role, content: &str) -> Message {
     }
 }
 
-fn assistant(content: &str, state: Option<Value>) -> Message {
+pub(super) fn assistant(content: &str, state: Option<Value>) -> Message {
     let mut message = message(Role::Assistant, content);
     message.provider_state = state;
     message
 }
 
-fn request(model: &str, messages: Vec<Message>) -> ModelRequest {
+/// The assistant message the loop stores for `response`: its thinking block, then its text.
+pub(super) fn reply(response: bubblepaw_core::ModelResponse) -> Message {
+    let mut message = assistant("", response.provider_state);
+    message.content = bubblepaw_core::reply_blocks(&response.thinking, &response.text);
+    message.tool_calls = response.tool_calls;
+    message
+}
+
+pub(super) fn request(model: &str, messages: Vec<Message>) -> ModelRequest {
     ModelRequest {
         model: model.into(),
         system_prompt: "test".into(),
@@ -95,7 +103,7 @@ fn request(model: &str, messages: Vec<Message>) -> ModelRequest {
 
 // Chat completions.
 
-fn chat_reply(reasoning: &str, text: &str) -> String {
+pub(super) fn chat_reply(reasoning: &str, text: &str) -> String {
     format!(
         "{}data: [DONE]\n\n",
         sse(&[
@@ -107,7 +115,7 @@ fn chat_reply(reasoning: &str, text: &str) -> String {
     )
 }
 
-const CHAT_MODEL: &str = "synthetic-reasoner";
+pub(super) const CHAT_MODEL: &str = "synthetic-reasoner";
 
 fn chat_tool() -> ToolDefinition {
     ToolDefinition {
@@ -156,14 +164,13 @@ async fn chat_history(with_tools: bool) -> Vec<Message> {
         responses.push(response);
     }
     let response = responses.pop().unwrap();
-    let mut call = assistant(&response.text, response.provider_state);
-    call.tool_calls = response.tool_calls;
+    let call = reply(response);
     let mut result = message(Role::Tool, "file a");
     result.tool_call_id = Some("call-1".into());
     let first = responses.pop().unwrap();
     let mut history = vec![
         message(Role::User, "first"),
-        assistant(&first.text, first.provider_state),
+        reply(first),
         message(Role::User, "second"),
         call,
     ];
@@ -190,16 +197,13 @@ async fn chat_body(policy: Option<ReasoningReplay>, model: &str, with_tools: boo
 }
 
 #[tokio::test]
-async fn chat_stores_reasoning_in_every_reply() {
+async fn chat_stores_reasoning_in_every_reply_and_in_the_thinking_block() {
     let history = chat_history(true).await;
-    assert_eq!(
-        history[1].provider_state.as_ref().unwrap()["message_fields"]["reasoning_content"],
-        "R-closed"
-    );
-    assert_eq!(
-        history[3].provider_state.as_ref().unwrap()["message_fields"]["reasoning_content"],
-        "R-loop"
-    );
+    for (index, thinking) in [(1, "R-closed"), (3, "R-loop")] {
+        assert_eq!(history[index].thinking(), thinking);
+        let fields = &history[index].provider_state.as_ref().unwrap()["message_fields"];
+        assert_eq!(fields["reasoning_content"], thinking);
+    }
 }
 
 #[tokio::test]
@@ -345,11 +349,7 @@ async fn chat_tool_loop_replays_reasoning_through_an_executed_tool_and_tools_fre
     assert_eq!(result.text.as_deref(), Some("done"));
     assert_eq!(tools.0.load(Ordering::SeqCst), 1);
     let history = store.messages(&session.id).unwrap();
-    let final_state = history.last().unwrap().provider_state.as_ref().unwrap();
-    assert_eq!(
-        final_state["message_fields"]["reasoning_content"],
-        "R-final"
-    );
+    assert_eq!(history.last().unwrap().thinking(), "R-final");
     let all_requests = mock.requests.lock().unwrap();
     let requests = &all_requests[1..];
     assert_eq!(requests.len(), 2);
@@ -385,10 +385,10 @@ async fn chat_tool_loop_replays_reasoning_through_an_executed_tool_and_tools_fre
 
 // Cross-provider: foreign reasoning stays stored and returns to its origin.
 
-const RESPONSES_MODEL: &str = "gpt-6-luna";
-const MESSAGES_MODEL: &str = "claude-haiku-5-5";
+pub(super) const RESPONSES_MODEL: &str = "gpt-6-luna";
+pub(super) const MESSAGES_MODEL: &str = "claude-haiku-5-5";
 
-fn responses_reply(reasoning: &Value, text: &str) -> String {
+pub(super) fn responses_reply(reasoning: &Value, text: &str) -> String {
     let message = json!({"type":"message","id":"msg-r","role":"assistant","status":"completed","content":[{"type":"output_text","text":text,"annotations":[]}]});
     sse(&[
         json!({"type":"response.output_text.delta","delta":text}),
@@ -396,7 +396,7 @@ fn responses_reply(reasoning: &Value, text: &str) -> String {
     ])
 }
 
-fn messages_reply(thinking: &Value, text: &str) -> String {
+pub(super) fn messages_reply(thinking: &Value, text: &str) -> String {
     let mut start = thinking.clone();
     start["thinking"] = json!("");
     start["signature"] = json!("");
@@ -442,7 +442,7 @@ async fn foreign_reasoning_is_kept_and_replayed_when_the_session_returns_to_its_
         )
         .await
         .unwrap();
-    history.push(assistant(&first.text, first.provider_state));
+    history.push(reply(first));
     history.push(message(Role::User, "two"));
     let second = messages
         .generate(
@@ -452,7 +452,7 @@ async fn foreign_reasoning_is_kept_and_replayed_when_the_session_returns_to_its_
         )
         .await
         .unwrap();
-    history.push(assistant(&second.text, second.provider_state));
+    history.push(reply(second));
     history.push(message(Role::User, "three"));
     let stored = serde_json::to_string(&history).unwrap();
     assert!(stored.contains("enc-origin+/==猫") && stored.contains("sig-origin+/==猫"));
@@ -510,7 +510,7 @@ async fn chat_all_replay_sends_reasoning_only_to_its_origin_provider_and_model()
         )
         .await
         .unwrap();
-    history.push(assistant(&first.text, first.provider_state));
+    history.push(reply(first));
     history.push(message(Role::User, "two"));
     let second = chat
         .generate(
@@ -520,7 +520,7 @@ async fn chat_all_replay_sends_reasoning_only_to_its_origin_provider_and_model()
         )
         .await
         .unwrap();
-    history.push(assistant(&second.text, second.provider_state));
+    history.push(reply(second));
     history.push(message(Role::User, "three"));
     let stored = serde_json::to_vec(&history).unwrap();
     chat.generate(

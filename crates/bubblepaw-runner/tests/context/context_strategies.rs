@@ -6,7 +6,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextStrategy, Message, ModelRequest, ModelResponse, Provider, Role,
-    Store, TextCallback, ToolCall, Usage,
+    Store, StreamCallback, ToolCall, Usage,
 };
 use bubblepaw_runner::{
     context_strategies::{TYPED_USER_TOKENS, files_touched, typed_user_block},
@@ -33,7 +33,7 @@ impl Provider for NoProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         bail!("context preparation must not invoke the main model")

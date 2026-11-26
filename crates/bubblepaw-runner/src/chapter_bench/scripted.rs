@@ -5,7 +5,7 @@ use anyhow::{Context, Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
     Answer, AnswerKind, CancellationToken, DecisionProvider, DecisionRequest, DecisionResponse,
-    DecisionUsage, ModelRequest, ModelResponse, Provider, QuestionKind, TextCallback, Usage,
+    DecisionUsage, ModelRequest, ModelResponse, Provider, QuestionKind, StreamCallback, Usage,
 };
 use serde_json::json;
 use std::{collections::BTreeSet, sync::Arc};
@@ -110,7 +110,7 @@ impl Provider for Offline {
     async fn generate(
         &self,
         request: ModelRequest,
-        _on_text: TextCallback,
+        _on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         check_cancelled(&cancellation)?;
@@ -126,7 +126,7 @@ impl Provider for Offline {
     async fn generate_decision(
         &self,
         request: ModelRequest,
-        _on_text: TextCallback,
+        _on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         check_cancelled(&cancellation)?;
