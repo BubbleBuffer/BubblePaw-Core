@@ -908,7 +908,11 @@ impl Harness {
             self.config
                 .run_approval_resolver(options.approval.clone(), single_tool.is_some()),
         )
-        .with_workspace_resolver(self.config.workspace_resolver.clone())
+        .with_gate(Arc::new(crate::approvals::StockGate::new(
+            self.store.clone(),
+            self.config.auto_approval.clone(),
+            self.config.workspace_resolver.clone(),
+        )))
         .with_tool_budget(options.max_tool_calls)
         .with_interactive_approval(single_tool.is_none());
         let max_rounds = options.max_rounds.or(self.config.max_rounds);
@@ -947,9 +951,7 @@ impl Harness {
             );
             budget_final_requested |= budget_final_round;
             ensure!(!cancellation.is_cancelled(), "Cancelled");
-            let mut dispatcher = dispatcher
-                .clone()
-                .with_auto_approval(self.config.auto_approval.clone(), user_request.clone());
+            let mut dispatcher = dispatcher.clone().with_user_request(user_request.clone());
             let mut tools_round = runtime_reminders::ToolsRound::Open;
             let mut declarations = None;
             let (response, dispatcher, request_ids) = if let Some(execution) = single_tool {
@@ -1098,10 +1100,7 @@ impl Harness {
                 let prepared = prepared.map_err(|error| overflow.failed(error))?;
                 if late_steering && self.config.auto_approval.is_some() {
                     user_request = self.latest_user_request(&run.session_id)?;
-                    dispatcher = dispatcher.with_auto_approval(
-                        self.config.auto_approval.clone(),
-                        user_request.clone(),
-                    );
+                    dispatcher = dispatcher.with_user_request(user_request.clone());
                 }
                 if let Some(notice) = prepared.notice {
                     let context = ToolContext {

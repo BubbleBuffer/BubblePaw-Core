@@ -1,6 +1,8 @@
 //! Shared admission, invocation and effect journaling for every tool route.
 use super::*;
 use crate::journal::Reply;
+use crate::tool_gate::Verdict;
+use anyhow::bail;
 
 /// A call admitted against one registry and policy snapshot. The same admission
 /// is used by native calls, composition wrappers and model-free host calls.
@@ -93,13 +95,11 @@ impl ToolDispatcher {
             return Ok(false);
         }
         let tool = prepared.tool.as_ref().expect("validated tool");
-        let policy = &prepared.context.approval;
-        let workspaces = self.workspace_roots(&prepared.context.session_id)?;
-        let allowed = policy.mode(&prepared.call.name, tool.definition().approval)
-            == crate::ApprovalMode::Allow
-            && policy
-                .hardline_match(&prepared.call.name, &prepared.call.arguments, &workspaces)
-                .is_none();
+        // The source does not enter this decision; the reply is not yet stored.
+        let allowed = self.gate.admits_without_write(
+            &self.gate_call(&prepared.context, &prepared.call, GateSource::Nested),
+            &tool.definition(),
+        )?;
         prepared.approved = allowed;
         Ok(allowed)
     }
@@ -202,16 +202,28 @@ impl ToolDispatcher {
             !prepared.context.cancellation.is_cancelled(),
             "Execution cancelled"
         );
+        let source = match &journal {
+            CallJournal::Model { message_id, .. } => GateSource::Model { message_id },
+            CallJournal::Nested => GateSource::Nested,
+        };
         if prepared.rejection.is_none() && !prepared.approved {
-            let message_id = match &journal {
-                CallJournal::Model { message_id, .. } => Some(*message_id),
-                CallJournal::Nested => None,
+            let definition = self
+                .tools
+                .get(&prepared.call.name)
+                .ok_or_else(|| anyhow!("Unknown tool: {}", prepared.call.name))?
+                .definition();
+            let verdict = self
+                .gate
+                .before(
+                    &self.gate_call(&prepared.context, &prepared.call, source),
+                    &definition,
+                )
+                .await?;
+            prepared.rejection = match verdict {
+                Verdict::Allow => None,
+                Verdict::Deny(message) => Some(ToolResult::error(message)),
+                Verdict::Cancelled => bail!("Execution cancelled"),
             };
-            prepared.rejection = self
-                .approve_source(&prepared.context, &prepared.call, message_id)
-                .await?
-                .denial("Execution cancelled")?
-                .map(ToolResult::error);
         }
         if let Some(result) = prepared.rejection.take() {
             // Invalid model calls retain their ordinary correctable reply event,
@@ -299,7 +311,10 @@ impl ToolDispatcher {
             );
             result
         } else {
-            self.limit_model_result(&prepared.context, result)?
+            self.limit_model_result(
+                &self.gate_call(&prepared.context, &prepared.call, source),
+                result,
+            )?
         };
         Ok(DispatchedToolCall { result, invocation })
     }
