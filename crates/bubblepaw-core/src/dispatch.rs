@@ -123,6 +123,31 @@ impl ToolDispatcher {
         self.approval_resolver = resolve;
         self
     }
+    /// The context of a call the loop prepares for a run, without an invocation.
+    pub(crate) fn call_context(
+        &self,
+        run: &crate::Run,
+        cancellation: &CancellationToken,
+    ) -> ToolContext {
+        ToolContext {
+            session_id: run.session_id.clone(),
+            run_id: run.id.clone(),
+            invocation_id: String::new(),
+            cancellation: cancellation.clone(),
+            approval: Default::default(),
+        }
+    }
+    /// The context of an output the loop emits itself, under the run's policy.
+    pub(crate) fn notice_context(
+        &self,
+        run: &crate::Run,
+        cancellation: &CancellationToken,
+    ) -> ToolContext {
+        ToolContext {
+            approval: self.approval_policy(&run.session_id),
+            ..self.call_context(run, cancellation)
+        }
+    }
     pub(crate) fn approval_policy(&self, session_id: &str) -> crate::ApprovalPolicy {
         self.approval_resolver
             .as_ref()

@@ -1,5 +1,5 @@
 use super::*;
-use crate::Tool;
+use crate::{Tool, ToolContext};
 
 struct VersionedTool(&'static str);
 #[async_trait]

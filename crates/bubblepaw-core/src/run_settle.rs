@@ -1,6 +1,6 @@
 //! The second half of a round: checks on the model reply, its recording, tool
 //! dispatch and the steering that follows.
-use super::run_loop::RunInputs;
+use super::run_inputs::{RunInputs, RunLoop};
 use super::*;
 
 /// Loop state that outlives one round and is shared with the settling step.
@@ -28,7 +28,7 @@ impl Settled {
     }
 }
 
-impl Harness {
+impl RunLoop {
     pub(super) async fn settle_reply(
         &self,
         inputs: &RunInputs<'_>,
@@ -59,7 +59,7 @@ impl Harness {
             );
         }
         ensure!(
-            response.storage_bytes()? <= self.config.max_request_bytes,
+            response.storage_bytes()? <= self.limits.max_request_bytes,
             "Provider response exceeds configured storage size limit"
         );
         let mut message = Message::new(&run.session_id, Role::Assistant, response.text.clone());
@@ -68,7 +68,7 @@ impl Harness {
         message.provider_state = response.provider_state;
         // The ordinary final response, result pointer, run state and its two
         // events are one commit in the shell. Tool rounds still checkpoint
-        // messages before crossing any dispatch/approval boundary.
+        // messages before crossing any dispatch boundary, where the gate may ask the user.
         if options.script.is_none()
             && response.tool_calls.is_empty()
             && options.output_schema.is_some()
@@ -96,13 +96,7 @@ impl Harness {
         // A sole Allow call batches its reply and dispatch marker.
         let prepare = |call: &ToolCall| {
             dispatcher.prepare_call(
-                ToolContext {
-                    session_id: run.session_id.clone(),
-                    run_id: run.id.clone(),
-                    invocation_id: String::new(),
-                    cancellation: cancellation.clone(),
-                    approval: Default::default(),
-                },
+                dispatcher.call_context(run, cancellation),
                 call.clone(),
                 tools_round.is_open(),
                 declarations,
