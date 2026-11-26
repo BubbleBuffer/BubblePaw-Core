@@ -1,5 +1,6 @@
 //! Shared admission, invocation and effect journaling for every tool route.
 use super::*;
+use crate::EventKind;
 use crate::tool_gate::Verdict;
 use anyhow::bail;
 
@@ -246,7 +247,7 @@ impl ToolDispatcher {
             }),
             CallJournal::Nested => {
                 let invocation = if durable {
-                    Some(self.store.dispatch_nested(
+                    Some(self.journal.nested_dispatched(
                         &prepared.context.session_id,
                         &prepared.context.run_id,
                         &prepared.call,
@@ -254,7 +255,7 @@ impl ToolDispatcher {
                 } else {
                     None
                 };
-                self.log.transient(
+                self.live.transient(
                     &prepared.context.session_id,
                     &prepared.context.run_id,
                     EventKind::ToolStarted {
@@ -280,8 +281,8 @@ impl ToolDispatcher {
             Ok(result) => result,
             Err(error) => {
                 if let Some(invocation) = &invocation {
-                    self.store
-                        .effect_unknown_for_session(&prepared.context.session_id, invocation)?;
+                    self.journal
+                        .effect_unknown(&prepared.context.session_id, invocation)?;
                 }
                 return Err(error);
             }
@@ -290,10 +291,10 @@ impl ToolDispatcher {
             if let Some(invocation) = &invocation
                 && !result.pending
             {
-                self.store
+                self.journal
                     .effect_completed_for_session(&prepared.context.session_id, invocation)?;
             }
-            self.log.transient(
+            self.live.transient(
                 &prepared.context.session_id,
                 &prepared.context.run_id,
                 EventKind::ToolFinished {

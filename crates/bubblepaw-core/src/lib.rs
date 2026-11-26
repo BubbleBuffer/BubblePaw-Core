@@ -34,6 +34,7 @@ mod host_state;
 mod journal;
 mod journal_admission;
 mod journal_sqlite;
+mod live_events;
 mod observation;
 mod provider_ext;
 mod quota;

@@ -2,7 +2,7 @@
 //! adapter's stream events into live host events.
 use crate::{
     CancellationToken, EventKind, Harness, IncompleteReason, Message, Role, Store, StreamCallback,
-    StreamEvent, event_log::Log, stream::Paragraphs,
+    StreamEvent, live_events::LiveEvents, stream::Paragraphs,
 };
 use std::sync::{
     Arc, Mutex,
@@ -10,10 +10,10 @@ use std::sync::{
 };
 use std::time::Instant;
 
-/// Everything the listener keeps. It holds the event log, never the store or
+/// Everything the listener keeps. It holds the live-event sink, never the store or
 /// engine, so a provider that retains it retains neither.
 pub(super) struct ModelStream {
-    pub(super) log: Arc<Log>,
+    pub(super) events: Arc<dyn LiveEvents>,
     pub(super) session: String,
     pub(super) run_id: String,
     pub(super) live: Arc<AtomicBool>,
@@ -100,14 +100,14 @@ impl ModelStream {
                         let kind = EventKind::ThinkingDelta {
                             text: text.to_owned(),
                         };
-                        self.log.progress(&self.session, &self.run_id, kind);
+                        self.events.progress(&self.session, &self.run_id, kind);
                     }
                     return;
                 }
                 StreamEvent::ThinkingDiscarded => {
                     self.partial.lock().unwrap().thinking.clear();
                     let kind = EventKind::ThinkingDiscarded {};
-                    self.log.progress(&self.session, &self.run_id, kind);
+                    self.events.progress(&self.session, &self.run_id, kind);
                     return;
                 }
                 StreamEvent::TextDelta(text) => text,
@@ -125,11 +125,11 @@ impl ModelStream {
                 let kind = EventKind::TextDelta {
                     text: text.to_owned(),
                 };
-                self.log.progress(&self.session, &self.run_id, kind);
+                self.events.progress(&self.session, &self.run_id, kind);
             }
             let mut buffer = self.paragraphs.lock().unwrap();
             for piece in buffer.push_bounded(text, self.max_paragraph_bytes) {
-                self.log.paragraph(&self.session, &self.run_id, piece);
+                self.events.paragraph(&self.session, &self.run_id, piece);
             }
         })
     }

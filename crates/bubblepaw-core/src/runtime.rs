@@ -257,6 +257,7 @@ pub struct Harness {
     state: Arc<RuntimeState>,
     cursors: Arc<crate::HistoryTracker>,
     journal: Arc<dyn Journal>,
+    live: Arc<dyn crate::live_events::LiveEvents>,
     request_context: Arc<dyn RequestContext>,
 }
 impl Harness {
@@ -287,6 +288,7 @@ impl Harness {
             store.clone(),
             state.log.clone(),
         ));
+        let live: Arc<dyn crate::live_events::LiveEvents> = state.log.clone();
         let selection = runtime_mode::ToolSelection::new(
             store.clone(),
             tools,
@@ -309,6 +311,7 @@ impl Harness {
             state,
             cursors: Arc::default(),
             journal,
+            live,
             request_context,
         };
         if let Some(days) = harness.config.event_retention_days {
@@ -345,19 +348,11 @@ impl Harness {
     pub fn subscribe(&self) -> broadcast::Receiver<HarnessEvent> {
         self.state.log.subscribe()
     }
+    #[cfg(test)]
     pub(crate) fn emit(&self, session_id: &str, run_id: &str, kind: EventKind) {
-        self.emit_from(session_id, run_id, kind, None);
-    }
-    pub(crate) fn emit_from(
-        &self,
-        session_id: &str,
-        run_id: &str,
-        kind: EventKind,
-        origin: Option<ClientInfo>,
-    ) {
         self.state
             .log
-            .emit(&self.store, session_id, run_id, kind, origin);
+            .emit(&self.store, session_id, run_id, kind, None);
     }
     fn new_run(&self, session_id: &str, options: &RunOptions) -> Run {
         Run {
@@ -842,23 +837,23 @@ impl Harness {
         let native = self.execution_mode(&run.session_id)? == crate::ExecutionMode::Native;
         let mut tool_surface = runtime_tools::RunToolSurface::load(self, &run.session_id, options)?;
         self.queue_result_schema_notice(run, options, &tools)?;
-        let mut dispatcher = ToolDispatcher::new(
-            self.store.clone(),
+        let mut dispatcher = ToolDispatcher::from_seams(
             tools.clone(),
             self.config.max_tool_result_bytes,
             self.config.observation.clone(),
+            self.journal.clone(),
+            Arc::new(crate::approvals::StockGate::new(
+                self.store.clone(),
+                self.config.auto_approval.clone(),
+                self.config.workspace_resolver.clone(),
+            )),
+            self.live.clone(),
         )
-        .with_journal(self.journal.clone())
         .with_approval(self.config.approval.clone())
         .with_approval_resolver(
             self.config
                 .run_approval_resolver(options.approval.clone(), single_tool.is_some()),
         )
-        .with_gate(Arc::new(crate::approvals::StockGate::new(
-            self.store.clone(),
-            self.config.auto_approval.clone(),
-            self.config.workspace_resolver.clone(),
-        )))
         .with_tool_budget(options.max_tool_calls)
         .with_interactive_approval(single_tool.is_none());
         let max_rounds = options.max_rounds.or(self.config.max_rounds);
@@ -1052,7 +1047,7 @@ impl Harness {
                         !cancellation.is_cancelled(),
                         "Cancelled before context notice"
                     );
-                    self.emit(
+                    self.live.transient(
                         &run.session_id,
                         &run.id,
                         EventKind::Paragraph { text: notice },
@@ -1090,7 +1085,7 @@ impl Harness {
                 let callback_lifetime = CallbackLifetime(callback_live.clone());
                 let callback = runtime_stream::ModelStream {
                     // A provider retaining the callback must not retain the archive or engine.
-                    log: self.state.log.clone(),
+                    events: self.live.clone(),
                     session: run.session_id.clone(),
                     run_id: run.id.clone(),
                     live: callback_live,
@@ -1102,11 +1097,8 @@ impl Harness {
                     partial: partial.clone(),
                 }
                 .callback();
-                self.state.log.transient(
-                    &run.session_id,
-                    &run.id,
-                    EventKind::ModelRequestStarted {},
-                );
+                self.live
+                    .transient(&run.session_id, &run.id, EventKind::ModelRequestStarted {});
                 self.request_context.request_sent(
                     &run.session_id,
                     &request,
@@ -1177,7 +1169,7 @@ impl Harness {
                             .collect()
                     };
                     for piece in pieces {
-                        self.emit(
+                        self.live.transient(
                             &run.session_id,
                             &run.id,
                             EventKind::Paragraph { text: piece },

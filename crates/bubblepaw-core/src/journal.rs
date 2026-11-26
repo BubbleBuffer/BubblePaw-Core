@@ -77,6 +77,14 @@ pub(crate) trait Journal: Send + Sync {
         result: ToolResult,
         invocation: Option<&str>,
     ) -> Result<()>;
+    /// A nested call of a session dispatched: its effect. Returns the invocation id.
+    fn nested_dispatched(&self, session_id: &str, run_id: &str, call: &ToolCall) -> Result<String>;
+    /// A call's outcome became unknown: its effect, when still dispatched.
+    fn effect_unknown(&self, session_id: &str, invocation: &str) -> Result<()>;
+    /// A background effect completed, wherever its session is stored.
+    fn effect_completed(&self, invocation: &str) -> Result<()>;
+    /// An effect of a known session completed, without restoring archives.
+    fn effect_completed_for_session(&self, session_id: &str, invocation: &str) -> Result<()>;
     /// An output record and its event.
     fn tool_output(&self, record: &OutputRecord) -> Result<()>;
     /// The run ended: reply, usage, run row, RunFinished and maybe SessionSettled.
