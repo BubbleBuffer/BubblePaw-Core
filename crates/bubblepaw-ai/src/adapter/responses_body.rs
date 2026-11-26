@@ -1,5 +1,5 @@
 //! Responses request serialization.
-use super::*;
+use super::{responses::Credentials, *};
 
 impl ResponsesProvider {
     pub(super) fn body(&self, request: &ModelRequest) -> Result<Value> {
@@ -16,7 +16,7 @@ impl ResponsesProvider {
             match message.role{
                 Role::Tool=> {
                     let body = message.text();
-                    let images = crate::images::wire_images(message);
+                    let images = wire_images(message);
                     let text = tool_wire::error_text(message, &body);
                     let output = if images.is_empty() { json!(text) } else {
                         let mut parts = vec![json!({"type":"input_text","text":text})];
@@ -27,7 +27,7 @@ impl ResponsesProvider {
                 },
                 Role::Assistant=>{
                     if let Some(state)=&message.provider_state
-                        && bubblepaw_core::provider_state_replay_compatible(state, "responses", &request.model)
+                        && crate::provider_state_replay_compatible(state, "responses", &request.model)
                         && state["items"].is_array() {
                         input.extend(replay_state::hydrate(state, &message.text(), &message.tool_calls)?);continue;
                     }
@@ -74,7 +74,7 @@ impl ResponsesProvider {
             let stop = starts.get(index + 1).copied().unwrap_or(end);
             json!({
                 "source_id":message.id,"prepared_position":index,"role":message.role,
-                "origin":message.origin,"is_typed_user":bubblepaw_core::is_typed_user(message),
+                "origin":message.origin,"is_typed_user":crate::is_typed_user(message),
                 "wire_positions":(starts[index]..stop).collect::<Vec<_>>(),
                 "tool_call_ids":message.tool_calls.iter().map(|call| &call.id).collect::<Vec<_>>(),
                 "tool_call_id":message.tool_call_id,

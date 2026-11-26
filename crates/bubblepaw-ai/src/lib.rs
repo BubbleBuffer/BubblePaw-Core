@@ -4,6 +4,7 @@
 //! requests, replies and streaming events that pass between a harness and a
 //! model, and the trait a model adapter implements. It depends on no other
 //! workspace crate and knows no store, run or tool registry.
+pub mod adapter;
 mod cancellation;
 mod content_block;
 mod hash;
@@ -14,11 +15,14 @@ mod output_schema;
 mod provider;
 mod provider_ext;
 mod quota;
+mod quota_host;
 mod reasoning;
 mod request;
+mod request_account;
 mod request_size;
 mod stream_event;
 mod usage;
+mod usage_sink;
 mod wire_shape;
 
 pub use cancellation::CancellationToken;
@@ -40,6 +44,7 @@ pub use provider_ext::{
     ProviderError, ProviderErrorKind, ToolSurface, is_ephemeral, provider_error_retryable,
 };
 pub use quota::{QuotaReading, QuotaSource, QuotaWait};
+pub use quota_host::{QuotaStop, SHORT_WAIT, host_policy_active, is_quota_stop, with_host_policy};
 pub use reasoning::{
     PROVIDER_STATE_ORIGIN_FIELD, ReasoningReplay, provider_state_replay_compatible,
     with_provider_state_origin,
@@ -47,12 +52,14 @@ pub use reasoning::{
 pub use request::{
     Approval, CacheTiers, ModelInfo, ModelRequest, ReasoningEffort, ToolCall, ToolDefinition,
 };
+pub use request_account::{current_account, with_request_usage_account};
 #[doc(hidden)]
 pub use request_size::prepared_message_bytes;
 pub use request_size::prepared_request_bytes;
 pub use stream_event::{StreamCallback, StreamEvent, text_callback};
 pub use usage::{LastRequestUsage, Usage};
-pub use wire_shape::{RequestKind, WireShape};
+pub use usage_sink::{AttemptReport, UsageSink, current_request_kind, with_usage_sink};
+pub use wire_shape::{DEFAULT_CACHE_BLOCK_TOKENS, RequestKind, WireShape};
 
 pub(crate) fn id() -> String {
     uuid::Uuid::new_v4().to_string()

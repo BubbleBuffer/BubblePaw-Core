@@ -1,5 +1,5 @@
 //! The rounds of one Messages reply that a length stop split.
-use bubblepaw_core::{ModelResponse, QuotaReading, Usage};
+use crate::{ModelResponse, QuotaReading, Usage};
 use serde_json::{Value, json};
 
 /// The rounds of one reply that a length stop split. A single round is

@@ -14,16 +14,16 @@ static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 const ENV: &str = "BUBBLEPAW_PROVIDER_DUMP_DIR";
 
 #[derive(Clone)]
-pub(super) struct HttpDump(Arc<Mutex<Option<File>>>);
+pub struct HttpDump(Arc<Mutex<Option<File>>>);
 
 impl HttpDump {
     /// Called once per physical send. No request builder or headers enter here.
-    pub(super) fn begin(body: &Value, fallback_kind: &str) -> Option<Self> {
+    pub fn begin(body: &Value, fallback_kind: &str) -> Option<Self> {
         let directory = std::env::var_os(ENV).filter(|path| !path.is_empty())?;
-        let kind = match bubblepaw_core::current_request_kind() {
-            Some(bubblepaw_core::RequestKind::Main) => "main",
-            Some(bubblepaw_core::RequestKind::SummaryFork) => "summary_fork",
-            Some(bubblepaw_core::RequestKind::Decider) => "decider",
+        let kind = match crate::current_request_kind() {
+            Some(crate::RequestKind::Main) => "main",
+            Some(crate::RequestKind::SummaryFork) => "summary_fork",
+            Some(crate::RequestKind::Decider) => "decider",
             None => fallback_kind,
         };
         let result = (|| -> std::io::Result<Self> {
@@ -64,7 +64,7 @@ impl HttpDump {
         }
     }
 
-    pub(super) fn attach(self, response: &mut reqwest::Response) {
+    pub fn attach(self, response: &mut reqwest::Response) {
         response.extensions_mut().insert(self);
     }
 
@@ -95,11 +95,11 @@ fn warn(kind: std::io::ErrorKind) {
     tracing::warn!(target: "bubblepaw::provider", ?kind, "provider HTTP dump write failed");
 }
 
-pub(super) fn enabled(response: &reqwest::Response) -> bool {
+pub fn enabled(response: &reqwest::Response) -> bool {
     response.extensions().get::<HttpDump>().is_some()
 }
 
-pub(super) fn append(response: &reqwest::Response, bytes: &[u8]) {
+pub fn append(response: &reqwest::Response, bytes: &[u8]) {
     if let Some(dump) = response.extensions().get::<HttpDump>() {
         dump.append(bytes);
     }

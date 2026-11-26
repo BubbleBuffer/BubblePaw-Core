@@ -153,7 +153,7 @@ Published output and unknown external effects retain the existing replay guards.
 
 | Limit | Action |
 |---|---|
-| 429 without applicable exhausted-window evidence, or a short Retry-After/reset | Cancelable inline retry in the registry's retry policy (`provider/retry.rs`), with the 15-second short range |
+| 429 without applicable exhausted-window evidence, or a short Retry-After/reset | Cancelable inline retry in the registry's retry policy (`adapter/retry.rs` (bubblepaw-ai)), with the 15-second short range |
 | 429 naming an exhausted limit, applicable fallback exhaustion, or reset beyond the short range | Wait in the same run until reset, within `max_wait_seconds` |
 | Spend cap, billing/credit failure, or provider non-retryable rejection | Fail immediately |
 | Reset beyond the maximum | Fail with `quota exhausted until <time>`, account and window |

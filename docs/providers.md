@@ -264,7 +264,7 @@ requested by the [OpenCode Go client guidance](https://docs.opencode.ai/docs/go/
 Every request uses `thinking: {type: "adaptive"}` and
 `output_config: {effort: "low"}` by default. A role/request effort replaces the
 output-config effort while thinking stays adaptive. There are no sampling parameters or assistant
-prefills. `max_tokens` is required, so it is always sent: the role's `max_output_tokens` when set, otherwise the model maximum from the table in `provider/messages.rs`, where `claude-haiku-5-5` is 128,000 (source in Output length below). A length stop is continued the same way. Only the request's system prompt goes
+prefills. `max_tokens` is required, so it is always sent: the role's `max_output_tokens` when set, otherwise the model maximum from the table in `adapter/messages.rs` (bubblepaw-ai), where `claude-haiku-5-5` is 128,000 (source in Output length below). A length stop is continued the same way. Only the request's system prompt goes
 in the top-level `system` field, so it stays byte-identical across an LCM apply.
 Every history system message handed directly to the adapter (since 2026-11-13 context building already sends view blocks, cold notes and controls as user-role `<harness>` content, see prefix-cache-design)
 renders in place as a user text block, merged into adjacent user content like
@@ -279,7 +279,7 @@ The complete assistant content array is kept in
 `provider_state = {adapter: "anthropic-messages", content: [...]}` and replayed
 unchanged on later steps, including signed thinking and redacted thinking.
 Reconstructing an assistant tool turn from text and calls loses thinking when
-compatible provider state is unavailable (`provider/messages.rs:97`, request body);
+compatible provider state is unavailable (`adapter/messages.rs` (bubblepaw-ai), request body);
 the adapter rejects that fallback in the current tool loop with a local
 error identifying missing or incompatible state, instead of sending an invalid
 thinking-less request. Generated runtime host notices keep that loop open;
@@ -287,7 +287,7 @@ an actual new user task or completed assistant answer closes it. Older
 completed/imported turns can use the fallback.
 Existing assistant turns are not edited. Ephemeral cache breakpoints (at most
 four) sit at the context tier ends, placed by one function
-(`provider/messages_cache.rs`) from `ModelRequest::cache_tiers`: the frozen end
+(`adapter/messages_cache.rs` (bubblepaw-ai)) from `ModelRequest::cache_tiers`: the frozen end
 (the system block, else the last tool), the cold end, the previous request's
 tail and the last block. Without tiers only the frozen end and the last block are
 marked. Message breakpoints go on user-turn blocks only, never on an assistant's
@@ -379,7 +379,7 @@ split deltas, Messages thinking blocks with signatures kept byte-identical,
 usage including cache reads and writes, and the stop reason. Chat requests
 `stream_options.include_usage`.
 
-- The idle timeout is 300 s per read (`provider/stream.rs` `IDLE_TIMEOUT`). The
+- The idle timeout is 300 s per read (`adapter/stream.rs` (bubblepaw-ai) `IDLE_TIMEOUT`). The
   old 300 s whole-request timeout is gone, so a long answer can finish.
 - Text reaches the provider listener in batches: at 512 characters, or 75 ms after
   the first pending fragment, and at each block end and the terminal event.
@@ -431,7 +431,7 @@ usage including cache reads and writes, and the stop reason. Chat requests
 - No output-size cap in the HTTP adapters: output length never rejects a reply.
   Two memory-safety limits remain, and they are not output-size limits: 32 MiB
   per streamed body (`MAX_STREAM_BYTES`) and 8 MiB per unparsed SSE frame
-  (`MAX_FRAME_BYTES`), both in `provider/stream.rs`.
+  (`MAX_FRAME_BYTES`), both in `adapter/stream.rs` (bubblepaw-ai).
 
 Live smoke, to run only after approval (one short streamed Haiku call,
 `opencode-messages/claude-haiku-5-5`, needs `OPENCODE_API_KEY`):
@@ -444,10 +444,10 @@ Live smoke, to run only after approval (one short streamed Haiku call,
 Output length never fails a model call. The defaults send no output limit where the API allows one:
 
 - Responses and chat completions send no output-token field unless the role sets `max_output_tokens` (Responses `max_output_tokens`, chat `max_tokens`).
-- Messages always sends `max_tokens`, from the model table in `provider/messages.rs` (`claude-haiku-5-5`: 128,000), unless the role sets a value. The 128K figure is from the Anthropic models overview, `https://platform.claude.com/docs/en/models/haiku-5-5/overview` ("Max output: 128K tokens"); 128000 is our reading of 128K. Models outside the table use 64,000, our fallback rather than a documented value.
+- Messages always sends `max_tokens`, from the model table in `adapter/messages.rs` (bubblepaw-ai) (`claude-haiku-5-5`: 128,000), unless the role sets a value. The 128K figure is from the Anthropic models overview, `https://platform.claude.com/docs/en/models/haiku-5-5/overview` ("Max output: 128K tokens"); 128000 is our reading of 128K. Models outside the table use 64,000, our fallback rather than a documented value.
 - `roles.<role>.max_output_tokens` (see `config.md`) sets the limit in all three APIs. Decision providers (`decisions.rs`) send no per-role limit yet.
 
-A length stop is continued by the shared helper in `provider/continuation.rs`. Each API reports it differently, but every continuation sends the same two messages: the partial reply as an assistant turn, then a user turn "Continue exactly where you stopped." Prefilled final assistant turns are never sent, because Claude 4.6 and later reject them with a 400. Since 2026-10-13 the partial turn carries round one's reasoning: Responses sends the round's native output items (reasoning, then the partial message) and Messages its native content blocks (thinking, redacted thinking, text) in their original positions; chat sends the text only, or text plus `reasoning_content` when the model's `reasoning_replay` is `all`. The final stored reply holds the reasoning of every round exactly once.
+A length stop is continued by the shared helper in `adapter/continuation.rs` (bubblepaw-ai). Each API reports it differently, but every continuation sends the same two messages: the partial reply as an assistant turn, then a user turn "Continue exactly where you stopped." Prefilled final assistant turns are never sent, because Claude 4.6 and later reject them with a 400. Since 2026-10-13 the partial turn carries round one's reasoning: Responses sends the round's native output items (reasoning, then the partial message) and Messages its native content blocks (thinking, redacted thinking, text) in their original positions; chat sends the text only, or text plus `reasoning_content` when the model's `reasoning_replay` is `all`. The final stored reply holds the reasoning of every round exactly once.
 
 - Messages: `stop_reason` `max_tokens`.
 - Responses: a `response.incomplete` event whose `incomplete_details.reason` is `max_output_tokens`. It ends the reply; it is not an error.
@@ -588,14 +588,14 @@ cargo test -p bubblepaw-runner --test providers_wire provider_messages::live_sch
 ```
 
 `provider::parse_retry_after` accepts delta-seconds and HTTP dates; it is the
-only Retry-After parser, and `provider/http_error.rs` maps HTTP statuses to error
+only Retry-After parser, and `adapter/http_error.rs` (bubblepaw-ai) maps HTTP statuses to error
 kinds for every adapter.
 `provider::provider_retry_after(&anyhow::Error)` exposes the remaining server
 delay through the error source chain, preserving the core typed error.
 Messages, chat and Responses retain these hints for retryable HTTP failures
 (`408`, `409`, `429`, and `5xx`), including `503`.
 
-One retry policy (`RetryPolicy` in `provider/retry.rs`: 4 attempts, 500 ms
+One retry policy (`RetryPolicy` in `adapter/retry.rs` (bubblepaw-ai): 4 attempts, 500 ms
 initial backoff doubling with 0.5â€“1.0 jitter, capped at 15 s) runs every call
 through `ProviderRegistry`: main turns, decisions, auxiliary role calls and
 summary forks. `set_retry_policy` and `with_retry_policy` replace it;
@@ -608,7 +608,7 @@ returns at once with its Retry-After attached, and the quota host or the caller
 owns it. A route is retried per the policy before the next fallback route is
 tried. Local tests: `provider_main_retry.rs` (a main turn retries once; published
 output is never retried), `provider_retry.rs` (long waits are not retried
-inline) and the unit tests in `provider/retry.rs`.
+inline) and the unit tests in `adapter/retry.rs` (bubblepaw-ai).
 
 The native quota host (2026-10-20) intercepts 429s before the registry's inline
 retry sleeps, persists returned meters and applies the short/exhausted/terminal policy.

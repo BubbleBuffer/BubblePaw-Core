@@ -51,7 +51,7 @@ pub(crate) fn source_fingerprint() -> String {
         include_str!("images.rs"),
         include_str!("provider/endpoints.rs"),
         include_str!("provider/decisions.rs"),
-        include_str!("provider/chat.rs"),
+        include_str!("../../bubblepaw-ai/src/adapter/chat.rs"),
         include_str!("episode_worker.rs"),
         include_str!("episode_background.rs"),
         include_str!("summary_prompt_v2.txt"),

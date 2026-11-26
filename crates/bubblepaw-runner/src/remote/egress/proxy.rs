@@ -298,6 +298,18 @@ impl EgressHandle {
     }
 }
 
+impl bubblepaw_ai::adapter::ModelEgress for EgressHandle {
+    fn proxy_url(&self) -> String {
+        EgressHandle::proxy_url(self)
+    }
+    fn failure(&self) -> Option<bubblepaw_ai::adapter::EgressFailure> {
+        EgressHandle::failure(self).map(|failure| bubblepaw_ai::adapter::EgressFailure {
+            permanent: failure.is_permanent(),
+            text: failure.to_string(),
+        })
+    }
+}
+
 impl std::fmt::Debug for EgressHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EgressHandle")

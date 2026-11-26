@@ -1,11 +1,11 @@
 //! Lossless provider replay metadata. Message text and calls remain the sole content copy.
+use crate::ToolCall;
 use anyhow::{Result, anyhow, ensure};
-use bubblepaw_core::ToolCall;
 use serde_json::{Value, json};
 
 const FORMAT: &str = "message-references-v1";
 
-pub(crate) fn slim(mut state: Value, text: &str, calls: &[ToolCall]) -> Result<Value> {
+pub fn slim(mut state: Value, text: &str, calls: &[ToolCall]) -> Result<Value> {
     let responses = state["adapter"] == "responses";
     let field = if responses { "items" } else { "content" };
     let mut offset = 0;
@@ -91,7 +91,7 @@ fn take_text(block: &mut Value, text: &str, offset: &mut usize) -> Result<Value>
     Ok(range)
 }
 
-pub(crate) fn hydrate(state: &Value, text: &str, calls: &[ToolCall]) -> Result<Vec<Value>> {
+pub fn hydrate(state: &Value, text: &str, calls: &[ToolCall]) -> Result<Vec<Value>> {
     let responses = state["adapter"] == "responses";
     let field = if responses { "items" } else { "content" };
     let mut blocks = state[field]
@@ -243,7 +243,7 @@ fn render_json_layout(layout: &Value, canonical: &str) -> Result<String> {
 }
 
 /// Projected arguments deliberately differ from the archive; discard its lexical layout.
-pub(crate) fn clear_argument_layout(state: &mut Value, index: usize) {
+pub fn clear_argument_layout(state: &mut Value, index: usize) {
     if state["format"] == FORMAT
         && let Some(refs) = state["refs"].as_array_mut()
     {

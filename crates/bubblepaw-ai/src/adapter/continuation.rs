@@ -5,7 +5,7 @@
 //! assistant turn with thinking on or off, so the request always ends with the
 //! user prompt. Partial tool calls are never continued: a reply that holds a
 //! complete tool call is returned as it is, and the harness runs that call.
-use bubblepaw_core::{Message, ModelRequest, ModelResponse, Role};
+use crate::{Message, ModelRequest, ModelResponse, Role};
 
 /// Continuation requests allowed after the first request of one reply.
 pub(super) const MAX_CONTINUATIONS: usize = 4;
@@ -78,7 +78,7 @@ fn turn(role: Role, content: &str, session_id: &str) -> Message {
         session_id: session_id.into(),
         role,
         origin: None,
-        content: bubblepaw_core::text_blocks(content),
+        content: crate::text_blocks(content),
         tool_calls: Vec::new(),
         tool_call_id: None,
         provider_state: None,

@@ -31,10 +31,10 @@ pub(super) fn validate_calls(
     if response
         .tool_calls
         .iter()
-        .any(|call| !super::super::tool_wire::accepts_request_call(request, &call.name))
+        .any(|call| !bubblepaw_ai::adapter::accepts_request_call(request, &call.name))
     {
         return Err(crate::quota_sources::with_error_quota(
-            super::super::decisions::metered_model_error(
+            bubblepaw_ai::adapter::metered_model_error(
                 anyhow::anyhow!("extension {provider} returned an unavailable tool"),
                 response.usage.clone(),
             ),

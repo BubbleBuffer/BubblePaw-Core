@@ -1,5 +1,5 @@
 //! Tool declarations on the wire. A tools-off round keeps the declarations and turns the choice off.
-use bubblepaw_core::{CancellationToken, ModelRequest, ModelResponse, Provider, ToolDefinition};
+use crate::{CancellationToken, ModelRequest, ModelResponse, Provider, ToolDefinition};
 use serde_json::{Value, json};
 
 /// Inserts the active tools, or the disabled set with `tool_choice` none when tools are off.
@@ -25,7 +25,7 @@ pub(super) fn insert_tools(
 /// Wire text of a tool result for adapters with no error field: an error
 /// result reads `Error: ...` unless it already starts with "error". Only the
 /// request changes; the stored message keeps its content.
-pub(super) fn error_text(message: &bubblepaw_core::Message, text: &str) -> String {
+pub(super) fn error_text(message: &crate::Message, text: &str) -> String {
     let marked = text
         .get(..5)
         .is_some_and(|start| start.eq_ignore_ascii_case("error"));
@@ -52,7 +52,7 @@ pub(super) fn accepts_call(name: &str, declared: bool) -> bool {
     name == "submit_result" || declared
 }
 
-pub(super) fn accepts_request_call(request: &ModelRequest, name: &str) -> bool {
+pub fn accepts_request_call(request: &ModelRequest, name: &str) -> bool {
     accepts_call(name, request.tools.iter().any(|tool| tool.name == name))
 }
 
@@ -88,7 +88,7 @@ pub(super) async fn generate_summary_fork(
         } else {
             continue;
         };
-        return Err(super::decisions::metered_model_error(
+        return Err(super::metered_model_error(
             anyhow::anyhow!(message),
             response.usage,
         ));

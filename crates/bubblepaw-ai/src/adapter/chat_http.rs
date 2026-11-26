@@ -7,7 +7,7 @@ impl ChatCompletionsProvider {
     pub(super) async fn post(
         &self,
         body: &Value,
-        session: Option<&str>,
+        route_key: Option<&str>,
         cancellation: &CancellationToken,
     ) -> Result<reqwest::Response> {
         if cancellation.is_cancelled() {
@@ -20,10 +20,10 @@ impl ChatCompletionsProvider {
         if !self.key.is_empty() {
             builder = builder.bearer_auth(&self.key);
         }
-        if let Some(session) = session {
-            builder = builder.header("x-opencode-session", session);
+        if let Some(route_key) = route_key {
+            builder = builder.header("x-opencode-session", route_key);
         }
-        let dump = crate::provider::http_dump::HttpDump::begin(body, "chat-completions");
+        let dump = crate::adapter::http_dump::HttpDump::begin(body, "chat-completions");
         let sent = tokio::select! {
             result = tokio::time::timeout(stream::IDLE_TIMEOUT, builder
                 .json(body)
@@ -48,21 +48,21 @@ impl ChatCompletionsProvider {
             return Ok(response);
         }
         let code = response.status().as_u16();
-        let retry_after = crate::provider::http_error::retry_after(response.headers());
-        let bytes = crate::provider::http_error::read_body(response, cancellation).await?;
-        let terminal = crate::provider::http_error::terminal_reason(&bytes);
+        let retry_after = crate::adapter::http_error::retry_after(response.headers());
+        let bytes = crate::adapter::http_error::read_body(response, cancellation).await?;
+        let terminal = crate::adapter::http_error::terminal_reason(&bytes);
         let kind = if terminal.is_some() {
             ProviderErrorKind::Fatal
         } else {
-            crate::provider::http_error::compatible_status_kind(
+            crate::adapter::http_error::compatible_status_kind(
                 code,
                 retry_after,
-                crate::provider::is_context_overflow(&String::from_utf8_lossy(&bytes)),
+                crate::adapter::is_context_overflow(&String::from_utf8_lossy(&bytes)),
                 &bytes,
             )
         };
         let diagnostic =
-            crate::provider::http_error::diagnostic("Chat completions", code, &bytes, &[&self.key]);
+            crate::adapter::http_error::diagnostic("Chat completions", code, &bytes, &[&self.key]);
         let mut error = ProviderError::new(
             kind,
             if let Some(reason) = terminal {
@@ -76,8 +76,8 @@ impl ChatCompletionsProvider {
         {
             error.usage = Some(response_usage(&payload).0);
         }
-        let error = crate::provider::attach_retry_after(error.into(), code, retry_after);
-        Err(crate::provider::http_error::mark_bare_bad_request(
+        let error = crate::adapter::attach_retry_after(error.into(), code, retry_after);
+        Err(crate::adapter::http_error::mark_bare_bad_request(
             error, code, &bytes,
         ))
     }
@@ -93,7 +93,7 @@ pub(super) fn chat_error_kind(error: &Value) -> ProviderErrorKind {
         error["code"].as_str().unwrap_or_default()
     )
     .to_ascii_lowercase();
-    if crate::provider::is_context_overflow(&error.to_string()) {
+    if crate::adapter::is_context_overflow(&error.to_string()) {
         ProviderErrorKind::Context
     } else if matches!(code, Some(401 | 403))
         || label.contains("authentication")

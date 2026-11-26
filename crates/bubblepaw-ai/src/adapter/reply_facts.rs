@@ -2,7 +2,7 @@
 //! the provider says it used and why the final request stopped. Each function
 //! returns a reply carrying only those facts, for the adapter to spread into the
 //! reply it builds; a provider that reports nothing leaves them `None`.
-use bubblepaw_core::{ModelResponse, StopReason, Usage};
+use crate::{ModelResponse, StopReason, Usage};
 use serde_json::Value;
 
 fn reported_model(value: &Value) -> Option<String> {

@@ -1,20 +1,16 @@
 //! One retry policy and one backoff for every provider call that goes through
 //! the registry. HTTP status mapping lives in `http_error`; this module decides
 //! whether a classified failure may be retried and how long to wait.
-use super::{ProviderError, ProviderErrorKind, cancelled};
+use super::cancelled;
+use crate::{CancellationToken, ProviderError, ProviderErrorKind, Usage};
 use anyhow::Result;
-use bubblepaw_core::{CancellationToken, Usage};
 use std::{
     future::Future,
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
-pub(super) fn retryable_http_status(code: u16) -> bool {
-    matches!(code, 408 | 409 | 429 | 500..=599)
-}
-
-pub(super) fn add_usage(total: &mut Option<Usage>, usage: &Usage) {
+pub fn add_usage(total: &mut Option<Usage>, usage: &Usage) {
     total.get_or_insert_with(Usage::default).add(usage);
 }
 
@@ -32,7 +28,7 @@ impl Default for RetryPolicy {
         Self {
             max_attempts: 4,
             initial_delay: Duration::from_millis(500),
-            max_delay: crate::quota::SHORT_WAIT,
+            max_delay: crate::SHORT_WAIT,
         }
     }
 }
@@ -82,9 +78,9 @@ pub(crate) fn retry_delay(
     if typed.is_some_and(|typed| typed.message == "cancelled") {
         return None;
     }
-    if !bubblepaw_core::provider_error_retryable(error)
+    if !crate::provider_error_retryable(error)
         || typed.is_some_and(super::is_terminal_quota_error)
-        || crate::quota::is_quota_stop(error)
+        || crate::is_quota_stop(error)
     {
         return None;
     }
@@ -93,7 +89,7 @@ pub(crate) fn retry_delay(
     let mut server_wait = super::provider_retry_after(error);
     if rate_limited {
         // The quota host owns rate-limit waits when it is driving the call.
-        if crate::quota::host_policy_active() {
+        if crate::host_policy_active() {
             return None;
         }
         // An exhausted window is the host's, or the caller's, decision.
@@ -127,7 +123,7 @@ pub(crate) fn retry_delay(
 /// Runs `call` under one policy. A failure that will be retried is reported to
 /// `on_failed_attempt` so callers can keep its usage and quota readings; the
 /// sleep is cancelable and returns the `cancelled` error instead of waiting.
-pub(crate) async fn with_retry<T, F, Fut>(
+pub async fn with_retry<T, F, Fut>(
     provider: &str,
     policy: &RetryPolicy,
     cancellation: &CancellationToken,
@@ -190,7 +186,7 @@ where
 mod tests {
     use super::super::attach_retry_after;
     use super::*;
-    use bubblepaw_core::{QuotaReading, QuotaSource};
+    use crate::{QuotaReading, QuotaSource};
 
     fn policy() -> RetryPolicy {
         RetryPolicy {
@@ -247,7 +243,7 @@ mod tests {
         let token = CancellationToken::new();
         let limited = rate_limit(Vec::new());
         assert!(retry_delay(&policy(), 0, &limited, false, &token).is_some());
-        crate::quota::with_host_policy(async {
+        crate::with_host_policy(async {
             assert_eq!(retry_delay(&policy(), 0, &limited, false, &token), None);
         })
         .await;

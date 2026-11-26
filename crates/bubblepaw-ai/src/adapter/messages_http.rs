@@ -7,7 +7,7 @@ impl MessagesProvider {
     pub(super) async fn post(
         &self,
         body: &Value,
-        session: Option<&str>,
+        route_key: Option<&str>,
         cancellation: &CancellationToken,
     ) -> Result<reqwest::Response> {
         if cancellation.is_cancelled() {
@@ -19,10 +19,10 @@ impl MessagesProvider {
             .header("x-api-key", &self.key)
             .header("anthropic-version", "2023-06-01")
             .header("User-Agent", "bubblepaw/lean-rust");
-        if let Some(session) = session {
-            builder = builder.header("x-opencode-session", session);
+        if let Some(route_key) = route_key {
+            builder = builder.header("x-opencode-session", route_key);
         }
-        let dump = crate::provider::http_dump::HttpDump::begin(body, "messages");
+        let dump = crate::adapter::http_dump::HttpDump::begin(body, "messages");
         let sent = tokio::select! {
             result = tokio::time::timeout(stream::IDLE_TIMEOUT, builder
                 .json(body)
@@ -47,41 +47,37 @@ impl MessagesProvider {
             return Ok(response);
         }
         let code = response.status().as_u16();
-        let identity = bubblepaw_core::RequestUsage::new(
-            "anthropic-messages",
-            body["model"].as_str().unwrap_or_default(),
-        );
         let quota = if self.opencode_route {
             Vec::new()
         } else {
-            crate::quota_sources::parse_anthropic_headers(
-                &identity.provider,
-                &identity.account,
+            crate::adapter::quota_headers::parse_anthropic_headers(
+                "anthropic-messages",
+                &crate::current_account().unwrap_or_else(|| "anthropic-messages".to_owned()),
                 response.headers(),
                 chrono::Utc::now(),
             )
         };
-        let retry_after = crate::provider::http_error::retry_after(response.headers());
-        let bytes = crate::provider::http_error::read_body(response, cancellation).await?;
-        if let Some(reason) = crate::provider::http_error::terminal_reason(&bytes) {
-            return Err(crate::quota_sources::with_error_quota(
-                crate::provider::terminal_quota_failure(
+        let retry_after = crate::adapter::http_error::retry_after(response.headers());
+        let bytes = crate::adapter::http_error::read_body(response, cancellation).await?;
+        if let Some(reason) = crate::adapter::http_error::terminal_reason(&bytes) {
+            return Err(with_error_quota(
+                crate::adapter::terminal_quota_failure(
                     reason,
-                    crate::provider::http_error::diagnostic("Messages", code, &bytes, &[&self.key]),
+                    crate::adapter::http_error::diagnostic("Messages", code, &bytes, &[&self.key]),
                 ),
                 quota,
             ));
         }
-        let kind = crate::provider::http_error::status_kind(
+        let kind = crate::adapter::http_error::status_kind(
             code,
             retry_after,
             messages_context_overflow(&bytes),
         );
-        Err(crate::quota_sources::with_error_quota(
-            crate::provider::attach_retry_after(
+        Err(with_error_quota(
+            crate::adapter::attach_retry_after(
                 classify(
                     kind,
-                    anyhow!(crate::provider::http_error::diagnostic(
+                    anyhow!(crate::adapter::http_error::diagnostic(
                         "Messages",
                         code,
                         &bytes,

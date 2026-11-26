@@ -16,8 +16,6 @@ impl crate::Store {
     }
 }
 
-/// OpenCode Go reuses cached input in 64-token blocks.
-pub const DEFAULT_CACHE_BLOCK_TOKENS: u64 = 64;
 /// Earlier requests kept per provider/model for the longest-common-prefix search.
 const PRIORS_PER_GROUP: usize = 16;
 /// Harness-known request components; a change in one declares the break.

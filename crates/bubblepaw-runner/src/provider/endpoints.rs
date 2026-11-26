@@ -48,13 +48,13 @@ pub struct ProviderKeys {
 impl ProviderEndpoints {
     pub fn validate(&self) -> Result<()> {
         if let Some(base) = &self.opencode_base_url {
-            super::decisions::validate_url(base)?;
+            super::validate_url(base)?;
         }
         if let Some(base) = &self.opencode_messages_base_url {
-            super::decisions::validate_url(base)?;
+            super::validate_url(base)?;
         }
-        super::decisions::validate_url(&self.openrouter_decisions_url)?;
-        super::decisions::validate_url(&self.openai_base_url)?;
+        super::validate_url(&self.openrouter_decisions_url)?;
+        super::validate_url(&self.openai_base_url)?;
         for name in [
             &self.opencode_key_env,
             &self.opencode_messages_key_env,

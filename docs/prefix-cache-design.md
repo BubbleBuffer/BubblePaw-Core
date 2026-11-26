@@ -303,7 +303,7 @@ the length of the lineage's previous request, set only when the request is an
 `ModelRequest::cache_tiers`; forked side calls get the fork's tiers (P6), fresh
 side calls and external callers leave it `None`.
 Nothing is inferred from ids or roles. The Messages adapter places at most four
-ephemeral breakpoints in one function (`provider/messages_cache.rs`):
+ephemeral breakpoints in one function (`adapter/messages_cache.rs` in bubblepaw-ai):
 
 1. the frozen end: the system block, or the last tool when there is no system
    prompt (Anthropic's prefix order is tools, then system);
@@ -539,8 +539,8 @@ be tested; a server cache hit is still best effort and must be measured.
 | Token admission | Chat and Messages estimates share their actual message/tool/schema renderers. Core supplies the captured provider generation through preparation and UsageContext; parallel/image decorators forward estimation. Source cadence separately counts readable Chat/Messages reasoning. | Readable replayed thinking counts; archival SSE journals and opaque signatures/redacted payload are not semantic tokenizer text. These are local estimates, not exact provider token counts. Calibration cannot lower the conservative local bound; opaque output retains its measured residual without doubling represented thinking. Detected continuation/fallback usage is not matched to the wrong original request shape. |
 
 Source: [runtime](../crates/bubblepaw-core/src/runtime.rs),
-[Chat](../crates/bubblepaw-runner/src/provider/chat.rs),
-[Messages](../crates/bubblepaw-runner/src/provider/messages.rs),
+[Chat](../crates/bubblepaw-ai/src/adapter/chat.rs),
+[Messages](../crates/bubblepaw-ai/src/adapter/messages.rs),
 [Responses](../crates/bubblepaw-runner/src/provider.rs),
 [memory](../crates/bubblepaw-runner/src/memory_files.rs),
 [skills](../crates/bubblepaw-runner/src/skills.rs),

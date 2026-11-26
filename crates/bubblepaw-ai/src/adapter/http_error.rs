@@ -1,8 +1,8 @@
 //! Bounded HTTP rejection diagnostics and the one HTTP status mapping used by
 //! every provider adapter. Never include request headers or credentials.
 use super::{cancelled, stream};
+use crate::{CancellationToken, ProviderErrorKind};
 use anyhow::Result;
-use bubblepaw_core::{CancellationToken, ProviderErrorKind};
 use regex::Regex;
 use serde_json::Value;
 use std::{sync::LazyLock, time::Duration};
@@ -13,7 +13,7 @@ const REDACTED: &str = "[redacted]";
 
 /// The server-requested wait. This is the only provider code that reads the
 /// header; a past HTTP date means no delay.
-pub(super) fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+pub fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     headers
         .get("retry-after")
         .and_then(|value| value.to_str().ok())
@@ -49,7 +49,7 @@ pub(super) fn status_kind(
 /// OpenAI-compatible gateways sometimes return a bare 400 for a failed model
 /// request. Only a structured error message/code makes that 400 authoritative.
 /// Messages keeps its separate, unchanged status mapping.
-pub(super) fn compatible_status_kind(
+pub fn compatible_status_kind(
     code: u16,
     retry_after: Option<Duration>,
     context_overflow: bool,
@@ -96,7 +96,7 @@ impl std::fmt::Display for BareBadRequest {
         formatter.write_str(&self.0)
     }
 }
-pub(super) fn mark_bare_bad_request(error: anyhow::Error, code: u16, body: &[u8]) -> anyhow::Error {
+pub fn mark_bare_bad_request(error: anyhow::Error, code: u16, body: &[u8]) -> anyhow::Error {
     if bare_bad_request(code, body)
         && super::ProviderError::of(&error)
             .is_some_and(|typed| typed.kind == ProviderErrorKind::Transient)
@@ -131,7 +131,7 @@ pub(super) fn terminal_billing(body: &[u8]) -> bool {
     .iter()
     .any(|marker| text.contains(marker))
 }
-pub(super) fn terminal_reason(body: &[u8]) -> Option<&'static str> {
+pub fn terminal_reason(body: &[u8]) -> Option<&'static str> {
     if terminal_billing(body) {
         return Some("billing or spend limit reached");
     }
@@ -147,7 +147,7 @@ pub(super) fn terminal_reason(body: &[u8]) -> Option<&'static str> {
 
 /// Keep error responses bounded even when an endpoint sends an endless body.
 /// Failed or timed-out reads retain the prefix received; cancellation still wins.
-pub(super) async fn read_body(
+pub async fn read_body(
     mut response: reqwest::Response,
     cancellation: &CancellationToken,
 ) -> Result<Vec<u8>> {
@@ -175,7 +175,7 @@ pub(super) async fn read_body(
     }
 }
 
-pub(super) fn diagnostic(provider: &str, code: u16, body: &[u8], secrets: &[&str]) -> String {
+pub fn diagnostic(provider: &str, code: u16, body: &[u8], secrets: &[&str]) -> String {
     let mut output = format!("{provider} HTTP {code}");
     if body.is_empty() {
         return output;
@@ -271,7 +271,7 @@ fn redact_text(text: &str, secrets: &[&str]) -> String {
 /// One line of free-form provider text that is safe to show: `redact_text`,
 /// then `NAME=value` assignments, `sk-` keys, JWTs and opaque strings of 40 or
 /// more characters, whitespace collapsed and cut to `limit` bytes.
-pub(super) fn redacted_line(text: &str, secrets: &[&str], limit: usize) -> String {
+pub fn redacted_line(text: &str, secrets: &[&str], limit: usize) -> String {
     static OPAQUE: LazyLock<[(Regex, &str); 4]> = LazyLock::new(|| {
         [
             (

@@ -1,7 +1,7 @@
 //! Qualified `provider/model` routes share one harness provider; unqualified models use the default.
 //! Explicit missing prefixes fail at dispatch instead of falling back.
 use super::registry_stream;
-use super::{RetryPolicy, metering::record_model_result, retry::add_usage, with_retry};
+use super::{RetryPolicy, add_usage, metering::record_model_result, with_retry};
 use anyhow::{Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -789,7 +789,7 @@ fn fallback_reason(error: &anyhow::Error) -> String {
 }
 /// Usage a failed decision attempt reports, from its decision metadata or its provider error.
 fn failed_decision_usage(error: &anyhow::Error) -> Option<DecisionUsage> {
-    super::decision_error_usage(error).cloned().or_else(|| {
+    super::decision_error_usage(error).or_else(|| {
         ProviderError::of(error)
             .and_then(|error| error.usage.as_ref())
             .map(DecisionUsage::from)

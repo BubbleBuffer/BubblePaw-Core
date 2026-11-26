@@ -135,7 +135,7 @@ impl DecisionProvider for MeteredDecision {
         let result = self.inner.decide(request, cancellation).await;
         let usage = match &result {
             Ok(r) => Some(r.usage.clone()),
-            Err(e) => decision_error_usage(e).cloned(),
+            Err(e) => decision_error_usage(e),
         };
         let cost = usage.as_ref().and_then(|u| u.cost_usd);
         self.meter.finish(

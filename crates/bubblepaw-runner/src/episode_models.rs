@@ -557,7 +557,7 @@ impl EpisodeModels for HttpEpisodeModels {
         };
         let usage = provider
             .and_then(|error| error.usage.clone())
-            .or_else(|| decision_error_usage(error).cloned().map(Usage::from));
+            .or_else(|| decision_error_usage(error).map(Usage::from));
         // Error strings can contain provider payloads. Keep only categorical
         // metadata; trace queue/write failures remain visible via TraceStatus.
         trace.runtime_info(json!({
@@ -662,7 +662,6 @@ impl EpisodeModels for HttpEpisodeModels {
                                 .as_ref()
                                 .err()
                                 .and_then(decision_error_usage)
-                                .cloned()
                                 .map(Into::into)
                         })
                         .unwrap_or_default();
@@ -697,7 +696,7 @@ impl EpisodeModels for HttpEpisodeModels {
                     // RequestKind::Decider never declares or causes a main-loop break.
                     let cache_metrics = trace.as_ref().and_then(|_| {
                         let shape = trace_registry.decision_wire_shape(candidate, &trace_request)?;
-                        let observed = result.as_ref().ok().map(|response| &response.usage).or_else(|| {
+                        let observed = result.as_ref().ok().map(|response| response.usage.clone()).or_else(|| {
                             result.as_ref().err().and_then(decision_error_usage)
                         })?;
                         // A fallback route reports its own model; compare against the plan.

@@ -274,7 +274,7 @@ impl ModelRole {
                     }
                     Err(error) => {
                         if let Some(usage) = crate::provider::decision_error_usage(&error) {
-                            total.add(usage);
+                            total.add(&usage);
                         } else if let Some(usage) = bubblepaw_core::ProviderError::of(&error)
                             .and_then(|error| error.usage.as_ref())
                         {

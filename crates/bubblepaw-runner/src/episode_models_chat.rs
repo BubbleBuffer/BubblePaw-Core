@@ -103,7 +103,7 @@ impl HttpEpisodeModels {
                                 .and_then(bubblepaw_core::ProviderError::of)
                                 .and_then(|error| error.usage.clone())
                         })
-                        .or_else(|| parsed_http.cloned().map(Into::into))
+                        .or_else(|| parsed_http.map(Into::into))
                         .unwrap_or_default();
                     total.add(&usage);
                     let actual = response

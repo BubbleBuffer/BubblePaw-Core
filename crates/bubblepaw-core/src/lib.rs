@@ -51,6 +51,7 @@ pub use approvals::{
     DEFAULT_AUTO_PROMPT, Decision, exec_working_directory, track_approval_waits,
 };
 use async_trait::async_trait;
+pub use bubblepaw_ai::DEFAULT_CACHE_BLOCK_TOKENS;
 pub use bubblepaw_ai::{
     CacheMode, CancellationToken, Capabilities, ContentBlock, CursorResets, EPHEMERAL_ID_PREFIX,
     HistoryCursor, ImageRef, IncompleteReason, InputFileRef, JsonSchema, LastRequestUsage,
@@ -67,9 +68,7 @@ pub use bubblepaw_ai::{
 pub(crate) use bubblepaw_ai::{
     HistoryTracker, extra_content, prepared_message_bytes, upgrade_user_content,
 };
-pub use cache_accounting::{
-    CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, request_components,
-};
+pub use cache_accounting::{CacheAccounting, CacheOutcome, PrefixBreak, request_components};
 pub use context_facts::{
     ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextSurfaceRebind,
     ContextTrigger, MessageTokenSource, MessageTokens, ReportedMessageTokens,

@@ -46,26 +46,6 @@ async fn stream_envelope_is_not_repeated_per_token_but_extensions_survive() -> R
         state["message_fields"]["reasoning_content"],
         "thought ".repeat(256)
     );
-    // The registry reads a reply's reasoning from its state, or from its thinking
-    // when the state carries none.
-    let legacy = bubblepaw_core::ModelResponse {
-        thinking: String::new(),
-        ..response.clone()
-    };
-    let typed_only = bubblepaw_core::ModelResponse {
-        provider_state: None,
-        ..response.clone()
-    };
-    let differing = bubblepaw_core::ModelResponse {
-        thinking: "other".into(),
-        ..response.clone()
-    };
-    for reply in [&response, &legacy, &typed_only, &differing] {
-        assert_eq!(
-            crate::provider::ProviderRegistry::reply_reasoning(reply),
-            Some("thought ".repeat(256))
-        );
-    }
     let fragments = state["opaque_stream_fragments"].as_array().unwrap();
     assert_eq!(
         fragments.len(),
@@ -91,12 +71,12 @@ fn counting_large_canonical_journal_does_not_change_native_chat_wire() -> Result
         .with_reasoning_replay(BTreeMap::from([("test".into(), ReasoningReplay::All)]))?;
     let state = json!({"adapter":"chat-completions","message_fields":{"reasoning_content":"native reasoning"},
             "opaque_stream_fragments":[{"event":"x".repeat(3 * 1024 * 1024)}]});
-    let mut message = bubblepaw_core::Message {
+    let mut message = crate::Message {
         id: "a".into(),
         session_id: "s".into(),
         role: Role::Assistant,
         origin: None,
-        content: bubblepaw_core::text_blocks("visible"),
+        content: crate::text_blocks("visible"),
         provider_state: Some(state),
         created_at: "now".into(),
         ..Default::default()
@@ -109,7 +89,7 @@ fn counting_large_canonical_journal_does_not_change_native_chat_wire() -> Result
     let canonical = request.clone();
     let before = provider.wire_messages(&request)?;
     assert!(serde_json::to_vec(&request)?.len() > 2 * 1024 * 1024);
-    assert!(bubblepaw_core::prepared_request_bytes(&request)? < 2 * 1024 * 1024);
+    assert!(crate::prepared_request_bytes(&request)? < 2 * 1024 * 1024);
     assert_eq!(request.messages, canonical.messages);
     assert_eq!(provider.wire_messages(&request)?, before);
     message
@@ -128,12 +108,12 @@ fn counting_large_canonical_journal_does_not_change_native_chat_wire() -> Result
 #[test]
 fn wire_shape_hashes_the_sent_body_and_appends_extend_its_prefix() -> Result<()> {
     let provider = ChatCompletionsProvider::without_key("http://127.0.0.1:1")?;
-    let message = |id: &str, content: &str| bubblepaw_core::Message {
+    let message = |id: &str, content: &str| crate::Message {
         id: id.into(),
         session_id: "s".into(),
         role: Role::User,
         origin: None,
-        content: bubblepaw_core::text_blocks(content),
+        content: crate::text_blocks(content),
         created_at: "now".into(),
         ..Default::default()
     };
@@ -157,11 +137,8 @@ fn wire_shape_hashes_the_sent_body_and_appends_extend_its_prefix() -> Result<()>
     let body = provider.round_body(&second_request)?;
     assert_eq!(body["model"], json!("test"));
     assert_eq!(body["stream"], json!(true));
-    let mut expected = bubblepaw_core::WireShape::from_body(
-        &body,
-        "messages",
-        bubblepaw_core::DEFAULT_CACHE_BLOCK_TOKENS,
-    );
+    let mut expected =
+        crate::WireShape::from_body(&body, "messages", crate::DEFAULT_CACHE_BLOCK_TOKENS);
     expected.model = "test".into();
     assert_eq!(second, expected);
     assert!(

@@ -1,9 +1,9 @@
-use anyhow::{Result, ensure};
-use async_trait::async_trait;
-use bubblepaw_core::{
+use crate::{
     CancellationToken, ModelInfo, ModelRequest, ModelResponse, Provider, StreamCallback,
     StreamEvent, ToolCall,
 };
+use anyhow::{Result, ensure};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashSet, VecDeque},
@@ -155,7 +155,7 @@ impl Provider for ScriptedProvider {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("scripted provider lock poisoned"))?;
             for message in request.messages.iter().filter(|message| {
-                message.role == bubblepaw_core::Role::Tool
+                message.role == crate::Role::Tool
                     && message
                         .tool_call_id
                         .as_ref()
