@@ -149,15 +149,12 @@ impl SummarizingContext {
         let Some(state) = &message.provider_state else {
             return count;
         };
-        // The thinking block holds the readable reasoning of a reply stored since it
-        // became a block; older rows keep it only in `provider_state` (legacy path).
+        // The count is the `provider_state` arithmetic; the thinking block stands in
+        // only when that finds no reasoning (a reply whose state carries none).
         let thinking = message.thinking();
         if state["adapter"] == "anthropic-messages" {
-            return count.saturating_add(if thinking.is_empty() {
-                self.readable_thinking_tokens(&state["content"], true)
-            } else {
-                self.tokens(&thinking)
-            });
+            let blob = self.readable_thinking_tokens(&state["content"], true);
+            return count.saturating_add(self.or_thinking(blob, &thinking));
         }
         if state["adapter"] != "chat-completions"
             && !(state.get("adapter").is_none()
@@ -167,14 +164,10 @@ impl SummarizingContext {
         {
             return count;
         }
-        let typed = !thinking.is_empty();
-        if typed {
-            count = count.saturating_add(self.tokens(&thinking));
-        }
+        let before = count;
         let add_fields = |fields: &Value| {
             let plain = ["reasoning_content", "reasoning"]
                 .iter()
-                .filter(|_| !typed)
                 .filter_map(|key| fields[*key].as_str())
                 .map(|text| self.tokens(text))
                 .sum::<usize>();
@@ -198,7 +191,17 @@ impl SummarizingContext {
         } else {
             count = count.saturating_add(add_fields(state.get("message_fields").unwrap_or(state)));
         }
+        let blob = count - before;
+        count = before.saturating_add(self.or_thinking(blob, &thinking));
         count
+    }
+    /// The blob's reasoning tokens, or the thinking block's when the blob has none.
+    fn or_thinking(&self, blob: usize, thinking: &str) -> usize {
+        if blob == 0 && !thinking.is_empty() {
+            self.tokens(thinking)
+        } else {
+            blob
+        }
     }
     pub(super) fn readable_thinking_tokens(&self, blocks: &Value, include_withheld: bool) -> usize {
         blocks
@@ -295,6 +298,10 @@ mod tests {
             let from_state = context.source_message_tokens(&legacy);
             assert!(from_state > bare + 1_000);
             assert_eq!(context.source_message_tokens(&typed), from_state);
+            // With both, the count is exactly the state-only number.
+            let mut both = legacy.clone();
+            both.content = bubblepaw_core::reply_blocks(" other", "done");
+            assert_eq!(context.source_message_tokens(&both), from_state);
         }
         Ok(())
     }

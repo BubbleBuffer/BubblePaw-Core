@@ -46,8 +46,8 @@ async fn stream_envelope_is_not_repeated_per_token_but_extensions_survive() -> R
         state["message_fields"]["reasoning_content"],
         "thought ".repeat(256)
     );
-    // The registry reads a reply's reasoning from its thinking, and an older
-    // reply's from the state.
+    // The registry reads a reply's reasoning from its state, or from its thinking
+    // when the state carries none.
     let legacy = bubblepaw_core::ModelResponse {
         thinking: String::new(),
         ..response.clone()
@@ -56,7 +56,11 @@ async fn stream_envelope_is_not_repeated_per_token_but_extensions_survive() -> R
         provider_state: None,
         ..response.clone()
     };
-    for reply in [&response, &legacy, &typed_only] {
+    let differing = bubblepaw_core::ModelResponse {
+        thinking: "other".into(),
+        ..response.clone()
+    };
+    for reply in [&response, &legacy, &typed_only, &differing] {
         assert_eq!(
             crate::provider::ProviderRegistry::reply_reasoning(reply),
             Some("thought ".repeat(256))

@@ -82,6 +82,23 @@ impl ModelResponse {
         serde_json::from_str(&self.text)
             .context("model reply is not valid JSON for the requested type")
     }
+    /// Serialized size of the reply as the storage limit measures it: without the
+    /// typed reply facts, each of which adds `,"name":value` when present.
+    pub(crate) fn storage_bytes(&self) -> serde_json::Result<usize> {
+        fn field<T: Serialize>(name: &str, value: &Option<T>) -> serde_json::Result<usize> {
+            match value {
+                Some(value) => Ok(name.len() + 4 + serde_json::to_vec(value)?.len()),
+                None => Ok(0),
+            }
+        }
+        let list = Some(&self.request_usages).filter(|usages| !usages.is_empty());
+        let extra = field("model", &self.model)?
+            + field("stop_reason", &self.stop_reason)?
+            + field("request_usages", &list)?
+            + field("route", &self.route)?
+            + field("cache_breakpoints", &self.cache_breakpoints)?;
+        Ok(serde_json::to_vec(self)?.len() - extra)
+    }
     /// The qualified route that served the reply.
     pub fn selected_route(&self) -> Option<&str> {
         match &self.route {
@@ -169,6 +186,23 @@ mod tests {
                 Some(vec!["system.0".to_owned()])
             );
         }
+        // The storage limit measures the reply without the typed facts.
+        let plain = ModelResponse {
+            text: "x".into(),
+            ..Default::default()
+        };
+        let typed = ModelResponse {
+            stop_reason: Some(StopReason::EndTurn),
+            model: Some("m".into()),
+            ..plain.clone()
+        };
+        assert_eq!(
+            plain.storage_bytes().unwrap(),
+            typed.storage_bytes().unwrap()
+        );
+        assert!(
+            serde_json::to_vec(&plain).unwrap().len() < serde_json::to_vec(&typed).unwrap().len()
+        );
         let bare = ModelResponse::default();
         assert!(bare.selected_route().is_none() && !bare.multiple_requests());
     }

@@ -202,7 +202,10 @@ impl Observation {
             metadata["fallback_reasons"] = json!(fallback_reasons);
         }
         if let Some(stop_reason) = &response.stop_reason {
-            metadata["stop_reason"] = json!(stop_reason);
+            metadata["stop_reason"] = match stop_reason {
+                crate::StopReason::Other(raw) => json!(raw),
+                other => json!(other),
+            };
         }
         if let Some(model) = &response.model {
             metadata["model"] = json!(model);

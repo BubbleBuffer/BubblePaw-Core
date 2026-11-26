@@ -17,13 +17,14 @@ impl ProviderRegistry {
     pub(crate) fn set_context_observation(&self, observation: Option<bubblepaw_core::Observation>) {
         self.context_route.set_observation(observation);
     }
-    /// The readable reasoning of a reply: its thinking text, or for a reply that
-    /// carries it only in the replay state, that state's reasoning.
+    /// The readable reasoning of a reply: its replay state's reasoning, or when
+    /// the state carries none, its thinking text.
     pub(crate) fn reply_reasoning(response: &bubblepaw_core::ModelResponse) -> Option<String> {
-        if !response.thinking.is_empty() {
-            return Some(response.thinking.clone());
-        }
-        response.provider_state.as_ref().and_then(Self::reasoning)
+        response
+            .provider_state
+            .as_ref()
+            .and_then(Self::reasoning)
+            .or_else(|| (!response.thinking.is_empty()).then(|| response.thinking.clone()))
     }
     /// Legacy: reasoning text a provider returned in its replay state, if any.
     pub(crate) fn reasoning(state: &serde_json::Value) -> Option<String> {
@@ -114,10 +115,15 @@ pub(super) fn stamp_route(
     failed: &[String],
     reasons: &[String],
 ) {
+    // A nested registry may have stamped the reply already. With nothing failed here,
+    // its fallbacks stay, as its keys do in the replay state.
+    let inner = response.route.take().filter(|_| failed.is_empty());
     response.route = Some(bubblepaw_core::ServedRoute {
         selected: selected.to_owned(),
-        fallback_from: failed.to_vec(),
-        fallback_reasons: reasons.to_vec(),
+        fallback_from: inner
+            .as_ref()
+            .map_or(failed.to_vec(), |r| r.fallback_from.clone()),
+        fallback_reasons: inner.map_or(reasons.to_vec(), |r| r.fallback_reasons),
     });
     let state = response
         .provider_state
