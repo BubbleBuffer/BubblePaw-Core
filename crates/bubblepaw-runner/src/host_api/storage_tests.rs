@@ -16,8 +16,8 @@ async fn archive_restore_and_deleted_chat_search_preserve_offline_contract() -> 
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "2026-10-29T00:00:00Z".into(),
+        ..Default::default()
     }])?;
     let ctx = HostCtx::for_store(store.clone(), root.path());
     let search = json!({"query":"needle","session_id":session.id});

@@ -780,7 +780,7 @@ impl Provider for PendingProvider {
     }
 }
 #[tokio::test]
-async fn pending_provider_cancellation_is_bounded_and_fragments_are_not_stored() -> Result<()> {
+async fn pending_provider_cancellation_is_bounded_and_the_streamed_text_is_kept() -> Result<()> {
     let store = Store::in_memory()?;
     let session = store.create_session("stop")?;
     let entered = Arc::new(Notify::new());
@@ -798,7 +798,7 @@ async fn pending_provider_cancellation_is_bounded_and_fragments_are_not_stored()
         tokio::time::timeout(Duration::from_secs(1), agent.wait_for_idle(&session.id)).await??;
     assert_eq!(finished.id, run.id);
     assert_eq!(finished.status, "cancelled");
-    assert_eq!(store.messages(&session.id)?.len(), 1);
+    assert!(store.messages(&session.id)?[1].incomplete == Some(IncompleteReason::Cancelled));
     agent.shutdown(Duration::from_secs(1)).await?;
     Ok(())
 }
@@ -1894,7 +1894,7 @@ fn legacy_session_and_checkpoint_default_without_rewriting_archive() -> Result<(
     assert_eq!(after, originals);
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        16
+        17
     );
     Ok(())
 }

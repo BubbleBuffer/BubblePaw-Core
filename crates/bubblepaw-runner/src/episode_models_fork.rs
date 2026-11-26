@@ -112,8 +112,8 @@ pub(super) async fn summarize_fork_attempt(
             tool_call_id: None,
             provider_state: None,
             is_error: false,
-            details: None,
             created_at: String::new(),
+            ..Default::default()
         });
     }
     // The summary target is prose guidance, not a hard combined thinking/text
@@ -367,8 +367,8 @@ fn refuse_tool_calls(
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: String::new(),
+        ..Default::default()
     };
     request.messages.push(Message {
         content: bubblepaw_core::reply_blocks(&response.thinking, &response.text),

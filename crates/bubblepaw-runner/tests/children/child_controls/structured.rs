@@ -248,7 +248,11 @@ async fn invalid_result_retry_timeout_returns_only_latest_stream_fragment() -> R
             .iter()
             .any(|m| m.role == Role::Assistant && m.text() == "first invalid streamed reply")
     );
-    assert!(!messages.iter().any(|m| m.text().contains("retry fragment")));
+    assert!(
+        !messages
+            .iter()
+            .any(|m| m.incomplete.is_none() && m.text().contains("retry"))
+    );
     let run = fixture.store.runs(session)?.into_iter().last().unwrap();
     let (metadata, bytes) = fixture
         .store

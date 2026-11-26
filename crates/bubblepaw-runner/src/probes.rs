@@ -524,8 +524,8 @@ pub(crate) fn provider_request(
                 .cloned()
                 .filter(|state| !state.is_null()),
             is_error: item["is_error"].as_bool().unwrap_or(false),
-            details: None,
             created_at: String::new(),
+            ..Default::default()
         });
     }
     for item in body["tools"].as_array().into_iter().flatten() {

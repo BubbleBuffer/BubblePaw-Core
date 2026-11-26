@@ -33,8 +33,8 @@ async fn bounded_view_strips_private_provider_state_and_reuses_disposable_cache(
             tool_call_id: None,
             provider_state: Some(json!({"private":"provider-only"})),
             is_error: false,
-            details: None,
             created_at: "2026-10-29T00:00:00Z".into(),
+            ..Default::default()
         })
         .collect::<Vec<_>>();
     store.append_batch(&messages)?;

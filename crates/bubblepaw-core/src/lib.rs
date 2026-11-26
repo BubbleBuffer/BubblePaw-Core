@@ -21,6 +21,7 @@
 //! ```
 mod approvals;
 mod cache_accounting;
+mod cancellation;
 #[doc(hidden)]
 pub mod config_schema;
 mod content_block;
@@ -32,6 +33,7 @@ mod dispatch;
 mod event_log;
 mod events;
 mod host_state;
+mod incomplete;
 mod model_response;
 mod observation;
 mod output_schema;
@@ -62,6 +64,7 @@ pub use cache_accounting::{
     CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, RequestKind, WireShape,
     request_components,
 };
+pub use cancellation::CancellationToken;
 pub use content_block::*;
 pub use context_facts::{
     ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextSurfaceRebind,
@@ -79,6 +82,7 @@ pub use discovery::{search_tool_definitions_with_servers, tool_definition_summar
 pub use dispatch::ToolDispatcher;
 pub use event_log::{ClientInfo, EVENTS_AFTER_LIMIT, LogPosition, client_param};
 pub use events::{EventKind, HarnessEvent};
+pub use incomplete::IncompleteReason;
 pub use model_response::{ModelResponse, ServedRoute, StopReason};
 pub use observation::{
     Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink,
@@ -123,38 +127,9 @@ pub use store::{
     StoreError, StoreOptions, StoreSchemaError, SubjectChapterStatus,
 };
 pub use stream_event::{StreamCallback, StreamEvent, text_callback};
-use tokio::sync::watch;
 pub use transcript::{
     ImportDerivedRecord, ImportFormat, ImportOptions, ImportResult, ImportStats, import_file,
 };
-
-#[derive(Clone, Debug)]
-pub struct CancellationToken(Arc<watch::Sender<bool>>);
-impl Default for CancellationToken {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl CancellationToken {
-    pub fn new() -> Self {
-        let (sender, _) = watch::channel(false);
-        Self(Arc::new(sender))
-    }
-    pub fn cancel(&self) {
-        self.0.send_replace(true);
-    }
-    pub fn is_cancelled(&self) -> bool {
-        *self.0.borrow()
-    }
-    pub async fn cancelled(&self) {
-        let mut receiver = self.0.subscribe();
-        while !*receiver.borrow_and_update() {
-            if receiver.changed().await.is_err() {
-                return;
-            }
-        }
-    }
-}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -213,6 +188,10 @@ pub struct Message {
     /// Data for user interfaces; never sent to a model (docs/thinking-tool-loop.md).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<Value>,
+    /// Set on an assistant reply whose request failed or was cancelled after
+    /// text had streamed (docs/thinking-tool-loop.md).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incomplete: Option<IncompleteReason>,
     pub created_at: String,
 }
 

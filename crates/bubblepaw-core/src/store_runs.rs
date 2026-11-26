@@ -67,7 +67,8 @@ impl Store {
                     break;
                 }
                 // A script run ends on its tool result, not on an assistant message.
-                let result = message.role == Role::Assistant
+                // An incomplete reply of a failed request is never the answer.
+                let result = (message.role == Role::Assistant && message.incomplete.is_none())
                     || (run.model == crate::SCRIPT_MODEL && message.role == Role::Tool);
                 if created <= end && result {
                     run.text = Some(message.text().into_owned());
@@ -120,6 +121,7 @@ impl Store {
             provider_state: None,
             is_error: false,
             details: None,
+            incomplete: None,
             created_at: now(),
         }
     }

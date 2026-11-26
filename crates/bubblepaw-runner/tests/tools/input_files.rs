@@ -42,8 +42,8 @@ fn record_backed_large_attachments_share_blobs_with_inline_history_and_survive_c
             tool_call_id: None,
             provider_state: None,
             is_error: false,
-            details: None,
             created_at: "2026-10-12T00:00:00Z".into(),
+            ..Default::default()
         }])
         .unwrap();
     let connection =

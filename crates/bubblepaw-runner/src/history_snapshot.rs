@@ -292,8 +292,8 @@ mod tests {
                 tool_call_id: None,
                 provider_state: None,
                 is_error: false,
-                details: None,
                 created_at: "2026-10-12T00:00:00Z".into(),
+                ..Default::default()
             });
         }
         history[2].content = bubblepaw_core::text_blocks("Task:\nGenerated child task");
@@ -362,8 +362,8 @@ mod tests {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
-            details: None,
             created_at: "2026-10-12T00:00:00Z".into(),
+            ..Default::default()
         }];
         history.push(Message {
             id: "interrupt".into(),

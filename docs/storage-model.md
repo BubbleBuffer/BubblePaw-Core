@@ -100,6 +100,16 @@ first and fall back to `provider_state` for older rows. The typed reply facts
 `ModelResponse` only and are not stored with the message. Rows are never rewritten, and step 16 only raises the
 version so an older program refuses the store.
 
+## Incomplete replies (chat store 17)
+
+A request that fails or is cancelled after text streamed stores that text as an
+assistant message with an optional `incomplete` field (`error` or `cancelled`) in
+its row data. Rows written before it have no field and read as complete; new
+complete rows omit it. Everything that reads assistant text (token estimates,
+byte accounting, summaries, episodes, forks, export, search) treats the message
+like any other assistant text message. Rows are never rewritten, and step 17 only
+raises the version so an older program refuses the store.
+
 ## Bounded host state (2026-10-15)
 
 An additive `host_state(session_id,key,value)` table keeps small runner-owned

@@ -67,8 +67,8 @@ pub fn stored_message(session: &str, id: &str, role: Role, content: &str) -> Mes
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "2026-10-12T00:00:00Z".into(),
+        ..Default::default()
     }
 }
 
@@ -89,8 +89,8 @@ pub fn unstamped_message(session: &str, id: &str, role: Role, content: &str) -> 
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "time".into(),
+        ..Default::default()
     }
 }
 
@@ -106,7 +106,7 @@ pub fn uuid_message(session: &str, role: Role, text: &str) -> Message {
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "2026-10-12T12:00:00Z".into(),
+        ..Default::default()
     }
 }

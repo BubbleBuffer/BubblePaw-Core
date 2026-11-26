@@ -215,8 +215,8 @@ async fn response_calibration_uses_the_dispatched_reminder_instead_of_counting_i
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "2026-10-23T00:00:00Z".into(),
+        ..Default::default()
     });
     context.validate_prepared_request(&session, &dispatched, provider.clone())?;
     context.observe_request(&session, &dispatched, provider.clone());

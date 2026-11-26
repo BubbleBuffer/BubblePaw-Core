@@ -232,8 +232,8 @@ fn request(model: &str) -> ModelRequest {
             tool_call_id: None,
             provider_state: None,
             is_error: false,
-            details: None,
             created_at: String::new(),
+            ..Default::default()
         }],
         session_id: "synthetic-session-header".into(),
         max_output_tokens: Some(100),

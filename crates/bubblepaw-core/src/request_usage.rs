@@ -152,6 +152,24 @@ pub async fn capture_request_usage_with_store<F: Future>(
     )
 }
 
+/// The record a main request falls back to: the model's `provider/name` split
+/// (`unknown` provider without a slash), the run, and the request id when the
+/// request has an observation scope.
+pub(crate) fn request_fallback(
+    model: &str,
+    run: &crate::Run,
+    scope: Option<&crate::ObservationScope>,
+) -> RequestUsage {
+    let (provider, name) = model.split_once('/').unwrap_or(("unknown", model));
+    let mut fallback = RequestUsage::new(provider, name);
+    fallback.session_id.clone_from(&run.session_id);
+    fallback.run_id = Some(run.id.clone());
+    if let Some(request_id) = scope.and_then(|scope| scope.model_request_id.as_ref()) {
+        fallback.request_id.clone_from(request_id);
+    }
+    fallback
+}
+
 /// The record for a main request whose provider reported no usage of its own:
 /// the response's totals, or those carried by the error. Ids of requests that
 /// reported output are appended to `request_ids`.

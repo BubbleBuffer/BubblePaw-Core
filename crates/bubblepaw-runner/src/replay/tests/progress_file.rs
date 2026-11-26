@@ -14,8 +14,8 @@ async fn progress_json_is_metadata_only_and_matches_report_counts() -> Result<()
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: "2026-10-09T00:00:00Z".into(),
+        ..Default::default()
     };
     let corpus = ReplayCorpus {
         chat_id: "progress-fixture".into(),

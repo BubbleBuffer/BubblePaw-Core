@@ -35,6 +35,10 @@ pub(super) const CHAT_STEPS: &[Step] = &[
         from: 15,
         run: message_thinking_blocks,
     },
+    Step {
+        from: 16,
+        run: message_incomplete_replies,
+    },
 ];
 /// Version 13 stores new message rows with `content` as a list of blocks. Old
 /// rows keep the string form and stay readable, so no data changes; only the
@@ -63,6 +67,13 @@ fn message_file_blocks(_tx: &Transaction) -> Result<()> {
 /// and are replayed from it, so only the version bump matters: a program that
 /// predates the block must refuse a store that may hold it.
 fn message_thinking_blocks(_tx: &Transaction) -> Result<()> {
+    Ok(())
+}
+/// Version 17 stores an assistant reply cut short by a failed or cancelled
+/// request with an `incomplete` field. Older rows have none and read as
+/// complete, so only the version bump matters: a program that predates the
+/// field must refuse a store that may hold it.
+fn message_incomplete_replies(_tx: &Transaction) -> Result<()> {
     Ok(())
 }
 /// Upgrade steps for `catalog.db`.

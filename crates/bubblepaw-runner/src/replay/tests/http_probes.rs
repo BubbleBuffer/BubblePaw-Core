@@ -41,8 +41,8 @@ async fn local_http_probes_use_metered_history_tools_record_bad_judge_and_block_
         tool_call_id: None,
         provider_state: None,
         is_error: false,
-        details: None,
         created_at: String::new(),
+        ..Default::default()
     };
     store.append_batch(std::slice::from_ref(&original))?;
     let before = serde_json::to_value(store.snapshot(&session.id, 100, 100, 100)?)?;

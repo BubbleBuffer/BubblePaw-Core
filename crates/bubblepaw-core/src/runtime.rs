@@ -722,6 +722,7 @@ impl Harness {
             }
             let mut usage = None;
             let mut request_usage = Vec::new();
+            let partial = runtime_stream::SharedPartial::default();
             let result = crate::quota::with_quota_wait_context(
                 &self.store,
                 &run.session_id,
@@ -732,6 +733,7 @@ impl Harness {
                     &cancellation,
                     &mut usage,
                     &mut request_usage,
+                    &partial,
                     single_tool.as_ref(),
                 ),
             )
@@ -757,6 +759,7 @@ impl Harness {
                     }
                     .into();
                     run.error = Some(format!("{error:#}"));
+                    self.keep_partial_reply(&run.session_id, &partial, cancellation.is_cancelled());
                     if let Err(storage_error) =
                         self.store.close_unresolved(&run.session_id, &run.id)
                     {
@@ -894,6 +897,7 @@ impl Harness {
             break;
         }
     }
+    #[allow(clippy::too_many_arguments)]
     async fn turn(
         &self,
         run: &Run,
@@ -901,6 +905,7 @@ impl Harness {
         cancellation: &CancellationToken,
         usage: &mut Option<Usage>,
         request_usage: &mut Vec<RequestUsage>,
+        partial: &runtime_stream::SharedPartial,
         single_tool: Option<&SingleToolRun>,
     ) -> Result<TurnOutcome> {
         ensure!(!cancellation.is_cancelled(), "Cancelled");
@@ -1016,7 +1021,7 @@ impl Harness {
                 let prepared = async {
                     loop {
                     let system_prompt = tool_surface.prompt();
-                    let mut messages = self.config.context.project_history(&history)?;
+                    let mut messages = self.project_request_history(&history)?;
                     // The new batch must reach token/window admission intact,
                     // even if the ordinary history projection drops older input.
                     messages.retain(|saved| !steering_batch.iter().any(|steer| steer.id == saved.id));
@@ -1161,19 +1166,11 @@ impl Harness {
                 // Provider extension history cursor (docs/providers.md).
                 request.session_id = run.session_id.clone();
                 request.history = self.cursors.advance(&run.session_id, &request.messages);
-                let (provider_name, model_name) = request
-                    .model
-                    .split_once('/')
-                    .unwrap_or(("unknown", request.model.as_str()));
-                let mut fallback_usage = RequestUsage::new(provider_name, model_name);
-                fallback_usage.session_id.clone_from(&run.session_id);
-                fallback_usage.run_id = Some(run.id.clone());
-                if let Some(request_id) = request_scope
-                    .as_ref()
-                    .and_then(|scope| scope.model_request_id.as_ref())
-                {
-                    fallback_usage.request_id.clone_from(request_id);
-                }
+                let fallback_usage = crate::request_usage::request_fallback(
+                    &request.model,
+                    run,
+                    request_scope.as_ref(),
+                );
                 let request_started = Instant::now();
                 let first_text = self
                     .config
@@ -1186,6 +1183,7 @@ impl Harness {
                         .as_ref()
                         .and_then(|s| s.model_request_id.clone()),
                 );
+                partial.lock().unwrap().clear();
                 let paragraphs = Arc::new(Mutex::new(Paragraphs::default()));
                 let max = self.config.max_paragraph_bytes.max(4);
                 let callback_live = Arc::new(AtomicBool::new(true));
@@ -1201,6 +1199,7 @@ impl Harness {
                     max_paragraph_bytes: max,
                     started: request_started,
                     first_text: first_text.clone(),
+                    partial: partial.clone(),
                 }
                 .callback();
                 self.state.log.transient(
@@ -1268,6 +1267,7 @@ impl Harness {
                     }
                 };
                 overflow.reset();
+                partial.lock().unwrap().clear();
                 result_retry_pending = false;
                 reminders.observe_tool_calls(tools_round, response.tool_calls.len());
                 self.config

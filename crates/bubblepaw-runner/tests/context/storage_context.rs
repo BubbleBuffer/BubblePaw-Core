@@ -50,7 +50,7 @@ fn message(session: &str, index: usize) -> Message {
             {"type":"text","text":content}
         ],"stop_reason":"end_turn"})),
         is_error: false, created_at: "2026-10-12T00:00:00Z".into(),
-        details: None,
+        ..Default::default()
     }
 }
 fn options() -> StoreOptions {

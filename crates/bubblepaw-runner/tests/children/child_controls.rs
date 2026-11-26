@@ -269,8 +269,7 @@ async fn timeout_drops_inflight_provider_and_preserves_reusable_history() -> Res
 }
 
 #[tokio::test]
-async fn timeout_returns_current_unfinished_stream_without_archiving_partial_message() -> Result<()>
-{
+async fn timeout_returns_current_unfinished_stream_and_keeps_it_only_as_incomplete() -> Result<()> {
     let mut fixture = Fixture::new(vec![
         Step::StreamThenHang("unfinished streamed answer".into()),
         Step::Text("continued".into()),
@@ -288,7 +287,7 @@ async fn timeout_returns_current_unfinished_stream_without_archiving_partial_mes
             .store
             .messages(child["sessionId"].as_str().unwrap())?
             .iter()
-            .any(|m| m.role == Role::Assistant && m.text() == "unfinished streamed answer")
+            .any(|m| m.text() == "unfinished streamed answer" && m.incomplete.is_none())
     );
     let session = child["sessionId"].as_str().unwrap();
     let run = fixture.store.runs(session)?.into_iter().last().unwrap();

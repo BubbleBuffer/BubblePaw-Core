@@ -776,6 +776,8 @@ the model-text and plain-string forms of a message append the files as the
 `BubblePawAttachments` envelope, as before. Older rows whose
 text ends in the attachments envelope read as the same blocks.
 
+Protocol 9 adds the optional message field `incomplete`: `"error"` or `"cancelled"` on an assistant message whose model request failed or was cancelled after text had streamed. It holds the part that streamed, has no tool calls, and is absent on every other message; the run's own status and `run_finished` event are unchanged and no event announces the message. Rust embedders read `Message.incomplete` (`IncompleteReason`, `#[non_exhaustive]`).
+
 A message's `content` is a list of blocks, not a string. There are two block
 kinds: `text`, and (protocol 6) `image`, a reference to an image stored as a
 session attachment. A message holds one text block with its text; images follow

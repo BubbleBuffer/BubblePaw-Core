@@ -637,7 +637,7 @@ async fn streaming_timeout_keeps_partial_result_out_of_durable_parent_notice() -
             .store
             .messages(child["sessionId"].as_str().unwrap())?
             .iter()
-            .all(|message| !message.text().contains("transient child fragment"))
+            .all(|m| m.incomplete.is_some() || !m.text().contains("transient child fragment"))
     );
     Ok(())
 }
