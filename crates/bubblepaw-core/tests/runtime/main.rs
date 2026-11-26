@@ -5,6 +5,7 @@ mod file_size;
 mod host_notices;
 mod host_writer;
 mod layering;
+mod layering_loop;
 mod panic_in_run;
 mod partial_replies;
 mod reminder_runtime;

@@ -1,35 +1,12 @@
 //! One run of the loop: rounds of model request and tool dispatch until the run
 //! has an outcome. The shell in `runtime.rs` owns the session around it.
+use super::run_inputs::{RunInputs, RunLoop, RunOutcome};
 use super::run_settle::{RoundState, Settled};
-use super::tool_source::{RunTools, ToolSource};
+use super::tool_source::RunTools;
 use super::*;
+use crate::IncompleteReason;
 
-/// What one run needs to start: the run, its options and how it is stopped.
-#[derive(Clone, Copy)]
-pub(super) struct RunInputs<'a> {
-    pub(super) run: &'a Run,
-    pub(super) options: &'a RunOptions,
-    pub(super) cancellation: &'a CancellationToken,
-    pub(super) single_tool: Option<&'a SingleToolRun>,
-    /// The tools each round offers.
-    pub(super) tools: &'a dyn ToolSource,
-    /// Decides whether a call may run, and shapes its result.
-    pub(super) gate: &'a Arc<dyn ToolGate>,
-    /// Whether the gate is told the user's latest request, kept current as steering arrives.
-    pub(super) wants_user_request: bool,
-}
-
-/// How a run ended, for the shell to record on the run and commit.
-pub(super) struct RunOutcome {
-    pub(super) status: String,
-    pub(super) text: Option<String>,
-    pub(super) usage: Option<Usage>,
-    pub(super) error: Option<String>,
-    pub(super) result_message_id: Option<String>,
-    pub(super) final_message: Option<Message>,
-}
-
-impl Harness {
+impl RunLoop {
     /// Run exactly one run. A failure keeps the partial reply and closes the run's
     /// open records through the journal before the outcome is returned.
     pub(super) async fn run_once(&self, inputs: &RunInputs<'_>) -> RunOutcome {
@@ -71,6 +48,25 @@ impl Harness {
             }
         }
     }
+    /// Store what streamed before the request failed or was cancelled. The run's
+    /// outcome stays as it was, so a failure to store is not reported.
+    fn keep_partial_reply(
+        &self,
+        session_id: &str,
+        partial: &runtime_stream::SharedPartial,
+        cancelled: bool,
+    ) {
+        let reason = if cancelled {
+            IncompleteReason::Cancelled
+        } else {
+            IncompleteReason::Error
+        };
+        let limit = self.limits.max_request_bytes;
+        let Some(message) = partial.lock().unwrap().message(session_id, reason, limit) else {
+            return;
+        };
+        let _ = self.journal.partial_reply_kept(&message);
+    }
     pub(super) fn latest_user_request(&self, session_id: &str) -> Result<String> {
         let is_user_request = |message: &Message| {
             message.role == Role::User && message.origin != Some(crate::MessageOrigin::Generated)
@@ -100,13 +96,13 @@ impl Harness {
             cancellation,
             single_tool,
             tools: tool_source,
-            gate,
+            dispatcher: new_dispatcher,
             wants_user_request,
         } = *inputs;
         // The host's view of the run's turn, for as long as this future lives.
         let _turn = self.request_context.turn_scope(run);
         ensure!(!cancellation.is_cancelled(), "Cancelled");
-        if let Some(hook) = &self.config.turn_start {
+        if let Some(hook) = &self.limits.turn_start {
             tokio::select! {
                 biased;
                 _ = cancellation.cancelled() => return Err(anyhow!("Cancelled during turn start")),
@@ -115,7 +111,7 @@ impl Harness {
         }
         ensure!(!cancellation.is_cancelled(), "Cancelled");
         // Capture the consumed run input before a provider or host can append
-        // other messages. Nested calls retain the same approval scope.
+        // other messages.
         let mut state = RoundState {
             user_request: if wants_user_request {
                 self.latest_user_request(&run.session_id)?
@@ -129,22 +125,8 @@ impl Harness {
             surface: mut tool_surface,
             refresh_each_round,
         } = tool_source.open_run(run, options)?;
-        let mut dispatcher = ToolDispatcher::from_seams(
-            tools.clone(),
-            self.config.max_tool_result_bytes,
-            self.config.observation.clone(),
-            self.journal.clone(),
-            gate.clone(),
-            self.live.clone(),
-        )
-        .with_approval(self.config.approval.clone())
-        .with_approval_resolver(
-            self.config
-                .run_approval_resolver(options.approval.clone(), single_tool.is_some()),
-        )
-        .with_tool_budget(options.max_tool_calls)
-        .with_interactive_approval(single_tool.is_none());
-        let max_rounds = options.max_rounds.or(self.config.max_rounds);
+        let mut dispatcher = new_dispatcher(tools.clone());
+        let max_rounds = options.max_rounds.or(self.limits.max_rounds);
         let mut budget_final_requested = false;
         // Exhaustion gets a final tools-off request; a missing result gets one nudge.
         // An ignored tools-off reminder gets one enforcement round after them.
@@ -194,7 +176,7 @@ impl Harness {
             } else if let Some(code) = &options.script {
                 (crate::script::response(code), dispatcher.clone())
             } else {
-                let (default_model, request_provider) = self.provider_binding();
+                let (default_model, request_provider) = (self.provider)();
                 tools_round = tool_source.queue_round_reminders(
                     run,
                     options,
@@ -206,7 +188,7 @@ impl Harness {
                         .note(&run.session_id, Note::Reminder(reminder));
                 }
                 let mut history = self.request_context.history(&run.session_id)?;
-                let request_scope = self.config.observation.as_ref().map(|_| ObservationScope {
+                let request_scope = self.observation.as_ref().map(|_| ObservationScope {
                     session_id: run.session_id.clone(),
                     run_id: run.id.clone(),
                     model_request_id: Some(id()),
@@ -289,7 +271,7 @@ impl Harness {
                                 additional_tokens: tokens.max(budget.additional_tokens),
                                 additional_bytes: bytes.max(budget.additional_bytes),
                             };
-                            if let (Some(observer), Some(scope)) = (&self.config.observation, &request_scope) {
+                            if let (Some(observer), Some(scope)) = (&self.observation, &request_scope) {
                                 observer.emit(scope.clone(), "context_budget_pressure", serde_json::json!({
                                     "additional_tokens": budget.additional_tokens,
                                     "additional_bytes": budget.additional_bytes,
@@ -308,7 +290,7 @@ impl Harness {
                     }
                 }.await;
                 if let (Err(error), Some(observer), Some(scope)) =
-                    (&prepared, &self.config.observation, &request_scope)
+                    (&prepared, &self.observation, &request_scope)
                 {
                     observer.failure(
                         scope.clone(),
@@ -324,13 +306,7 @@ impl Harness {
                     dispatcher = dispatcher.with_user_request(state.user_request.clone());
                 }
                 if let Some(notice) = prepared.notice {
-                    let context = ToolContext {
-                        session_id: run.session_id.clone(),
-                        run_id: run.id.clone(),
-                        invocation_id: String::new(),
-                        cancellation: cancellation.clone(),
-                        approval: dispatcher.approval_policy(&run.session_id),
-                    };
+                    let context = dispatcher.notice_context(run, cancellation);
                     dispatcher.emit_output(
                         &context,
                         &format!("context:{}", id()),
@@ -353,10 +329,11 @@ impl Harness {
                 let mut request = prepared.request;
                 // Provider extension history cursor (docs/providers.md).
                 request.session_id = run.session_id.clone();
-                request.history = self.cursors.advance(&run.session_id, &request.messages);
+                request.history = self
+                    .request_context
+                    .history_cursor(&run.session_id, &request.messages);
                 let request_started = Instant::now();
                 let first_text = self
-                    .config
                     .observation
                     .as_ref()
                     .map(|_| Arc::new(Mutex::new(None::<u64>)));
@@ -373,7 +350,7 @@ impl Harness {
                 );
                 partial.lock().unwrap().clear();
                 let paragraphs = Arc::new(Mutex::new(Paragraphs::default()));
-                let max = self.config.max_paragraph_bytes.max(4);
+                let max = self.limits.max_paragraph_bytes.max(4);
                 let callback_live = Arc::new(AtomicBool::new(true));
                 let callback_lifetime = CallbackLifetime(callback_live.clone());
                 let callback = runtime_stream::ModelStream {

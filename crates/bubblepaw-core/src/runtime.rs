@@ -3,8 +3,8 @@ use crate::request_seam::{Built, Draft, Note, Release, RequestContext};
 use crate::{
     CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
     ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput, Role, Run,
-    RunOptions, Store, ToolCall, ToolContext, ToolDispatcher, ToolRegistry, ToolResult, Usage, id,
-    now, stream::Paragraphs,
+    RunOptions, Store, ToolCall, ToolDispatcher, ToolRegistry, ToolResult, Usage, id, now,
+    stream::Paragraphs,
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use async_trait::async_trait;
@@ -51,17 +51,18 @@ mod runtime_tools;
 #[path = "tool_source.rs"]
 mod tool_source;
 use crate::submit_result::is_submission;
-use crate::tool_gate::ToolGate;
 
 #[path = "runtime_records.rs"]
 mod records;
+#[path = "run_inputs.rs"]
+mod run_inputs;
 #[path = "run_loop.rs"]
 mod run_loop;
 #[path = "run_settle.rs"]
 mod run_settle;
 pub(crate) use records::Active;
 use records::{CallbackLifetime, SingleToolRun, TurnOutcome};
-use run_loop::{RunInputs, RunOutcome};
+use run_inputs::{RunInputs, RunOutcome};
 
 /// Resolve the host's default model and request client as one snapshot.
 pub type ProviderResolver = Arc<dyn Fn() -> (String, Arc<dyn Provider>) + Send + Sync>;
@@ -263,7 +264,6 @@ pub struct Harness {
     selection: runtime_mode::ToolSelection,
     config: HarnessConfig,
     state: Arc<RuntimeState>,
-    cursors: Arc<crate::HistoryTracker>,
     journal: Arc<dyn Journal>,
     live: Arc<dyn crate::live_events::LiveEvents>,
     request_context: Arc<dyn RequestContext>,
@@ -295,6 +295,7 @@ impl Harness {
             selection: selection.clone(),
             observation: config.observation.clone(),
             max_request_bytes: config.max_request_bytes,
+            cursors: Arc::default(),
         });
         let harness = Self {
             store,
@@ -302,7 +303,6 @@ impl Harness {
             selection,
             config,
             state,
-            cursors: Arc::default(),
             journal,
             live,
             request_context,
@@ -534,7 +534,6 @@ impl Harness {
         );
         self.state.active.lock().unwrap().remove(session_id);
         self.state.log.forget_session(session_id);
-        self.cursors.forget(session_id);
         self.request_context.release(session_id, Release::Deleted);
         // The history is gone either way; the mirror is dropped best effort.
         self.provider.close_session(session_id).await
@@ -551,7 +550,6 @@ impl Harness {
                 "Session has an active run"
             );
         }
-        self.cursors.forget(session_id);
         self.request_context.release(session_id, Release::Idle);
         self.provider.close_session(session_id).await
     }
@@ -654,6 +652,7 @@ impl Harness {
         cancellation: CancellationToken,
         mut single_tool: Option<SingleToolRun>,
     ) {
+        let run_loop = self.run_loop();
         loop {
             if let Some(observer) = &self.config.observation {
                 observer.emit(
@@ -676,14 +675,14 @@ impl Harness {
                 error,
                 result_message_id,
                 final_message,
-            } = self
+            } = run_loop
                 .run_once(&RunInputs {
                     run: &run,
                     options: &options,
                     cancellation: &cancellation,
                     single_tool: single_tool.as_ref(),
                     tools: &tool_source::StockToolSource::new(self),
-                    gate: &self.stock_gate(),
+                    dispatcher: &*self.run_dispatcher(&options, single_tool.is_some()),
                     wants_user_request: self.config.auto_approval.is_some(),
                 })
                 .await;

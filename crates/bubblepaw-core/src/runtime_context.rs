@@ -57,6 +57,8 @@ pub(super) struct StockRequestContext {
     pub(super) selection: runtime_mode::ToolSelection,
     pub(super) observation: Option<Observation>,
     pub(super) max_request_bytes: usize,
+    /// What each session's last request sent, for the provider extension history cursor.
+    pub(super) cursors: Arc<crate::HistoryTracker>,
 }
 
 impl Harness {
@@ -191,6 +193,9 @@ impl StockRequestContext {
 
 #[async_trait]
 impl RequestContext for StockRequestContext {
+    fn history_cursor(&self, session: &str, messages: &[Message]) -> crate::HistoryCursor {
+        self.cursors.advance(session, messages)
+    }
     fn history(&self, session_id: &str) -> Result<Vec<Message>> {
         let host_frontier = self.hook.history_frontier(session_id)?;
         let (frontier, prefix) = if host_frontier.is_some() {
@@ -422,6 +427,7 @@ impl RequestContext for StockRequestContext {
     }
 
     fn release(&self, session: &str, how: Release) {
+        self.cursors.forget(session);
         match how {
             Release::Deleted => {
                 self.state.histories.lock().unwrap().remove(session);

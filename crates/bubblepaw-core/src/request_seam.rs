@@ -3,8 +3,8 @@
 //! keeps, the notes it queues and the records and hook calls that answering needs.
 //! The loop decides when to ask and what to do with the answer.
 use crate::{
-    CancellationToken, Message, ModelRequest, ModelResponse, ObservationScope, PrepareMode,
-    PreparedContext, Provider, Reminder, Run,
+    CancellationToken, HistoryCursor, Message, ModelRequest, ModelResponse, ObservationScope,
+    PrepareMode, PreparedContext, Provider, Reminder, Run,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -56,6 +56,9 @@ pub(crate) enum Release {
 pub(crate) trait RequestContext: Send + Sync {
     /// The session's history for a request, read from where the last one stopped.
     fn history(&self, session: &str) -> Result<Vec<Message>>;
+    /// The provider extension history cursor for the messages a request sends,
+    /// remembering them for the next one.
+    fn history_cursor(&self, session: &str, messages: &[Message]) -> HistoryCursor;
     /// The messages of a draft request: the history as the host projects it, the
     /// steering batch intact after it, then the preview of the notes about to go.
     fn draft(&self, session: &str, history: &[Message], steering: &[Message]) -> Result<Draft>;

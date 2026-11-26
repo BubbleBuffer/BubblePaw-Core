@@ -1,8 +1,8 @@
 //! The listener the loop hands a provider for one model request: it turns the
 //! adapter's stream events into live host events.
 use crate::{
-    CancellationToken, EventKind, Harness, IncompleteReason, Message, Role, StreamCallback,
-    StreamEvent, live_events::LiveEvents, stream::Paragraphs,
+    CancellationToken, EventKind, IncompleteReason, Message, Role, StreamCallback, StreamEvent,
+    live_events::LiveEvents, stream::Paragraphs,
 };
 use std::sync::{
     Arc, Mutex,
@@ -43,7 +43,12 @@ impl PartialReply {
 
     /// The incomplete assistant message, unless nothing but whitespace or
     /// thinking streamed.
-    fn message(&self, session_id: &str, reason: IncompleteReason, limit: usize) -> Option<Message> {
+    pub(super) fn message(
+        &self,
+        session_id: &str,
+        reason: IncompleteReason,
+        limit: usize,
+    ) -> Option<Message> {
         if self.text.trim().is_empty() {
             return None;
         }
@@ -60,28 +65,6 @@ impl PartialReply {
         message.content = crate::reply_blocks(&self.thinking, &self.text);
         message.incomplete = Some(reason);
         Some(message)
-    }
-}
-
-impl Harness {
-    /// Store what streamed before the request failed or was cancelled. The run's
-    /// outcome stays as it was, so a failure to store is not reported.
-    pub(super) fn keep_partial_reply(
-        &self,
-        session_id: &str,
-        partial: &SharedPartial,
-        cancelled: bool,
-    ) {
-        let reason = if cancelled {
-            IncompleteReason::Cancelled
-        } else {
-            IncompleteReason::Error
-        };
-        let limit = self.config.max_request_bytes;
-        let Some(message) = partial.lock().unwrap().message(session_id, reason, limit) else {
-            return;
-        };
-        let _ = self.journal.partial_reply_kept(&message);
     }
 }
 
