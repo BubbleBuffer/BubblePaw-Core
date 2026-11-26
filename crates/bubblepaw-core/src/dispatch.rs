@@ -19,6 +19,7 @@ pub struct ToolDispatcher {
     store: Store,
     tools: ToolRegistry,
     log: Arc<crate::event_log::Log>,
+    journal: Arc<dyn crate::journal::Journal>,
     max_result_bytes: usize,
     observation: Option<Observation>,
     scope: ObservationScope,
@@ -45,10 +46,15 @@ impl ToolDispatcher {
         observation: Option<Observation>,
     ) -> Self {
         let log = store.runtime().log.clone();
+        let journal = Arc::new(crate::journal_sqlite::SqliteJournal::new(
+            store.clone(),
+            log.clone(),
+        ));
         Self {
             store,
             tools,
             log,
+            journal,
             max_result_bytes,
             observation,
             scope: ObservationScope::default(),
@@ -67,6 +73,10 @@ impl ToolDispatcher {
     /// nested calls. Tools may pick a result shape for their caller.
     pub fn origin(&self) -> &'static str {
         self.origin
+    }
+    pub(crate) fn with_journal(mut self, journal: Arc<dyn crate::journal::Journal>) -> Self {
+        self.journal = journal;
+        self
     }
     pub(crate) fn with_tool_budget(mut self, limit: Option<usize>) -> Self {
         self.remaining_calls = limit.map(|limit| Arc::new(AtomicUsize::new(limit)));
@@ -283,26 +293,7 @@ impl ToolDispatcher {
             created_at: now(),
             output,
         };
-        self.log.commit(
-            &self.store,
-            &context.session_id,
-            &context.run_id,
-            None,
-            |tx| {
-                Store::append_output_tx(tx, &record)?;
-                Ok((
-                    (),
-                    vec![(
-                        EventKind::Output {
-                            record: record.clone(),
-                        },
-                        Some(crate::event_log::ContentRef::Output {
-                            output_id: record.id.clone(),
-                        }),
-                    )],
-                ))
-            },
-        )?;
+        self.journal.tool_output(&record)?;
         if let Some(observer) = &self.observation {
             let mut scope = self.scope.clone();
             scope.session_id = context.session_id.clone();

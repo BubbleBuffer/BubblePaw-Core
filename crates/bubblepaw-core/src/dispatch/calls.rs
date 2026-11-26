@@ -1,5 +1,6 @@
 //! Shared admission, invocation and effect journaling for every tool route.
 use super::*;
+use crate::journal::Reply;
 
 /// A call admitted against one registry and policy snapshot. The same admission
 /// is used by native calls, composition wrappers and model-free host calls.
@@ -117,33 +118,15 @@ impl ToolDispatcher {
             !prepared.context.cancellation.is_cancelled(),
             "Cancelled before tool dispatch"
         );
-        self.log.commit_reply(
-            &self.store,
+        self.journal.reply_dispatched(
             &prepared.context.session_id,
             &prepared.context.run_id,
-            None,
-            |tx| {
-                Store::insert_message(tx, message)?;
-                Store::insert_message_request_usage_tx(tx, message, usage, request_ids)?;
-                let invocation = Store::dispatch_tx(
-                    tx,
-                    &prepared.context.session_id,
-                    &prepared.context.run_id,
-                    &prepared.call,
-                )?;
-                Ok((
-                    invocation,
-                    vec![(
-                        EventKind::ToolStarted {
-                            call: prepared.call.clone(),
-                        },
-                        Some(crate::event_log::ContentRef::ToolCall {
-                            message_id: message.id.clone(),
-                            call_id: prepared.call.id.clone(),
-                        }),
-                    )],
-                ))
+            Reply {
+                message,
+                usage,
+                request_ids,
             },
+            &prepared.call,
         )
     }
     /// Invoke a target through the shared validation, budget, approval and effect
@@ -327,33 +310,12 @@ impl ToolDispatcher {
         message_id: &str,
         valid: bool,
     ) -> Result<Option<String>> {
-        self.log.commit(
-            &self.store,
+        self.journal.tool_started(
             &context.session_id,
             &context.run_id,
-            None,
-            |tx| {
-                let invocation = if valid {
-                    Some(Store::dispatch_tx(
-                        tx,
-                        &context.session_id,
-                        &context.run_id,
-                        call,
-                    )?)
-                } else {
-                    None
-                };
-                Ok((
-                    invocation,
-                    vec![(
-                        EventKind::ToolStarted { call: call.clone() },
-                        Some(crate::event_log::ContentRef::ToolCall {
-                            message_id: message_id.into(),
-                            call_id: call.id.clone(),
-                        }),
-                    )],
-                ))
-            },
+            message_id,
+            call,
+            valid,
         )
     }
     /// Complete the direct reply and effect in the same transaction.
@@ -365,23 +327,8 @@ impl ToolDispatcher {
         result: ToolResult,
         invocation: Option<&str>,
     ) -> Result<()> {
-        self.log
-            .commit(&self.store, &message.session_id, run_id, None, |tx| {
-                Store::tool_completed_tx(tx, message, invocation, result.pending)?;
-                Ok((
-                    (),
-                    vec![(
-                        EventKind::ToolFinished {
-                            call_id: call.id.clone(),
-                            name: call.name.clone(),
-                            result,
-                        },
-                        Some(crate::event_log::ContentRef::ToolResult {
-                            message_id: message.id.clone(),
-                        }),
-                    )],
-                ))
-            })
+        self.journal
+            .tool_finished(run_id, message, call, result, invocation)
     }
     async fn call(
         &self,

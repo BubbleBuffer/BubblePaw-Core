@@ -97,9 +97,7 @@ impl Harness {
         let Some(message) = partial.lock().unwrap().message(session_id, reason, limit) else {
             return;
         };
-        let _ = self.state.log.settle_text(session_id, || {
-            self.store.append_batch(std::slice::from_ref(&message))
-        });
+        let _ = self.journal.partial_reply_kept(&message);
     }
 }
 

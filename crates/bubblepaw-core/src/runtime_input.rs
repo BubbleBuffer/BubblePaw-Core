@@ -43,8 +43,6 @@ impl Harness {
             "Input exceeds request size limit"
         );
         let content = input.into_blocks();
-        let events_text = crate::content_body_text(&content).into_owned();
-        let events_content = crate::extra_content(&content);
         let run_id = active
             .get(session_id)
             .filter(|a| a.finished.is_none())
@@ -58,38 +56,8 @@ impl Harness {
             state: "pending".into(),
             origin: Some(crate::MessageOrigin::Typed),
         };
-        self.state.log.commit(
-            &self.store,
-            session_id,
-            run_id.as_deref().unwrap_or_default(),
-            client,
-            |tx| {
-                Store::queue_tx(tx, &input)?;
-                let events = run_id
-                    .as_ref()
-                    .map(|_| {
-                        let kind = if kind == InputKind::Steer {
-                            EventKind::SteeringAccepted {
-                                text: events_text.clone(),
-                                content: events_content.clone(),
-                            }
-                        } else {
-                            EventKind::FollowupQueued {
-                                text: events_text.clone(),
-                                content: events_content.clone(),
-                            }
-                        };
-                        vec![(
-                            kind,
-                            Some(ContentRef::Input {
-                                input_id: input.id.clone(),
-                            }),
-                        )]
-                    })
-                    .unwrap_or_default();
-                Ok(((), events))
-            },
-        )?;
+        self.journal
+            .input_queued(&input, run_id.as_deref(), client)?;
         // Admission only queues input. Releasing foreground waits is an
         // explicit host action, independent of accepting ordinary steering.
         if let Some(observer) = &self.config.observation {

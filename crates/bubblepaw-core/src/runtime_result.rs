@@ -108,9 +108,10 @@ impl Harness {
         request_ids: &[String],
         nudged: &mut bool,
     ) -> Result<Option<String>> {
-        self.state.log.settle_text(&run.session_id, || {
-            self.store
-                .append_with_request_usage(message, request_usage, request_ids)
+        self.journal.reply_received(Reply {
+            message,
+            usage: request_usage.as_slice(),
+            request_ids,
         })?;
         request_usage.clear();
         ensure!(
@@ -120,7 +121,9 @@ impl Harness {
         self.context_state().remind(&run.session_id, "root", &format!("result_required:{}", run.id),
             "This run requires a structured result. Call submit_result with arguments matching its schema to finish. A text reply does not complete this run. This is the only reminder.");
         *nudged = true;
-        let steered = self.store.consume(&run.session_id, true, false)?;
+        let steered = self
+            .journal
+            .inputs_consumed(&run.session_id, Consumed::Steering)?;
         if steered > 0 && self.config.auto_approval.is_some() {
             return self.latest_user_request(&run.session_id).map(Some);
         }
