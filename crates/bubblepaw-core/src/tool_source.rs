@@ -2,9 +2,13 @@
 //! question or report named by the loop's need; the implementation owns the
 //! saved surface, the inventory and the notes that following it needs. The loop
 //! decides when to ask and what to do with the answer.
-use super::runtime_reminders::{RunReminders, ToolsRound};
-use super::*;
-use crate::ToolDefinition;
+use crate::loop_options::LoopOptions;
+use crate::round_reminders::{RunReminders, ToolsRound};
+use crate::run_data::Run;
+use crate::tool_registry::ToolRegistry;
+use crate::tool_result::ToolResult;
+use anyhow::Result;
+use bubblepaw_ai::{ModelRequest, ToolDefinition};
 
 /// The system prompt and tool declarations a run sends with every request.
 pub(crate) struct ToolSurface {
@@ -32,15 +36,15 @@ pub(crate) struct RunTools {
 
 pub(crate) trait ToolSource: Send + Sync {
     /// The tools, the surface and the refresh rule a run starts with.
-    fn open_run(&self, run: &Run, options: &RunOptions) -> Result<RunTools>;
+    fn open_run(&self, run: &Run, options: &LoopOptions) -> Result<RunTools>;
     /// The tools for this round, after the host's registry may have changed.
-    fn round_tools(&self, run: &Run, options: &RunOptions) -> Result<ToolRegistry>;
+    fn round_tools(&self, run: &Run, options: &LoopOptions) -> Result<ToolRegistry>;
     /// The host may have changed what it serves. When it did, `tools`, `surface`
     /// and the request are brought up to date and this returns true.
     fn surface_changed(
         &self,
         run: &Run,
-        options: &RunOptions,
+        options: &LoopOptions,
         tools: &mut ToolRegistry,
         surface: &mut ToolSurface,
         request: &mut ModelRequest,
@@ -50,7 +54,7 @@ pub(crate) trait ToolSource: Send + Sync {
     fn queue_round_reminders(
         &self,
         run: &Run,
-        options: &RunOptions,
+        options: &LoopOptions,
         remaining_calls: Option<usize>,
         state: &mut RunReminders,
     ) -> ToolsRound;
@@ -59,77 +63,4 @@ pub(crate) trait ToolSource: Send + Sync {
     /// The model replied without the result the run requires. The first time this
     /// queues the one reminder; the second time it is an error.
     fn result_required(&self, run: &Run, nudged: &mut bool) -> Result<()>;
-}
-
-/// The one implementation, over the harness's store, tool selection and config.
-pub(super) struct StockToolSource<'a> {
-    harness: &'a Harness,
-}
-
-impl<'a> StockToolSource<'a> {
-    pub(super) fn new(harness: &'a Harness) -> Self {
-        Self { harness }
-    }
-}
-
-impl ToolSource for StockToolSource<'_> {
-    fn open_run(&self, run: &Run, options: &RunOptions) -> Result<RunTools> {
-        let harness = self.harness;
-        let tools = harness.run_tool_snapshot(&run.session_id, options)?;
-        let refresh_each_round =
-            harness.execution_mode(&run.session_id)? == crate::ExecutionMode::Native;
-        let surface = harness.run_surface(&run.session_id, options)?;
-        harness.queue_result_schema_notice(run, options, &tools)?;
-        Ok(RunTools {
-            tools,
-            surface,
-            refresh_each_round,
-        })
-    }
-
-    fn round_tools(&self, run: &Run, options: &RunOptions) -> Result<ToolRegistry> {
-        self.harness.refresh_run_tools(&run.session_id, options)
-    }
-
-    fn surface_changed(
-        &self,
-        run: &Run,
-        options: &RunOptions,
-        tools: &mut ToolRegistry,
-        surface: &mut ToolSurface,
-        request: &mut ModelRequest,
-    ) -> Result<bool> {
-        self.harness
-            .apply_tool_surface_change(&run.session_id, options, tools, surface, request)
-    }
-
-    fn queue_round_reminders(
-        &self,
-        run: &Run,
-        options: &RunOptions,
-        remaining_calls: Option<usize>,
-        state: &mut RunReminders,
-    ) -> ToolsRound {
-        self.harness
-            .queue_run_reminders(run, options, remaining_calls, state)
-    }
-
-    fn bound_result(&self, result: ToolResult, remaining_calls: Option<usize>) -> ToolResult {
-        self.harness.bound_tool_result(result, remaining_calls)
-    }
-
-    fn result_required(&self, run: &Run, nudged: &mut bool) -> Result<()> {
-        self.harness.require_result(run, nudged)
-    }
-}
-
-impl Harness {
-    /// The stock gate over the store, built for one run of the loop.
-    pub(super) fn stock_gate(&self) -> Arc<dyn crate::tool_gate::ToolGate> {
-        Arc::new(crate::approvals::StockGate::new(
-            self.store.clone(),
-            self.config.auto_approval.clone(),
-            self.config.workspace_resolver.clone(),
-        ))
-    }
 }
