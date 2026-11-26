@@ -296,7 +296,10 @@ async fn chat_stream_assembles_text_reasoning_and_usage() {
         (20, 2, 12, 3, Some(1))
     );
     assert_eq!(response.thinking, "think more");
-    assert!(response.provider_state.unwrap()["message_fields"]["reasoning_content"].is_null());
+    assert_eq!(
+        response.provider_state.unwrap()["message_fields"]["reasoning_content"],
+        "think more"
+    );
     assert_eq!(seen.lock().unwrap().concat(), "Hello");
 }
 

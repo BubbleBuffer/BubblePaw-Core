@@ -265,7 +265,6 @@ A tool returns a `ToolResult`:
 The readable part of a reply's reasoning is a first-class stream: adapters emit
 `StreamEvent::ThinkingDelta`, hosts see the live `thinking_delta` event, and the
 loop stores the reply's thinking as a `thinking` content block before its text.
-The block is display data only. Replay still comes from `provider_state`
-(Anthropic blocks with signatures, Responses items) or, for Chat, from
-`reasoning_content` rebuilt out of the block, so no request changes. See
+The block is display data only. Replay still comes from `provider_state` for every adapter and the adapters never
+read the block, so no request changes; the block is a second readable copy. See
 [providers](providers.md) and [storage-model](storage-model.md#thinking-blocks-chat-store-16).

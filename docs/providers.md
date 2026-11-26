@@ -394,10 +394,13 @@ usage including cache reads and writes, and the stop reason. Chat requests
   extension provider forwards text only. A batch never mixes the two kinds, so
   their order is kept. `bubblepaw_core::text_callback` wraps a text-only closure.
 - The readable thinking is in `ModelResponse.thinking`. The loop stores it as a
-  `ContentBlock::Thinking` before the text. Chat rebuilds `reasoning_content`
-  from that block and keeps it out of `provider_state` for a single-round reply;
-  Anthropic and Responses keep their native blocks and items in `provider_state`
-  as before, so their readable thinking is stored twice (its UTF-8 bytes).
+  `ContentBlock::Thinking` before the text, a second readable copy for hosts:
+  `provider_state` is unchanged for every adapter and the adapters never read the
+  block, so the reasoning is stored twice until the adapters move.
+- A failed attempt that streamed thinking but no text is retried or falls back
+  through the same listener, so the registry then emits `StreamEvent::ThinkingDiscarded`
+  and listeners drop the thinking shown so far. Thinking never blocks a retry.
+- `StreamCallback` replaces the SDK's `TextCallback`.
 - Nothing partial is persisted. A cancelled call returns `cancelled`; a stream
   that fails mid-way returns its error and keeps what the listener already got.
 - A dropped or silent stream is transient only before any text reached the

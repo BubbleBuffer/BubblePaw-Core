@@ -197,12 +197,12 @@ async fn chat_body(policy: Option<ReasoningReplay>, model: &str, with_tools: boo
 }
 
 #[tokio::test]
-async fn chat_stores_reasoning_once_in_the_thinking_block() {
+async fn chat_stores_reasoning_in_every_reply_and_in_the_thinking_block() {
     let history = chat_history(true).await;
     for (index, thinking) in [(1, "R-closed"), (3, "R-loop")] {
         assert_eq!(history[index].thinking(), thinking);
         let fields = &history[index].provider_state.as_ref().unwrap()["message_fields"];
-        assert!(fields.get("reasoning_content").is_none(), "{fields}");
+        assert_eq!(fields["reasoning_content"], thinking);
     }
 }
 

@@ -11,6 +11,9 @@ pub enum StreamEvent<'a> {
     /// A batch of readable reasoning. Encrypted or redacted reasoning is never
     /// reported.
     ThinkingDelta(&'a str),
+    /// The attempt that streamed thinking so far was abandoned for a retry or a
+    /// fallback before any text: listeners drop the thinking shown for it.
+    ThinkingDiscarded,
 }
 
 impl<'a> StreamEvent<'a> {

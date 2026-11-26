@@ -88,19 +88,14 @@ raises the version so an older program refuses the store.
 
 An assistant reply stores its readable reasoning as a `thinking` content block
 before the text block. The block is not model text: `text()`, `body_text()`,
-byte accounting, hashes, summarizer input and the model text of the extension
-protocol skip it (Chat's token estimate counts the `reasoning_content` rebuilt
-from it, as the request carries it), and `plain_content` drops it, so requests keep
+byte accounting, token estimates, hashes, summarizer input and the model text of
+the extension protocol skip it, and `plain_content` drops it, so requests keep
 their shape. The JSONL export writes a message with thinking in list form so a
-reimport keeps the block. Chat rows rebuild `reasoning_content` from the block
-and no longer carry it in `provider_state`; older rows with it in
-`provider_state` replay unchanged. Rows are never rewritten, and step 16 only
-raises the version so an older program refuses the store.
-
-The prepared request byte size (the 2 MiB check and the compaction fit and
-trigger) adds the thinking text length, because Chat sends it back; Anthropic and
-Responses also keep it in `provider_state`, so they count it twice, which errs on
-the safe side.
+reimport keeps the block (an export shows `content` as a list for such
+messages). The block is a second readable copy: `provider_state` is unchanged for
+every adapter and carries the text that is sent, so the thinking is stored twice
+until the adapters move. Rows are never rewritten, and step 16 only raises the
+version so an older program refuses the store.
 
 ## Bounded host state (2026-10-15)
 

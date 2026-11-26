@@ -14,6 +14,7 @@ mod opencode_session;
 pub(crate) use metering::PhysicalRequest;
 pub(crate) use opencode_session::{codex_cache_headers, opencode_session, session_key};
 mod registry;
+mod registry_stream;
 pub(crate) mod replay_state;
 mod responses_body;
 mod responses_rounds;

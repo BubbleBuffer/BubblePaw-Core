@@ -373,6 +373,7 @@ be recovered and default to `[]`.
 ## Durable and live events
 
 All event kinds are durable except `paragraph`, `text_delta`, `thinking_delta`,
+`thinking_discarded`,
 `model_request_started`, and nested host tool progress (`tool_started` and
 `tool_finished` emitted inside a tool cell). The transient kinds are listed under
 [event kinds](#event-kinds).
@@ -413,6 +414,10 @@ A `thinking_delta` is the same for readable reasoning: one batch from the main
 model stream, `durable: false`, in order with the `text_delta` events, never
 stored as an event. The reply's thinking is kept as a thinking block in the
 stored message. Subagent and summary streams emit none.
+
+A `thinking_discarded` follows when an attempt that streamed thinking but no text
+is retried or falls back: hosts drop the thinking shown so far for that model
+request. It is live only too.
 
 A `paragraph` is live-only: `durable: false`, not written, and its `sequence` is
 the last durable sequence before it, so several paragraphs share one number.
@@ -522,6 +527,7 @@ before them, are not journaled and are not replayed:
 - `paragraph {text}`: one paragraph of the reply being written. It is also in `streaming_text`.
 - `text_delta {text}`: one provider text batch as it streams.
 - `thinking_delta {text}`: one batch of readable reasoning as it streams.
+- `thinking_discarded {}`: drop the thinking shown for the current model request (retry or fallback).
 - `model_request_started {}`: a provider request is about to be sent, including
   correction retries. Hosts can reset partial response capture on it.
 

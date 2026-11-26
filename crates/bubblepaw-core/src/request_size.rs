@@ -3,24 +3,20 @@ use crate::{Message, ModelRequest};
 use anyhow::Result;
 use serde_json::Value;
 
-/// The prepared envelope budget counts readable thinking (as bytes of its text) and includes native replay fields, but excludes
+/// The prepared envelope budget includes native replay fields, but excludes
 /// the Chat Completions opaque SSE journal which that adapter never replays.
 /// This is not an exact count of an adapter's final HTTP representation.
 pub fn prepared_request_bytes(request: &ModelRequest) -> Result<usize> {
     let mut bytes = crate::plain_content(|| serde_json::to_vec(request))?.len();
     for message in &request.messages {
-        bytes += message.thinking().len();
         bytes -= canonical_only_bytes(message.provider_state.as_ref())?;
     }
     Ok(bytes)
 }
 
 pub(crate) fn prepared_message_bytes(message: &Message) -> Result<usize> {
-    // Thinking is not in the plain form but a Chat request rebuilds it, so it counts here.
-    Ok(
-        crate::plain_content(|| serde_json::to_vec(message))?.len() + message.thinking().len()
-            - canonical_only_bytes(message.provider_state.as_ref())?,
-    )
+    Ok(crate::plain_content(|| serde_json::to_vec(message))?.len()
+        - canonical_only_bytes(message.provider_state.as_ref())?)
 }
 
 fn journal_field_bytes(state: &Value) -> Result<usize> {

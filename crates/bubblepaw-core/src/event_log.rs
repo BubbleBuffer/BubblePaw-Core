@@ -130,8 +130,7 @@ impl Log {
             .get_or_init(|| broadcast::channel(256).0)
             .subscribe()
     }
-    /// Persist a reference and broadcast one full event; text progress stays
-    /// live. A failed write leaves the event live-only without a sequence hole.
+    /// Persist a reference and broadcast one event; text progress stays live, and a failed write leaves it live-only.
     pub(crate) fn emit(
         &self,
         store: &Store,
@@ -145,6 +144,7 @@ impl Log {
             EventKind::Paragraph { .. }
                 | EventKind::TextDelta { .. }
                 | EventKind::ThinkingDelta { .. }
+                | EventKind::ThinkingDiscarded { .. }
         ) {
             self.transient(session_id, run_id, kind);
             return;

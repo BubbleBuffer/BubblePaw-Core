@@ -41,6 +41,11 @@ impl ModelStream {
                     }
                     return;
                 }
+                StreamEvent::ThinkingDiscarded => {
+                    let kind = EventKind::ThinkingDiscarded {};
+                    self.log.progress(&self.session, &self.run_id, kind);
+                    return;
+                }
                 StreamEvent::TextDelta(text) => text,
             };
             if !text.is_empty() {

@@ -78,6 +78,9 @@ pub enum EventKind {
     ThinkingDelta {
         text: String,
     },
+    /// The thinking streamed so far for this model request belongs to an attempt
+    /// that was retried or fell back: hosts discard it. Live only.
+    ThinkingDiscarded {},
     ToolStarted {
         call: ToolCall,
     },

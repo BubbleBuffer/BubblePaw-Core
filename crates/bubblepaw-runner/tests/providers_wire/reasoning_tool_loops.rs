@@ -222,7 +222,7 @@ fn check_stored(kind: Kind, message: &Message, round: usize) -> Result<()> {
         "model origin changed"
     );
     let opaque = match kind {
-        Kind::Chat => json!({"reasoning_content": message.thinking()}),
+        Kind::Chat => state[kind.field()].clone(),
         _ => json!(
             state[kind.field()]
                 .as_array()

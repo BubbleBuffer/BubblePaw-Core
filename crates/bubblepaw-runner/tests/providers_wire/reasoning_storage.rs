@@ -234,12 +234,9 @@ async fn history(fixture: &Fixture, kind: Kind, session: &str) -> Result<Vec<Mes
         "native model missing"
     );
     // An independent native source assertion catches capture loss before the baseline.
-    let mut fields = state[kind.field()].clone(); // Chat keeps its reasoning in the thinking block.
-    if matches!(kind, Kind::Chat) {
-        fields["reasoning_content"] = json!(messages[1].thinking());
-    }
     ensure!(
-        digest(&opaque(kind, &fields))? == digest(&opaque(kind, &native_blocks(kind)))?,
+        digest(&opaque(kind, &state[kind.field()]))?
+            == digest(&opaque(kind, &native_blocks(kind)))?,
         "capture changed opaque data"
     );
     Ok(messages)

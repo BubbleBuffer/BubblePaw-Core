@@ -171,14 +171,10 @@ impl ChatCompletionsProvider {
                             })
                             .and_then(|(start, end)| full.get(start..end))
                             .unwrap_or(&full);
-                        messages.push(chat_wire_message(round, text, ""));
+                        messages.push(chat_wire_message(round, text));
                     }
                 } else {
-                    messages.push(chat_wire_message(
-                        state,
-                        &message.text(),
-                        &message.thinking(),
-                    ));
+                    messages.push(chat_wire_message(state, &message.text()));
                 }
             } else if message.role == Role::Assistant
                 && message.text().is_empty()
@@ -504,29 +500,14 @@ fn chat_compatible(state: &Value, model: &str) -> bool {
             && state.as_object().is_some_and(|fields| fields.len() == 1 && fields.contains_key("reasoning_content")))
 }
 
-/// `state` without the `reasoning_content` that `thinking` holds.
-fn without_readable_reasoning(mut state: Value, thinking: &str) -> Value {
-    if let Some(fields) = state["message_fields"].as_object_mut()
-        && fields.get("reasoning_content").and_then(Value::as_str) == Some(thinking)
-        && !thinking.is_empty()
-    {
-        fields.remove("reasoning_content");
-    }
-    state
-}
-
-/// One assistant wire message from a stored state. A stored reply with no
-/// `reasoning_content` of its own sends `thinking` in its place.
-fn chat_wire_message(state: &Value, text: &str, thinking: &str) -> Value {
+/// One assistant wire message from a stored state.
+fn chat_wire_message(state: &Value, text: &str) -> Value {
     let mut fields = state["message_fields"]
         .as_object()
         .cloned()
         .unwrap_or_default();
     // A reply without reasoning stores `reasoning_content: null`; send nothing.
     fields.retain(|_, value| !value.is_null());
-    if !thinking.is_empty() && !fields.contains_key("reasoning_content") {
-        fields.insert("reasoning_content".into(), json!(thinking));
-    }
     if fields.is_empty()
         && let Some(reasoning) = state.get("reasoning_content")
     {
@@ -967,16 +948,12 @@ impl Provider for ChatCompletionsProvider {
                 return Ok(ModelResponse {
                     quota: Vec::new(),
                     text,
-                    thinking: thinking.clone(),
+                    thinking,
                     tool_calls: round.tool_calls,
                     last_request_usage: round.last_request_usage,
                     usage: usage.clone(),
                     provider_state: if rounds.len() == 1 {
-                        // The readable reasoning lives in the thinking block; the request
-                        // rebuilds `reasoning_content` from it (`chat_wire_message`).
-                        round
-                            .provider_state
-                            .map(|state| without_readable_reasoning(state, &thinking))
+                        round.provider_state
                     } else {
                         Some(bubblepaw_core::with_provider_state_origin(
                             json!({"adapter":"chat-completions","rounds":rounds}),
