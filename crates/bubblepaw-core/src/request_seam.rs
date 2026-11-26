@@ -90,6 +90,8 @@ pub(crate) trait RequestContext: Send + Sync {
     fn tool_generation_observed(&self, session: &str, generation: u64) -> bool;
     /// What the host keeps for a run is let go when this drops, however the run ends.
     fn run_hold(&self, run: &Run) -> Box<dyn std::any::Any + Send>;
+    /// What the host holds for the run's turn is let go when this drops, however the turn ends.
+    fn turn_scope(&self, run: &Run) -> Box<dyn std::any::Any + Send>;
     /// The provider as the run's main requests are made through it.
     fn requester(&self, run: &Run, provider: Arc<dyn Provider>) -> Arc<dyn Provider>;
     /// A model request is about to start.

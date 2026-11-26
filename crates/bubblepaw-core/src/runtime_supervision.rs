@@ -19,7 +19,12 @@ impl Harness {
         let admitted = run.clone();
         tokio::spawn(async move {
             let drive = tokio::spawn(async move {
-                driver.drive(run, options, cancellation, single_tool).await;
+                let store = driver.store.clone();
+                crate::quota::with_wait_context(
+                    &store,
+                    driver.drive(run, options, cancellation, single_tool),
+                )
+                .await;
             });
             if let Err(join) = drive.await {
                 supervisor.settle_panicked_run(admitted, join);
