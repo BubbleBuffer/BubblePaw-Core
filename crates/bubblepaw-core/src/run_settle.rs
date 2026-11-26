@@ -17,9 +17,15 @@ pub(super) enum Settled {
     /// Ask the model again.
     Retry,
     /// The run has its outcome.
-    Done(TurnOutcome),
+    Done(Box<TurnOutcome>),
     /// The round is complete; go on to the next one.
     Next,
+}
+
+impl Settled {
+    fn done(outcome: TurnOutcome) -> Self {
+        Self::Done(Box::new(outcome))
+    }
 }
 
 impl Harness {
@@ -79,7 +85,7 @@ impl Harness {
                 .journal
                 .input_pending(&run.session_id, InputScope::Steering)?
         {
-            return Ok(Settled::Done(runtime_result::text_outcome(message, true)));
+            return Ok(Settled::done(runtime_result::text_outcome(message, true)));
         }
         // A sole Allow call batches its reply and dispatch marker.
         let prepare = |call: &ToolCall| {
@@ -150,10 +156,10 @@ impl Harness {
         }
         runtime_tools::check_malformed_reply_limit(&mut state.malformed_replies, all_malformed)?;
         if let Some(value) = dispatcher.take_submitted_result() {
-            return runtime_result::outcome(run, value).map(Settled::Done);
+            return runtime_result::outcome(run, value).map(Settled::done);
         }
         if let Some(outcome) = terminated {
-            return Ok(Settled::Done(outcome));
+            return Ok(Settled::done(outcome));
         }
         if options.script.is_some() || single_tool.is_some() {
             if single_tool.is_none() {
@@ -170,7 +176,7 @@ impl Harness {
                 .map(|message| message.id.clone())
                 .ok_or_else(|| anyhow!("Script result was not recorded"))?;
             return crate::script::outcome(&history, &response.tool_calls).map(|text| {
-                Settled::Done(TurnOutcome {
+                Settled::done(TurnOutcome {
                     text,
                     result_message_id,
                     final_message: None,
@@ -186,7 +192,7 @@ impl Harness {
             state.user_request = self.latest_user_request(&run.session_id)?;
         }
         if options.output_schema.is_none() && response.tool_calls.is_empty() && steered == 0 {
-            return Ok(Settled::Done(runtime_result::text_outcome(message, false)));
+            return Ok(Settled::done(runtime_result::text_outcome(message, false)));
         }
         Ok(Settled::Next)
     }

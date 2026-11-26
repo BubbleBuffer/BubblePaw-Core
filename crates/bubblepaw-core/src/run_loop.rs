@@ -473,7 +473,7 @@ impl Harness {
                 .await?;
             match settled {
                 Settled::Retry => continue,
-                Settled::Done(outcome) => return Ok(outcome),
+                Settled::Done(outcome) => return Ok(*outcome),
                 Settled::Next => {}
             }
         }
