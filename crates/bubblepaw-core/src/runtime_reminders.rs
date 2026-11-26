@@ -14,7 +14,7 @@ pub(super) struct BudgetReminder {
 
 /// Where tools stand for one model request of a run.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum ToolsRound {
+pub(crate) enum ToolsRound {
     /// Tools are active.
     #[default]
     Open,
@@ -40,7 +40,7 @@ impl ToolsRound {
 
 /// Per-run harness notices queued before each model request.
 #[derive(Default)]
-pub(super) struct RunReminders {
+pub(crate) struct RunReminders {
     budget: BudgetReminder,
     restriction_sent: bool,
     /// Sticky: once tools are unavailable, they stay unavailable for the run.
@@ -72,11 +72,11 @@ impl Harness {
         &self,
         run: &Run,
         options: &RunOptions,
-        dispatcher: &ToolDispatcher,
+        remaining_calls: Option<usize>,
         state: &mut RunReminders,
     ) -> ToolsRound {
         if let Some(limit) = options.max_tool_calls {
-            let left = dispatcher.remaining_tool_calls().unwrap_or(limit);
+            let left = remaining_calls.unwrap_or(limit);
             self.queue_budget_reminder(&run.session_id, &run.id, limit, left, &mut state.budget);
         }
         if let Some(names) = options
@@ -101,7 +101,7 @@ impl Harness {
                 },
             );
         }
-        state.unavailable |= dispatcher.remaining_tool_calls() == Some(0);
+        state.unavailable |= remaining_calls == Some(0);
         if !state.unavailable {
             return ToolsRound::Open;
         }

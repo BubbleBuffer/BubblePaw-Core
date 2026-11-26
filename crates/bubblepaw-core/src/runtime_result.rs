@@ -83,10 +83,9 @@ impl Harness {
     pub(super) fn bound_tool_result(
         &self,
         result: ToolResult,
-        dispatcher: &crate::ToolDispatcher,
+        remaining_calls: Option<usize>,
     ) -> ToolResult {
-        let footer = dispatcher
-            .remaining_tool_calls()
+        let footer = remaining_calls
             .map(|remaining| format!("\n\n{remaining} tool calls left"))
             .unwrap_or_default();
         let limit = self
@@ -102,13 +101,8 @@ impl Harness {
         }
         result
     }
-    pub(super) fn nudge_required_result(
-        &self,
-        run: &Run,
-        message: &Message,
-        nudged: &mut bool,
-    ) -> Result<Option<String>> {
-        self.journal.reply_received(&run.id, message)?;
+    /// The run requires a structured result and the model replied without it.
+    pub(super) fn require_result(&self, run: &Run, nudged: &mut bool) -> Result<()> {
         ensure!(
             !*nudged,
             "Required structured result missing: submit_result was not called after one host reminder"
@@ -122,13 +116,7 @@ impl Harness {
             },
         );
         *nudged = true;
-        let steered = self
-            .journal
-            .inputs_consumed(&run.session_id, Consumed::Steering)?;
-        if steered > 0 && self.config.auto_approval.is_some() {
-            return self.latest_user_request(&run.session_id).map(Some);
-        }
-        Ok(None)
+        Ok(())
     }
 }
 

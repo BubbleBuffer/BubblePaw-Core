@@ -43,6 +43,9 @@ impl Harness {
             options,
             cancellation,
             single_tool,
+            tools: tool_source,
+            wants_user_request,
+            ..
         } = *inputs;
         // Reissuing a durable call ID is never a new invocation, including after
         // an unknown outcome. The host must resolve that effect explicitly.
@@ -71,10 +74,13 @@ impl Harness {
             && options.output_schema.is_some()
         {
             state.malformed_replies = 0;
-            if let Some(request) =
-                self.nudge_required_result(run, &message, &mut state.result_nudged)?
-            {
-                state.user_request = request;
+            self.journal.reply_received(&run.id, &message)?;
+            tool_source.result_required(run, &mut state.result_nudged)?;
+            let steered = self
+                .journal
+                .inputs_consumed(&run.session_id, Consumed::Steering)?;
+            if steered > 0 && wants_user_request {
+                state.user_request = self.latest_user_request(&run.session_id)?;
             }
             state.result_retry_pending = true;
             return Ok(Settled::Retry);
@@ -133,7 +139,8 @@ impl Harness {
             let dispatched = dispatcher
                 .invoke_direct(prepared, &message.id, prepared_invocation.take())
                 .await?;
-            let result = self.bound_tool_result(dispatched.result, dispatcher);
+            let result =
+                tool_source.bound_result(dispatched.result, dispatcher.remaining_tool_calls());
             let mut result_message = Message::new(&run.session_id, Role::Tool, String::new());
             result_message.content = result.content.clone();
             let captured_result = single_tool.map(|_| result.clone());
@@ -188,7 +195,7 @@ impl Harness {
         let steered = self
             .journal
             .inputs_consumed(&run.session_id, Consumed::Steering)?;
-        if steered > 0 && self.config.auto_approval.is_some() {
+        if steered > 0 && wants_user_request {
             state.user_request = self.latest_user_request(&run.session_id)?;
         }
         if options.output_schema.is_none() && response.tool_calls.is_empty() && steered == 0 {

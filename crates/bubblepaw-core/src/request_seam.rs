@@ -59,6 +59,9 @@ pub(crate) trait RequestContext: Send + Sync {
     /// The messages of a draft request: the history as the host projects it, the
     /// steering batch intact after it, then the preview of the notes about to go.
     fn draft(&self, session: &str, history: &[Message], steering: &[Message]) -> Result<Draft>;
+    /// The messages the host's applied context view keeps ahead of the history,
+    /// oldest first. Empty when the session has none.
+    fn context_prefix(&self, session: &str) -> Result<Vec<Message>>;
     /// The message the pending notes would make, without sending them.
     fn reminder_preview(&self, session: &str) -> Result<Option<Message>>;
     /// The host's preparation of a draft request. It may wait on auxiliary work.

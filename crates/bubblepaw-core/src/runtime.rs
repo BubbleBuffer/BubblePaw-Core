@@ -48,7 +48,10 @@ mod runtime_stream;
 mod runtime_supervision;
 #[path = "runtime_tools.rs"]
 mod runtime_tools;
+#[path = "tool_source.rs"]
+mod tool_source;
 use crate::submit_result::is_submission;
+use crate::tool_gate::ToolGate;
 
 #[path = "runtime_records.rs"]
 mod records;
@@ -679,6 +682,9 @@ impl Harness {
                     options: &options,
                     cancellation: &cancellation,
                     single_tool: single_tool.as_ref(),
+                    tools: &tool_source::StockToolSource::new(self),
+                    gate: &self.stock_gate(),
+                    wants_user_request: self.config.auto_approval.is_some(),
                 })
                 .await;
             run.status = status;

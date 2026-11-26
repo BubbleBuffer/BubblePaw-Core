@@ -83,7 +83,7 @@ async fn undelivered_inventory_changes_survive_store_reopen_and_later_registry_u
         } else {
             // Persist the observed inventory/pending notice, then stop before
             // ContextState can commit the ordinary reminder message.
-            agent.refresh_run_tools(&session, &RunOptions::default(), &ToolRegistry::new())?;
+            agent.refresh_run_tools(&session, &RunOptions::default())?;
             assert!(notices(&store, &session)?.is_empty());
             assert!(
                 !store
