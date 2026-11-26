@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+bubblepaw-ai = { path = "../bubblepaw-ai" }
 anyhow.workspace = true
 base64 = "0.23"
 async-trait.workspace = true

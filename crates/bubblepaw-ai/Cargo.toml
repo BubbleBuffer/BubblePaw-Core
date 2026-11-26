@@ -1,0 +1,22 @@
+[package]
+name = "bubblepaw-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Model-facing types and the Provider trait of BubblePaw"
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.11"
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

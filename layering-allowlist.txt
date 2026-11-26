@@ -2,9 +2,12 @@
 # Numbers only go down.
 # See docs/layering.md.
 dep bubblepaw-client-check bubblepaw-sdk
-word bubblepaw-core episode 221
-word bubblepaw-core chapter 275
-word bubblepaw-core child 198
-word bubblepaw-core opencode 3
-word bubblepaw-core quota 194
-word bubblepaw-core "js" 33
+word bubblepaw-core episode 219
+word bubblepaw-core chapter 271
+word bubblepaw-core child 181
+word bubblepaw-core opencode 2
+word bubblepaw-core quota 174
+word bubblepaw-core "js" 32
+word bubblepaw-ai session 26
+word bubblepaw-ai approval 5
+word bubblepaw-ai child 2

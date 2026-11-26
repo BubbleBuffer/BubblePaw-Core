@@ -44,7 +44,7 @@ impl Harness {
         );
         let content = input.into_blocks();
         let events_text = crate::content_body_text(&content).into_owned();
-        let events_content = crate::content_block::extra_content(&content);
+        let events_content = crate::extra_content(&content);
         let run_id = active
             .get(session_id)
             .filter(|a| a.finished.is_none())

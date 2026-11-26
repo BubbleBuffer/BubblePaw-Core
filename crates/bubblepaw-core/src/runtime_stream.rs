@@ -129,6 +129,8 @@ impl ModelStream {
                     return;
                 }
                 StreamEvent::TextDelta(text) => text,
+                // The enum is non-exhaustive across crates; an unknown event is not reply text.
+                _ => return,
             };
             if !text.is_empty() {
                 self.partial.lock().unwrap().text.push_str(text);

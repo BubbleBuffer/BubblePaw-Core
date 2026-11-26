@@ -1,11 +1,29 @@
 # Layering
 
-The planned split separates model access, in-memory runs and durable orchestration.
-The layering guard keeps the boundaries measurable while the split is in progress.
+The split separates model access, in-memory runs and durable orchestration.
+`bubblepaw-ai` exists; `bubblepaw-agent` does not yet. The layering guard keeps the
+boundaries measurable while the split is in progress.
 
 - `bubblepaw-ai` talks to models and knows no sessions or stores.
 - `bubblepaw-agent` runs one run in memory and knows no database, HTTP or feature.
 - `bubblepaw-core` makes runs durable and knows no model API, tool or feature word.
+
+## The ai crate
+
+`bubblepaw-ai` holds what passes between a harness and a model: the message,
+content block, tool call and tool definition types, `ModelRequest`, `ModelResponse`,
+`Usage`, the stream events, the cancellation token, the provider error and capability
+types, the history cursor, wire shapes for cache accounting, and the `Provider`
+trait. It depends on no workspace crate, and its dependency list is external crates
+only. `bubblepaw-core` depends on it and re-exports every moved item at its old
+path, so embedders import from `bubblepaw_core` as before.
+
+Still to move: the provider adapters, the provider registry and the model catalog,
+which live in `bubblepaw-runner` today. Some ai types carry a `session_id` that the
+ai layer treats as an opaque key; the guard records those occurrences as ceilings
+rather than renaming the fields.
+
+## Rules
 
 Normal and build dependencies obey these rules; dev-dependencies are exempt:
 

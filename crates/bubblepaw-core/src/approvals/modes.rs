@@ -8,14 +8,7 @@ use std::{collections::BTreeMap, sync::Arc};
 mod prompt;
 pub use prompt::DEFAULT_AUTO_PROMPT;
 
-/// What a tool declares about itself.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum Approval {
-    #[default]
-    None,
-    Confirm,
-}
+pub use bubblepaw_ai::Approval;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

@@ -21,10 +21,8 @@
 //! ```
 mod approvals;
 mod cache_accounting;
-mod cancellation;
 #[doc(hidden)]
 pub mod config_schema;
-mod content_block;
 mod context_facts;
 mod context_state;
 mod decision;
@@ -33,23 +31,16 @@ mod dispatch;
 mod event_log;
 mod events;
 mod host_state;
-mod incomplete;
-mod model_response;
 mod observation;
-mod output_schema;
 mod provider_ext;
 mod quota;
-mod reasoning;
-mod request_size;
 mod request_usage;
 mod runtime;
 mod script;
 mod store;
 mod stream;
-mod stream_event;
 mod submit_result;
 mod tool_result;
-use request_usage::deserialize_cache_read_tokens;
 pub use tool_result::ToolResult;
 mod tool_notices;
 mod tool_views;
@@ -60,12 +51,25 @@ pub use approvals::{
     DEFAULT_AUTO_PROMPT, Decision, exec_working_directory, track_approval_waits,
 };
 use async_trait::async_trait;
-pub use cache_accounting::{
-    CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, RequestKind, WireShape,
-    request_components,
+pub use bubblepaw_ai::{
+    CacheMode, CancellationToken, Capabilities, ContentBlock, CursorResets, EPHEMERAL_ID_PREFIX,
+    HistoryCursor, ImageRef, IncompleteReason, InputFileRef, JsonSchema, LastRequestUsage,
+    MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL, Message, MessageInput, MessageOrigin, ModelInfo,
+    ModelRequest, ModelResponse, PROVIDER_STATE_ORIGIN_FIELD, Provider, ProviderError,
+    ProviderErrorKind, QuotaReading, QuotaSource, QuotaWait, ReasoningEffort, ReasoningReplay,
+    RequestKind, Role, ServedRoute, StopReason, StreamCallback, StreamEvent, ToolCall,
+    ToolDefinition, ToolSurface, Usage, WireShape, content_body_text, content_files,
+    content_images, content_text, content_thinking, file_envelope, is_ephemeral, is_typed_user,
+    plain_content, prepared_request_bytes, provider_error_retryable,
+    provider_state_replay_compatible, reply_blocks, text_blocks, text_callback,
+    with_provider_state_origin, with_text,
 };
-pub use cancellation::CancellationToken;
-pub use content_block::*;
+pub(crate) use bubblepaw_ai::{
+    HistoryTracker, extra_content, prepared_message_bytes, upgrade_user_content,
+};
+pub use cache_accounting::{
+    CacheAccounting, CacheOutcome, DEFAULT_CACHE_BLOCK_TOKENS, PrefixBreak, request_components,
+};
 pub use context_facts::{
     ContextBlock, ContextBlockKind, ContextEvent, ContextEventKind, ContextSurfaceRebind,
     ContextTrigger, MessageTokenSource, MessageTokens, ReportedMessageTokens,
@@ -82,32 +86,16 @@ pub use discovery::{search_tool_definitions_with_servers, tool_definition_summar
 pub use dispatch::ToolDispatcher;
 pub use event_log::{ClientInfo, EVENTS_AFTER_LIMIT, LogPosition, client_param};
 pub use events::{EventKind, HarnessEvent};
-pub use incomplete::IncompleteReason;
-pub use model_response::{ModelResponse, ServedRoute, StopReason};
 pub use observation::{
     Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink,
     fingerprint, hex_lower,
 };
-pub use output_schema::JsonSchema;
-pub use provider_ext::{
-    CacheMode, Capabilities, CursorResets, EPHEMERAL_ID_PREFIX, HistoryCursor, ProviderError,
-    ProviderErrorKind, ToolSurface, apply_tool_surface, derived_registry_resolver, is_ephemeral,
-    provider_error_retryable,
-};
-pub use quota::{
-    QuotaReading, QuotaSource, QuotaWait, QuotaWaitChanged, clear_current_quota_wait,
-    set_quota_wait,
-};
-pub use reasoning::{
-    PROVIDER_STATE_ORIGIN_FIELD, ReasoningReplay, provider_state_replay_compatible,
-    with_provider_state_origin,
-};
-pub use request_size::prepared_request_bytes;
+pub use provider_ext::{apply_tool_surface, derived_registry_resolver};
+pub use quota::{QuotaWaitChanged, clear_current_quota_wait, set_quota_wait};
 pub use request_usage::{
-    LastRequestUsage, RequestUsage, capture_request_usage, capture_request_usage_with_store,
-    current_request_kind, discard_request_usage_since, record_request_usage,
-    record_request_usage_with_output_presence, request_usage_count, with_request_usage_account,
-    with_request_usage_provider,
+    RequestUsage, capture_request_usage, capture_request_usage_with_store, current_request_kind,
+    discard_request_usage_since, record_request_usage, record_request_usage_with_output_presence,
+    request_usage_count, with_request_usage_account, with_request_usage_provider,
 };
 pub use runtime::{
     ApprovalResolver, ContextBudgetExceeded, ContextPreparation, FullHistory, Harness,
@@ -126,74 +114,9 @@ pub use store::{
     SearchIndexProgress, SessionCleanup, SessionRecord, SessionSnapshot, StorageStats, Store,
     StoreError, StoreOptions, StoreSchemaError, SubjectChapterStatus,
 };
-pub use stream_event::{StreamCallback, StreamEvent, text_callback};
 pub use transcript::{
     ImportDerivedRecord, ImportFormat, ImportOptions, ImportResult, ImportStats, import_file,
 };
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum Role {
-    System,
-    #[default]
-    User,
-    Assistant,
-    Tool,
-}
-
-/// Message provenance, independent of its attachment envelope.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum MessageOrigin {
-    #[default]
-    Typed,
-    ChildTask,
-    Generated,
-    /// Replay-only neutral marker; the archive contains no recorded tool outcome.
-    ArchiveUnknownOutcome,
-}
-
-/// A user message is typed unless its origin says otherwise. A missing origin
-/// (only in-memory requests; every persisted writer sets one) counts as typed.
-pub fn is_typed_user(message: &Message) -> bool {
-    message.role == Role::User
-        && match message.origin {
-            Some(MessageOrigin::Typed) => true,
-            Some(
-                MessageOrigin::ChildTask
-                | MessageOrigin::Generated
-                | MessageOrigin::ArchiveUnknownOutcome,
-            ) => false,
-            None => true,
-        }
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct Message {
-    pub id: String,
-    pub session_id: String,
-    pub role: Role,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub origin: Option<MessageOrigin>,
-    #[serde(with = "content_block::wire")]
-    pub content: Vec<ContentBlock>,
-    #[serde(default)]
-    pub tool_calls: Vec<ToolCall>,
-    #[serde(default)]
-    pub tool_call_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_state: Option<Value>,
-    #[serde(default)]
-    pub is_error: bool,
-    /// Data for user interfaces; never sent to a model (docs/thinking-tool-loop.md).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub details: Option<Value>,
-    /// Set on an assistant reply whose request failed or was cancelled after
-    /// text had streamed (docs/thinking-tool-loop.md).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub incomplete: Option<IncompleteReason>,
-    pub created_at: String,
-}
 
 /// The host context policy selected when a session is created.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -234,23 +157,6 @@ pub struct Run {
     pub usage: Option<Usage>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ToolCall {
-    pub id: String,
-    pub name: String,
-    pub arguments: Value,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub input_schema: Value,
-    #[serde(default)]
-    pub read_only: bool,
-    /// Whether calls wait for a person's decision (docs/approvals.md).
-    #[serde(default)]
-    pub approval: Approval,
-}
 /// Explicit presentation output. The core stores data, never frontend code or binary payloads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputRecord {
@@ -271,166 +177,6 @@ pub struct ToolContext {
     pub approval: ApprovalPolicy,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct Usage {
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    /// Cached tokens are subsets of input tokens, not additional input totals.
-    #[serde(default, deserialize_with = "deserialize_cache_read_tokens")]
-    pub cache_read_tokens: u64,
-    #[serde(default)]
-    pub cache_creation_tokens: u64,
-    /// Reasoning tokens, a subset of output tokens, when the provider reports
-    /// them. `None` means not reported; it is omitted when serialized.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_tokens: Option<u64>,
-}
-impl Usage {
-    /// Accumulate another request's usage into run totals.
-    pub fn add(&mut self, other: &Usage) {
-        self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
-        self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
-        self.cache_read_tokens = self
-            .cache_read_tokens
-            .saturating_add(other.cache_read_tokens);
-        self.cache_creation_tokens = self
-            .cache_creation_tokens
-            .saturating_add(other.cache_creation_tokens);
-        self.reasoning_tokens = match (self.reasoning_tokens, other.reasoning_tokens) {
-            (Some(a), Some(b)) => Some(a.saturating_add(b)),
-            (a, b) => a.or(b),
-        };
-    }
-}
-/// Requested reasoning effort. An unspecified model request uses the provider's
-/// low default; it never means reasoning is disabled.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum ReasoningEffort {
-    #[default]
-    Low,
-    Medium,
-    High,
-    XHigh,
-    Max,
-}
-impl ReasoningEffort {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::XHigh => "xhigh",
-            Self::Max => "max",
-        }
-    }
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ModelInfo {
-    pub id: String,
-    pub name: String,
-}
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ModelRequest {
-    pub model: String,
-    pub system_prompt: String,
-    pub messages: Vec<Message>,
-    pub tools: Vec<ToolDefinition>,
-    /// Inactive declarations retained for signed replay; unavailable for invocation.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub disabled_tools: Vec<ToolDefinition>,
-    pub max_output_tokens: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<ReasoningEffort>,
-    /// Legacy input compatibility only; structured runs use `RunOptions::output_schema`.
-    #[serde(default, skip_serializing)]
-    pub output_schema: Option<JsonSchema>,
-    #[serde(default)]
-    pub session_id: String,
-    #[serde(default)]
-    pub history: HistoryCursor,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_tiers: Option<CacheTiers>,
-}
-#[async_trait]
-pub trait Provider: Send + Sync {
-    /// Ordered, explicitly configured routes for an isolated summary branch.
-    /// This only describes candidates: it must not update main-session routing
-    /// or dispatch a request. The captured successful main route comes first.
-    fn summary_fork_routes(&self, model: &str) -> Vec<String> {
-        vec![model.to_owned()]
-    }
-    /// Estimate one explicitly selected fork route, without including other
-    /// possible main-request fallbacks in its admission calculation.
-    fn estimate_summary_fork_tokens(
-        &self,
-        request: &ModelRequest,
-        count: &dyn Fn(&Value) -> usize,
-    ) -> Result<Option<usize>> {
-        self.estimate_input_tokens(request, count)
-    }
-    /// Whether this exact route can append an isolated episode-summary branch
-    /// while preserving the main request's native prefix and generation settings.
-    fn supports_summary_fork(&self, _model: &str) -> bool {
-        false
-    }
-    /// Canonical source IDs mapped to the actual rendered input positions.
-    /// A missing projection cannot be silently replaced with bounded episode input.
-    fn summary_fork_mapping(&self, _request: &ModelRequest) -> Result<Option<Value>> {
-        Ok(None)
-    }
-    /// Dispatch an isolated branch. Never update a main-session mirror or route
-    /// selection. Dispatch exactly one route; the caller owns explicit retries
-    /// across `summary_fork_routes` while retaining the branch input shape.
-    async fn generate_summary_fork(
-        &self,
-        _request: ModelRequest,
-        _cancellation: CancellationToken,
-    ) -> Result<ModelResponse> {
-        anyhow::bail!("Provider does not support isolated summary forks")
-    }
-    fn models(&self) -> Vec<ModelInfo> {
-        Vec::new()
-    }
-    async fn generate(
-        &self,
-        request: ModelRequest,
-        on_text: StreamCallback,
-        cancellation: CancellationToken,
-    ) -> Result<ModelResponse>;
-    /// Generate one JSON decision sample using the request's reasoning effort.
-    async fn generate_decision(
-        &self,
-        request: ModelRequest,
-        on_text: StreamCallback,
-        cancellation: CancellationToken,
-    ) -> Result<ModelResponse> {
-        self.generate(request, on_text, cancellation).await
-    }
-    fn capabilities(&self, _model: &str) -> Capabilities {
-        Capabilities::default()
-    }
-    /// Optional pure projection of model input for a host's local token estimate.
-    /// Reuse the adapter's renderer; omit credentials and non-replayed archives.
-    /// None leaves the host's canonical estimator in place. This is not a
-    /// provider tokenizer or a network request.
-    fn estimate_input_tokens(
-        &self,
-        _request: &ModelRequest,
-        _count: &dyn Fn(&Value) -> usize,
-    ) -> Result<Option<usize>> {
-        Ok(None)
-    }
-    /// Optional pure projection of the exact wire body for prompt-cache
-    /// accounting (see `WireShape`). None skips accounting for this request.
-    fn wire_shape(&self, _request: &ModelRequest) -> Option<WireShape> {
-        None
-    }
-    /// The session was deleted or moved to another provider; drop any mirror.
-    async fn close_session(&self, _session_id: &str) -> Result<()> {
-        Ok(())
-    }
-}
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn definition(&self) -> ToolDefinition;
@@ -732,5 +478,7 @@ pub(crate) fn id() -> String {
 mod live_tests;
 #[cfg(test)]
 mod native_execution_tests;
+#[cfg(test)]
+mod request_size_tests;
 #[cfg(test)]
 mod tests;

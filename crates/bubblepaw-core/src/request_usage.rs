@@ -3,15 +3,6 @@ use crate::{RequestKind, Store, Usage, id, now};
 use serde::{Deserialize, Serialize};
 use std::{future::Future, sync::Mutex};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LastRequestUsage {
-    /// Whole-prompt input of the final physical request. None means that request omitted it.
-    pub input_tokens: Option<u64>,
-    /// Output of that same physical request, separate from cumulative continuations.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output_tokens: Option<u64>,
-}
-
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct RequestUsage {
     pub request_id: String,
@@ -343,12 +334,4 @@ pub fn discard_request_usage_since(start: usize) -> bool {
             true
         })
         .unwrap_or(false)
-}
-
-// Earlier archives used Option<u64>, serializing explicit unknown values as null.
-pub(crate) fn deserialize_cache_read_tokens<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    Ok(Option::<u64>::deserialize(deserializer)?.unwrap_or(0))
 }

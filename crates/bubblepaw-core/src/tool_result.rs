@@ -10,7 +10,7 @@ use crate::{ContentBlock, text_blocks};
 /// run once every result of the model reply is recorded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
-    #[serde(with = "crate::content_block::wire::tool")]
+    #[serde(with = "bubblepaw_ai::wire::tool")]
     pub content: Vec<ContentBlock>,
     #[serde(default)]
     pub is_error: bool,
@@ -83,15 +83,5 @@ impl ToolResult {
     pub fn with_terminate(mut self) -> Self {
         self.terminate = true;
         self
-    }
-}
-
-impl crate::Message {
-    /// The model-facing form of a stored message: `details` is for interfaces only.
-    pub(crate) fn without_details(self) -> Self {
-        Self {
-            details: None,
-            ..self
-        }
     }
 }
