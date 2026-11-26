@@ -1,4 +1,4 @@
-pub(crate) fn bounded(text: &str, max: usize) -> String {
+pub fn bounded(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.into();
     }
@@ -17,7 +17,7 @@ pub(crate) fn bounded(text: &str, max: usize) -> String {
 /// Emits complete paragraphs, keeping fenced code in one block. Provider deltas
 /// never become public events or stored conversation messages.
 #[derive(Default)]
-pub(crate) struct Paragraphs {
+pub struct Paragraphs {
     line: String,
     paragraph: String,
     fence: Option<(char, usize)>,

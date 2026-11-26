@@ -18,7 +18,7 @@ use std::sync::{
 mod calls;
 
 /// Prepares a call context for its session; the shell builds it.
-pub(crate) type ContextSetup = Arc<dyn Fn(&mut ToolContext) + Send + Sync>;
+pub type ContextSetup = Arc<dyn Fn(&mut ToolContext) + Send + Sync>;
 
 /// One dispatch path for direct model calls and host calls composed inside a cell.
 /// Nested reads stay transient. Nested effects retain boundaries, without inventing
@@ -45,7 +45,7 @@ impl ToolDispatcher {
     /// A dispatcher over its three seams: the journal for durable writes, the
     /// gate that may ask the user and shapes results, and the sink for live
     /// events; plus the shell's hook that prepares each call context.
-    pub(crate) fn from_seams(
+    pub fn from_seams(
         tools: ToolRegistry,
         max_result_bytes: usize,
         observation: Option<Arc<dyn Observer>>,
@@ -76,18 +76,18 @@ impl ToolDispatcher {
     pub fn origin(&self) -> &'static str {
         self.origin
     }
-    pub(crate) fn with_tool_budget(mut self, limit: Option<usize>) -> Self {
+    pub fn with_tool_budget(mut self, limit: Option<usize>) -> Self {
         self.remaining_calls = limit.map(|limit| Arc::new(AtomicUsize::new(limit)));
         self
     }
-    pub(crate) fn with_interactive(mut self, enabled: bool) -> Self {
+    pub fn with_interactive(mut self, enabled: bool) -> Self {
         self.interactive = enabled;
         self.origin = if enabled { "model" } else { "embedder" };
         self
     }
     /// Reserve before the gate and durable dispatch. Clones share the same run budget.
     #[allow(deprecated)] // fetch_update supports the workspace's Rust 1.88 MSRV.
-    pub(crate) fn reserve_tool_call(&self) -> bool {
+    pub fn reserve_tool_call(&self) -> bool {
         self.remaining_calls.as_ref().is_none_or(|remaining| {
             remaining
                 .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
@@ -104,11 +104,11 @@ impl ToolDispatcher {
     }
     /// Run the shell's hook that prepares a call context for its session before
     /// the gate sees it.
-    pub(crate) fn prepare_context(&self, context: &mut ToolContext) {
+    pub fn prepare_context(&self, context: &mut ToolContext) {
         (self.context_setup)(context);
     }
     /// The context of a call the loop prepares for a run, without an invocation.
-    pub(crate) fn call_context(&self, run: &Run, cancellation: &CancellationToken) -> ToolContext {
+    pub fn call_context(&self, run: &Run, cancellation: &CancellationToken) -> ToolContext {
         ToolContext {
             session_id: run.session_id.clone(),
             run_id: run.id.clone(),
@@ -118,11 +118,7 @@ impl ToolDispatcher {
         }
     }
     /// The context of an output the loop emits itself, under the run's setup.
-    pub(crate) fn notice_context(
-        &self,
-        run: &Run,
-        cancellation: &CancellationToken,
-    ) -> ToolContext {
+    pub fn notice_context(&self, run: &Run, cancellation: &CancellationToken) -> ToolContext {
         let mut context = self.call_context(run, cancellation);
         self.prepare_context(&mut context);
         context
@@ -132,14 +128,14 @@ impl ToolDispatcher {
     pub fn refresh_tools_next_round(&self) {
         self.refresh_tools.store(true, Ordering::Release);
     }
-    pub(crate) fn take_tools_refresh(&self) -> bool {
+    pub fn take_tools_refresh(&self) -> bool {
         self.refresh_tools.swap(false, Ordering::AcqRel)
     }
-    pub(crate) fn with_tools(mut self, tools: ToolRegistry) -> Self {
+    pub fn with_tools(mut self, tools: ToolRegistry) -> Self {
         self.tools = tools;
         self
     }
-    pub(crate) fn with_user_request(mut self, user_request: String) -> Self {
+    pub fn with_user_request(mut self, user_request: String) -> Self {
         self.user_request = user_request;
         self
     }
@@ -172,7 +168,7 @@ impl ToolDispatcher {
         scoped.scope.generation = Some(generation);
         scoped
     }
-    pub(crate) fn with_request(&self, request: Option<String>) -> Self {
+    pub fn with_request(&self, request: Option<String>) -> Self {
         let mut scoped = self.clone();
         scoped.scope.model_request_id = request;
         scoped

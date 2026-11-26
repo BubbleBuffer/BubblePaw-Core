@@ -66,7 +66,7 @@ impl ToolResult {
         self.content = with_text(&self.content, text);
     }
     /// Cuts the text to `max` bytes with the truncation marker; images are kept.
-    pub(crate) fn bound_text(&mut self, max: usize) {
+    pub fn bound_text(&mut self, max: usize) {
         let text = self.body();
         if text.len() > max {
             let bounded = crate::stream::bounded(&text, max);

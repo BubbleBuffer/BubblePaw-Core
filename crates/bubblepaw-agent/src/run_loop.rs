@@ -3,14 +3,14 @@
 use crate::ids::id;
 use crate::live_events::LiveEvent;
 use crate::loop_records::{CallbackLifetime, TurnOutcome};
+use crate::model_stream::{ModelStream, SharedPartial};
 use crate::observer::ObservationScope;
+use crate::overflow::OverflowRetry;
 use crate::prepare_types::PrepareMode;
 use crate::request_seam::{Built, Draft, Note};
 use crate::round_reminders::{RunReminders, ToolsRound};
 use crate::run_inputs::{RunInputs, RunLoop, RunOutcome};
 use crate::run_settle::{RoundState, Settled};
-use crate::runtime_overflow::OverflowRetry;
-use crate::runtime_stream::{ModelStream, SharedPartial};
 use crate::stream::Paragraphs;
 use crate::tool_source::RunTools;
 use anyhow::{Result, anyhow, ensure};
@@ -24,7 +24,7 @@ use std::time::Instant;
 impl RunLoop {
     /// Run exactly one run. A failure keeps the partial reply and closes the run's
     /// open records through the journal before the outcome is returned.
-    pub(crate) async fn run_once(&self, inputs: &RunInputs<'_>) -> RunOutcome {
+    pub async fn run_once(&self, inputs: &RunInputs<'_>) -> RunOutcome {
         let run = inputs.run;
         let mut usage = None;
         let partial = SharedPartial::default();
@@ -77,7 +77,7 @@ impl RunLoop {
         };
         let _ = self.journal.partial_reply_kept(&message);
     }
-    pub(crate) fn latest_user_request(&self, session_id: &str) -> Result<String> {
+    pub fn latest_user_request(&self, session_id: &str) -> Result<String> {
         let is_user_request = |message: &Message| {
             message.role == Role::User && message.origin != Some(MessageOrigin::Generated)
         };

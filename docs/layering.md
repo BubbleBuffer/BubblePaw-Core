@@ -1,11 +1,12 @@
 # Layering
 
 The split separates model access, in-memory runs and durable orchestration.
-`bubblepaw-ai` exists; `bubblepaw-agent` does not yet. The layering guard keeps the
-boundaries measurable while the split is in progress.
+`bubblepaw-ai` and `bubblepaw-agent` exist; the durable shell stays in
+`bubblepaw-core`. The layering guard keeps the boundaries measurable while the split
+continues.
 
 - `bubblepaw-ai` talks to models and knows no sessions or stores.
-- `bubblepaw-agent` runs one run in memory and knows no database, HTTP or feature.
+- `bubblepaw-agent` runs one run in memory and knows no database, HTTP or feature. Its API is unstable.
 - `bubblepaw-core` makes runs durable and knows no model API, tool or feature word.
 
 ## The ai crate
@@ -90,6 +91,44 @@ and `"js"` (including the quotes). AI tracks `session`, `rusqlite`, `approval`,
 An increase fails and reports the ten files with the most hits. When a count falls,
 lower its ceiling in `layering-allowlist.txt` to the new total; never raise it.
 
-## The moving set
+## The agent crate
 
-The files that make up one run in memory (the loop, the dispatcher, the tools and the plain data between them) form a set that is self-contained inside `bubblepaw-core`, so it can move to a crate of its own that depends only on `bubblepaw-ai`. `tests/runtime/layering_loop.rs` lists the files and guards two things: none holds the session shell's vocabulary (harness, approval, sqlite, quota, child, the store, the event log), except lines the model reads, which are listed there with the reason; and `crate::` paths in them name only files of the set, with no glob imports. What the loop needs from the shell comes through traits and plain types: `LoopOptions` (model, round and token limits, output schema, script) for `ToolSource`, `Observer` and `ToolWatch` for the observation value, `LiveEvent` for live events, and `SingleToolRun` (call and result only; the shell keeps the completion channel in its own wrapper). `ToolDefinition::new` in the ai crate builds the definitions the set declares. The shell halves stay beside `runtime.rs`: `stock_tool_source.rs`, `run_loop_build.rs` and `live_log.rs`. The set has its own `id()` and `now()` in `ids.rs`.
+`bubblepaw-agent` holds the files that make up one run in memory: the run loop
+(`run_loop.rs`, `run_settle.rs`, `run_inputs.rs`, `overflow.rs`, `model_stream.rs`,
+`stream.rs`), the tool dispatcher (`dispatch.rs`, `dispatch/calls.rs`), the tools and
+their registry (`tool.rs`, `tool_registry.rs`, `tool_result.rs`, `tool_views.rs`,
+`tool_notices.rs`, `discovery.rs`, `submit_result.rs`, `script.rs`), and the plain data
+and traits between them (`run_journal.rs`, `request_seam.rs`, `tool_source.rs`,
+`tool_gate.rs`, `live_events.rs`, `observer.rs`, `loop_hooks.rs`, `loop_options.rs`,
+`loop_records.rs`, `run_data.rs`, `prepare_types.rs`, `reminder_types.rs`,
+`round_reminders.rs`, `execution_mode.rs`, `extensions.rs`, `ids.rs`). Its modules are
+flat and public so that core can reach them; the crate root re-exports the common
+names. It depends on `bubblepaw-ai` and on ordinary libraries (anyhow, async-trait,
+chrono, jsonschema, serde, serde_json, tokio, uuid) only. `bubblepaw-core` depends on
+it and re-exports every name it exported before, at the same path (`runtime::PrepareMode`
+included), so the runner, MCP, SDK, remote, process and client-check crates and
+external embedders compile unchanged. Embedders should keep importing from
+`bubblepaw_core`.
+
+What the loop needs from the shell comes through traits and plain types: `RunJournal`,
+`RequestContext`, `ToolSource`, `ToolGate`, `LiveEvents`, `Observer` and `ToolWatch`,
+`LoopOptions` (model, round and token limits, output schema, script) and
+`SingleToolRun` (call and result only; the shell keeps the completion channel in its
+own wrapper). The plain-data structs the shell builds or reads (`RunLoop`,
+`RunInputs`, `RunOutcome`, `LoopLimits`, `RunTools`, `ToolSurface`, `SingleToolRun`)
+have public fields; the registry's fields and the moving set's private state stay
+`pub(crate)`. `ToolDefinition::new` and `Message::new` in the ai crate build the
+definitions and messages the loop writes.
+
+`bubblepaw-core` keeps the shell halves beside `runtime.rs`: `stock_tool_source.rs`,
+`run_loop_build.rs` and `live_log.rs`, the journal implementation, the approvals, the
+store and everything durable. Its `lib.rs` aliases the moved modules (`crate::tool`,
+`crate::dispatch` and so on) so the shell's code keeps its paths.
+
+Two guards in `tests/runtime/layering.rs` and `layering_agent.rs` protect the crate. The dependency rule
+above keeps `bubblepaw-agent` to `bubblepaw-ai` among workspace crates and forbids
+`rusqlite` and `reqwest`. `agent_crate_holds_no_shell_vocabulary` keeps every file
+under `crates/bubblepaw-agent/src` free of the shell's vocabulary (harness, approval,
+sqlite, the store, the event log), except lines the model reads, which are listed in
+the test with the reason; `child` and `quota` are held to zero by the word ceilings.
+The Rust module graph already stops the crate from importing core.

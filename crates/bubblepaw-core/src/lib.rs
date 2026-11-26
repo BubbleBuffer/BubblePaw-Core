@@ -26,60 +26,36 @@ pub mod config_schema;
 mod context_facts;
 mod context_state;
 mod decision;
-mod discovery;
-mod dispatch;
 mod event_log;
 mod events;
-mod execution_mode;
-pub use execution_mode::ExecutionMode;
-mod extensions;
 mod host_state;
-mod ids;
 mod journal;
 mod journal_admission;
 mod journal_sqlite;
-mod live_events;
 mod live_log;
-mod loop_hooks;
-mod loop_options;
-mod loop_records;
 mod observation;
-mod observer;
-mod prepare_types;
 mod provider_ext;
 mod quota;
-mod reminder_types;
 mod request_metering;
-mod request_seam;
 mod request_usage;
-mod round_reminders;
-mod run_data;
-pub use run_data::{OutputRecord, Run};
-mod run_inputs;
-mod run_journal;
-mod run_loop;
-mod run_settle;
 mod runtime;
-mod runtime_overflow;
-mod runtime_stream;
-mod script;
 mod store;
-mod stream;
-mod submit_result;
-mod tool;
-pub use tool::{Tool, ToolContext};
-mod tool_registry;
-pub use tool_registry::{ToolRegistry, ToolResultLimiter};
-mod tool_result;
-pub use tool_result::ToolResult;
-mod tool_gate;
-mod tool_notices;
-mod tool_source;
-mod tool_views;
 pub mod transcript;
+// The run loop and the tool dispatcher live in `bubblepaw-agent`; the modules are
+// aliased here so the shell's code keeps its `crate::tool::...` paths.
 pub use approvals::{
     Approval, ApprovalMode, ApprovalPolicy, ApprovalRecord, ApprovalState, AutoApprovalConfig,
     DEFAULT_AUTO_PROMPT, Decision, exec_working_directory, track_approval_waits,
+};
+pub use bubblepaw_agent::{
+    ExecutionMode, Extensions, OutputRecord, Run, SCRIPT_MODEL, Tool, ToolContext, ToolDispatcher,
+    ToolRegistry, ToolResult, ToolResultLimiter, search_tool_definitions_with_servers,
+    tool_definition_summary,
+};
+pub(crate) use bubblepaw_agent::{
+    dispatch, live_events, loop_hooks, loop_options, loop_records, observer, prepare_types,
+    reminder_types, request_seam, round_reminders, run_inputs, run_journal, submit_result,
+    tool_gate, tool_source, tool_views,
 };
 pub use bubblepaw_ai::DEFAULT_CACHE_BLOCK_TOKENS;
 pub use bubblepaw_ai::{
@@ -111,11 +87,8 @@ pub use decision::{
     Answer, AnswerKind, DecisionChoice, DecisionProvider, DecisionRequest, DecisionResponse,
     DecisionUsage, Question, QuestionKind, ScoreLevel,
 };
-pub use discovery::{search_tool_definitions_with_servers, tool_definition_summary};
-pub use dispatch::ToolDispatcher;
 pub use event_log::{ClientInfo, EVENTS_AFTER_LIMIT, LogPosition, client_param};
 pub use events::{EventKind, HarnessEvent};
-pub use extensions::Extensions;
 pub use observation::{
     Observation, ObservationMode, ObservationRecord, ObservationScope, ObservationSink,
     fingerprint, hex_lower,
@@ -133,7 +106,6 @@ pub use runtime::{
     RUNTIME_INVENTORY_HEADER, SessionBusy, SystemPromptResolver, ToolRegistryResolver, TurnStart,
     WorkspaceResolver,
 };
-pub use script::SCRIPT_MODEL;
 use serde::{Deserialize, Serialize};
 pub use store::{
     CHECKPOINT_PREFIX, ChapterSection, CheckpointRecord, ContextChapter, ContextCheckpoint,

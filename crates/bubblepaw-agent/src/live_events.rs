@@ -5,7 +5,7 @@ use crate::tool_result::ToolResult;
 use bubblepaw_ai::ToolCall;
 
 /// What the loop and the dispatcher show live.
-pub(crate) enum LiveEvent {
+pub enum LiveEvent {
     /// One finished paragraph of the reply.
     Paragraph {
         text: String,
@@ -32,7 +32,7 @@ pub(crate) enum LiveEvent {
     },
 }
 
-pub(crate) trait LiveEvents: Send + Sync {
+pub trait LiveEvents: Send + Sync {
     /// A live event outside the streamed text, such as a tool starting or finishing.
     fn transient(&self, session_id: &str, run_id: &str, event: LiveEvent);
     /// One streamed text or thinking batch.

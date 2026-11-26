@@ -70,7 +70,7 @@ impl ToolRegistry {
         self.shown_always.remove(&name);
         self.unavailable.insert(name, reason.into());
     }
-    pub(crate) fn unavailable_error(&self, name: &str, fallback: &str) -> anyhow::Error {
+    pub fn unavailable_error(&self, name: &str, fallback: &str) -> anyhow::Error {
         match self.unavailable.get(name) {
             Some(reason) => anyhow::anyhow!("Tool {name} is unavailable: {reason}"),
             None => anyhow::anyhow!("{fallback}: {name}"),
@@ -124,7 +124,7 @@ impl ToolRegistry {
             .map(|(_, tool)| tool.definition())
             .collect()
     }
-    pub(crate) fn validate(&self, name: &str, input: &Value) -> Result<()> {
+    pub fn validate(&self, name: &str, input: &Value) -> Result<()> {
         let tool = self
             .get(name)
             .ok_or_else(|| anyhow::anyhow!("Unknown tool: {name}"))?;

@@ -24,7 +24,7 @@ pub struct ObservationScope {
 }
 
 /// The watcher of a run: free-form reports, failures and the start of a tool call.
-pub(crate) trait Observer: Send + Sync {
+pub trait Observer: Send + Sync {
     /// A report of this kind with its metrics and, when contents are kept, a payload.
     fn emit(&self, scope: ObservationScope, kind: &str, metrics: Value, payload: Option<Value>);
     /// A failure of this kind, how long it took and its category.
@@ -48,7 +48,7 @@ pub(crate) trait Observer: Send + Sync {
 }
 
 /// One tool call being watched. A watch dropped before `finish` reports the call as abandoned.
-pub(crate) trait ToolWatch: Send {
+pub trait ToolWatch: Send {
     /// The invocation id the call received.
     fn invocation(&mut self, id: &str);
     /// The call ended with this result.

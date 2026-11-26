@@ -14,7 +14,7 @@ use std::time::Instant;
 
 /// Everything the listener keeps. It holds the live-event sink, never the store or
 /// engine, so a provider that retains it retains neither.
-pub(crate) struct ModelStream {
+pub struct ModelStream {
     pub(crate) events: Arc<dyn LiveEvents>,
     pub(crate) session: String,
     pub(crate) run_id: String,
@@ -31,21 +31,21 @@ pub(crate) struct ModelStream {
 /// thinking that was not retracted. A request that fails or is cancelled keeps
 /// it as an incomplete assistant message.
 #[derive(Default)]
-pub(crate) struct PartialReply {
+pub struct PartialReply {
     thinking: String,
     text: String,
 }
-pub(crate) type SharedPartial = Arc<Mutex<PartialReply>>;
+pub type SharedPartial = Arc<Mutex<PartialReply>>;
 
 impl PartialReply {
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.thinking.clear();
         self.text.clear();
     }
 
     /// The incomplete assistant message, unless nothing but whitespace or
     /// thinking streamed.
-    pub(crate) fn message(
+    pub fn message(
         &self,
         session_id: &str,
         reason: IncompleteReason,
@@ -73,7 +73,7 @@ impl PartialReply {
 impl ModelStream {
     /// Text deltas also feed the paragraph buffer; thinking deltas are live
     /// progress only, in the order the provider streams them.
-    pub(crate) fn callback(self) -> StreamCallback {
+    pub fn callback(self) -> StreamCallback {
         Arc::new(move |event| {
             if !self.live.load(Ordering::Relaxed) || self.cancellation.is_cancelled() {
                 return;

@@ -11,7 +11,7 @@ use bubblepaw_ai::{Message, ModelResponse, Role, ToolCall, reply_blocks};
 
 /// Loop state that outlives one round and is shared with the settling step.
 #[derive(Default)]
-pub(crate) struct RoundState {
+pub struct RoundState {
     pub(crate) user_request: String,
     pub(crate) result_nudged: bool,
     pub(crate) result_retry_pending: bool,
@@ -19,7 +19,7 @@ pub(crate) struct RoundState {
 }
 
 /// What a settled round asks of the loop.
-pub(crate) enum Settled {
+pub enum Settled {
     /// Ask the model again.
     Retry,
     /// The run has its outcome.
@@ -29,7 +29,7 @@ pub(crate) enum Settled {
 }
 
 /// Replies made only of malformed tool calls, in a row, end the run.
-pub(crate) fn check_malformed_reply_limit(streak: &mut usize, all_malformed: bool) -> Result<()> {
+pub fn check_malformed_reply_limit(streak: &mut usize, all_malformed: bool) -> Result<()> {
     const MAX_MALFORMED_REPLIES: usize = 3;
     *streak = if all_malformed { *streak + 1 } else { 0 };
     ensure!(
@@ -46,7 +46,7 @@ impl Settled {
 }
 
 impl RunLoop {
-    pub(crate) async fn settle_reply(
+    pub async fn settle_reply(
         &self,
         inputs: &RunInputs<'_>,
         state: &mut RoundState,

@@ -174,7 +174,7 @@ impl ToolRegistry {
     }
     /// The single model-call gate, shared by model turns and `call_tool`. Entrypoints
     /// outside the run's allowlist are refused before any permission check or effect.
-    pub(crate) fn validate_model_call(&self, call: &ToolCall) -> anyhow::Result<()> {
+    pub fn validate_model_call(&self, call: &ToolCall) -> anyhow::Result<()> {
         if self.get(&call.name).is_none() {
             return Err(self.unavailable_error(&call.name, "Unknown tool"));
         }
@@ -193,7 +193,7 @@ impl ToolRegistry {
         }
         Ok(())
     }
-    pub(crate) fn validate_direct_model_call(
+    pub fn validate_direct_model_call(
         &self,
         call: &ToolCall,
         declarations: &[String],
@@ -298,11 +298,11 @@ fn tool_name_distance(name: &[char], candidate: &str) -> usize {
     costs[name.len()]
 }
 /// Access wrappers compose or discover targets; each target retains the run gate.
-pub(crate) fn is_access_wrapper(name: &str) -> bool {
+pub fn is_access_wrapper(name: &str) -> bool {
     matches!(name, "js" | "tool_search" | "call_tool")
 }
 /// Sorted, de-duplicated names for the run's allowed tools; `none` when empty.
-pub(crate) fn allowed_tools_phrase(names: &[String]) -> String {
+pub fn allowed_tools_phrase(names: &[String]) -> String {
     let mut names: Vec<&str> = names.iter().map(String::as_str).collect();
     names.sort_unstable();
     names.dedup();

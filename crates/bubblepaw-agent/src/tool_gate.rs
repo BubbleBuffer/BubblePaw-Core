@@ -10,14 +10,14 @@ use bubblepaw_ai::{ToolCall, ToolDefinition};
 
 /// Where a call came from: a model reply, or a host call composed inside another call.
 #[derive(Clone, Copy)]
-pub(crate) enum GateSource<'a> {
+pub enum GateSource<'a> {
     Model { message_id: &'a str },
     Nested,
 }
 
 /// One call as plain data. The context carries the session, run, cancellation and
 /// the policy the host resolved for this call.
-pub(crate) struct GateCall<'a> {
+pub struct GateCall<'a> {
     pub context: &'a ToolContext,
     pub call: &'a ToolCall,
     pub source: GateSource<'a>,
@@ -32,7 +32,7 @@ pub(crate) struct GateCall<'a> {
 }
 
 /// The answer to "may this call run?".
-pub(crate) enum Verdict {
+pub enum Verdict {
     Allow,
     /// The call does not run; the text is the error the model reads.
     Deny(String),
@@ -41,7 +41,7 @@ pub(crate) enum Verdict {
 }
 
 #[async_trait]
-pub(crate) trait ToolGate: Send + Sync {
+pub trait ToolGate: Send + Sync {
     /// Whether the call is certain to run without anything being written or asked.
     /// Pure: the caller uses it to commit the reply and the dispatch together.
     fn admits_without_write(

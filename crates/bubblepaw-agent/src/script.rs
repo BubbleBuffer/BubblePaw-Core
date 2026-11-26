@@ -8,7 +8,7 @@ use serde_json::json;
 pub const SCRIPT_MODEL: &str = "script";
 
 /// The assistant turn a model would have produced to run `code`.
-pub(crate) fn response(code: &str) -> ModelResponse {
+pub fn response(code: &str) -> ModelResponse {
     ModelResponse {
         text: String::new(),
         thinking: String::new(),
@@ -23,7 +23,7 @@ pub(crate) fn response(code: &str) -> ModelResponse {
 }
 
 /// The run's final text is the stored tool result; a failed cell fails the run.
-pub(crate) fn outcome(history: &[Message], calls: &[ToolCall]) -> Result<String> {
+pub fn outcome(history: &[Message], calls: &[ToolCall]) -> Result<String> {
     let call = &calls[0].id;
     let result = history
         .iter()
