@@ -2,13 +2,12 @@
 use super::journal::MemoryJournal;
 use crate::observer::ObservationScope;
 use crate::prepare_types::{PrepareMode, PreparedContext};
-use crate::request_seam::{Built, Draft, Note, Release, RequestContext};
+use crate::request_seam::{Built, Draft, Note, RequestContext};
 use crate::run_data::Run;
 use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_ai::{
-    CancellationToken, HistoryCursor, HistoryTracker, Message, ModelRequest, ModelResponse,
-    Provider,
+    CancellationToken, HistoryCursor, HistoryTracker, Message, ModelRequest, Provider,
 };
 use std::sync::Arc;
 
@@ -25,6 +24,10 @@ impl MemoryContext {
             journal,
             cursors: HistoryTracker::default(),
         }
+    }
+    /// Let go of a session's history cursor.
+    pub fn forget_session(&self, session: &str) {
+        self.cursors.forget(session);
     }
 }
 
@@ -47,12 +50,6 @@ impl RequestContext for MemoryContext {
             messages,
             preview: None,
         })
-    }
-    fn context_prefix(&self, _session: &str) -> Result<Vec<Message>> {
-        Ok(Vec::new())
-    }
-    fn reminder_preview(&self, _session: &str) -> Result<Option<Message>> {
-        Ok(None)
     }
     async fn prepare(
         &self,
@@ -78,42 +75,7 @@ impl RequestContext for MemoryContext {
         Ok(Built::Ready(Box::new(request)))
     }
     fn note(&self, _session: &str, _note: Note<'_>) {}
-    fn declare_change(&self, _session: &str, _reason: &str) {}
-    fn take_prefix_change(&self, _session: &str) -> Option<String> {
-        None
-    }
-    fn tool_generation_observed(&self, _session: &str, _generation: u64) -> bool {
-        false
-    }
-    fn run_hold(&self, _run: &Run) -> Box<dyn std::any::Any + Send> {
-        Box::new(())
-    }
-    fn turn_scope(&self, _run: &Run) -> Box<dyn std::any::Any + Send> {
-        Box::new(())
-    }
     fn requester(&self, _run: &Run, provider: Arc<dyn Provider>) -> Arc<dyn Provider> {
         provider
-    }
-    fn model_started(
-        &self,
-        _run: &Run,
-        _scope: Option<&ObservationScope>,
-        _request: &ModelRequest,
-        _provider: &Arc<dyn Provider>,
-    ) {
-    }
-    fn request_sent(&self, _session: &str, _request: &ModelRequest, _provider: Arc<dyn Provider>) {}
-    fn model_finished(
-        &self,
-        _run: &Run,
-        _scope: Option<&ObservationScope>,
-        _result: &mut Result<ModelResponse>,
-        _timing: (u64, Option<u64>),
-        _cancelled: bool,
-    ) {
-    }
-    fn response_received(&self, _session: &str, _response: &ModelResponse) {}
-    fn release(&self, session: &str, _how: Release) {
-        self.cursors.forget(session);
     }
 }

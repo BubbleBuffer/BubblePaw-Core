@@ -158,23 +158,6 @@ impl RunJournal for MemoryJournal {
         });
         Ok(())
     }
-    fn nested_dispatched(
-        &self,
-        _session_id: &str,
-        _run_id: &str,
-        _call: &ToolCall,
-    ) -> Result<String> {
-        Ok(id())
-    }
-    fn effect_unknown(&self, _session_id: &str, _invocation: &str) -> Result<()> {
-        Ok(())
-    }
-    fn effect_completed(&self, _invocation: &str) -> Result<()> {
-        Ok(())
-    }
-    fn effect_completed_for_session(&self, _session_id: &str, _invocation: &str) -> Result<()> {
-        Ok(())
-    }
     fn tool_output(&self, record: &OutputRecord) -> Result<()> {
         self.state().outputs.push(record.clone());
         Ok(())

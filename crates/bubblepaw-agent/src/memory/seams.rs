@@ -2,15 +2,14 @@
 use crate::live_events::{LiveEvent, LiveEvents};
 use crate::loop_options::LoopOptions;
 use crate::observer::{ObservationScope, Observer, ToolWatch};
-use crate::round_reminders::{RunReminders, ToolsRound};
 use crate::run_data::Run;
 use crate::tool_gate::{GateCall, ToolGate, Verdict};
 use crate::tool_registry::ToolRegistry;
 use crate::tool_result::ToolResult;
 use crate::tool_source::{RunTools, ToolSource, ToolSurface};
-use anyhow::{Result, bail};
+use anyhow::Result;
 use async_trait::async_trait;
-use bubblepaw_ai::{ModelRequest, ToolDefinition};
+use bubblepaw_ai::ToolDefinition;
 use serde_json::Value;
 use std::sync::Mutex;
 
@@ -65,33 +64,8 @@ impl ToolSource for FixedTools {
     fn round_tools(&self, _run: &Run, _options: &LoopOptions) -> Result<ToolRegistry> {
         Ok(self.registry.clone())
     }
-    fn surface_changed(
-        &self,
-        _run: &Run,
-        _options: &LoopOptions,
-        _tools: &mut ToolRegistry,
-        _surface: &mut ToolSurface,
-        _request: &mut ModelRequest,
-    ) -> Result<bool> {
-        Ok(false)
-    }
-    fn queue_round_reminders(
-        &self,
-        _run: &Run,
-        _options: &LoopOptions,
-        _remaining_calls: Option<usize>,
-        _state: &mut RunReminders,
-    ) -> ToolsRound {
-        ToolsRound::Open
-    }
     fn bound_result(&self, result: ToolResult, _remaining_calls: Option<usize>) -> ToolResult {
         result
-    }
-    fn result_required(&self, _run: &Run, nudged: &mut bool) -> Result<()> {
-        if std::mem::replace(nudged, true) {
-            bail!("The model replied without the required result");
-        }
-        Ok(())
     }
 }
 
