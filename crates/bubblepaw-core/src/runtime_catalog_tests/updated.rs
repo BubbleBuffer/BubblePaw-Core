@@ -76,7 +76,9 @@ async fn applied_catalog_retains_updated_definition_of_an_initial_core_tool() ->
     let live = harness.selected_tools(&session, &RunOptions::default())?;
     // Match the runtime apply path: declaring the new view admits replacement
     // cold notes before the current catalog is published and staged.
-    harness.declare_context_change(&session, "lcm_apply");
+    harness
+        .request_context
+        .declare_change(&session, "lcm_apply");
     harness.update_applied_catalog(&session, &live)?;
     let surface = store.chat_tool_surface(&session)?.unwrap();
     let catalog: Value = serde_json::from_str(surface.cold_catalog.as_ref().unwrap())?;
@@ -94,7 +96,8 @@ async fn applied_catalog_retains_updated_definition_of_an_initial_core_tool() ->
     // and canonical history. Preparation clears/restages the persisted notes.
     request.messages = hook.project_history(&store.messages(&session)?)?;
     let prepared = harness
-        .prepare_with_writer(
+        .request_context
+        .prepare(
             &session,
             request,
             Arc::new(Answer),
@@ -102,8 +105,13 @@ async fn applied_catalog_retains_updated_definition_of_an_initial_core_tool() ->
             CancellationToken::new(),
         )
         .await?;
-    let rendered =
-        harness.build_context_request(prepared.request, &session, None, Arc::new(Answer))?;
+    let Built::Ready(rendered) =
+        harness
+            .request_context
+            .build(&session, prepared.request, None, Arc::new(Answer))?
+    else {
+        panic!("the request fits its budget");
+    };
     let encoded = rendered
         .messages
         .iter()

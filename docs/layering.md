@@ -58,6 +58,8 @@ The run loop in `bubblepaw-core` writes things down through the `Journal` trait 
 
 The dispatcher in `bubblepaw-core` asks a `ToolGate` trait about each call instead of reaching into the approval code. `admits_without_write` says whether a call needs nothing written or asked, so the reply and dispatch still commit together; `before` returns allow, deny with the text the model reads, or cancelled, and may wait for a person; `after` shapes the finished result through the host's result hook. The call travels as plain data. One implementation, the stock gate in `approvals`, holds the policy, session rules, automatic review and workspace roots. The size-limit summary and the nested-call skip stay in the dispatcher.
 
+The run loop asks a `RequestContext` trait what to send to the model: the history for the run, the draft messages with the steering batch and the preview of pending notes, the host preparation of that draft, the final request with its budget check, notes queued for the model, declared prefix changes, and the points where a request starts, is sent, finishes and is answered. It carries messages, requests, responses and the provider as plain data. One implementation holds the host preparation hook, the store and the context state. The overflow retry, the choice of when to remind and what to say, steering, and the tool surface stay in the loop.
+
 ## Rules
 
 Normal and build dependencies obey these rules; dev-dependencies are exempt:

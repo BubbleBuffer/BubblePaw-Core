@@ -64,22 +64,6 @@ impl PartialReply {
 }
 
 impl Harness {
-    /// The history a request is built from. An incomplete reply with no user
-    /// message after it (a resumed run) is left out; it stays in the store.
-    pub(super) fn project_request_history(
-        &self,
-        history: &[Message],
-    ) -> anyhow::Result<Vec<Message>> {
-        let mut messages = self.config.context.project_history(history)?;
-        if messages
-            .last()
-            .is_some_and(|last| last.incomplete.is_some())
-        {
-            messages.pop();
-        }
-        Ok(messages)
-    }
-
     /// Store what streamed before the request failed or was cancelled. The run's
     /// outcome stays as it was, so a failure to store is not reported.
     pub(super) fn keep_partial_reply(

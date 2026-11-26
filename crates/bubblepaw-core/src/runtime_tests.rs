@@ -1,3 +1,4 @@
+use super::runtime_context::ParsedHistory;
 use super::*;
 use crate::StreamCallback;
 

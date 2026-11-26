@@ -112,37 +112,45 @@ pub(super) fn cold_catalog(surface: &ChatToolSurface, tools: &ToolRegistry) -> R
     .map_err(Into::into)
 }
 
+/// The cold note that publishes the chat's applied catalog, when it has one.
+pub(super) fn cold_catalog_note(store: &Store, session: &str) -> Result<Option<String>> {
+    Ok(store
+        .chat_tool_surface(session)?
+        .and_then(|surface| surface.cold_catalog))
+}
+
+/// Record the catalog the applied view serves, when it changed.
+pub(super) fn refresh_cold_catalog(
+    store: &Store,
+    session: &str,
+    tools: &ToolRegistry,
+) -> Result<()> {
+    let Some(surface) = store.chat_tool_surface(session)? else {
+        return Ok(());
+    };
+    let text = cold_catalog(&surface, tools)?;
+    if surface.cold_catalog.as_ref() != Some(&text) {
+        store.update_chat_tool_surface(session, |surface| {
+            surface.cold_catalog = Some(text);
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
 impl Harness {
-    /// The catalog is a cold note like any other: it is staged through the
-    /// session's ContextWriter, after the host hook's own notes.
-    pub(super) fn stage_chat_catalog(
-        &self,
-        session: &str,
-        writer: &crate::ContextWriter<'_>,
-    ) -> Result<()> {
-        if let Some(text) = self
-            .store
-            .chat_tool_surface(session)?
-            .and_then(|surface| surface.cold_catalog)
-        {
-            writer.cold_note("tool_catalog", &text);
+    pub(super) fn update_applied_catalog(&self, session: &str, tools: &ToolRegistry) -> Result<()> {
+        refresh_cold_catalog(&self.store, session, tools)?;
+        if let Some(text) = cold_catalog_note(&self.store, session)? {
+            self.request_context.note(
+                session,
+                Note::Cold {
+                    kind: "tool_catalog",
+                    text: &text,
+                },
+            );
         }
         Ok(())
-    }
-
-    pub(super) fn update_applied_catalog(&self, session: &str, tools: &ToolRegistry) -> Result<()> {
-        let Some(surface) = self.store.chat_tool_surface(session)? else {
-            return Ok(());
-        };
-        let text = cold_catalog(&surface, tools)?;
-        if surface.cold_catalog.as_ref() != Some(&text) {
-            self.store.update_chat_tool_surface(session, |surface| {
-                surface.cold_catalog = Some(text);
-                Ok(())
-            })?;
-        }
-        let writer = crate::ContextWriter::new(self.context_state(), session);
-        self.stage_chat_catalog(session, &writer)
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::journal::{Consumed, InputScope, Journal, Reply, RunFinish};
+use crate::request_seam::{Built, Draft, Note, Release, RequestContext};
 use crate::{
     CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
     ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput,
@@ -138,7 +139,7 @@ pub(crate) struct RuntimeState {
     pub(crate) approvals: crate::approvals::Waiters,
     /// One event sequence and broadcast per store (docs/session-api.md).
     pub(crate) log: Arc<crate::event_log::Log>,
-    histories: Mutex<HashMap<String, ParsedHistory>>,
+    histories: Mutex<HashMap<String, runtime_context::ParsedHistory>>,
     /// The one prompt-cache ledger of this store; its `context` is the root lineage.
     pub(crate) cache: Arc<crate::CacheAccounting>,
     pub(crate) session_cleanups: Mutex<HashMap<String, crate::store::SessionCleanup>>,
@@ -147,45 +148,6 @@ pub(crate) struct RuntimeState {
 /// and restart deduplication use structured runtime_inventory metadata.
 pub const RUNTIME_INVENTORY_HEADER: &str = "Current volatile runtime facts";
 
-#[derive(Default)]
-struct ParsedHistory {
-    frontier: Option<i64>,
-    prefix_id: Option<String>,
-    through: i64,
-    messages: Vec<Message>,
-    sizes: HashMap<String, (Message, usize)>,
-}
-impl ParsedHistory {
-    fn refresh(&mut self, store: &Store, session_id: &str) -> Result<()> {
-        for (seq, message) in store.messages_after(session_id, self.through)? {
-            self.through = seq;
-            self.messages.push(message.without_details());
-        }
-        Ok(())
-    }
-    fn request_bytes(&mut self, request: &mut ModelRequest) -> Result<usize> {
-        // Serializing a message-free shell preserves the exact serde wire size,
-        // including optional fields. Canonical-only chat journals are excluded
-        // from message payload accounting. Existing messages are only compared and
-        // counted; transformed/new messages are serialized once.
-        let messages = std::mem::take(&mut request.messages);
-        let shell = serde_json::to_vec(request).map(|bytes| bytes.len());
-        request.messages = messages;
-        let mut bytes = shell?;
-        for message in &request.messages {
-            let entry = self
-                .sizes
-                .entry(message.id.clone())
-                .or_insert_with(|| (message.clone(), 0));
-            if entry.1 == 0 || !runtime_admission::same_message_wire_size(&entry.0, message) {
-                entry.1 = crate::prepared_message_bytes(message)?;
-                entry.0 = message.clone();
-            }
-            bytes = bytes.saturating_add(entry.1);
-        }
-        Ok(bytes.saturating_add(request.messages.len().saturating_sub(1)))
-    }
-}
 impl RuntimeState {
     pub(crate) fn quota_cancellation(&self, session: &str, run: &str) -> Option<CancellationToken> {
         self.active
@@ -197,9 +159,7 @@ impl RuntimeState {
     }
     fn release_history(&self, session: &str) {
         if let Some(history) = self.histories.lock().unwrap().get_mut(session) {
-            *history = ParsedHistory {
-                ..Default::default()
-            };
+            *history = runtime_context::ParsedHistory::default();
         }
     }
     pub(crate) fn forget_history(&self, session: &str) {
@@ -290,40 +250,19 @@ impl std::error::Error for SessionBusy {}
 pub struct Harness {
     store: Store,
     provider: Arc<dyn Provider>,
-    tools: ToolRegistry,
+    selection: runtime_mode::ToolSelection,
     config: HarnessConfig,
     state: Arc<RuntimeState>,
     cursors: Arc<crate::HistoryTracker>,
     journal: Arc<dyn Journal>,
+    request_context: Arc<dyn RequestContext>,
 }
 impl Harness {
-    fn history(&self, session_id: &str) -> Result<Vec<Message>> {
-        let host_frontier = self.config.context.history_frontier(session_id)?;
-        let (frontier, prefix) = if host_frontier.is_some() {
-            (host_frontier, Vec::new())
-        } else {
-            self.store.imported_history_seed(session_id)?
-        };
-        let mut histories = self.state.histories.lock().unwrap();
-        let history = histories.entry(session_id.into()).or_default();
-        let prefix_id = prefix.first().map(|message| message.id.clone());
-        if history.frontier != frontier || history.prefix_id != prefix_id {
-            *history = ParsedHistory {
-                through: frontier.unwrap_or(0),
-                frontier,
-                prefix_id,
-                messages: prefix,
-                ..Default::default()
-            };
-        }
-        history.refresh(&self.store, session_id)?;
-        Ok(history.messages.clone())
-    }
     fn latest_user_request(&self, session_id: &str) -> Result<String> {
         let is_user_request = |message: &Message| {
             message.role == Role::User && message.origin != Some(crate::MessageOrigin::Generated)
         };
-        let history = self.history(session_id)?;
+        let history = self.request_context.history(session_id)?;
         if let Some(message) = history.into_iter().rev().find(is_user_request) {
             return Ok(message.text().into_owned());
         }
@@ -346,14 +285,29 @@ impl Harness {
             store.clone(),
             state.log.clone(),
         ));
+        let selection = runtime_mode::ToolSelection::new(
+            store.clone(),
+            tools,
+            config.registry_resolver.clone(),
+            config.execution_mode,
+        );
+        let request_context = Arc::new(runtime_context::StockRequestContext {
+            hook: config.context.clone(),
+            store: store.clone(),
+            state: state.clone(),
+            selection: selection.clone(),
+            observation: config.observation.clone(),
+            max_request_bytes: config.max_request_bytes,
+        });
         let harness = Self {
             store,
             provider,
-            tools,
+            selection,
             config,
             state,
             cursors: Arc::default(),
             journal,
+            request_context,
         };
         if let Some(days) = harness.config.event_retention_days {
             harness.prune_events(days);
@@ -590,10 +544,8 @@ impl Harness {
         );
         self.state.active.lock().unwrap().remove(session_id);
         self.state.log.forget_session(session_id);
-        self.state.histories.lock().unwrap().remove(session_id);
-        self.release_context_state(session_id);
         self.cursors.forget(session_id);
-        self.config.context.release_session(session_id);
+        self.request_context.release(session_id, Release::Deleted);
         // The history is gone either way; the mirror is dropped best effort.
         self.provider.close_session(session_id).await
     }
@@ -609,9 +561,8 @@ impl Harness {
                 "Session has an active run"
             );
         }
-        self.state.release_history(session_id);
         self.cursors.forget(session_id);
-        self.config.context.release_session(session_id);
+        self.request_context.release(session_id, Release::Idle);
         self.provider.close_session(session_id).await
     }
     /// Cancel, recording the client; the run's RunFinished carries it as origin.
@@ -973,10 +924,10 @@ impl Harness {
                 let (default_model, request_provider) = self.provider_binding();
                 tools_round = self.queue_run_reminders(run, options, &dispatcher, &mut reminders);
                 for reminder in tools.take_reminders(&run.session_id) {
-                    self.context_state()
-                        .remind_with_metadata(&run.session_id, "root", reminder);
+                    self.request_context
+                        .note(&run.session_id, Note::Reminder(reminder));
                 }
-                let mut history = self.history(&run.session_id)?;
+                let mut history = self.request_context.history(&run.session_id)?;
                 let request_scope = self.config.observation.as_ref().map(|_| ObservationScope {
                     session_id: run.session_id.clone(),
                     run_id: run.id.clone(),
@@ -991,13 +942,8 @@ impl Harness {
                 let prepared = async {
                     loop {
                     let system_prompt = tool_surface.prompt();
-                    let mut messages = self.project_request_history(&history)?;
-                    // The new batch must reach token/window admission intact,
-                    // even if the ordinary history projection drops older input.
-                    messages.retain(|saved| !steering_batch.iter().any(|steer| steer.id == saved.id));
-                    messages.extend(steering_batch.iter().cloned());
-                    let preview = self.context_state().preview_reminder_message(&run.session_id, "root", &self.store)?;
-                    if let Some(message) = &preview { messages.push(message.clone()); }
+                    let Draft { messages, preview } =
+                        self.request_context.draft(&run.session_id, &history, &steering_batch)?;
                     let request = ModelRequest {
                         model: options.model.clone().unwrap_or_else(|| default_model.clone()),
                         system_prompt,
@@ -1009,7 +955,7 @@ impl Harness {
                     let mut prepared = tokio::select! {
                         biased;
                         _ = cancellation.cancelled() => Err(anyhow!("Cancelled during context preparation")),
-                        result = self.prepare_with_writer(&run.session_id, request, request_provider.clone(), preparation_mode, cancellation.clone()) => result,
+                        result = self.request_context.prepare(&run.session_id, request, request_provider.clone(), preparation_mode, cancellation.clone()) => result,
                     }?;
                     // Preparation may have made physical auxiliary calls even
                     // when a late batch requires a fresh request projection.
@@ -1037,27 +983,24 @@ impl Harness {
                     if !steers.is_empty() {
                         late_steering = true;
                         steering_batch.extend(steers);
-                        history = self.history(&run.session_id)?;
+                        history = self.request_context.history(&run.session_id)?;
                         continue;
                     }
-                    let updated = self.context_state().preview_reminder_message(&run.session_id, "root", &self.store)?;
+                    let updated = self.request_context.reminder_preview(&run.session_id)?;
                     if preview.as_ref().map(|m| &m.content) != updated.as_ref().map(|m| &m.content) {
                         continue;
                     }
                     if let Some(preview) = &preview {
                         prepared.request.messages.retain(|saved| saved.id != preview.id);
                     }
-                    prepared.request = match self.build_context_request(prepared.request, &run.session_id, request_scope.as_ref(), request_provider.clone()) {
-                        Ok(request) => request,
-                        Err(error) => {
-                            let Some(budget) = error.downcast_ref::<ContextBudgetExceeded>() else {
-                                return Err(error);
-                            };
-                            let frontier = self.config.context.history_frontier(&run.session_id)?;
+                    prepared.request = match self.request_context.build(&run.session_id, prepared.request, request_scope.as_ref(), request_provider.clone())? {
+                        Built::Ready(request) => *request,
+                        Built::TooLarge(budget) => {
+                            let frontier = budget.frontier;
                             // One attempt is allowed without an applied view. Every
                             // later recovery must have advanced complete coverage.
                             if rejected_frontier.is_some_and(|previous| previous >= frontier) {
-                                return Err(error);
+                                return Err(budget.error);
                             }
                             rejected_frontier = Some(frontier);
                             let (tokens, bytes) = match preparation_mode {
@@ -1075,7 +1018,7 @@ impl Harness {
                                     "frontier": frontier,
                                 }), None);
                             }
-                            history = self.history(&run.session_id)?;
+                            history = self.request_context.history(&run.session_id)?;
                             continue;
                         }
                     };
@@ -1144,7 +1087,11 @@ impl Harness {
                     .observation
                     .as_ref()
                     .map(|_| Arc::new(Mutex::new(None::<u64>)));
-                self.observe_model_start(request_scope.as_ref(), &request, &request_provider);
+                self.request_context.model_started(
+                    request_scope.as_ref(),
+                    &request,
+                    &request_provider,
+                );
                 let dispatcher = dispatcher.with_request(
                     request_scope
                         .as_ref()
@@ -1174,7 +1121,7 @@ impl Harness {
                     &run.id,
                     EventKind::ModelRequestStarted {},
                 );
-                self.config.context.observe_request(
+                self.request_context.request_sent(
                     &run.session_id,
                     &request,
                     request_provider.clone(),
@@ -1200,7 +1147,7 @@ impl Harness {
                     ));
                 }
                 drop(callback_lifetime);
-                self.observe_model_result(
+                self.request_context.model_finished(
                     &run.session_id,
                     &captured_usage,
                     request_scope.as_ref(),
@@ -1237,9 +1184,8 @@ impl Harness {
                 partial.lock().unwrap().clear();
                 result_retry_pending = false;
                 reminders.observe_tool_calls(tools_round, response.tool_calls.len());
-                self.config
-                    .context
-                    .observe_response(&run.session_id, &response);
+                self.request_context
+                    .response_received(&run.session_id, &response);
                 {
                     let mut buffer = paragraphs.lock().unwrap();
                     let streamed = buffer.had_text();
@@ -1402,7 +1348,7 @@ impl Harness {
                     self.journal
                         .inputs_consumed(&run.session_id, Consumed::GeneratedSteering)?;
                 }
-                let history = self.history(&run.session_id)?;
+                let history = self.request_context.history(&run.session_id)?;
                 let result_message_id = history
                     .iter()
                     .rev()
