@@ -149,8 +149,15 @@ impl SummarizingContext {
         let Some(state) = &message.provider_state else {
             return count;
         };
+        // The thinking block holds the readable reasoning of a reply stored since it
+        // became a block; older rows keep it only in `provider_state` (legacy path).
+        let thinking = message.thinking();
         if state["adapter"] == "anthropic-messages" {
-            return count.saturating_add(self.readable_thinking_tokens(&state["content"], true));
+            return count.saturating_add(if thinking.is_empty() {
+                self.readable_thinking_tokens(&state["content"], true)
+            } else {
+                self.tokens(&thinking)
+            });
         }
         if state["adapter"] != "chat-completions"
             && !(state.get("adapter").is_none()
@@ -160,9 +167,14 @@ impl SummarizingContext {
         {
             return count;
         }
+        let typed = !thinking.is_empty();
+        if typed {
+            count = count.saturating_add(self.tokens(&thinking));
+        }
         let add_fields = |fields: &Value| {
             let plain = ["reasoning_content", "reasoning"]
                 .iter()
+                .filter(|_| !typed)
                 .filter_map(|key| fields[*key].as_str())
                 .map(|text| self.tokens(text))
                 .sum::<usize>();
@@ -242,5 +254,48 @@ impl SummarizingContext {
             Some(estimate) => (canonical.max(estimate), true),
             None => (canonical, false),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Source cadence counts a reply's readable reasoning from its thinking block, or
+    /// for a row stored before the block existed from `provider_state`; both agree.
+    #[test]
+    fn source_cadence_reads_reasoning_from_the_thinking_block_or_the_legacy_state() -> Result<()> {
+        let context = SummarizingContext::new(
+            Store::in_memory()?,
+            Arc::new(crate::provider::ChatCompletionsProvider::without_key(
+                "http://127.0.0.1:1",
+            )?),
+            SummaryConfig::default(),
+            None,
+        )?;
+        let thought = " thought".repeat(2_000);
+        let blank = SummarizingContext::synthetic("session", Role::Assistant, "done".into());
+        let bare = context.source_message_tokens(&blank);
+        let cases = [
+            (
+                json!({"adapter":"anthropic-messages","content":[{"type":"thinking","thinking":thought,"signature":"s"}]}),
+                json!({"adapter":"anthropic-messages","content":[{"type":"redacted_thinking","data":"s"}]}),
+            ),
+            (
+                json!({"adapter":"chat-completions","message_fields":{"reasoning_content":thought}}),
+                json!({"adapter":"chat-completions","message_fields":{"opaque":"s"}}),
+            ),
+        ];
+        for (legacy_state, typed_state) in cases {
+            let mut legacy = blank.clone();
+            legacy.provider_state = Some(legacy_state);
+            let mut typed = blank.clone();
+            typed.provider_state = Some(typed_state);
+            typed.content = bubblepaw_core::reply_blocks(&thought, "done");
+            let from_state = context.source_message_tokens(&legacy);
+            assert!(from_state > bare + 1_000);
+            assert_eq!(context.source_message_tokens(&typed), from_state);
+        }
+        Ok(())
     }
 }

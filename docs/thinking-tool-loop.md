@@ -266,5 +266,9 @@ The readable part of a reply's reasoning is a first-class stream: adapters emit
 `StreamEvent::ThinkingDelta`, hosts see the live `thinking_delta` event, and the
 loop stores the reply's thinking as a `thinking` content block before its text.
 The block is display data only. Replay still comes from `provider_state` for every adapter and the adapters never
-read the block, so no request changes; the block is a second readable copy. See
+read the block, so no request changes; the block is a second readable copy.
+Readers of reasoning (summaries, token cadence) take the thinking first and use
+`provider_state` only for replies that predate the block. A reply also carries its
+stop reason, serving model and per-request usage as typed fields, which the loop
+does not act on differently from before. See
 [providers](providers.md) and [storage-model](storage-model.md#thinking-blocks-chat-store-16).

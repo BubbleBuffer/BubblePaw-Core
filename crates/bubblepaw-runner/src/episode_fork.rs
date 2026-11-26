@@ -97,10 +97,7 @@ impl SummarizingContext {
     }
 
     pub(super) fn observe_episode_route(&self, session: &str, response: &ModelResponse) {
-        let selected = response
-            .provider_state
-            .as_ref()
-            .and_then(|state| state["_bubblepaw_selected_model"].as_str());
+        let selected = response.selected_route();
         let mut captures = self.captures.lock().unwrap();
         if let Some(saved) = captures.get_mut(session) {
             // Existing snapshots remain immutable. In the common case no reader

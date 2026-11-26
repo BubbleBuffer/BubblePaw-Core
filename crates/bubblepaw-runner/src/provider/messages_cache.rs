@@ -124,6 +124,7 @@ pub(super) fn report(
     breakpoints: Option<Vec<String>>,
 ) -> ModelResponse {
     if let Some(breakpoints) = breakpoints {
+        response.cache_breakpoints = Some(breakpoints.clone());
         let state = response.provider_state.get_or_insert_with(|| json!({}));
         if let Some(state) = state.as_object_mut() {
             state.insert(RequestLogRow::BREAKPOINTS_KEY.into(), json!(breakpoints));

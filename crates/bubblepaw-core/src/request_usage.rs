@@ -171,10 +171,7 @@ pub(crate) fn fallback_usage(
                 request_ids.push(fallback.request_id.clone());
             }
             if let Some((provider, model)) = response
-                .provider_state
-                .as_ref()
-                .and_then(|state| state.get("_bubblepaw_selected_model"))
-                .and_then(serde_json::Value::as_str)
+                .selected_route()
                 .and_then(|selected| selected.split_once('/'))
             {
                 fallback.provider = provider.to_owned();

@@ -17,7 +17,15 @@ impl ProviderRegistry {
     pub(crate) fn set_context_observation(&self, observation: Option<bubblepaw_core::Observation>) {
         self.context_route.set_observation(observation);
     }
-    /// Reasoning text a provider returned in its replay state, if any.
+    /// The readable reasoning of a reply: its thinking text, or for a reply that
+    /// carries it only in the replay state, that state's reasoning.
+    pub(crate) fn reply_reasoning(response: &bubblepaw_core::ModelResponse) -> Option<String> {
+        if !response.thinking.is_empty() {
+            return Some(response.thinking.clone());
+        }
+        response.provider_state.as_ref().and_then(Self::reasoning)
+    }
+    /// Legacy: reasoning text a provider returned in its replay state, if any.
     pub(crate) fn reasoning(state: &serde_json::Value) -> Option<String> {
         let mut parts = Vec::new();
         reasoning_parts(state, &mut parts);
@@ -94,6 +102,37 @@ fn reasoning_parts<'a>(state: &'a serde_json::Value, parts: &mut Vec<&'a str>) {
             && let Some(text) = item["thinking"].as_str()
         {
             parts.push(text);
+        }
+    }
+}
+
+/// Name the route that served a reply, and the routes that failed before it, as
+/// typed fields. The replay state keeps the same keys for readers of older replies.
+pub(super) fn stamp_route(
+    response: &mut bubblepaw_core::ModelResponse,
+    selected: &str,
+    failed: &[String],
+    reasons: &[String],
+) {
+    response.route = Some(bubblepaw_core::ServedRoute {
+        selected: selected.to_owned(),
+        fallback_from: failed.to_vec(),
+        fallback_reasons: reasons.to_vec(),
+    });
+    let state = response
+        .provider_state
+        .get_or_insert_with(|| serde_json::json!({}));
+    if let Some(state) = state.as_object_mut() {
+        state.insert(
+            "_bubblepaw_selected_model".into(),
+            serde_json::json!(selected),
+        );
+        if !failed.is_empty() {
+            state.insert("_bubblepaw_fallback_from".into(), serde_json::json!(failed));
+            state.insert(
+                "_bubblepaw_fallback_reasons".into(),
+                serde_json::json!(reasons),
+            );
         }
     }
 }

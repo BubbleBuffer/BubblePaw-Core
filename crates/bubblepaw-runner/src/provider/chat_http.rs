@@ -82,3 +82,33 @@ impl ChatCompletionsProvider {
         ))
     }
 }
+
+/// Error bodies are used for classification only; provider text never reaches
+/// the host's error message (it can contain private prompts or credentials).
+pub(super) fn chat_error_kind(error: &Value) -> ProviderErrorKind {
+    let code = error["status"].as_u64().or_else(|| error["code"].as_u64());
+    let label = format!(
+        "{} {}",
+        error["type"].as_str().unwrap_or_default(),
+        error["code"].as_str().unwrap_or_default()
+    )
+    .to_ascii_lowercase();
+    if crate::provider::is_context_overflow(&error.to_string()) {
+        ProviderErrorKind::Context
+    } else if matches!(code, Some(401 | 403))
+        || label.contains("authentication")
+        || label.contains("invalid_api_key")
+        || label.contains("permission")
+    {
+        ProviderErrorKind::Auth
+    } else if code == Some(429) || label.contains("rate_limit") {
+        ProviderErrorKind::RateLimit { resets_at: None }
+    } else if matches!(code, Some(408 | 409 | 500..=599))
+        || label.contains("server_error")
+        || label.contains("overloaded")
+    {
+        ProviderErrorKind::Transient
+    } else {
+        ProviderErrorKind::Fatal
+    }
+}

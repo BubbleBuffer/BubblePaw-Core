@@ -16,6 +16,7 @@ pub(crate) use opencode_session::{codex_cache_headers, opencode_session, session
 mod registry;
 mod registry_stream;
 pub(crate) mod replay_state;
+mod reply_facts;
 mod responses_body;
 mod responses_rounds;
 use responses_rounds::{is_length_stop, join_rounds};
@@ -333,21 +334,7 @@ impl ResponsesProvider {
         let response = completed
             .ok_or_else(|| transient(anyhow!("provider stream ended without response.completed")))?;
         let cut = is_length_stop(&response);
-        let usage = response
-            .get("usage")
-            .filter(|v| v.is_object())
-            .map(|v| Usage {
-                input_tokens: v["input_tokens"].as_u64().unwrap_or(0),
-                output_tokens: v["output_tokens"].as_u64().unwrap_or(0),
-                cache_read_tokens: v["input_tokens_details"]["cached_tokens"]
-                    .as_u64()
-                    .unwrap_or(0),
-                cache_creation_tokens: v["input_tokens_details"]["cache_creation_tokens"]
-                    .as_u64()
-                    .or_else(|| v["cache_creation_input_tokens"].as_u64())
-                    .unwrap_or(0),
-                reasoning_tokens: v["output_tokens_details"]["reasoning_tokens"].as_u64(),
-            });
+        let usage = reply_facts::responses_usage(&response);
         let malformed_call = |message: &str| {
             let error = anyhow!(message.to_owned());
             let error = match usage.as_ref() {
@@ -459,6 +446,7 @@ impl ResponsesProvider {
                 anyhow!("provider final text conflicts with streamed text"),
             ));
         }
+        let facts = reply_facts::responses(&response, !calls.is_empty());
         Ok((
             ModelResponse {
                 text: final_text,
@@ -468,9 +456,11 @@ impl ResponsesProvider {
                     input_tokens: response["usage"]["input_tokens"].as_u64(),
                     output_tokens: response["usage"]["output_tokens"].as_u64(),
                 }),
+                request_usages: usage.iter().cloned().collect(),
                 usage,
                 provider_state,
                 quota: quota.clone(),
+                ..facts
             },
             cut,
         ))

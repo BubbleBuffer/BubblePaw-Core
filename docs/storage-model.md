@@ -94,7 +94,10 @@ their shape. The JSONL export writes a message with thinking in list form so a
 reimport keeps the block (an export shows `content` as a list for such
 messages). The block is a second readable copy: `provider_state` is unchanged for
 every adapter and carries the text that is sent, so the thinking is stored twice
-until the adapters move. Rows are never rewritten, and step 16 only raises the
+until the adapters move. Readers of a stored reply's reasoning take the block
+first and fall back to `provider_state` for older rows. The typed reply facts
+(`model`, `stop_reason`, `request_usages`, `route`, `cache_breakpoints`) live on
+`ModelResponse` only and are not stored with the message. Rows are never rewritten, and step 16 only raises the
 version so an older program refuses the store.
 
 ## Bounded host state (2026-10-15)

@@ -43,6 +43,7 @@ impl Provider for Script {
             provider_state: Some(json!({"authorization":"provider-private-state"})),
             last_request_usage: None,
             quota: Vec::new(),
+            ..Default::default()
         })
     }
 }

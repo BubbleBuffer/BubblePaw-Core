@@ -176,11 +176,7 @@ impl ProviderRegistry {
         Ok(())
     }
     pub fn selected_model(response: &ModelResponse) -> Option<&str> {
-        response
-            .provider_state
-            .as_ref()?
-            .get("_bubblepaw_selected_model")?
-            .as_str()
+        response.selected_route()
     }
     /// Exact configured model capability; no model-name inference or fallback.
     pub fn set_image_input(&mut self, provider: &str, model: &str, enabled: bool) {
@@ -726,25 +722,7 @@ impl ProviderRegistry {
                     response.usage = accumulated;
                     self.record_origin(&id, &mut response);
                     if has_fallbacks {
-                        let state = response
-                            .provider_state
-                            .get_or_insert_with(|| serde_json::json!({}));
-                        if let Some(state) = state.as_object_mut() {
-                            state.insert(
-                                "_bubblepaw_selected_model".into(),
-                                serde_json::json!(candidate),
-                            );
-                            if !failed.is_empty() {
-                                state.insert(
-                                    "_bubblepaw_fallback_from".into(),
-                                    serde_json::json!(failed),
-                                );
-                                state.insert(
-                                    "_bubblepaw_fallback_reasons".into(),
-                                    serde_json::json!(reasons),
-                                );
-                            }
-                        }
+                        context_binding::stamp_route(&mut response, &candidate, &failed, &reasons);
                         // A fallback route also has provenance when its adapter
                         // returned no native replay state.
                         self.record_origin(&id, &mut response);

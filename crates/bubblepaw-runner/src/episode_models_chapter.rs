@@ -268,10 +268,7 @@ async fn chapter_fork(
     )
     .await?;
     let result = ChatResult {
-        reasoning: response
-            .provider_state
-            .as_ref()
-            .and_then(ProviderRegistry::reasoning),
+        reasoning: ProviderRegistry::reply_reasoning(&response),
         text: response.text,
         model,
         usage,

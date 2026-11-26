@@ -16,10 +16,8 @@ pub(crate) fn response(code: &str) -> ModelResponse {
             name: "js".into(),
             arguments: json!({ "code": code }),
         }],
-        usage: None,
-        quota: Vec::new(),
-        last_request_usage: None,
         provider_state: Some(json!({ "script": true })),
+        ..Default::default()
     }
 }
 

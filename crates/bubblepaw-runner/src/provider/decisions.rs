@@ -694,10 +694,7 @@ impl LlmDecisions {
                     .unwrap_or_default(),
             ));
         }
-        let reasoning = response
-            .provider_state
-            .as_ref()
-            .and_then(super::ProviderRegistry::reasoning);
+        let reasoning = super::ProviderRegistry::reply_reasoning(&response);
         Ok((
             DecisionResponse {
                 answers: Self::answers(&request, &response.text),

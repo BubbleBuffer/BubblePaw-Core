@@ -23,7 +23,11 @@ pub(super) fn join_rounds(mut rounds: Vec<ModelResponse>) -> ModelResponse {
     let mut tool_calls = Vec::new();
     let mut last_request_usage = None;
     let mut quota = Vec::new();
+    let mut request_usages = Vec::new();
+    let (mut model, mut stop_reason) = (None, None);
     for round in rounds {
+        request_usages.extend(round.request_usages);
+        (model, stop_reason) = (round.model, round.stop_reason);
         text.push_str(&round.text);
         thinking.push_str(&round.thinking);
         if let Some(part) = &round.usage {
@@ -50,6 +54,10 @@ pub(super) fn join_rounds(mut rounds: Vec<ModelResponse>) -> ModelResponse {
         usage: any_usage.then_some(total),
         last_request_usage,
         quota,
+        model,
+        stop_reason,
+        request_usages,
         provider_state: Some(json!({"adapter":"responses","items":items})),
+        ..Default::default()
     }
 }
