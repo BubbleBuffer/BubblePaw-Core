@@ -97,6 +97,11 @@ and no longer carry it in `provider_state`; older rows with it in
 `provider_state` replay unchanged. Rows are never rewritten, and step 16 only
 raises the version so an older program refuses the store.
 
+The prepared request byte size (the 2 MiB check and the compaction fit and
+trigger) adds the thinking text length, because Chat sends it back; Anthropic and
+Responses also keep it in `provider_state`, so they count it twice, which errs on
+the safe side.
+
 ## Bounded host state (2026-10-15)
 
 An additive `host_state(session_id,key,value)` table keeps small runner-owned

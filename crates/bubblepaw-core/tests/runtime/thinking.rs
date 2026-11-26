@@ -77,7 +77,7 @@ async fn thinking_is_a_live_event_and_a_stored_block_model_text_ignores() -> Res
     assert!(matches!(&reply.content[1], ContentBlock::Text { text } if text == "Answer"));
     assert_eq!(reply.thinking(), "Plan the answer.");
 
-    // Model text and request size are those of the reply without the block.
+    // Model text is that of the reply without the block; the byte size adds the thinking.
     let mut plain = reply.clone();
     plain.content.remove(0);
     assert_eq!(reply.text(), plain.text());
@@ -87,6 +87,6 @@ async fn thinking_is_a_live_event_and_a_stored_block_model_text_ignores() -> Res
             ..Default::default()
         })
     };
-    assert_eq!(size(&reply)?, size(&plain)?);
+    assert_eq!(size(&reply)?, size(&plain)? + "Plan the answer.".len());
     Ok(())
 }
