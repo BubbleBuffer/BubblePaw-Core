@@ -1,5 +1,5 @@
 //! Decision adapters make exactly one provider call. Roles own sampling and retry.
-use super::{cancelled, classify};
+use super::{cancelled, classify, validate_url};
 use anyhow::{Result, anyhow, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -12,18 +12,6 @@ use std::{sync::Arc, time::Duration};
 mod http;
 pub(super) use http::post_json;
 
-pub(super) fn validate_url(url: &str) -> Result<()> {
-    let parsed = reqwest::Url::parse(url).map_err(|_| anyhow!("Invalid provider URL"))?;
-    ensure!(
-        matches!(parsed.scheme(), "http" | "https")
-            && parsed.username().is_empty()
-            && parsed.password().is_none()
-            && parsed.query().is_none()
-            && parsed.fragment().is_none(),
-        "Provider URL must be HTTP(S) without credentials/query/fragment"
-    );
-    Ok(())
-}
 pub(super) fn http_client() -> Result<reqwest::Client> {
     Ok(reqwest::Client::builder()
         .timeout(Duration::from_secs(300))
@@ -41,10 +29,21 @@ impl std::fmt::Display for DecisionParseError {
     }
 }
 impl std::error::Error for DecisionParseError {}
-pub fn decision_error_usage(error: &anyhow::Error) -> Option<&DecisionUsage> {
+/// The usage a failed decision attempt billed: its decision metadata, or the
+/// facts an adapter attached to the error it raised.
+pub fn decision_error_usage(error: &anyhow::Error) -> Option<DecisionUsage> {
+    if let Some(error) = error.downcast_ref::<DecisionParseError>() {
+        return Some(error.usage.clone());
+    }
     error
-        .downcast_ref::<DecisionParseError>()
-        .map(|error| &error.usage)
+        .downcast_ref::<bubblepaw_ai::adapter::MeteredModelError>()
+        .map(|error| {
+            error
+                .usage
+                .as_ref()
+                .map(DecisionUsage::from)
+                .unwrap_or_default()
+        })
 }
 pub(crate) fn with_decision_usage(error: anyhow::Error, usage: DecisionUsage) -> anyhow::Error {
     let mut source = bubblepaw_core::ProviderError::of(&error)
@@ -69,13 +68,6 @@ pub(super) fn metered_error(error: anyhow::Error, usage: DecisionUsage) -> anyho
     let model_usage = usage.clone().into();
     metered_error_parts(error, usage, Some(model_usage))
 }
-pub(super) fn metered_model_error(
-    error: anyhow::Error,
-    usage: Option<bubblepaw_core::Usage>,
-) -> anyhow::Error {
-    let decision_usage = usage.as_ref().map(DecisionUsage::from).unwrap_or_default();
-    metered_error_parts(error, decision_usage, usage)
-}
 fn metered_error_parts(
     error: anyhow::Error,
     usage: DecisionUsage,
@@ -95,7 +87,7 @@ fn metered_error_parts(
 /// top-level names keep the precedence they had over those aliases.
 fn physical_usage(payload: &Value) -> bubblepaw_core::Usage {
     let value = &payload["usage"];
-    let (mut result, _) = super::chat::response_usage(payload);
+    let (mut result, _) = bubblepaw_ai::adapter::chat_response_usage(payload);
     if let Some(tokens) = value["input_tokens"].as_u64() {
         result.input_tokens = tokens;
     }

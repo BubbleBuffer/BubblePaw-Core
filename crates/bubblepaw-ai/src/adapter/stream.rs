@@ -3,8 +3,8 @@
 //! can finish. Text fragments reach the listener in batches; they are transient
 //! and never stored.
 use super::{classify, http_dump};
+use crate::{CancellationToken, ProviderErrorKind, StreamCallback, StreamEvent};
 use anyhow::{Result, anyhow};
-use bubblepaw_core::{CancellationToken, ProviderErrorKind, StreamCallback, StreamEvent};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -42,7 +42,7 @@ fn builder() -> reqwest::ClientBuilder {
 #[derive(Clone)]
 pub(super) struct Client {
     pub(super) inner: reqwest::Client,
-    pub(super) egress: Option<std::sync::Arc<crate::remote::egress::EgressHandle>>,
+    pub(super) egress: Option<std::sync::Arc<dyn ModelEgress>>,
 }
 
 impl std::ops::Deref for Client {
@@ -55,6 +55,7 @@ impl std::ops::Deref for Client {
 
 #[path = "stream/egress.rs"]
 mod egress;
+pub use egress::{EgressFailure, ModelEgress};
 
 /// Why a stream stopped before its terminal event.
 pub(super) enum StreamError {
@@ -105,7 +106,7 @@ pub(super) fn is_event_stream(response: &reqwest::Response) -> bool {
 }
 
 /// The whole body of a non-streamed reply, bounded by the idle timeout.
-pub(super) async fn read_body(
+pub async fn read_body(
     mut response: reqwest::Response,
     cancellation: &CancellationToken,
 ) -> Result<Vec<u8>> {
@@ -242,7 +243,7 @@ pub(super) const THINKING_BREAK: &str = "\n\n";
 
 /// Collects text and thinking fragments and hands them to the listener in
 /// batches. A batch holds one kind, so the listener sees both in streamed order.
-pub(super) struct TextBatch {
+pub struct TextBatch {
     listener: StreamCallback,
     pending: String,
     thinking: bool,
@@ -251,7 +252,7 @@ pub(super) struct TextBatch {
 }
 
 impl TextBatch {
-    pub(super) fn new(listener: StreamCallback) -> Self {
+    pub fn new(listener: StreamCallback) -> Self {
         Self {
             listener,
             pending: String::new(),
@@ -262,12 +263,12 @@ impl TextBatch {
     }
 
     /// Queue a text fragment; delivers at once when the batch is full or old enough.
-    pub(super) fn push(&mut self, fragment: &str) {
+    pub fn push(&mut self, fragment: &str) {
         self.queue(false, fragment);
     }
 
     /// Queue a fragment of readable thinking, as `push` does for text.
-    pub(super) fn push_thinking(&mut self, fragment: &str) {
+    pub fn push_thinking(&mut self, fragment: &str) {
         self.queue(true, fragment);
     }
 
@@ -288,12 +289,12 @@ impl TextBatch {
     }
 
     /// When pending text is due for delivery, if any is pending.
-    pub(super) fn due(&self) -> Option<Instant> {
+    pub fn due(&self) -> Option<Instant> {
         self.since.map(|since| since + FLUSH_INTERVAL)
     }
 
     /// Deliver pending text now: at block ends, at the terminal event, on errors.
-    pub(super) fn flush(&mut self) {
+    pub fn flush(&mut self) {
         self.since = None;
         self.chars = 0;
         if !self.pending.is_empty() {

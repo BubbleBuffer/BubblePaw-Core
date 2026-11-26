@@ -4,19 +4,33 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Model-facing types and the Provider trait of BubblePaw"
+description = "Model-facing types, the Provider trait and the HTTP model adapters of BubblePaw"
 repository.workspace = true
 publish.workspace = true
+
+[features]
+default = []
+# The HTTP model adapters (chat completions, Anthropic messages, responses) and
+# their transport. Without it the crate keeps only the types and pure helpers.
+http = ["dep:reqwest", "dep:regex", "dep:httpdate", "dep:base64", "dep:tracing"]
 
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
+base64 = { version = "0.23", optional = true }
 chrono.workspace = true
+httpdate = { version = "1", optional = true }
+regex = { version = "1", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"], optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.11"
 tokio.workspace = true
+tracing = { version = "0.1", optional = true }
 uuid.workspace = true
+
+[dev-dependencies]
+axum = "0.8"
 
 [lints]
 workspace = true

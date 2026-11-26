@@ -1,6 +1,6 @@
 //! Unit tests of the adapter.
 use super::*;
-use bubblepaw_core::{Message, ToolDefinition};
+use crate::{Message, ToolDefinition};
 
 fn message(role: Role, content: &str) -> Message {
     Message {
@@ -8,7 +8,7 @@ fn message(role: Role, content: &str) -> Message {
         session_id: "fixture-session".into(),
         role,
         origin: None,
-        content: bubblepaw_core::text_blocks(content),
+        content: crate::text_blocks(content),
         tool_calls: vec![],
         tool_call_id: None,
         provider_state: None,
@@ -59,13 +59,12 @@ fn loop_request(assistant: Message) -> ModelRequest {
 
 #[test]
 fn messages_projection_shares_native_guards_and_omits_only_opaque_payloads() -> Result<()> {
-    use crate::provider::ProviderRegistry;
     let provider = std::sync::Arc::new(MessagesProvider::api_key(
         "synthetic-key",
         "http://127.0.0.1:1",
     )?);
     let mut assistant = message(Role::Assistant, "done");
-    assistant.provider_state = Some(bubblepaw_core::with_provider_state_origin(
+    assistant.provider_state = Some(crate::with_provider_state_origin(
         json!({"adapter":"anthropic-messages","content":[
             {"type":"thinking","thinking":"readable thought","signature":"opaque signature".repeat(10_000)},
             {"type":"redacted_thinking","data":"opaque redaction".repeat(10_000)},
@@ -84,13 +83,7 @@ fn messages_projection_shares_native_guards_and_omits_only_opaque_payloads() -> 
             assistant,
             message(Role::User, "next"),
         ],
-        disabled_tools: vec![bubblepaw_core::ToolDefinition {
-            name: "read".into(),
-            description: "read description".into(),
-            input_schema: json!({"type":"object"}),
-            read_only: true,
-            approval: Default::default(),
-        }],
+        disabled_tools: vec![read_tool("read description", json!({"type":"object"}))],
         ..Default::default()
     };
     let original = serde_json::to_value(&request)?;
@@ -121,19 +114,6 @@ fn messages_projection_shares_native_guards_and_omits_only_opaque_payloads() -> 
             .to_string()
             .contains("readable thought")
     );
-    request.model = "route/test".into();
-    request.messages[1].provider_state.as_mut().unwrap()["_bubblepaw_route_origin"] =
-        json!({"provider":"route", "endpoint":"http://127.0.0.1:2"});
-    let mut registry = ProviderRegistry::new("route", provider.clone());
-    registry.configure_route("route", "http://127.0.0.1:1".into(), Default::default());
-    assert_eq!(
-        registry.estimate_input_tokens(&request, &|value| {
-            assert!(!value.to_string().contains("readable thought"));
-            456
-        })?,
-        Some(456)
-    );
-
     let invalid = loop_request(tool_turn());
     let estimate_error = provider
         .estimate_input_tokens(&invalid, &|_| 0)
@@ -157,7 +137,7 @@ fn thinking_tool_loop_rejects_missing_replay_state() {
 fn thinking_tool_loop_rejects_missing_state_after_generated_host_notice() {
     let mut request = loop_request(tool_turn());
     let mut notice = message(Role::User, "[host notice]\nSynthetic job completed.");
-    notice.origin = Some(bubblepaw_core::MessageOrigin::Generated);
+    notice.origin = Some(crate::MessageOrigin::Generated);
     request.messages.push(notice);
     let error = MessagesProvider::body(&request).unwrap_err();
     assert!(error.to_string().contains("current thinking tool loop"));
@@ -171,7 +151,7 @@ fn thinking_tool_loop_rejects_incompatible_replay_state() -> Result<()> {
         ("anthropic-messages", "other-model"),
     ] {
         let mut assistant = tool_turn();
-        assistant.provider_state = Some(bubblepaw_core::with_provider_state_origin(
+        assistant.provider_state = Some(crate::with_provider_state_origin(
             tool_state(&assistant),
             kind,
             Some(model),
@@ -198,7 +178,7 @@ fn thinking_tool_loop_rejects_foreign_reasoning_only_record() -> Result<()> {
     let mut request = loop_request(assistant);
     let mut reasoning = message(Role::Assistant, "");
     reasoning.id = "reasoning-guard".into();
-    reasoning.provider_state = Some(bubblepaw_core::with_provider_state_origin(
+    reasoning.provider_state = Some(crate::with_provider_state_origin(
         json!({"adapter":"anthropic-messages","content":[
             {"type":"thinking","thinking":"Synthetic plan.","signature":"sig+/==猫"}
         ]}),
@@ -255,13 +235,7 @@ fn thinking_tool_loop_allows_fallback_after_completed_answer_or_new_user() -> Re
 fn thinking_tool_loop_accepts_native_reply_without_thinking() -> Result<()> {
     let assistant = tool_turn();
     let mut request = loop_request(assistant.clone());
-    request.tools = vec![ToolDefinition {
-        name: "read".into(),
-        description: "Read synthetic data".into(),
-        input_schema: json!({"type":"object"}),
-        read_only: true,
-        approval: Default::default(),
-    }];
+    request.tools = vec![read_tool("Read synthetic data", json!({"type":"object"}))];
     let blocks = tool_state(&assistant)["content"].clone();
     let response = MessagesProvider::parse(
         json!({"stop_reason":"tool_use","content":blocks,"usage":{}}),
@@ -272,7 +246,7 @@ fn thinking_tool_loop_accepts_native_reply_without_thinking() -> Result<()> {
         &response.text,
         &response.tool_calls,
     )?;
-    request.messages[1].provider_state = Some(bubblepaw_core::with_provider_state_origin(
+    request.messages[1].provider_state = Some(crate::with_provider_state_origin(
         state,
         "anthropic-messages",
         Some(&request.model),
@@ -341,13 +315,10 @@ fn complete_request_body_is_byte_exact_for_legacy_and_slim_signed_history() -> R
             result_a,
             result_b,
         ],
-        tools: vec![ToolDefinition {
-            name: "read".into(),
-            description: "Read a path".into(),
-            input_schema: json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}),
-            read_only: true,
-            approval: Default::default(),
-        }],
+        tools: vec![read_tool(
+            "Read a path",
+            json!({"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}),
+        )],
         max_output_tokens: Some(128),
         ..Default::default()
     };
@@ -364,7 +335,7 @@ fn complete_request_body_is_byte_exact_for_legacy_and_slim_signed_history() -> R
     ]) {
         assert!(!serialized.contains(canonical));
     }
-    assistant.provider_state = Some(bubblepaw_core::with_provider_state_origin(
+    assistant.provider_state = Some(crate::with_provider_state_origin(
         state,
         "anthropic-messages",
         Some(&slim.model),
@@ -375,4 +346,14 @@ fn complete_request_body_is_byte_exact_for_legacy_and_slim_signed_history() -> R
         serde_json::to_vec(&MessagesProvider::body(&slim)?)?
     );
     Ok(())
+}
+
+fn read_tool(description: &str, input_schema: serde_json::Value) -> ToolDefinition {
+    serde_json::from_value(json!({
+        "name": "read",
+        "description": description,
+        "input_schema": input_schema,
+        "read_only": true,
+    }))
+    .unwrap()
 }

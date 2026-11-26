@@ -47,7 +47,7 @@ six-call budget. Consumer inspection remains read-only.
 
 ## Cause and limits
 
-The Messages request fallback in `provider/messages.rs:97` (`:77` before the
+The Messages request fallback in `adapter/messages.rs:97` (bubblepaw-ai) (`:77` before the
 fix at base commit `a1eb46b`) reconstructs an
 assistant turn from canonical text and tool calls when compatible replay state
 is unavailable. That reconstruction cannot recover signed `thinking` or
@@ -82,7 +82,7 @@ reasoning artifacts; replay still requires the compatible adapter and model.
 No store schema changes are involved.
 
 A `thinking` block cut by `max_tokens` before its signature arrives is kept.
-`provider/messages.rs` (`parse`, marker `UNSIGNED_CUT`) stores it in the reply's
+`adapter/messages.rs` (bubblepaw-ai) (`parse`, marker `UNSIGNED_CUT`) stores it in the reply's
 `provider_state` with its streamed bytes and `"unsigned_cut": true`. Every
 Messages request builder leaves marked blocks out, so no continuation, tool
 round or later turn sends them. An assistant turn that holds only such blocks
@@ -157,9 +157,9 @@ are recorded in [provider qualification](provider-qualification.md).
 | `crates/bubblepaw-runner/src/research.rs` | Builds the restricted ordinary research profile Harness; the parent starts and continues it through the normal agents tools. | Uses child sessions and the real runtime. The separate `research` tool and its quick/thorough config were removed on 2026-10-13; there is no hand-built research loop. |
 | `crates/bubblepaw-runner/src/agents/` (`start.rs`: `start_profile_owned`; `send.rs`: `send`; `observe.rs`: `observe_turn`) | Starts the profile Harness for new and continuing children and supervises completion/cancellation. | The same real runtime consumer now also launches hidden workers. |
 | `crates/bubblepaw-runner/src/codemode.rs:1396` | Pumps JS jobs and host tool calls. | No provider calls or model loop. Left unchanged. |
-| `crates/bubblepaw-runner/src/provider.rs:576` | Continues Responses output-limit stops; transport retries live in `post`/`send_round`. | Adapter continuation/retry, no tool execution. Left unchanged. |
-| `crates/bubblepaw-runner/src/provider/messages.rs:626` (`generate`, loop at 655) | Continues Messages output-limit stops. | Adapter continuation, no tool execution. Left unchanged. |
-| `crates/bubblepaw-runner/src/provider/chat.rs:750` | Continues chat output-limit stops. | Adapter continuation, no tool execution. Left unchanged. |
+| `crates/bubblepaw-ai/src/adapter/responses_generate.rs` | Continues Responses output-limit stops; transport retries live in `post`/`send_round`. | Adapter continuation/retry, no tool execution. Left unchanged. |
+| `crates/bubblepaw-ai/src/adapter/messages.rs:626` (`generate`, loop at 655) | Continues Messages output-limit stops. | Adapter continuation, no tool execution. Left unchanged. |
+| `crates/bubblepaw-ai/src/adapter/chat.rs:750` | Continues chat output-limit stops. | Adapter continuation, no tool execution. Left unchanged. |
 | `crates/bubblepaw-runner/src/episode_models.rs:161` | Selects an available summary/chapter role model and retries a tool-free request. | Model fallback/retry, no agent loop. Left unchanged. |
 | `crates/bubblepaw-runner/src/episode_models.rs` (`summarize`, former repair loop at 513) | Reissues the identical tools-disabled request once when structural validation fails; does not append the previous answer. | Bounded request retry, no multi-step agent/tool history. Left unchanged. |
 | `crates/bubblepaw-runner/src/model_roles.rs:200` | Repeats and aggregates decision samples, with bounded safe retries. | Decision sampling/retry, no tool execution. Left unchanged. |

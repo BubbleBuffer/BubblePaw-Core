@@ -1,6 +1,6 @@
 //! Messages wire layout helpers: user-turn block order and the cache breakpoints
 //! at the context tier ends (P5).
-use bubblepaw_core::{CacheTiers, ModelResponse, RequestLogRow};
+use crate::{CacheTiers, ModelResponse};
 use serde_json::{Value, json};
 
 /// Appends message `source`'s blocks to a wire turn. tool_result blocks stay
@@ -127,7 +127,7 @@ pub(super) fn report(
         response.cache_breakpoints = Some(breakpoints.clone());
         let state = response.provider_state.get_or_insert_with(|| json!({}));
         if let Some(state) = state.as_object_mut() {
-            state.insert(RequestLogRow::BREAKPOINTS_KEY.into(), json!(breakpoints));
+            state.insert(crate::BREAKPOINTS_KEY.into(), json!(breakpoints));
         }
     }
     response
@@ -136,7 +136,17 @@ pub(super) fn report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bubblepaw_core::{Message, ModelRequest, Role, ToolCall, ToolDefinition};
+    use crate::{Message, ModelRequest, Role, ToolCall, ToolDefinition};
+
+    fn read_tool(description: &str, input_schema: Value) -> ToolDefinition {
+        serde_json::from_value(json!({
+            "name": "read",
+            "description": description,
+            "input_schema": input_schema,
+            "read_only": true,
+        }))
+        .unwrap()
+    }
 
     fn message(role: Role, content: &str) -> Message {
         Message {
@@ -144,7 +154,7 @@ mod tests {
             session_id: "fixture-session".into(),
             role,
             origin: None,
-            content: bubblepaw_core::text_blocks(content),
+            content: crate::text_blocks(content),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,
@@ -192,13 +202,10 @@ mod tests {
             model: "claude-haiku-5-5".into(),
             system_prompt: system_prompt.into(),
             messages,
-            tools: vec![ToolDefinition {
-                name: "read".into(),
-                description: "Read a file".into(),
-                input_schema: json!({"type":"object","properties":{"path":{"type":"string"}}}),
-                read_only: true,
-                approval: Default::default(),
-            }],
+            tools: vec![read_tool(
+                "Read a file",
+                json!({"type":"object","properties":{"path":{"type":"string"}}}),
+            )],
             cache_tiers: tiers,
             ..Default::default()
         }
@@ -251,7 +258,7 @@ mod tests {
     #[test]
     fn cold_tier_with_notes_marks_its_last_block_as_user_content() {
         let messages = vec![
-            message(Role::System, "Closed chapter: retained facts."),
+            message(Role::System, "Closed summary: retained facts."),
             message(Role::User, "Anchored task."),
             message(
                 Role::System,
@@ -267,7 +274,7 @@ mod tests {
         assert_eq!(body["messages"][0]["role"], "user");
         assert_eq!(
             body["messages"][0]["content"][0]["text"],
-            "Closed chapter: retained facts."
+            "Closed summary: retained facts."
         );
         assert_eq!(
             marks(&request),
@@ -350,12 +357,14 @@ mod tests {
         });
         let marks = breakpoints(&body);
         assert_eq!(marks, ["system.1", "messages.0.0", "messages.2.1"]);
-        let mut response = report(ModelResponse::default(), Some(marks.clone()));
+        let response = report(ModelResponse::default(), Some(marks.clone()));
         assert_eq!(
-            RequestLogRow::reported_breakpoints(&response),
-            Some(marks.clone())
+            response
+                .provider_state
+                .as_ref()
+                .and_then(|state| state.get(crate::BREAKPOINTS_KEY)),
+            Some(&json!(marks)),
         );
-        assert_eq!(RequestLogRow::take_breakpoints(&mut response), Some(marks));
-        assert_eq!(response.provider_state, None, "the report is not stored");
+        assert_eq!(response.reported_cache_breakpoints(), Some(marks));
     }
 }

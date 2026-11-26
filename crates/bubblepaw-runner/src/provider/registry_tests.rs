@@ -1,5 +1,7 @@
 use super::*;
 
+#[path = "registry_adapter_tests.rs"]
+mod adapters;
 #[path = "registry_metering_tests.rs"]
 mod metering;
 

@@ -18,10 +18,19 @@ trait. It depends on no workspace crate, and its dependency list is external cra
 only. `bubblepaw-core` depends on it and re-exports every moved item at its old
 path, so embedders import from `bubblepaw_core` as before.
 
-Still to move: the provider adapters, the provider registry and the model catalog,
+The provider adapters (chat completions, Anthropic messages and responses), their
+HTTP client, stream, retry and error handling, the request dump and the scripted
+model live in `bubblepaw-ai/src/adapter`, behind the `http` feature. Only the
+runner's `host` feature enables it, so a client-only build links no HTTP client. The
+adapters reach the host through injected seams: a `ModelEgress` trait for proxied
+egress, a `UsageSink` that the core capture scope installs, and a host-policy flag for
+quota stops. `bubblepaw-runner` re-exports every moved name at its old path.
+
+Still to move: the provider registry, the extension provider and the model catalog,
 which live in `bubblepaw-runner` today. Some ai types carry a `session_id` that the
-ai layer treats as an opaque key; the guard records those occurrences as ceilings
-rather than renaming the fields.
+ai layer treats as an opaque key; the adapters add the `x-opencode-session` and
+Codex cache-key plumbing, the replay-state and continuation code that handle that
+key; the guard records all of these occurrences as ceilings rather than renaming them.
 
 ## Rules
 

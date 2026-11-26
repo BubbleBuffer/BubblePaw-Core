@@ -1,13 +1,16 @@
 //! Stateless Anthropic Messages adapter. One HTTP request per harness step.
 use super::stream::{self, SseReader, THINKING_BREAK, TextBatch};
-use super::{cancelled, classify, continuation, decisions};
-use anyhow::{Result, anyhow, ensure};
-use async_trait::async_trait;
-use bubblepaw_core::{
+use super::{
+    cancelled, classify, continuation, metered_model_error, validate_url, wire_images,
+    with_error_quota,
+};
+use crate::{
     CacheMode, CancellationToken, Capabilities, ModelRequest, ModelResponse, Provider,
     ProviderError, ProviderErrorKind, Role, StreamCallback, StreamEvent, ToolCall, ToolSurface,
     Usage,
 };
+use anyhow::{Result, anyhow, ensure};
+use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
@@ -27,7 +30,7 @@ use fork::unfinished_tool_loop;
 use rounds::JoinedRounds;
 
 pub struct MessagesProvider {
-    pub(in crate::provider) client: stream::Client,
+    pub(in crate::adapter) client: stream::Client,
     key: String,
     base: String,
     opencode_route: bool,
@@ -37,7 +40,7 @@ impl MessagesProvider {
         let key = key.into();
         ensure!(!key.is_empty(), "API key is empty");
         let base = base.into();
-        decisions::validate_url(&base)?;
+        validate_url(&base)?;
         Ok(Self {
             client: stream::client()?,
             key,
@@ -85,7 +88,7 @@ impl MessagesProvider {
                         .filter(|id| !id.is_empty())
                         .ok_or_else(|| anyhow!("tool message needs call_id"))?;
                     let text = message.text();
-                    let images = crate::images::wire_images(message);
+                    let images = wire_images(message);
                     let content = if images.is_empty() {
                         json!(text.as_ref())
                     } else {
@@ -102,7 +105,7 @@ impl MessagesProvider {
                 }
                 Role::Assistant => {
                     let compatible = message.provider_state.as_ref().is_some_and(|state| {
-                        bubblepaw_core::provider_state_replay_compatible(
+                        crate::provider_state_replay_compatible(
                             state,
                             "anthropic-messages",
                             &request.model,
@@ -492,7 +495,7 @@ impl MessagesProvider {
                 text,
                 thinking: thinking.join(THINKING_BREAK),
                 tool_calls: calls,
-                last_request_usage: Some(bubblepaw_core::LastRequestUsage {
+                last_request_usage: Some(crate::LastRequestUsage {
                     input_tokens: raw_usage["input_tokens"]
                         .as_u64()
                         .map(|_| usage.input_tokens),
@@ -506,9 +509,7 @@ impl MessagesProvider {
                 ..super::reply_facts::messages(&payload)
             })
         })();
-        parsed.map_err(|error| {
-            decisions::metered_model_error(error, raw_usage.is_object().then_some(usage))
-        })
+        parsed.map_err(|error| metered_model_error(error, raw_usage.is_object().then_some(usage)))
     }
 }
 
@@ -605,14 +606,11 @@ impl Provider for MessagesProvider {
     ) -> Result<Option<usize>> {
         Self::token_input(request).map(|input| Some(count(&input)))
     }
-    fn wire_shape(&self, request: &ModelRequest) -> Option<bubblepaw_core::WireShape> {
+    fn wire_shape(&self, request: &ModelRequest) -> Option<crate::WireShape> {
         // `body` is pure and is exactly what `generate` posts for this request.
         let body = Self::body(request).ok()?;
-        let mut shape = bubblepaw_core::WireShape::from_body(
-            &body,
-            "messages",
-            bubblepaw_core::DEFAULT_CACHE_BLOCK_TOKENS,
-        );
+        let mut shape =
+            crate::WireShape::from_body(&body, "messages", crate::DEFAULT_CACHE_BLOCK_TOKENS);
         shape.model = request.model.clone();
         Some(shape)
     }
@@ -634,7 +632,7 @@ impl Provider for MessagesProvider {
         let (on_text, published) = super::track_text_publication(on_text);
         let (mut known_usage, mut known_quota) = (None::<Usage>, Vec::new());
         let result = async {
-            let session = self
+            let route_key = self
                 .opencode_route
                 .then(|| super::opencode_session(&request));
             let mut request = request;
@@ -647,13 +645,14 @@ impl Provider for MessagesProvider {
                 let mut meter = super::PhysicalRequest::new("anthropic-messages", &request.model);
                 let mut quota = Vec::new();
                 let result: Result<(ModelResponse, bool, bool)> = async {
-                    let reply = self.post(&body, session.as_deref(), &cancellation).await?;
+                    let reply = self
+                        .post(&body, route_key.as_deref(), &cancellation)
+                        .await?;
                     if !self.opencode_route {
-                        let identity =
-                            bubblepaw_core::RequestUsage::new("anthropic-messages", &request.model);
-                        quota = crate::quota_sources::parse_anthropic_headers(
-                            &identity.provider,
-                            &identity.account,
+                        quota = crate::adapter::quota_headers::parse_anthropic_headers(
+                            "anthropic-messages",
+                            &crate::current_account()
+                                .unwrap_or_else(|| "anthropic-messages".to_owned()),
                             reply.headers(),
                             chrono::Utc::now(),
                         );
@@ -677,8 +676,7 @@ impl Provider for MessagesProvider {
                     })
                 }
                 .await;
-                let result =
-                    result.map_err(|error| crate::quota_sources::with_error_quota(error, quota));
+                let result = result.map_err(|error| with_error_quota(error, quota));
                 meter.finish_borrowed_result(result.as_ref().map(|(response, ..)| response));
                 let (response, cut, streamed) = result?;
                 if let Some(usage) = &response.usage {
@@ -710,7 +708,7 @@ impl Provider for MessagesProvider {
                 }
                 let mut response = joined.finish(response);
                 if let Some(state) = response.provider_state.take() {
-                    response.provider_state = Some(bubblepaw_core::with_provider_state_origin(
+                    response.provider_state = Some(crate::with_provider_state_origin(
                         super::replay_state::slim(state, &response.text, &response.tool_calls)?,
                         "anthropic-messages",
                         Some(&request.model),

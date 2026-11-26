@@ -5,12 +5,12 @@ use super::*;
 /// New user tasks and completed assistant answers close earlier tool loops.
 /// Generated host notices are observations within the current loop.
 /// Separate reasoning-only records can precede the first call of an open loop.
-pub(super) fn unfinished_tool_loop(messages: &[bubblepaw_core::Message]) -> Option<usize> {
+pub(super) fn unfinished_tool_loop(messages: &[crate::Message]) -> Option<usize> {
     let mut start = None;
     let mut has_calls = false;
     for (index, message) in messages.iter().enumerate() {
         match message.role {
-            Role::User if message.origin != Some(bubblepaw_core::MessageOrigin::Generated) => {
+            Role::User if message.origin != Some(crate::MessageOrigin::Generated) => {
                 start = None;
                 has_calls = false;
             }
@@ -45,7 +45,7 @@ impl MessagesProvider {
         }
         let sources: Vec<Value> = request.messages.iter().zip(positions).enumerate().map(|(index, (message, wire))| json!({
             "source_id":message.id,"prepared_position":index,"role":message.role,
-            "origin":message.origin,"is_typed_user":bubblepaw_core::is_typed_user(message),
+            "origin":message.origin,"is_typed_user":crate::is_typed_user(message),
             "wire_positions":wire,
             "tool_call_ids":message.tool_calls.iter().map(|call| &call.id).collect::<Vec<_>>(),
             "tool_call_id":message.tool_call_id,

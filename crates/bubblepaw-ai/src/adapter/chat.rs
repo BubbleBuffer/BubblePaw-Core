@@ -1,13 +1,13 @@
 //! Stateless OpenAI chat-completions provider with native function calls.
 use super::stream::{self, SseReader, TextBatch};
-use super::{cancelled, classify, continuation, tool_wire};
-use anyhow::{Result, anyhow, ensure};
-use async_trait::async_trait;
-use bubblepaw_core::{
+use super::{cancelled, classify, continuation, tool_wire, wire_images};
+use crate::{
     CacheMode, CancellationToken, Capabilities, ModelRequest, ModelResponse, Provider,
     ProviderError, ProviderErrorKind, ReasoningReplay, Role, StreamCallback, StreamEvent, ToolCall,
     ToolSurface, Usage,
 };
+use anyhow::{Result, anyhow, ensure};
+use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::atomic::Ordering;
@@ -15,7 +15,7 @@ use std::sync::atomic::Ordering;
 mod http;
 use http::chat_error_kind;
 
-pub(crate) fn is_loopback_url(base: &str) -> bool {
+pub fn is_loopback_url(base: &str) -> bool {
     reqwest::Url::parse(base).ok().is_some_and(|url| {
         matches!(url.scheme(), "http" | "https")
             && url.username().is_empty()
@@ -34,7 +34,7 @@ pub(crate) fn is_loopback_url(base: &str) -> bool {
 }
 
 pub struct ChatCompletionsProvider {
-    pub(in crate::provider) client: stream::Client,
+    pub(in crate::adapter) client: stream::Client,
     key: String,
     base: String,
     reasoning_fields: Value,
@@ -61,7 +61,7 @@ impl ChatCompletionsProvider {
         Self::new(String::new(), base)
     }
     fn new(key: String, base: String) -> Result<Self> {
-        super::decisions::validate_url(&base)?;
+        super::validate_url(&base)?;
         Ok(Self {
             client: stream::client()?,
             key,
@@ -92,9 +92,7 @@ impl ChatCompletionsProvider {
         self.reasoning_replay = models;
         Ok(self)
     }
-    pub(super) fn validate_reasoning_replay(
-        models: &BTreeMap<String, ReasoningReplay>,
-    ) -> Result<()> {
+    pub fn validate_reasoning_replay(models: &BTreeMap<String, ReasoningReplay>) -> Result<()> {
         ensure!(
             models.keys().all(|model| !model.is_empty()
                 && !model.chars().any(char::is_whitespace)
@@ -181,16 +179,14 @@ impl ChatCompletionsProvider {
                 && message.text().is_empty()
                 && message.tool_calls.is_empty()
                 && message.provider_state.as_ref().is_some_and(|state| {
-                    state
-                        .get(bubblepaw_core::PROVIDER_STATE_ORIGIN_FIELD)
-                        .is_some()
+                    state.get(crate::PROVIDER_STATE_ORIGIN_FIELD).is_some()
                         && !chat_compatible(state, &request.model)
                 })
             {
                 // Foreign reasoning-only records (imports, other adapters) stay
                 // in the store; they add no empty assistant turn on this wire.
                 if map_sources {
-                    mapping.push(json!({"source_id":message.id,"prepared_position":index,"role":message.role,"origin":message.origin,"is_typed_user":bubblepaw_core::is_typed_user(message),"wire_positions":[],"tool_call_ids":[],"tool_call_id":message.tool_call_id}));
+                    mapping.push(json!({"source_id":message.id,"prepared_position":index,"role":message.role,"origin":message.origin,"is_typed_user":crate::is_typed_user(message),"wire_positions":[],"tool_call_ids":[],"tool_call_id":message.tool_call_id}));
                 }
                 continue;
             } else {
@@ -200,7 +196,7 @@ impl ChatCompletionsProvider {
             // tools on the final round. Opaque reasoning cannot replace it.
             if message.role == Role::Tool {
                 let text = message.text();
-                let images = crate::images::wire_images(message);
+                let images = wire_images(message);
                 if map_sources && !images.is_empty() {
                     image_sources.push(mapping.len());
                 }
@@ -230,7 +226,7 @@ impl ChatCompletionsProvider {
             if map_sources {
                 mapping.push(json!({
                     "source_id":message.id,"prepared_position":index,"role":message.role,
-                    "origin":message.origin,"is_typed_user":bubblepaw_core::is_typed_user(message),
+                    "origin":message.origin,"is_typed_user":crate::is_typed_user(message),
                     "wire_positions":(wire_start..messages.len()).collect::<Vec<_>>(),
                     "tool_call_ids":message.tool_calls.iter().map(|call| &call.id).collect::<Vec<_>>(),
                     "tool_call_id":message.tool_call_id,
@@ -250,7 +246,7 @@ impl ChatCompletionsProvider {
         }
         Ok((messages, mapping))
     }
-    pub(super) fn validate_reasoning_fields(fields: &Value) -> Result<()> {
+    pub fn validate_reasoning_fields(fields: &Value) -> Result<()> {
         ensure!(
             fields.as_object().is_some_and(|object| object
                 .keys()
@@ -494,10 +490,10 @@ fn chat_state(payload: &Value) -> Value {
 }
 
 fn chat_compatible(state: &Value, model: &str) -> bool {
-    bubblepaw_core::provider_state_replay_compatible(state, "chat-completions", model)
+    crate::provider_state_replay_compatible(state, "chat-completions", model)
         // The historical chat envelope predates adapter/origin metadata. It
         // contains only reasoning_content and is usable only by this adapter.
-        || (state.get("adapter").is_none() && state.get(bubblepaw_core::PROVIDER_STATE_ORIGIN_FIELD).is_none()
+        || (state.get("adapter").is_none() && state.get(crate::PROVIDER_STATE_ORIGIN_FIELD).is_none()
             && state.as_object().is_some_and(|fields| fields.len() == 1 && fields.contains_key("reasoning_content")))
 }
 
@@ -525,12 +521,12 @@ fn chat_wire_message(state: &Value, text: &str) -> Value {
 /// A completed assistant reply or a new user task closes prior tool loops.
 /// Runtime host notices remain part of the current tool loop.
 /// Reasoning-only assistant records may precede the call in the same loop.
-fn unfinished_tool_loop(messages: &[bubblepaw_core::Message]) -> Option<usize> {
+fn unfinished_tool_loop(messages: &[crate::Message]) -> Option<usize> {
     let mut start = None;
     let mut has_calls = false;
     for (index, message) in messages.iter().enumerate() {
         match message.role {
-            Role::User if message.origin != Some(bubblepaw_core::MessageOrigin::Generated) => {
+            Role::User if message.origin != Some(crate::MessageOrigin::Generated) => {
                 start = None;
                 has_calls = false;
             }
@@ -567,7 +563,7 @@ fn append_call_fragment(
     Ok(())
 }
 
-pub(super) fn response_usage(payload: &Value) -> (Usage, Option<u64>) {
+pub fn response_usage(payload: &Value) -> (Usage, Option<u64>) {
     let usage = &payload["usage"];
     let last_request_input = usage["prompt_tokens"]
         .as_u64()
@@ -641,7 +637,7 @@ impl ChatCompletionsProvider {
         cancellation: &CancellationToken,
     ) -> Result<(ModelResponse, bool)> {
         let body = self.round_body(request)?;
-        let session = request
+        let route_key = request
             .messages
             .first()
             .map(|message| message.session_id.as_str())
@@ -649,7 +645,11 @@ impl ChatCompletionsProvider {
         let mut meter = super::PhysicalRequest::new("chat-completions", &request.model);
         let result: Result<(ModelResponse, bool)> = async {
             let response = self
-                .post(&body, self.opencode_route.then_some(session), cancellation)
+                .post(
+                    &body,
+                    self.opencode_route.then_some(route_key),
+                    cancellation,
+                )
                 .await?;
             let streamed = stream::is_event_stream(&response);
             let payload = if streamed {
@@ -787,14 +787,14 @@ impl ChatCompletionsProvider {
                     text,
                     thinking,
                     tool_calls: calls,
-                    last_request_usage: Some(bubblepaw_core::LastRequestUsage {
+                    last_request_usage: Some(crate::LastRequestUsage {
                         input_tokens: last_request_input,
                         output_tokens: payload["usage"]["completion_tokens"]
                             .as_u64()
                             .or_else(|| payload["usage"]["output_tokens"].as_u64()),
                     }),
                     usage: Some(usage.clone()),
-                    provider_state: Some(bubblepaw_core::with_provider_state_origin(
+                    provider_state: Some(crate::with_provider_state_origin(
                         chat_state(&payload),
                         "chat-completions",
                         Some(&request.model),
@@ -804,7 +804,7 @@ impl ChatCompletionsProvider {
                 })
             })();
             parse.map(|response| (response, length)).map_err(|error| {
-                super::decisions::metered_model_error(
+                super::metered_model_error(
                     classify(ProviderErrorKind::Fatal, error),
                     payload["usage"].is_object().then_some(usage),
                 )
@@ -840,14 +840,11 @@ impl Provider for ChatCompletionsProvider {
     ) -> Result<Option<usize>> {
         self.wire_input(request).map(|input| Some(count(&input)))
     }
-    fn wire_shape(&self, request: &ModelRequest) -> Option<bubblepaw_core::WireShape> {
+    fn wire_shape(&self, request: &ModelRequest) -> Option<crate::WireShape> {
         // The first round of a reply is the request as the main loop sends it.
         let body = self.round_body(request).ok()?;
-        let mut shape = bubblepaw_core::WireShape::from_body(
-            &body,
-            "messages",
-            bubblepaw_core::DEFAULT_CACHE_BLOCK_TOKENS,
-        );
+        let mut shape =
+            crate::WireShape::from_body(&body, "messages", crate::DEFAULT_CACHE_BLOCK_TOKENS);
         shape.model = request.model.clone();
         Some(shape)
     }
@@ -885,7 +882,7 @@ impl Provider for ChatCompletionsProvider {
                     state
                         .as_object_mut()
                         .unwrap()
-                        .remove(bubblepaw_core::PROVIDER_STATE_ORIGIN_FIELD);
+                        .remove(crate::PROVIDER_STATE_ORIGIN_FIELD);
                     state["text_range"] = json!([start, text.len()]);
                     rounds.push(state);
                 }
@@ -931,7 +928,7 @@ impl Provider for ChatCompletionsProvider {
                     provider_state: if rounds.len() == 1 {
                         round.provider_state
                     } else {
-                        Some(bubblepaw_core::with_provider_state_origin(
+                        Some(crate::with_provider_state_origin(
                             json!({"adapter":"chat-completions","rounds":rounds}),
                             "chat-completions",
                             Some(&request.model),

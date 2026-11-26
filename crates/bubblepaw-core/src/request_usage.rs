@@ -1,7 +1,10 @@
 //! Small authoritative billing records, separate from disposable observations.
 use crate::{RequestKind, Store, Usage, id, now};
 use serde::{Deserialize, Serialize};
-use std::{future::Future, sync::Mutex};
+use std::{
+    future::Future,
+    sync::{Arc, Mutex},
+};
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct RequestUsage {
@@ -55,9 +58,7 @@ impl RequestUsage {
     /// A capture scope supplies session, run and request kind at completion.
     pub fn new(provider: impl Into<String>, model: impl Into<String>) -> Self {
         let provider = provider.into();
-        let account = ACCOUNT
-            .try_with(Clone::clone)
-            .unwrap_or_else(|_| provider.clone());
+        let account = bubblepaw_ai::current_account().unwrap_or_else(|| provider.clone());
         Self {
             request_id: id(),
             created_at: now(),
@@ -108,7 +109,6 @@ impl Drop for Capture {
 tokio::task_local! {
     static CAPTURE: Capture;
     static PROVIDER: String;
-    static ACCOUNT: String;
 }
 
 /// Capture physical provider attempts without writing while the network is in
@@ -232,6 +232,25 @@ pub(crate) async fn capture_message_request_usage<F: Future>(
     )
 }
 
+/// Hands the adapters' physical-request reports to the capture scope they run in.
+struct CaptureSink {
+    kind: RequestKind,
+}
+impl bubblepaw_ai::UsageSink for CaptureSink {
+    fn report(&self, report: bubblepaw_ai::AttemptReport) {
+        let mut record = RequestUsage::new(report.provider, report.model);
+        record.request_id = report.request_id;
+        record.created_at = report.created_at;
+        record.account = report.account;
+        record.usage = report.usage;
+        record.failed = report.failed;
+        record_request_usage_with_output_presence(record, report.output_reported);
+    }
+    fn request_kind(&self) -> RequestKind {
+        self.kind
+    }
+}
+
 async fn capture<F: Future>(
     store: Option<Store>,
     session_id: &str,
@@ -248,12 +267,15 @@ async fn capture<F: Future>(
                 records: Mutex::default(),
                 store,
             },
-            async {
-                let result = future.await;
-                let records =
-                    CAPTURE.with(|capture| std::mem::take(&mut *capture.records.lock().unwrap()));
-                (result, records)
-            },
+            bubblepaw_ai::with_usage_sink(
+                Arc::new(CaptureSink { kind }),
+                Box::pin(async {
+                    let result = future.await;
+                    let records = CAPTURE
+                        .with(|capture| std::mem::take(&mut *capture.records.lock().unwrap()));
+                    (result, records)
+                }),
+            ),
         )
         .await
 }
@@ -266,7 +288,7 @@ pub async fn with_request_usage_provider<F: Future>(provider: &str, future: F) -
 /// Bind physical attempts to a configured account without changing provider routing.
 /// Nested scopes restore their caller's account; concurrent tasks remain isolated.
 pub async fn with_request_usage_account<F: Future>(account: &str, future: F) -> F::Output {
-    ACCOUNT.scope(account.to_owned(), future).await
+    bubblepaw_ai::with_request_usage_account(account, future).await
 }
 
 /// Request role of the active usage scope, or None outside a scope.
@@ -300,7 +322,7 @@ pub fn record_request_usage_with_output_presence(
     if let Ok(provider) = PROVIDER.try_with(Clone::clone) {
         record.provider = provider;
     }
-    if let Ok(account) = ACCOUNT.try_with(Clone::clone) {
+    if let Some(account) = bubblepaw_ai::current_account() {
         record.account = account;
     } else if default_account {
         record.account.clone_from(&record.provider);

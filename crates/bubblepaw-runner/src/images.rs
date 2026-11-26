@@ -1,8 +1,7 @@
 //! Image bytes live in canonical attachments; messages carry small immutable references.
 use anyhow::{Context, Result, ensure};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bubblepaw_core::{
-    CancellationToken, Capabilities, ContentBlock, Message, ModelInfo, ModelRequest, ModelResponse,
+    CancellationToken, Capabilities, ContentBlock, ModelInfo, ModelRequest, ModelResponse,
     Provider, Role, Store, StreamCallback, text_blocks,
 };
 pub use bubblepaw_core::{ImageRef, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL};
@@ -113,22 +112,6 @@ pub fn store_image(store: &Store, session: &str, mime: &str, bytes: &[u8]) -> Re
         store.store_attachment(session, &image.id, &metadata, bytes)?;
     }
     Ok(image)
-}
-
-/// The images of a hydrated message as `{mime_type, data}` values (data is
-/// base64), in order. Blocks without bytes were not hydrated and are skipped.
-pub(crate) fn wire_images(message: &Message) -> Vec<Value> {
-    message
-        .content
-        .iter()
-        .filter_map(|block| match block {
-            ContentBlock::Image {
-                image,
-                data: Some(data),
-            } => Some(json!({"mime_type":image.mime_type,"data":STANDARD.encode(data)})),
-            _ => None,
-        })
-        .collect()
 }
 
 /// Fills the bytes of every tool-result image block, or replaces it with a

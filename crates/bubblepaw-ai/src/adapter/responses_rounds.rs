@@ -1,5 +1,5 @@
 //! Responses reply rounds: the length-stop test and the join of a multi-round reply.
-use bubblepaw_core::{ModelResponse, Usage};
+use crate::{ModelResponse, Usage};
 use serde_json::{Value, json};
 
 /// Whether a Responses object stopped on the output limit (a partial reply).

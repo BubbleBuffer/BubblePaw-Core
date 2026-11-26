@@ -21,18 +21,8 @@ use crate::{
 mod attribution;
 use attribution::normalize_error;
 
-pub const SHORT_WAIT: Duration = Duration::from_secs(15);
 const SHORT_ATTEMPTS: usize = 4;
-tokio::task_local! { static QUOTA_POLICY: (); }
-/// Transport retries yield a 429 to the account policy before sleeping.
-pub fn host_policy_active() -> bool {
-    QUOTA_POLICY.try_with(|_| ()).is_ok()
-}
-/// Runs `future` as if the quota host drove it, for the retry rule's tests.
-#[cfg(test)]
-pub(crate) async fn with_host_policy<F: std::future::Future>(future: F) -> F::Output {
-    QUOTA_POLICY.scope((), future).await
-}
+pub use bubblepaw_ai::{QuotaStop, SHORT_WAIT, host_policy_active, is_quota_stop};
 
 #[derive(Debug, PartialEq)]
 pub enum LimitAction {
@@ -247,25 +237,6 @@ fn model_family(model: &str) -> Option<String> {
         .filter(|part| matches!(*part, "sonnet" | "opus" | "haiku" | "fable"));
     let family = families.next()?;
     families.next().is_none().then(|| family.to_owned())
-}
-
-/// Stops outer retry/fallback loops after the quota policy has made a terminal
-/// decision. The typed provider error remains discoverable through its source.
-#[derive(Debug)]
-pub struct QuotaStop(pub ProviderError);
-impl std::fmt::Display for QuotaStop {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-impl std::error::Error for QuotaStop {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        Some(&self.0)
-    }
-}
-
-pub fn is_quota_stop(error: &anyhow::Error) -> bool {
-    error.downcast_ref::<QuotaStop>().is_some()
 }
 
 /// The freshest balance observed for one account. Change rows carry it; it
@@ -542,7 +513,7 @@ impl QuotaHost {
             }
             let mut record = RequestUsage::new(provider, model);
             let before = bubblepaw_core::request_usage_count();
-            let result = QUOTA_POLICY.scope((), call()).await;
+            let result = bubblepaw_ai::with_host_policy(call()).await;
             if before == bubblepaw_core::request_usage_count() {
                 record.failed = result.is_err();
                 record.account = account.to_owned();
