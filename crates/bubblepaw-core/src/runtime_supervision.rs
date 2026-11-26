@@ -70,8 +70,6 @@ impl Harness {
             run: &run,
             result_message_id: None,
             final_message: None,
-            usage: &[],
-            request_ids: &[],
             origin: None,
             settles_session: true,
         });

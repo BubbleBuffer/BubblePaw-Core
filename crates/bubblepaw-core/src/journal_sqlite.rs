@@ -1,7 +1,7 @@
 //! The journal over the SQLite store and the event log: what the run loop wrote
 //! directly before the seam, with the same transactions and events.
 use crate::event_log::{ContentRef, Log};
-use crate::journal::{Consumed, InputScope, Journal, Reply, RunFinish};
+use crate::journal::{Consumed, InputScope, Journal, RunFinish};
 use crate::journal_admission::RunAdmission;
 use crate::{
     ClientInfo, EventKind, Harness, InputKind, Message, OutputRecord, QueuedInput, Run, Store,
@@ -13,11 +13,14 @@ use std::sync::Arc;
 pub(crate) struct SqliteJournal {
     store: Store,
     log: Arc<Log>,
+    /// Holds the run's request usage until the commits that write it.
+    state: Arc<crate::runtime::RuntimeState>,
 }
 
 impl SqliteJournal {
     pub(crate) fn new(store: Store, log: Arc<Log>) -> Self {
-        Self { store, log }
+        let state = store.runtime();
+        Self { store, log, state }
     }
 }
 
@@ -121,29 +124,28 @@ impl Journal for SqliteJournal {
     fn tool_call_recorded(&self, session_id: &str, call_id: &str) -> Result<bool> {
         self.store.has_tool_call(session_id, call_id)
     }
-    fn reply_received(&self, reply: Reply<'_>) -> Result<()> {
-        self.log.settle_text(&reply.message.session_id, || {
+    fn reply_received(&self, run_id: &str, message: &Message) -> Result<()> {
+        let (usage, request_ids) = self.state.usage.waiting(run_id);
+        self.log.settle_text(&message.session_id, || {
             self.store
-                .append_with_request_usage(reply.message, reply.usage, reply.request_ids)
-        })
+                .append_with_request_usage(message, &usage, &request_ids)
+        })?;
+        self.state.usage.written(run_id);
+        Ok(())
     }
     fn reply_dispatched(
         &self,
         session_id: &str,
         run_id: &str,
-        reply: Reply<'_>,
+        message: &Message,
         call: &ToolCall,
     ) -> Result<String> {
-        let message = reply.message;
-        self.log
+        let (usage, request_ids) = self.state.usage.waiting(run_id);
+        let invocation = self
+            .log
             .commit_reply(&self.store, session_id, run_id, None, |tx| {
                 Store::insert_message(tx, message)?;
-                Store::insert_message_request_usage_tx(
-                    tx,
-                    message,
-                    reply.usage,
-                    reply.request_ids,
-                )?;
+                Store::insert_message_request_usage_tx(tx, message, &usage, &request_ids)?;
                 let invocation = Store::dispatch_tx(tx, session_id, run_id, call)?;
                 Ok((
                     invocation,
@@ -155,7 +157,9 @@ impl Journal for SqliteJournal {
                         }),
                     )],
                 ))
-            })
+            })?;
+        self.state.usage.written(run_id);
+        Ok(invocation)
     }
     fn tool_started(
         &self,
@@ -237,11 +241,12 @@ impl Journal for SqliteJournal {
             run,
             result_message_id,
             final_message,
-            usage,
-            request_ids,
             origin,
             settles_session,
         } = finish;
+        // The run ends here: what it waited to write goes in this commit or nowhere.
+        let (usage, request_ids) = self.state.usage.take(&run.id);
+        let (usage, request_ids) = (usage.as_slice(), request_ids.as_slice());
         self.log
             .commit(&self.store, &run.session_id, &run.id, origin, |tx| {
                 if let Some(message) = final_message {

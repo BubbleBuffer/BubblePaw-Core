@@ -1,16 +1,9 @@
 //! The run loop writes things down through this trait before going on. Each
 //! method is one atomic unit named by what happened in the run; the durable
 //! events that belong to it are emitted by the implementation, in the same commit.
-use crate::{ClientInfo, Message, OutputRecord, QueuedInput, RequestUsage, Run, ToolCall};
+use crate::{ClientInfo, Message, OutputRecord, QueuedInput, Run, ToolCall};
 use crate::{ToolResult, journal_admission::RunAdmission};
 use anyhow::Result;
-
-/// A model reply with the request usage it was billed under.
-pub(crate) struct Reply<'a> {
-    pub message: &'a Message,
-    pub usage: &'a [RequestUsage],
-    pub request_ids: &'a [String],
-}
 
 /// Which pending inputs a query asks about.
 #[derive(Clone, Copy)]
@@ -26,13 +19,11 @@ pub(crate) enum Consumed {
     GeneratedSteering,
 }
 
-/// A run's final state, with the reply and usage that settle it.
+/// A run's final state, with the reply that settles it.
 pub(crate) struct RunFinish<'a> {
     pub run: &'a Run,
     pub result_message_id: Option<&'a str>,
     pub final_message: Option<&'a Message>,
-    pub usage: &'a [RequestUsage],
-    pub request_ids: &'a [String],
     pub origin: Option<ClientInfo>,
     /// The session settles with the run; false when a continuation follows.
     pub settles_session: bool,
@@ -56,15 +47,16 @@ pub(crate) trait Journal: Send + Sync {
     fn steering_batch_consumed(&self, session_id: &str) -> Result<Vec<Message>>;
     /// Whether a tool call id is already recorded for the session.
     fn tool_call_recorded(&self, session_id: &str, call_id: &str) -> Result<bool>;
-    /// A reply with no tool dispatch to follow in the same commit.
-    fn reply_received(&self, reply: Reply<'_>) -> Result<()>;
+    /// A reply with no tool dispatch to follow in the same commit. The request
+    /// usage the run is waiting to write goes with it.
+    fn reply_received(&self, run_id: &str, message: &Message) -> Result<()>;
     /// A reply and the dispatch of its one call: message, usage, effect, ToolStarted.
     /// Returns the invocation id.
     fn reply_dispatched(
         &self,
         session_id: &str,
         run_id: &str,
-        reply: Reply<'_>,
+        message: &Message,
         call: &ToolCall,
     ) -> Result<String>;
     /// A call started: its effect (when dispatched) and ToolStarted.

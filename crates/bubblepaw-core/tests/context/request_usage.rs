@@ -187,6 +187,57 @@ async fn failed_requests_keep_partial_or_zero_usage_without_assistant_messages()
     Ok(())
 }
 
+/// Reports one failed physical attempt, then waits for the run to be cancelled.
+struct Hangs(Arc<tokio::sync::Notify>);
+#[async_trait]
+impl Provider for Hangs {
+    async fn generate(
+        &self,
+        _: ModelRequest,
+        _: StreamCallback,
+        _: CancellationToken,
+    ) -> Result<ModelResponse> {
+        let mut record = RequestUsage::new("scripted", "model");
+        record.usage = usage();
+        record.failed = true;
+        assert!(record_request_usage(record));
+        self.0.notify_one();
+        std::future::pending().await
+    }
+}
+
+#[tokio::test]
+async fn cancelled_run_writes_its_failed_attempt_at_the_run_end() -> Result<()> {
+    let dir = tempfile::tempdir()?;
+    let store = Store::open_data_dir(dir.path())?;
+    let session = store.create_session("cancelled")?;
+    let started = Arc::new(tokio::sync::Notify::new());
+    let engine = Harness::new(
+        store.clone(),
+        Arc::new(Hangs(started.clone())),
+        ToolRegistry::new(),
+        HarnessConfig {
+            model: "scripted/model".into(),
+            ..Default::default()
+        },
+    );
+    engine.start(&session.id, "hello", RunOptions::default())?;
+    started.notified().await;
+    assert!(engine.cancel(&session.id));
+    let run = engine.wait_for_idle(&session.id).await?;
+    assert_eq!(run.status, "cancelled");
+    let records: Vec<_> = store
+        .request_usage()?
+        .into_iter()
+        .filter(|record| record.session_id == session.id)
+        .collect();
+    assert_eq!(records.len(), 1);
+    assert!(records[0].failed);
+    assert_eq!(records[0].usage, usage());
+    assert_eq!(records[0].run_id.as_deref(), Some(run.id.as_str()));
+    Ok(())
+}
+
 #[tokio::test]
 async fn rejecting_usage_rolls_back_the_assistant_in_the_same_transaction() -> Result<()> {
     let dir = tempfile::tempdir()?;
