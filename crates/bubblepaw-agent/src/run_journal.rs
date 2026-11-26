@@ -9,19 +9,19 @@ use bubblepaw_ai::{Message, ToolCall};
 
 /// Which pending inputs a query asks about.
 #[derive(Clone, Copy)]
-pub(crate) enum InputScope {
+pub enum InputScope {
     Any,
     Steering,
 }
 
 /// Which pending inputs a consumption takes.
 #[derive(Clone, Copy)]
-pub(crate) enum Consumed {
+pub enum Consumed {
     Steering,
     GeneratedSteering,
 }
 
-pub(crate) trait RunJournal: Send + Sync {
+pub trait RunJournal: Send + Sync {
     /// Whether input of this scope is pending.
     fn input_pending(&self, session_id: &str, scope: InputScope) -> Result<bool>;
     /// Pending input of this kind consumed; the number consumed.

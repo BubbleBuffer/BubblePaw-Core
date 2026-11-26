@@ -11,14 +11,14 @@ use anyhow::Result;
 use bubblepaw_ai::{ModelRequest, ToolDefinition};
 
 /// The system prompt and tool declarations a run sends with every request.
-pub(crate) struct ToolSurface {
-    pub(crate) system_prompt: String,
-    pub(crate) declarations: Vec<ToolDefinition>,
+pub struct ToolSurface {
+    pub system_prompt: String,
+    pub declarations: Vec<ToolDefinition>,
 }
 
 impl ToolSurface {
     /// Put the surface back on a request a host edited; these are run controls.
-    pub(crate) fn restore(&self, request: &mut ModelRequest) {
+    pub fn restore(&self, request: &mut ModelRequest) {
         request.system_prompt = self.system_prompt.clone();
         request.tools = self.declarations.clone();
         request.disabled_tools.clear();
@@ -27,14 +27,14 @@ impl ToolSurface {
 }
 
 /// The tools a run starts with.
-pub(crate) struct RunTools {
-    pub(crate) tools: ToolRegistry,
-    pub(crate) surface: ToolSurface,
+pub struct RunTools {
+    pub tools: ToolRegistry,
+    pub surface: ToolSurface,
     /// Whether every round asks for the tools again, rather than only after a change.
-    pub(crate) refresh_each_round: bool,
+    pub refresh_each_round: bool,
 }
 
-pub(crate) trait ToolSource: Send + Sync {
+pub trait ToolSource: Send + Sync {
     /// The tools, the surface and the refresh rule a run starts with.
     fn open_run(&self, run: &Run, options: &LoopOptions) -> Result<RunTools>;
     /// The tools for this round, after the host's registry may have changed.

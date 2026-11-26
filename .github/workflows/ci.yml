@@ -85,9 +85,9 @@ jobs:
       - name: ai adapter and extension tests
         if: ${{ !cancelled() }}
         run: cargo test -p bubblepaw-ai --features http,extension --locked --no-fail-fast
-      - name: ai, core, mcp, process and sdk tests
+      - name: ai, agent, core, mcp, process and sdk tests
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-ai -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
+        run: cargo test -p bubblepaw-ai -p bubblepaw-agent -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
       # The web,bench set is a superset of the default one (every feature gate
       # in the runner tests is `cfg(feature = ...)`, none is `cfg(not(...))`),
       # so the full suite runs once, below. Default features keep their clippy
@@ -177,11 +177,11 @@ jobs:
       # only. See docs/verification.md.
       - name: build all test targets
         run: |
-          cargo test -p bubblepaw-ai -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-run
+          cargo test -p bubblepaw-ai -p bubblepaw-agent -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-run
           cargo test -p bubblepaw-runner --features web,bench --locked --no-run
-      - name: core, mcp, process, remote and sdk tests (platform-sensitive)
+      - name: agent, core, mcp, process, remote and sdk tests (platform-sensitive)
         if: ${{ !cancelled() }}
-        run: cargo test -p bubblepaw-ai --features http,extension -p bubblepaw-core --test storage --test tools -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
+        run: cargo test -p bubblepaw-ai --features http,extension -p bubblepaw-agent -p bubblepaw-core --test storage --test tools -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-remote -p bubblepaw-sdk --locked --no-fail-fast
       - name: runner tests (platform-sensitive, web, bench)
         if: ${{ !cancelled() }}
         run: >

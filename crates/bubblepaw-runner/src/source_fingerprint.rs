@@ -107,7 +107,7 @@ pub(crate) fn source_fingerprint() -> String {
         include_str!("tools/process.rs"),
         include_str!("../../bubblepaw-core/src/lib.rs"),
         include_str!("../../bubblepaw-core/src/runtime.rs"),
-        include_str!("../../bubblepaw-core/src/dispatch.rs"),
+        include_str!("../../bubblepaw-agent/src/dispatch.rs"),
         include_str!("../../bubblepaw-core/src/decision.rs"),
         include_str!("../../bubblepaw-core/src/approvals/mod.rs"),
         include_str!("../../bubblepaw-core/src/approvals/modes.rs"),

@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 /// A call admitted against one registry and policy snapshot. The same admission
 /// is used by native calls, composition wrappers and model-free host calls.
-pub(crate) struct PreparedToolCall {
+pub struct PreparedToolCall {
     context: ToolContext,
     call: ToolCall,
     tool: Option<Arc<dyn Tool>>,
@@ -23,7 +23,7 @@ pub(crate) struct PreparedToolCall {
     pub(crate) malformed: bool,
 }
 
-pub(crate) struct DispatchedToolCall {
+pub struct DispatchedToolCall {
     pub result: ToolResult,
     pub invocation: Option<String>,
 }
@@ -39,7 +39,7 @@ enum CallJournal<'a> {
 impl ToolDispatcher {
     /// Prepare against the effective registry and reserve the shared run budget.
     /// Validation precedes the gate and every durable effect boundary.
-    pub(crate) fn prepare_call(
+    pub fn prepare_call(
         &self,
         mut context: ToolContext,
         call: ToolCall,
@@ -97,7 +97,7 @@ impl ToolDispatcher {
     }
     /// Admit an unconditional Allow call without an intervening gate write,
     /// permitting the reply and dispatch boundary to share one transaction.
-    pub(crate) fn admit_fast_path(&self, prepared: &mut PreparedToolCall) -> Result<bool> {
+    pub fn admit_fast_path(&self, prepared: &mut PreparedToolCall) -> Result<bool> {
         if prepared.rejection.is_some() {
             return Ok(false);
         }
@@ -110,7 +110,7 @@ impl ToolDispatcher {
         prepared.approved = allowed;
         Ok(allowed)
     }
-    pub(crate) fn commit_reply_dispatch(
+    pub fn commit_reply_dispatch(
         &self,
         message: &Message,
         prepared: &PreparedToolCall,
@@ -154,7 +154,7 @@ impl ToolDispatcher {
             .await?
             .result)
     }
-    pub(crate) async fn invoke_direct(
+    pub async fn invoke_direct(
         &self,
         prepared: PreparedToolCall,
         message_id: &str,
@@ -335,7 +335,7 @@ impl ToolDispatcher {
         )
     }
     /// Complete the direct reply and effect in the same transaction.
-    pub(crate) fn record_direct_result(
+    pub fn record_direct_result(
         &self,
         run_id: &str,
         message: &Message,

@@ -6,14 +6,14 @@ use bubblepaw_ai::ModelRequest;
 /// near-exhaustion warning. The kind is scoped to the run, so a later run with
 /// the same limit still receives its own start notice.
 #[derive(Default)]
-pub(crate) struct BudgetReminder {
+pub struct BudgetReminder {
     pub start: Option<usize>,
     pub warned: bool,
 }
 
 /// Where tools stand for one model request of a run.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) enum ToolsRound {
+pub enum ToolsRound {
     /// Tools are active.
     #[default]
     Open,
@@ -25,12 +25,12 @@ pub(crate) enum ToolsRound {
 }
 
 impl ToolsRound {
-    pub(crate) fn is_open(self) -> bool {
+    pub fn is_open(self) -> bool {
         self == Self::Open
     }
 
     /// Only the enforcement round moves the declarations out of `tools`.
-    pub(crate) fn apply(self, request: &mut ModelRequest) {
+    pub fn apply(self, request: &mut ModelRequest) {
         if self == Self::Enforced {
             request.disabled_tools = std::mem::take(&mut request.tools);
         }
@@ -39,7 +39,7 @@ impl ToolsRound {
 
 /// Per-run notices queued before each model request.
 #[derive(Default)]
-pub(crate) struct RunReminders {
+pub struct RunReminders {
     pub budget: BudgetReminder,
     pub restriction_sent: bool,
     /// Sticky: once tools are unavailable, they stay unavailable for the run.
@@ -52,11 +52,11 @@ pub(crate) struct RunReminders {
 
 impl RunReminders {
     /// True when the next round is the enforcement round.
-    pub(crate) fn enforcing(&self) -> bool {
+    pub fn enforcing(&self) -> bool {
         self.enforce && !self.enforced
     }
     /// A call returned on an unavailable round is refused, and enforcement follows.
-    pub(crate) fn observe_tool_calls(&mut self, round: ToolsRound, calls: usize) {
+    pub fn observe_tool_calls(&mut self, round: ToolsRound, calls: usize) {
         if round != ToolsRound::Open && calls > 0 {
             self.enforce = true;
         }

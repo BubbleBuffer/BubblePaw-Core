@@ -10,16 +10,16 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-pub(crate) struct CallbackLifetime(pub(crate) Arc<AtomicBool>);
-pub(crate) struct TurnOutcome {
+pub struct CallbackLifetime(pub(crate) Arc<AtomicBool>);
+pub struct TurnOutcome {
     pub(crate) text: String,
     pub(crate) result_message_id: String,
     pub(crate) final_message: Option<Message>,
 }
 /// A run that is one tool call: the call, and the slot its result is left in.
-pub(crate) struct SingleToolRun {
-    pub(crate) call: ToolCall,
-    pub(crate) result: Arc<Mutex<Option<ToolResult>>>,
+pub struct SingleToolRun {
+    pub call: ToolCall,
+    pub result: Arc<Mutex<Option<ToolResult>>>,
 }
 impl Drop for CallbackLifetime {
     fn drop(&mut self) {
@@ -27,7 +27,7 @@ impl Drop for CallbackLifetime {
     }
 }
 
-pub(crate) fn outcome(run: &Run, value: Value) -> Result<TurnOutcome> {
+pub fn outcome(run: &Run, value: Value) -> Result<TurnOutcome> {
     let text = serde_json::to_string(&value)?;
     let mut final_message = Message::new(&run.session_id, Role::Assistant, text.clone());
     final_message.origin = Some(MessageOrigin::Generated);
@@ -39,7 +39,7 @@ pub(crate) fn outcome(run: &Run, value: Value) -> Result<TurnOutcome> {
 }
 
 /// A tool result asked to end the run: the run completes with that tool message.
-pub(crate) fn terminated(message: &Message) -> TurnOutcome {
+pub fn terminated(message: &Message) -> TurnOutcome {
     TurnOutcome {
         text: message.text().into_owned(),
         result_message_id: message.id.clone(),
@@ -47,7 +47,7 @@ pub(crate) fn terminated(message: &Message) -> TurnOutcome {
     }
 }
 
-pub(crate) fn text_outcome(message: Message, needs_commit: bool) -> TurnOutcome {
+pub fn text_outcome(message: Message, needs_commit: bool) -> TurnOutcome {
     TurnOutcome {
         text: message.text().into_owned(),
         result_message_id: message.id.clone(),

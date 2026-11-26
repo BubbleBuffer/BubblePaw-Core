@@ -14,7 +14,7 @@ use bubblepaw_ai::{
 use std::sync::Arc;
 
 /// A note for the model, queued for the next request.
-pub(crate) enum Note<'a> {
+pub enum Note<'a> {
     /// Sent when its text differs from the last copy of the same kind.
     Text { kind: &'a str, text: &'a str },
     /// Sent once even when its text is unchanged: the last copy left the model's view.
@@ -26,13 +26,13 @@ pub(crate) enum Note<'a> {
 }
 
 /// The messages of a draft request, and the note preview they end with.
-pub(crate) struct Draft {
+pub struct Draft {
     pub messages: Vec<Message>,
     pub preview: Option<Message>,
 }
 
 /// A final request the host's budget refused, and how to ask again.
-pub(crate) struct TooLarge {
+pub struct TooLarge {
     /// The host's own diagnostic, to return when asking again would not help.
     pub error: anyhow::Error,
     pub additional_tokens: usize,
@@ -41,14 +41,14 @@ pub(crate) struct TooLarge {
     pub frontier: Option<i64>,
 }
 
-pub(crate) enum Built {
+pub enum Built {
     Ready(Box<ModelRequest>),
     TooLarge(TooLarge),
 }
 
 /// How much a session's request state is let go.
 #[derive(Clone, Copy)]
-pub(crate) enum Release {
+pub enum Release {
     /// The session is gone for good.
     Deleted,
     /// The session is idle; its history is read again on the next request.
@@ -56,7 +56,7 @@ pub(crate) enum Release {
 }
 
 #[async_trait]
-pub(crate) trait RequestContext: Send + Sync {
+pub trait RequestContext: Send + Sync {
     /// The session's history for a request, read from where the last one stopped.
     fn history(&self, session: &str) -> Result<Vec<Message>>;
     /// The provider extension history cursor for the messages a request sends,

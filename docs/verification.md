@@ -33,7 +33,7 @@ The gates, in order:
 - `cargo fmt --all --check`
 - `cargo clippy --workspace --all-targets --locked -- -D warnings -A deprecated`
 - `cargo clippy -p bubblepaw-runner --features web,bench --all-targets --locked -- -D warnings -A deprecated`
-- `cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked`
+- `cargo test -p bubblepaw-agent -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process --locked`
 - `cargo test -p bubblepaw-runner --locked` (public CI only)
 - `cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast`
 
