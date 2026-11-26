@@ -3,7 +3,7 @@
 use crate::eventually;
 use bubblepaw_core::{
     CancellationToken, Message, ModelRequest, Provider, ProviderError, ProviderErrorKind, Role,
-    TextCallback, ToolDefinition,
+    StreamCallback, StreamEvent, ToolDefinition,
 };
 use bubblepaw_runner::provider::{ChatCompletionsProvider, MessagesProvider, ResponsesProvider};
 use serde_json::{Value, json};
@@ -62,11 +62,15 @@ fn chat_body(values: &[Value]) -> String {
     format!("{}data: [DONE]\n\n", events(values))
 }
 
-fn listener() -> (TextCallback, Arc<Mutex<Vec<String>>>) {
+fn listener() -> (StreamCallback, Arc<Mutex<Vec<String>>>) {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let sink = calls.clone();
     (
-        Arc::new(move |text: &str| sink.lock().unwrap().push(text.to_owned())),
+        Arc::new(move |event: StreamEvent| {
+            if let StreamEvent::TextDelta(text) = event {
+                sink.lock().unwrap().push(text.to_owned());
+            }
+        }),
         calls,
     )
 }
@@ -291,10 +295,8 @@ async fn chat_stream_assembles_text_reasoning_and_usage() {
         ),
         (20, 2, 12, 3, Some(1))
     );
-    assert_eq!(
-        response.provider_state.unwrap()["message_fields"]["reasoning_content"],
-        "think more"
-    );
+    assert_eq!(response.thinking, "think more");
+    assert!(response.provider_state.unwrap()["message_fields"]["reasoning_content"].is_null());
     assert_eq!(seen.lock().unwrap().concat(), "Hello");
 }
 

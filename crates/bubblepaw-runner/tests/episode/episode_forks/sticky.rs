@@ -6,7 +6,7 @@ impl Provider for UnavailableRoute {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -29,7 +29,7 @@ impl Provider for PendingGo {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

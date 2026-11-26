@@ -253,18 +253,18 @@ impl Store {
     pub(crate) fn decode_message_body(conn: &Connection, data: &str) -> Result<serde_json::Value> {
         cold::decode_body(conn, data)
     }
-    /// `text` as the first block of a stored `content`, ahead of its image
+    /// `text` after the thinking blocks of a stored `content` and ahead of its image
     /// blocks. A stored body that is not a list (older rows) is the text itself.
     pub(crate) fn content_with_text(stored: &serde_json::Value, text: String) -> serde_json::Value {
         match stored {
             serde_json::Value::Array(blocks) => {
-                let mut content = vec![serde_json::json!({"type":"text","text":text})];
-                content.extend(
-                    blocks
-                        .iter()
-                        .filter(|block| block["type"] != "text")
-                        .cloned(),
-                );
+                let (thinking, rest): (Vec<_>, Vec<_>) = blocks
+                    .iter()
+                    .filter(|block| block["type"] != "text")
+                    .partition(|block| block["type"] == "thinking");
+                let mut content: Vec<_> = thinking.into_iter().cloned().collect();
+                content.push(serde_json::json!({"type":"text","text":text}));
+                content.extend(rest.into_iter().cloned());
                 serde_json::Value::Array(content)
             }
             _ => serde_json::Value::String(text),

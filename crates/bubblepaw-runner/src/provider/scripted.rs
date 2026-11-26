@@ -1,7 +1,8 @@
 use anyhow::{Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, ModelInfo, ModelRequest, ModelResponse, Provider, TextCallback, ToolCall,
+    CancellationToken, ModelInfo, ModelRequest, ModelResponse, Provider, StreamCallback,
+    StreamEvent, ToolCall,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -115,7 +116,7 @@ impl Provider for ScriptedProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         ensure!(!cancellation.is_cancelled(), "cancelled");
@@ -194,34 +195,23 @@ impl Provider for ScriptedProvider {
                         .extend(calls.iter().map(|call| call.id.clone()));
                 }
                 Ok(ModelResponse {
-                    quota: Vec::new(),
                     text: String::new(),
                     tool_calls: calls,
-                    usage: None,
-                    last_request_usage: None,
-                    provider_state: None,
+                    ..Default::default()
                 })
             }
             Some(ScriptedStep::Text { text }) => {
-                on_text(&text);
+                on_text(StreamEvent::TextDelta(&text));
                 Ok(ModelResponse {
-                    quota: Vec::new(),
                     text,
-                    tool_calls: Vec::new(),
-                    usage: None,
-                    last_request_usage: None,
-                    provider_state: None,
+                    ..Default::default()
                 })
             }
             None => {
-                on_text(&self.final_text);
+                on_text(StreamEvent::TextDelta(&self.final_text));
                 Ok(ModelResponse {
-                    quota: Vec::new(),
                     text: self.final_text.clone(),
-                    tool_calls: Vec::new(),
-                    usage: None,
-                    last_request_usage: None,
-                    provider_state: None,
+                    ..Default::default()
                 })
             }
         }

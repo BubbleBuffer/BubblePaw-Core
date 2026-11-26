@@ -7,7 +7,7 @@ use bubblepaw_core::{
     Approval, CancellationToken, ContextCheckpoint, ContextEpisode, ContextPreparation,
     ContextStrategy, ContextSubjectChapter, ContextView, EpisodeBatch, EventKind, Harness,
     HarnessConfig, InputKind, Message, ModelRequest, ModelResponse, PrepareCall, PreparedContext,
-    Provider, Role, RunOptions, Session, Store, StoreOptions, SubjectChapterStatus, TextCallback,
+    Provider, Role, RunOptions, Session, Store, StoreOptions, StreamCallback, SubjectChapterStatus,
     Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult, Usage,
 };
 use rusqlite::{Connection, params};
@@ -70,7 +70,7 @@ impl Provider for Model {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request.clone());
@@ -801,7 +801,7 @@ impl Provider for ReusedCall {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

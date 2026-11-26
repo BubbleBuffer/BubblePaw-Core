@@ -1,5 +1,6 @@
 //! Scripted parent and child models for the web wake tests.
 use super::*;
+use bubblepaw_core::StreamEvent;
 
 #[derive(Default)]
 pub(super) struct ParentProvider(pub(super) Mutex<Vec<ModelRequest>>);
@@ -8,7 +9,7 @@ impl Provider for ParentProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         // Rounds count per session, so wake-barrier roots leave the parent's alone.
@@ -22,7 +23,7 @@ impl Provider for ParentProvider {
                 .count()
         };
         let text = format!("Parent response {round}.");
-        on_text(&format!("{text}\n\n"));
+        on_text(StreamEvent::TextDelta(&format!("{text}\n\n")));
         Ok(ModelResponse {
             text,
             ..Default::default()
@@ -36,12 +37,12 @@ impl Provider for ChildProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.acquire().await?.forget();
         let text = "Synthetic child result.".to_owned();
-        on_text(&text);
+        on_text(StreamEvent::TextDelta(&text));
         Ok(ModelResponse {
             text,
             ..Default::default()

@@ -84,6 +84,19 @@ file blocks when its text ends in a valid envelope; assistant and tool text, and
 a marker anywhere else, stay text. Rows are never rewritten, and step 15 only
 raises the version so an older program refuses the store.
 
+## Thinking blocks (chat store 16)
+
+An assistant reply stores its readable reasoning as a `thinking` content block
+before the text block. The block is not model text: `text()`, `body_text()`,
+byte accounting, hashes, summarizer input and the model text of the extension
+protocol skip it (Chat's token estimate counts the `reasoning_content` rebuilt
+from it, as the request carries it), and `plain_content` drops it, so requests keep
+their shape. The JSONL export writes a message with thinking in list form so a
+reimport keeps the block. Chat rows rebuild `reasoning_content` from the block
+and no longer carry it in `provider_state`; older rows with it in
+`provider_state` replay unchanged. Rows are never rewritten, and step 16 only
+raises the version so an older program refuses the store.
+
 ## Bounded host state (2026-10-15)
 
 An additive `host_state(session_id,key,value)` table keeps small runner-owned

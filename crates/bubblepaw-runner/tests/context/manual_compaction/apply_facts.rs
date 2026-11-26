@@ -27,7 +27,7 @@ impl Provider for Framed {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         bail!("apply must not dispatch a main-model request")

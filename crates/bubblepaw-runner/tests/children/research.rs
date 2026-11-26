@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, EventKind, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider,
-    Role, RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolRegistry,
+    Role, RunOptions, Store, StreamCallback, ToolCall, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agent_handles::register_agent_handles,
@@ -177,7 +177,7 @@ impl Provider for ResearchConversation {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         assert_eq!(request.tools.len(), 1);
@@ -506,7 +506,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let start_parent_research = self.parent_research

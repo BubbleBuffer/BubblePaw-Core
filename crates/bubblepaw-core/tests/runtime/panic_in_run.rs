@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions,
-    Store, TextCallback, ToolRegistry,
+    Store, StreamCallback, StreamEvent, ToolRegistry,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -18,13 +18,13 @@ impl Provider for PanicsOnce {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             panic!("scripted provider exploded");
         }
-        on_text("recovered");
+        on_text(StreamEvent::TextDelta("recovered"));
         Ok(ModelResponse {
             text: "recovered".into(),
             ..Default::default()

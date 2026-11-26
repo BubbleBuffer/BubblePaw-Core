@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions,
-    Store, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
+    Store, StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -14,7 +14,7 @@ impl Provider for Scripted {
     async fn generate(
         &self,
         request: ModelRequest,
-        _on_text: TextCallback,
+        _on_text: StreamCallback,
         _cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(

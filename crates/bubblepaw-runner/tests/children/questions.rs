@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, Message, ModelRequest, ModelResponse, Provider,
-    Role, RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolRegistry,
+    Role, RunOptions, Store, StreamCallback, ToolCall, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agent_handles::register_agent_handles,
@@ -34,7 +34,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let is_root = request.session_id == self.root;
@@ -253,7 +253,7 @@ impl Provider for ResumeOnly {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         assert!(
@@ -357,7 +357,7 @@ impl Provider for LiveAnswerProbe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let has_result = request

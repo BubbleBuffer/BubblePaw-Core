@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Capabilities, EventKind, ExecutionMode, Harness, HarnessConfig,
     HistoryCursor, Message, ModelRequest, ModelResponse, Provider, ProviderError,
-    ProviderErrorKind, Role, RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext,
+    ProviderErrorKind, Role, RunOptions, Store, StreamCallback, Tool, ToolCall, ToolContext,
     ToolDefinition, ToolRegistry, ToolResult, ToolSurface,
 };
 use bubblepaw_runner::{
@@ -56,7 +56,7 @@ impl Provider for SurfaceProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.offered
@@ -157,7 +157,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -194,7 +194,7 @@ async fn registry_routes_by_prefix_and_resets_the_cursor_on_switch() {
         registry.capabilities("unknown/abcdef").context_window,
         Some(14)
     );
-    let noop: TextCallback = Arc::new(|_| {});
+    let noop: StreamCallback = Arc::new(|_| {});
     let token = CancellationToken::new();
     // Default fallback, unchanged model, including an unknown prefix.
     registry
@@ -375,7 +375,7 @@ async fn extension_initializes_streams_and_echoes_the_cursor() {
     let response = provider
         .generate(
             ext_step("direct-model", "text Hello|, |world", "e1", Some("m0")),
-            Arc::new(move |text| sink.lock().unwrap().push(text.into())),
+            bubblepaw_core::text_callback(move |text| sink.lock().unwrap().push(text.into())),
             CancellationToken::new(),
         )
         .await
@@ -515,7 +515,7 @@ async fn extension_batches_many_tiny_unicode_fragments_without_losing_text() {
                 "e1",
                 None,
             ),
-            Arc::new(move |text| sink.lock().unwrap().push(text.into())),
+            bubblepaw_core::text_callback(move |text| sink.lock().unwrap().push(text.into())),
             CancellationToken::new(),
         )
         .await
@@ -539,7 +539,7 @@ async fn extension_flushes_pending_text_while_the_step_is_still_open() {
         provider
             .generate(
                 ext_step("direct-model", "text-delay 2000 猫🦀", "e1", None),
-                Arc::new(move |text| {
+                bubblepaw_core::text_callback(move |text| {
                     let _ = published.send(text.into());
                 }),
                 CancellationToken::new(),
@@ -566,7 +566,7 @@ async fn extension_error_flushes_queued_text_and_does_not_retry_the_step() {
     let error = provider
         .generate(
             ext_step("direct-model", "text-error 尾|猫|🦀", "e1", None),
-            Arc::new(move |text| sink.lock().unwrap().push(text.into())),
+            bubblepaw_core::text_callback(move |text| sink.lock().unwrap().push(text.into())),
             CancellationToken::new(),
         )
         .await
@@ -596,12 +596,12 @@ async fn extension_concurrent_text_batches_stay_with_their_request() {
     let (a, b) = tokio::join!(
         provider.generate(
             ext_step("direct-model", "text-delay 150 左|猫", "e1", None),
-            Arc::new(move |text| left_sink.lock().unwrap().push_str(text)),
+            bubblepaw_core::text_callback(move |text| left_sink.lock().unwrap().push_str(text)),
             CancellationToken::new(),
         ),
         provider.generate(
             ext_step("direct-model", "text-delay 150 右|🦀", "e1", None),
-            Arc::new(move |text| right_sink.lock().unwrap().push_str(text)),
+            bubblepaw_core::text_callback(move |text| right_sink.lock().unwrap().push_str(text)),
             CancellationToken::new(),
         ),
     );

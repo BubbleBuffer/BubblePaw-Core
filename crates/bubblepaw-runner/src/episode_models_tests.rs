@@ -35,7 +35,7 @@ impl Provider for NoProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         panic!("Unexpected provider call")

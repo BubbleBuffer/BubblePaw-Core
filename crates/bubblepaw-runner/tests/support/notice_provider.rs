@@ -36,7 +36,7 @@ impl bubblepaw_core::Provider for NoticeProvider {
     async fn generate(
         &self,
         request: bubblepaw_core::ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: CancellationToken,
     ) -> anyhow::Result<bubblepaw_core::ModelResponse> {
         let mut requests = self.requests.lock().unwrap();

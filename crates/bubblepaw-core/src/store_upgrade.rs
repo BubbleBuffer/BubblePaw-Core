@@ -31,6 +31,10 @@ pub(super) const CHAT_STEPS: &[Step] = &[
         from: 14,
         run: message_file_blocks,
     },
+    Step {
+        from: 15,
+        run: message_thinking_blocks,
+    },
 ];
 /// Version 13 stores new message rows with `content` as a list of blocks. Old
 /// rows keep the string form and stay readable, so no data changes; only the
@@ -52,6 +56,13 @@ fn message_image_blocks(_tx: &Transaction) -> Result<()> {
 /// the version bump matters: a program that predates the block must refuse a
 /// store that may hold it.
 fn message_file_blocks(_tx: &Transaction) -> Result<()> {
+    Ok(())
+}
+/// Version 16 stores the readable thinking of an assistant reply as a `thinking`
+/// block in its content list. Older rows keep their reasoning in `provider_state`
+/// and are replayed from it, so only the version bump matters: a program that
+/// predates the block must refuse a store that may hold it.
+fn message_thinking_blocks(_tx: &Transaction) -> Result<()> {
     Ok(())
 }
 /// Upgrade steps for `catalog.db`.

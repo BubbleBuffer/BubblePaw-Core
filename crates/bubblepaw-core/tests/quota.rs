@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, EventKind, Harness, HarnessConfig, ModelRequest, ModelResponse, Observation,
     ObservationMode, ObservationRecord, ObservationSink, Provider, QuotaReading, QuotaSource,
-    QuotaWait, QuotaWaitChanged, Run, RunOptions, Store, StoreOptions, TextCallback, ToolRegistry,
-    clear_current_quota_wait, set_quota_wait,
+    QuotaWait, QuotaWaitChanged, Run, RunOptions, Store, StoreOptions, StreamCallback,
+    ToolRegistry, clear_current_quota_wait, set_quota_wait,
 };
 use rusqlite::{Connection, params};
 use std::sync::{Arc, Mutex};
@@ -177,7 +177,7 @@ impl Provider for WaitingProvider {
     async fn generate(
         &self,
         _request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         assert!(set_quota_wait(
@@ -500,7 +500,7 @@ fn unique_active_run_index_includes_parked_runs() -> Result<()> {
         let connection = Connection::open(&chat)?;
         assert_eq!(
             connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))?,
-            15
+            16
         );
         let second = Run {
             id: uuid::Uuid::new_v4().to_string(),
@@ -610,7 +610,7 @@ impl Provider for Done {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         assert_eq!(

@@ -2,8 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider,
-    ProviderError, ProviderErrorKind, QuotaReading, QuotaSource, RunOptions, Store, TextCallback,
-    ToolRegistry,
+    ProviderError, ProviderErrorKind, QuotaReading, QuotaSource, RunOptions, Store, StreamCallback,
+    StreamEvent, ToolRegistry,
 };
 use bubblepaw_runner::{
     provider::ProviderRegistry,
@@ -456,12 +456,12 @@ impl Provider for ShortRejection {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
             if self.publish {
-                on_text("already visible");
+                on_text(StreamEvent::TextDelta("already visible"));
             }
             return Err(rejected(None));
         }
@@ -537,7 +537,7 @@ impl Provider for MeteredSuccess {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let mut reading = exhausted(Utc::now());
@@ -608,7 +608,7 @@ impl Provider for RejectedOnce {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let call = self.calls.fetch_add(1, Ordering::SeqCst);

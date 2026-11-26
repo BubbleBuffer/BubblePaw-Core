@@ -64,7 +64,7 @@ impl Provider for TokenModel {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         for (failed, output, reported) in &self.attempts {
@@ -298,7 +298,7 @@ impl Provider for AttributionModel {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let (mut total, mut last_output) = (0, None);

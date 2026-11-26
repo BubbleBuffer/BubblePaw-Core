@@ -2,7 +2,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, DecisionRequest, DecisionUsage, Harness, HarnessConfig, ModelRequest,
-    ModelResponse, Provider, ReasoningEffort, RunOptions, Store, TextCallback, ToolRegistry, Usage,
+    ModelResponse, Provider, ReasoningEffort, RunOptions, Store, StreamCallback, ToolRegistry,
+    Usage,
 };
 use rusqlite::{Connection, params};
 use serde_json::json;
@@ -133,7 +134,7 @@ impl Provider for CachedUsageProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

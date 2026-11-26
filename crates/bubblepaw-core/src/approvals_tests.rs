@@ -2,7 +2,7 @@ use super::modes::{AUTO_ARGUMENT_BYTES, bounded_arguments};
 use super::*;
 use crate::{
     CancellationToken, HarnessConfig, HarnessEvent, ModelRequest, ModelResponse, Provider,
-    RunOptions, TextCallback, Tool, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    RunOptions, StreamCallback, Tool, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use async_trait::async_trait;
 use std::collections::VecDeque;
@@ -20,7 +20,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(self.0.lock().unwrap().pop_front().unwrap_or(ModelResponse {
@@ -421,7 +421,7 @@ impl Provider for AppendUser {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.store.append(&Store::message(

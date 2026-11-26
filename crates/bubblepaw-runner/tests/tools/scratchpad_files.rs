@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions,
-    Store, TextCallback, ToolRegistry, ToolResult,
+    Store, StreamCallback, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::tools::WorkspaceTools;
 use serde_json::{Value, json};
@@ -14,7 +14,7 @@ impl Provider for NoProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("file-tool tests must not invoke a model")

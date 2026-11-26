@@ -160,7 +160,7 @@ async fn parallel_tools_and_thinking_round_trip_preserve_native_content() {
     let first = provider
         .generate(
             req.clone(),
-            Arc::new(move |text| sink.lock().unwrap().push_str(text)),
+            bubblepaw_core::text_callback(move |text| sink.lock().unwrap().push_str(text)),
             CancellationToken::new(),
         )
         .await
@@ -259,7 +259,7 @@ async fn refusal_is_a_metered_fatal_error_without_retries() {
     let error = provider
         .generate(
             request(),
-            Arc::new(move |text| sink.lock().unwrap().push_str(text)),
+            bubblepaw_core::text_callback(move |text| sink.lock().unwrap().push_str(text)),
             CancellationToken::new(),
         )
         .await
@@ -814,7 +814,7 @@ async fn stream_errors_are_typed_without_exposing_server_text_or_retrying() {
             let error = provider
                 .generate(
                     request(),
-                    Arc::new(move |text| sink.lock().unwrap().push_str(text)),
+                    bubblepaw_core::text_callback(move |text| sink.lock().unwrap().push_str(text)),
                     CancellationToken::new(),
                 )
                 .await
@@ -895,7 +895,7 @@ async fn partial_stream_usage_survives_error_event_and_cut() {
         let error = provider
             .generate(
                 request(),
-                Arc::new(move |delta| sink.lock().unwrap().push_str(delta)),
+                bubblepaw_core::text_callback(move |delta| sink.lock().unwrap().push_str(delta)),
                 CancellationToken::new(),
             )
             .await
@@ -962,7 +962,7 @@ async fn continuation_failure_keeps_publication_usage_and_retry_metadata() {
         let error = provider
             .generate(
                 request(),
-                Arc::new(move |delta| sink.lock().unwrap().push_str(delta)),
+                bubblepaw_core::text_callback(move |delta| sink.lock().unwrap().push_str(delta)),
                 CancellationToken::new(),
             )
             .await

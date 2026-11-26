@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextPreparation, Harness, HarnessConfig, ModelRequest, ModelResponse,
-    PrepareCall, PreparedContext, Provider, RunOptions, Store, TextCallback, ToolRegistry,
+    PrepareCall, PreparedContext, Provider, RunOptions, Store, StreamCallback, ToolRegistry,
 };
 use std::{
     sync::{
@@ -25,7 +25,7 @@ impl Provider for Decorated {
     async fn generate(
         &self,
         request: ModelRequest,
-        text: TextCallback,
+        text: StreamCallback,
         cancellation: CancellationToken,
     ) -> anyhow::Result<ModelResponse> {
         self.calls.fetch_add(1, Ordering::SeqCst);
@@ -37,7 +37,7 @@ impl Provider for Node {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> anyhow::Result<ModelResponse> {
         self.seen.lock().unwrap().push((self.name, request.model));

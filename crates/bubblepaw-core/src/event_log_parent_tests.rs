@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     CancellationToken, HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions,
-    TextCallback, ToolRegistry,
+    StreamCallback, ToolRegistry,
 };
 use async_trait::async_trait;
 use std::{sync::Arc, time::Duration};
@@ -12,7 +12,7 @@ impl Provider for Model {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         if request

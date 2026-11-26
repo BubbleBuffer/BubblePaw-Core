@@ -7,7 +7,7 @@ use bubblepaw_core::{
     CancellationToken, Capabilities, CursorResets, DecisionProvider, DecisionRequest,
     DecisionResponse, DecisionUsage, LastRequestUsage, ModelInfo, ModelRequest, ModelResponse,
     Provider, ProviderError, ProviderErrorKind, QuotaReading, RequestKind, RequestUsage, Store,
-    TextCallback, Usage,
+    StreamCallback, StreamEvent, Usage,
 };
 use std::{
     collections::{BTreeSet, HashMap},
@@ -529,7 +529,7 @@ impl ProviderRegistry {
     async fn generate_routed(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
         decision: bool,
         retry_base_delay: Option<Duration>,
@@ -629,11 +629,11 @@ impl ProviderRegistry {
             let published = Arc::new(AtomicBool::new(false));
             let visible = published.clone();
             let callback = on_text.clone();
-            let guarded: TextCallback = Arc::new(move |text| {
-                if !text.is_empty() {
+            let guarded: StreamCallback = Arc::new(move |event| {
+                if matches!(event, StreamEvent::TextDelta(text) if !text.is_empty()) {
                     visible.store(true, Ordering::Release);
                 }
-                callback(text);
+                callback(event);
             });
             let account = self.account(&id);
             let attempt_state = Arc::new(Mutex::new(Attempts::default()));
@@ -1032,7 +1032,7 @@ impl Provider for ProviderRegistry {
     async fn generate_decision(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let session = request.session_id.clone();
@@ -1080,7 +1080,7 @@ impl Provider for ProviderRegistry {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let session = request.session_id.clone();

@@ -93,7 +93,7 @@ impl Provider for NoFork {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse::default())

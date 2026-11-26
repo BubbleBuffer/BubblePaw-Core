@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextPreparation, Harness, HarnessConfig, ModelRequest, ModelResponse,
     Observation, ObservationMode, ObservationRecord, ObservationSink, PrepareCall, PrepareMode,
-    PreparedContext, Provider, RunOptions, Store, TextCallback, ToolRegistry,
+    PreparedContext, Provider, RunOptions, Store, StreamCallback, ToolRegistry,
 };
 use std::sync::{Arc, Mutex};
 
@@ -17,7 +17,7 @@ impl Provider for Capture {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.lock().unwrap().push(request);

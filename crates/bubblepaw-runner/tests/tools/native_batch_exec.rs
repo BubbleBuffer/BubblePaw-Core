@@ -5,7 +5,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     ApprovalMode, ApprovalPolicy, CancellationToken, Harness, HarnessConfig, Message, ModelRequest,
-    ModelResponse, Provider, Role, RunOptions, Store, TextCallback, ToolCall, ToolRegistry,
+    ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, ToolCall, ToolRegistry,
 };
 use bubblepaw_runner::{
     config::ExecConfig,
@@ -28,7 +28,7 @@ impl Provider for ScriptedRounds {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let round = self.requests.lock().unwrap().len();

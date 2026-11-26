@@ -5,7 +5,7 @@ use anyhow::{Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Capabilities, DecisionProvider, DecisionRequest, DecisionResponse,
-    ModelRequest, ModelResponse, Provider, ProviderError, TextCallback, WireShape,
+    ModelRequest, ModelResponse, Provider, ProviderError, StreamCallback, WireShape,
 };
 use serde_json::Value;
 use std::{sync::Arc, time::Instant};
@@ -54,7 +54,7 @@ impl Metered {
     async fn request(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
         decision: bool,
     ) -> Result<ModelResponse> {
@@ -87,7 +87,7 @@ impl Provider for Metered {
     async fn generate(
         &self,
         r: ModelRequest,
-        t: TextCallback,
+        t: StreamCallback,
         c: CancellationToken,
     ) -> Result<ModelResponse> {
         self.request(r, t, c, false).await
@@ -95,7 +95,7 @@ impl Provider for Metered {
     async fn generate_decision(
         &self,
         r: ModelRequest,
-        t: TextCallback,
+        t: StreamCallback,
         c: CancellationToken,
     ) -> Result<ModelResponse> {
         self.request(r, t, c, true).await

@@ -3,7 +3,7 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     ApprovalMode, ApprovalPolicy, CancellationToken, Harness, HarnessConfig, ModelRequest,
-    ModelResponse, Provider, Role, RunOptions, Store, TextCallback, ToolCall, ToolRegistry,
+    ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, ToolCall, ToolRegistry,
 };
 use bubblepaw_runner::tools::register_native_tools;
 use serde_json::{Value, json};
@@ -19,7 +19,7 @@ impl Provider for BatchProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let mut requests = self.requests.lock().unwrap();

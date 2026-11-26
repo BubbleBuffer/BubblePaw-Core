@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     Approval, ApprovalMode, ApprovalPolicy, CancellationToken, ExecutionMode, Harness,
-    HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions, Store, TextCallback, Tool,
+    HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions, Store, StreamCallback, Tool,
     ToolContext, ToolDefinition, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{artifacts::ArtifactStore, codemode::CodeMode, environments, tools};
@@ -20,7 +20,7 @@ impl Provider for NoProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("model-free JavaScript must not invoke a provider")

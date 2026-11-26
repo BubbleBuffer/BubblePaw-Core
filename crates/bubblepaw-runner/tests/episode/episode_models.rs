@@ -4,8 +4,8 @@ use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use bubblepaw_core::{
     Answer, AnswerKind, CancellationToken, ContextSubjectChapter, DecisionProvider,
     DecisionRequest, DecisionResponse, DecisionUsage, MessageOrigin, ModelRequest, ModelResponse,
-    Provider, ProviderError, ProviderErrorKind, ReasoningEffort, SubjectChapterStatus,
-    TextCallback, Usage,
+    Provider, ProviderError, ProviderErrorKind, ReasoningEffort, StreamCallback,
+    SubjectChapterStatus, Usage,
 };
 use bubblepaw_core::{Harness, HarnessConfig, RunOptions, Store, ToolRegistry};
 use bubblepaw_runner::episode_models::*;
@@ -32,7 +32,7 @@ impl Provider for NoProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("Unexpected main provider call")
@@ -87,7 +87,7 @@ impl Provider for FakeModels {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -253,7 +253,7 @@ impl Provider for LowSummaryProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("Classical must use the low reasoning override")
@@ -261,7 +261,7 @@ impl Provider for LowSummaryProvider {
     async fn generate_decision(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -1054,7 +1054,7 @@ impl Provider for MainFake {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let decide = request.system_prompt.contains("Allowed options:");
@@ -1079,7 +1079,7 @@ impl Provider for MainLarge {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

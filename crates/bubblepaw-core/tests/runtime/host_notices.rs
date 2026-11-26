@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextPreparation, Harness, HarnessConfig, Message, MessageOrigin,
-    ModelRequest, ModelResponse, Provider, Reminder, Role, RunOptions, Store, TextCallback, Tool,
+    ModelRequest, ModelResponse, Provider, Reminder, Role, RunOptions, Store, StreamCallback, Tool,
     ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult, is_typed_user,
 };
 use serde_json::{Value, json};
@@ -77,7 +77,7 @@ impl Provider for Recording {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         // The exact notice envelope must already be durable at dispatch time.

@@ -9,7 +9,7 @@ async fn endpoint_serves_host_api_sessions_next_to_the_host_run() {
     let data = lab.data();
     let a = lab.dir("a");
     let mut host = start_host(&lab, &data, &a, "sleep 2000").await;
-    assert_eq!(host_json(&data).unwrap()["protocol_version"], 7);
+    assert_eq!(host_json(&data).unwrap()["protocol_version"], 8);
 
     let first = HostClient::attach(&data, WAIT).await.unwrap();
     let count = |list: &Value| list.as_array().unwrap().len();
@@ -89,7 +89,7 @@ async fn attach_session_profile_limits_its_methods() {
     assert_eq!(reply["error"]["code"], -32602, "{reply}");
 
     let (reply, mut lines, mut write) = raw_session(&data, json!({"profile":"read"})).await;
-    assert_eq!(reply["result"]["protocol_version"], 7, "{reply}");
+    assert_eq!(reply["result"]["protocol_version"], 8, "{reply}");
     let set = json!({"jsonrpc":"2.0","id":1,"method":"config.set",
         "params":{"key":"agents.wake_debounce_ms","value":77}});
     write

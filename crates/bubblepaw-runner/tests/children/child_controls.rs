@@ -3,8 +3,8 @@ use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     ApprovalMode, ApprovalPolicy, CancellationToken, Harness, HarnessConfig, ModelRequest,
-    ModelResponse, Provider, Role, RunOptions, Store, TextCallback, ToolCall, ToolContext,
-    ToolRegistry,
+    ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, StreamEvent, ToolCall,
+    ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agent_handles::register_agent_handles_weak,
@@ -51,7 +51,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -85,7 +85,7 @@ impl Provider for Probe {
                 })
             }
             Step::StreamSubmit(text, value) => {
-                on_text(&text);
+                on_text(StreamEvent::TextDelta(&text));
                 Ok(ModelResponse {
                     text,
                     tool_calls: vec![ToolCall {
@@ -98,7 +98,7 @@ impl Provider for Probe {
             }
             Step::StreamThenHang(text) => {
                 let _inflight = Inflight(self.dropped.clone());
-                on_text(&text);
+                on_text(StreamEvent::TextDelta(&text));
                 self.entered.send(())?;
                 self.release.notified().await;
                 Ok(ModelResponse {
@@ -430,7 +430,7 @@ impl Provider for ParentProbe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.lock().unwrap().push(request);
@@ -539,7 +539,7 @@ impl Provider for NestedProbe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let user = request

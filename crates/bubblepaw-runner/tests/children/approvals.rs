@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     Approval, ApprovalPolicy, ApprovalRecord, CancellationToken, Decision, EventKind, Harness,
     HarnessConfig, HarnessEvent, ModelRequest, ModelResponse, Provider, Role, RunOptions, Store,
-    TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
+    StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{artifacts::ArtifactStore, codemode::CodeMode};
 use serde_json::{Value, json};
@@ -29,7 +29,7 @@ impl Provider for Cells {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if let Some(last) = request.messages.last().filter(|m| m.role == Role::User)

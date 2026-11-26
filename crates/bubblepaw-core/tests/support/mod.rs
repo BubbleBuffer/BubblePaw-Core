@@ -3,7 +3,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, Message, ModelRequest, ModelResponse, Provider,
-    Role, Store, TextCallback, ToolRegistry,
+    Role, Store, StreamCallback, ToolRegistry,
 };
 use std::{
     path::{Path, PathBuf},
@@ -27,7 +27,7 @@ impl Provider for FixedProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

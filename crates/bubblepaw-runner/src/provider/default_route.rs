@@ -14,7 +14,7 @@ use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ModelRequest, ModelResponse, Provider, ProviderError, ProviderErrorKind,
-    TextCallback,
+    StreamCallback,
 };
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
@@ -31,7 +31,7 @@ impl Provider for UnavailableProvider {
     async fn generate(
         &self,
         _request: ModelRequest,
-        _on_text: TextCallback,
+        _on_text: StreamCallback,
         _cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         Err(ProviderError::new(ProviderErrorKind::Fatal, self.0.to_string()).into())

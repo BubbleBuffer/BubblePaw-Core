@@ -1,5 +1,5 @@
 use super::*;
-use bubblepaw_core::{HarnessConfig, ModelRequest, ModelResponse, Provider, TextCallback};
+use bubblepaw_core::{HarnessConfig, ModelRequest, ModelResponse, Provider, StreamCallback};
 
 struct Hanging;
 struct Released(Arc<Notify>);
@@ -8,7 +8,7 @@ impl Provider for Released {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.notified().await;
@@ -23,7 +23,7 @@ impl Provider for Hanging {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         std::future::pending().await

@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ExecutionMode, Harness, HarnessConfig, ModelRequest, ModelResponse,
-    Provider, Role, RunOptions, Store, TextCallback, ToolCall, ToolRegistry,
+    Provider, Role, RunOptions, Store, StreamCallback, ToolCall, ToolRegistry,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -26,7 +26,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let names: Vec<_> = request

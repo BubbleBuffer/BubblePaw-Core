@@ -609,7 +609,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        callback: TextCallback,
+        callback: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -619,7 +619,7 @@ impl Provider for Script {
             .unwrap()
             .pop_front()
             .expect("script exhausted");
-        callback(&response.text);
+        callback(StreamEvent::TextDelta(&response.text));
         Ok(response)
     }
 }
@@ -706,12 +706,12 @@ impl Provider for Deltas {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let before = self.store.storage_stats()?.transaction_count;
         for _ in 0..20_000 {
-            on_text("x");
+            on_text(StreamEvent::TextDelta("x"));
         }
         assert_eq!(self.store.storage_stats()?.transaction_count, before);
         Ok(answer(&"x".repeat(20_000)))
@@ -771,10 +771,10 @@ impl Provider for PendingProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
-        on_text("discard unfinished stream");
+        on_text(StreamEvent::TextDelta("discard unfinished stream"));
         self.entered.notify_one();
         std::future::pending().await
     }
@@ -811,7 +811,7 @@ impl Provider for CancelHookProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.entered.notify_one();
@@ -1038,7 +1038,7 @@ impl Provider for BoundaryProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -1493,7 +1493,7 @@ impl Provider for SnapshotProjectionProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);
@@ -1680,7 +1680,7 @@ impl Provider for PerSession {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if request.messages[0].text() == "wait" {
@@ -1894,7 +1894,7 @@ fn legacy_session_and_checkpoint_default_without_rewriting_archive() -> Result<(
     assert_eq!(after, originals);
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        15
+        16
     );
     Ok(())
 }

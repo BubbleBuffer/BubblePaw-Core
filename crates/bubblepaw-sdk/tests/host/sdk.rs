@@ -368,7 +368,7 @@ fn sdk_surface_names_every_public_item() {
     let _: Option<&dyn bubblepaw_sdk::providers::Provider> = None;
     let _: Option<bubblepaw_sdk::providers::ModelRequest> = None;
     let _: Option<bubblepaw_sdk::providers::ModelResponse> = None;
-    let _: Option<bubblepaw_sdk::providers::TextCallback> = None;
+    let _: Option<bubblepaw_sdk::providers::StreamCallback> = None;
     let _: Option<bubblepaw_sdk::providers::Usage> = None;
     let _: Option<bubblepaw_sdk::providers::ProviderError> = None;
     let _: Option<bubblepaw_sdk::providers::ProviderErrorKind> = None;

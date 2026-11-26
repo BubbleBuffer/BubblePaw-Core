@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextPreparation, ContextStrategy, Harness, HarnessConfig, Message,
     ModelRequest, ModelResponse, PrepareCall, PrepareMode, PreparedContext, Provider, Role,
-    RunOptions, Store, TextCallback, ToolCall, ToolRegistry,
+    RunOptions, Store, StreamCallback, ToolCall, ToolRegistry,
 };
 use serde_json::json;
 use std::{sync::Arc, time::Duration};
@@ -153,7 +153,7 @@ impl Provider for Blocking {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         cancellation.cancelled().await;

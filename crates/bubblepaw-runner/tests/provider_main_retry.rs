@@ -368,7 +368,7 @@ async fn compatible_bare_400_after_published_continuation_is_never_retried() {
         let error = quick_registry(adapter, base)
             .generate(
                 request(),
-                Arc::new(move |delta| sink.lock().unwrap().push_str(delta)),
+                bubblepaw_core::text_callback(move |delta| sink.lock().unwrap().push_str(delta)),
                 CancellationToken::new(),
             )
             .await

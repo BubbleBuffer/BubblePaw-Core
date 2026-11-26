@@ -3,6 +3,14 @@ use super::*;
 use base64::Engine;
 use std::io::Write;
 
+/// A message with readable thinking is exported in list form, so a reimport keeps the block.
+fn keep_thinking(record: &mut serde_json::Value, message: &Message) -> Result<()> {
+    if !message.thinking().is_empty() {
+        record["message"]["content"] = serde_json::to_value(&message.content)?;
+    }
+    Ok(())
+}
+
 impl Store {
     pub fn export_jsonl(&self, session: &str, mut writer: impl Write) -> Result<usize> {
         let metadata = self.session(session)?;
@@ -29,6 +37,7 @@ impl Store {
             let reminder = Self::reminder_metadata_tx(conn, session, &message.id)?;
             let mut record = crate::plain_content(|| serde_json::json!({"session_id":session,"parent_session_id":metadata.parent_session_id,"root_id":root_id,"child_session_ids":child_session_ids,"message":message}));
             if let Some(reminder) = reminder { record["reminder_metadata"] = serde_json::to_value(reminder)?; }
+            keep_thinking(&mut record, &message)?;
             if index == 0 && !attachments.is_empty() {
                 record["attachments"] = attachments.clone().into();
             }
@@ -164,6 +173,7 @@ impl Store {
             let mut record = crate::plain_content(
                 || serde_json::json!({"session_id":session,"parent_session_id":metadata.parent_session_id,"root_id":root_id,"child_session_ids":child_session_ids,"message":message}),
             );
+            keep_thinking(&mut record, &message)?;
             let has_reminders: bool = conn.query_row(
                 "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='reminder_metadata')",
                 [],

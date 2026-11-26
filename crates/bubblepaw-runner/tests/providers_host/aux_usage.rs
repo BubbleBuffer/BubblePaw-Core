@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     Answer, AnswerKind, CancellationToken, DecisionProvider, DecisionRequest, DecisionResponse,
     DecisionUsage, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, ProviderError,
-    ProviderErrorKind, RequestKind, RunOptions, Store, TextCallback, ToolRegistry, Usage,
+    ProviderErrorKind, RequestKind, RunOptions, Store, StreamCallback, ToolRegistry, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -39,7 +39,7 @@ impl Provider for Fixture {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {
@@ -274,7 +274,7 @@ impl Provider for FailedProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let mut error = ProviderError::new(ProviderErrorKind::Transient, "billable failed route");

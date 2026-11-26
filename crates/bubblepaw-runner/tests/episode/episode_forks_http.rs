@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use bubblepaw_core::{
     CancellationToken, Message, MessageOrigin, ModelRequest, ModelResponse, Provider,
-    ProviderError, ProviderErrorKind, ReasoningEffort, ReasoningReplay, Role, TextCallback,
+    ProviderError, ProviderErrorKind, ReasoningEffort, ReasoningReplay, Role, StreamCallback,
     ToolCall, ToolDefinition,
 };
 use bubblepaw_runner::{
@@ -403,7 +403,7 @@ impl Provider for PhysicalWindow {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("captured provider only admits isolated fork dispatch")
@@ -416,7 +416,7 @@ impl Provider for UnavailableFree {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         *self.0.lock().unwrap() += 1;

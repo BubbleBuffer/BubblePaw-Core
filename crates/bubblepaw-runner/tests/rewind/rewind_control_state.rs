@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role,
-    RunOptions, Store, TextCallback, ToolContext, ToolRegistry,
+    RunOptions, Store, StreamCallback, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore, codemode::CodeMode, question::QuestionTools, rewind::rewind_session,
@@ -18,7 +18,7 @@ impl Provider for NoModel {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("script acceptance must not call a provider")

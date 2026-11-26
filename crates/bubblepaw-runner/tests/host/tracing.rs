@@ -94,7 +94,7 @@ impl Provider for WaitingProvider {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.notify_one();

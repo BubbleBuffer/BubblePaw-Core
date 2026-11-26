@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Capabilities, CursorResets, DecisionProvider, DecisionRequest,
     DecisionResponse, ModelInfo, ModelRequest, ModelResponse, Provider, ProviderError,
-    ProviderErrorKind, Store, TextCallback,
+    ProviderErrorKind, Store, StreamCallback,
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -330,7 +330,7 @@ impl Provider for BoundProvider {
     async fn generate(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.live.prepare_cursor(&self.generation, &mut request);
@@ -343,7 +343,7 @@ impl Provider for BoundProvider {
     async fn generate_decision(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.live.prepare_cursor(&self.generation, &mut request);
@@ -427,7 +427,7 @@ impl Provider for LiveProviderConfig {
     async fn generate(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let generation = self.snapshot();
@@ -441,7 +441,7 @@ impl Provider for LiveProviderConfig {
     async fn generate_decision(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let generation = self.snapshot();

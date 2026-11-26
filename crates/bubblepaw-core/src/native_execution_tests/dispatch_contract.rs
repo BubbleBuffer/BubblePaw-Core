@@ -171,7 +171,7 @@ async fn model_and_embedder_routes_share_the_same_rejection_contract() -> Result
         async fn generate(
             &self,
             _: ModelRequest,
-            _: TextCallback,
+            _: StreamCallback,
             _: CancellationToken,
         ) -> Result<ModelResponse> {
             Ok(match self.0.lock().unwrap().take() {

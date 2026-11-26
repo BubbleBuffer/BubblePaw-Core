@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role, Store,
-    TextCallback, ToolCall, ToolContext, ToolRegistry,
+    StreamCallback, ToolCall, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agents::AgentTools, artifacts::ArtifactStore, codemode::CodeMode, net::WebConfig,
@@ -24,7 +24,7 @@ impl Provider for LongConversation {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         *self

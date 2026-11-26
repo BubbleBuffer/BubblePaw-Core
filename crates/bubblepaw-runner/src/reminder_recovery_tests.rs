@@ -3,7 +3,7 @@ use super::*;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, InputKind, Message, ModelRequest, ModelResponse,
-    Provider, Role, TextCallback, ToolRegistry,
+    Provider, Role, StreamCallback, ToolRegistry,
 };
 struct Complete;
 #[async_trait]
@@ -11,7 +11,7 @@ impl Provider for Complete {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         Ok(ModelResponse {

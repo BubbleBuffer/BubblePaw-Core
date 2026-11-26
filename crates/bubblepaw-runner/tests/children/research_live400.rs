@@ -19,7 +19,7 @@ use axum::{
 };
 use bubblepaw_core::{
     CancellationToken, Capabilities, HarnessConfig, ModelRequest, ModelResponse, Provider,
-    ReasoningEffort, Role, Store, TextCallback, ToolContext, ToolRegistry,
+    ReasoningEffort, Role, Store, StreamCallback, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     agents::AgentTools,
@@ -570,7 +570,7 @@ impl Provider for LowEffortProvider {
     async fn generate(
         &self,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancel: CancellationToken,
     ) -> Result<ModelResponse> {
         ensure!(

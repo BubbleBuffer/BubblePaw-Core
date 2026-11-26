@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     Approval, ApprovalMode, ApprovalPolicy, CancellationToken, Decision, EventKind, Harness,
     HarnessConfig, HarnessEvent, Message, ModelRequest, ModelResponse, Provider, Role, RunOptions,
-    Store, TextCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry,
-    ToolResult,
+    Store, StreamCallback, Tool, ToolCall, ToolContext, ToolDefinition, ToolDispatcher,
+    ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
     agent_handles::register_agent_handles,
@@ -38,7 +38,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let (index, user) = request
@@ -1342,7 +1342,7 @@ impl Provider for TreeProbe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let (index, user) = request
@@ -1925,7 +1925,7 @@ impl Provider for RecursiveDenyProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let (index, input) = request

@@ -142,7 +142,9 @@ impl Log {
     ) {
         if matches!(
             kind,
-            EventKind::Paragraph { .. } | EventKind::TextDelta { .. }
+            EventKind::Paragraph { .. }
+                | EventKind::TextDelta { .. }
+                | EventKind::ThinkingDelta { .. }
         ) {
             self.transient(session_id, run_id, kind);
             return;
@@ -205,10 +207,8 @@ impl Log {
             let _ = sender.send(event);
         }
     }
-    /// Broadcast one streamed text batch as live-only progress. It is neither
-    /// stored nor added to `streaming_text`, and it does not count toward
-    /// `live_seen`, which counts paragraphs only.
-    pub(crate) fn progress(&self, session_id: &str, run_id: &str, text: String) {
+    /// Broadcast one streamed text or thinking batch as live-only progress, outside `streaming_text` and `live_seen`.
+    pub(crate) fn progress(&self, session_id: &str, run_id: &str, kind: EventKind) {
         let state = self.state.lock().unwrap();
         let event = HarnessEvent {
             sequence: state.last,
@@ -217,7 +217,7 @@ impl Log {
             session_id: session_id.into(),
             run_id: run_id.into(),
             created_at: now(),
-            kind: EventKind::TextDelta { text },
+            kind,
         };
         if let Some(sender) = self.sender.get() {
             let _ = sender.send(event);

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, DecisionProvider, DecisionRequest, DecisionResponse, DecisionUsage,
     ModelRequest, ModelResponse, Provider, ProviderError, ProviderErrorKind, RequestKind,
-    RequestUsage, TextCallback, Usage, capture_request_usage, record_request_usage,
+    RequestUsage, StreamCallback, Usage, capture_request_usage, record_request_usage,
 };
 use bubblepaw_runner::provider::ProviderRegistry;
 use std::{sync::Arc, time::Duration};
@@ -45,7 +45,7 @@ impl Provider for Fixture {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.response(&request.model)

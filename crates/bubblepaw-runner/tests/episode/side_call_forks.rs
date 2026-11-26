@@ -6,7 +6,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CacheTiers, CancellationToken, MessageOrigin, ModelRequest, ModelResponse, Provider,
-    ReasoningEffort, Role, Store, TextCallback, ToolCall, ToolDefinition, Usage,
+    ReasoningEffort, Role, Store, StreamCallback, ToolCall, ToolDefinition, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -57,7 +57,7 @@ impl Provider for Capture {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let decision = request.system_prompt.contains("Allowed options:");

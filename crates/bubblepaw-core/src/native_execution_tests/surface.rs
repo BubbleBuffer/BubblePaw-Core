@@ -175,7 +175,7 @@ async fn single_tool_call_waits_for_its_own_run_when_another_run_starts() -> Res
         async fn generate(
             &self,
             _: ModelRequest,
-            _: TextCallback,
+            _: StreamCallback,
             cancellation: CancellationToken,
         ) -> Result<ModelResponse> {
             self.calls.fetch_add(1, Ordering::SeqCst);

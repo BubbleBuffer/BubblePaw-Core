@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, Role,
-    RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolRegistry,
+    RunOptions, Store, StreamCallback, ToolCall, ToolContext, ToolRegistry,
 };
 use bubblepaw_runner::{
     artifacts::ArtifactStore,
@@ -37,7 +37,7 @@ impl Provider for Scripted {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         let index = request

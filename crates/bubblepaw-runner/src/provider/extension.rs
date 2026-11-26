@@ -7,7 +7,7 @@ use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Capabilities, CursorResets, ModelInfo, ModelRequest, ModelResponse,
-    Provider, ProviderError, ProviderErrorKind, TextCallback, Usage,
+    Provider, ProviderError, ProviderErrorKind, StreamCallback, StreamEvent, Usage,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -70,7 +70,7 @@ struct Settled {
 }
 struct Pending {
     reply: oneshot::Sender<Settled>,
-    on_text: Option<TextCallback>,
+    on_text: Option<StreamCallback>,
 }
 struct Shared {
     id: String,
@@ -118,7 +118,7 @@ impl Shared {
                     .get(&id)
                     .and_then(|pending| pending.on_text.clone());
                 if let Some(callback) = callback {
-                    callback(text);
+                    callback(StreamEvent::TextDelta(text));
                 }
             }
             return;
@@ -250,7 +250,7 @@ impl Connection {
         &self,
         method: &str,
         params: Value,
-        on_text: Option<TextCallback>,
+        on_text: Option<StreamCallback>,
     ) -> Result<(u64, oneshot::Receiver<Settled>)> {
         let id = self.shared.next_id.fetch_add(1, Ordering::SeqCst);
         let (reply, receiver) = oneshot::channel();
@@ -372,7 +372,7 @@ impl ExtensionProvider {
         &self,
         method: &str,
         mut request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         if cancellation.is_cancelled() {
@@ -418,7 +418,7 @@ impl ExtensionProvider {
             return Err(ProviderError::new(ProviderErrorKind::Transient, "cancelled").into());
         }
         let (text_tx, mut text_rx) = mpsc::unbounded_channel::<String>();
-        let queue_text: TextCallback = Arc::new(move |text| {
+        let queue_text: StreamCallback = bubblepaw_core::text_callback(move |text| {
             let _ = text_tx.send(text.to_owned());
         });
         let mut meter = super::PhysicalRequest::new(&self.config.id, &request.model);
@@ -526,7 +526,7 @@ impl Provider for ExtensionProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.call("step", request, on_text, cancellation).await

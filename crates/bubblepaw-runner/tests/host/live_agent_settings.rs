@@ -3,7 +3,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     Approval, ApprovalMode, ApprovalPolicy, CancellationToken, Harness, HarnessConfig,
-    ModelRequest, ModelResponse, Provider, Role, RunOptions, Store, TextCallback, Tool, ToolCall,
+    ModelRequest, ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, Tool, ToolCall,
     ToolContext, ToolDefinition, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
@@ -33,7 +33,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         cancel: CancellationToken,
     ) -> Result<ModelResponse> {
         let (index, input) = request

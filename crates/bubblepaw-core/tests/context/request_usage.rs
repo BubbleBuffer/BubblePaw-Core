@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider,
     ProviderError, ProviderErrorKind, RequestKind, RequestUsage, Role, RunOptions, Store,
-    TextCallback, ToolRegistry, Usage, capture_request_usage_with_store, record_request_usage,
+    StreamCallback, ToolRegistry, Usage, capture_request_usage_with_store, record_request_usage,
     request_usage_count, with_request_usage_account, with_request_usage_provider,
 };
 use rusqlite::Connection;
@@ -29,7 +29,7 @@ impl Provider for Model {
     async fn generate(
         &self,
         _: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if self.physical {

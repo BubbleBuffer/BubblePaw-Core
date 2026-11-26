@@ -1,4 +1,5 @@
 use super::*;
+use bubblepaw_core::StreamEvent;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 struct Script {
@@ -10,15 +11,16 @@ impl Provider for Script {
     async fn generate(
         &self,
         _: ModelRequest,
-        text: TextCallback,
+        text: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         if self.fail {
             bail!("provider-private-failure");
         }
-        text("hello");
+        text(StreamEvent::TextDelta("hello"));
         let round = self.round.fetch_add(1, Ordering::Relaxed);
         Ok(ModelResponse {
+            thinking: String::new(),
             text: if round == 0 {
                 String::new()
             } else {

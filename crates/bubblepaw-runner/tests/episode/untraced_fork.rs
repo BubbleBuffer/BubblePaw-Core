@@ -5,7 +5,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, Harness, HarnessConfig, ModelRequest, ModelResponse, Provider, RunOptions,
-    Store, TextCallback, ToolRegistry, Usage,
+    Store, StreamCallback, ToolRegistry, Usage,
 };
 use bubblepaw_runner::{
     episode_models::{
@@ -65,7 +65,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.0.lock().unwrap().push(request);

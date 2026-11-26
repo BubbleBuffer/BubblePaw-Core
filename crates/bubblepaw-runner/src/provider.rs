@@ -16,6 +16,8 @@ pub(crate) use opencode_session::{codex_cache_headers, opencode_session, session
 mod registry;
 pub(crate) mod replay_state;
 mod responses_body;
+mod responses_rounds;
+use responses_rounds::{is_length_stop, join_rounds};
 mod retry;
 mod scripted;
 mod stream;
@@ -24,8 +26,8 @@ use anyhow::{Context, Result, anyhow, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CacheMode, CancellationToken, Capabilities, ModelInfo, ModelRequest, ModelResponse, Provider,
-    ProviderError, ProviderErrorKind, ReasoningEffort, Role, TextCallback, ToolCall, ToolSurface,
-    Usage,
+    ProviderError, ProviderErrorKind, ReasoningEffort, Role, StreamCallback, StreamEvent, ToolCall,
+    ToolSurface, Usage,
 };
 pub use chat::ChatCompletionsProvider;
 pub(crate) use decisions::with_decision_usage;
@@ -120,7 +122,7 @@ impl ResponsesProvider {
     async fn attempt(
         &self,
         body: &Value,
-        on_text: &TextCallback,
+        on_text: &StreamCallback,
         cancellation: &CancellationToken,
         key: &str,
         retried_auth: &mut bool,
@@ -239,6 +241,7 @@ impl ResponsesProvider {
         let mut reader = SseReader::new(response);
         let mut batch = TextBatch::new(on_text.clone());
         let mut text = String::new();
+        let mut thinking = String::new();
         let mut items = BTreeMap::<u64, Value>::new();
         let mut completed = None;
         let mut published = false;
@@ -260,6 +263,15 @@ impl ResponsesProvider {
                         text.push_str(delta);
                         batch.push(delta);
                         published |= !delta.is_empty();
+                    }
+                    "response.reasoning_summary_part.added" if !thinking.is_empty() => {
+                        thinking.push_str(stream::THINKING_BREAK);
+                        batch.push_thinking(stream::THINKING_BREAK);
+                    }
+                    "response.reasoning_summary_text.delta" => {
+                        let delta = event["delta"].as_str().unwrap_or("");
+                        thinking.push_str(delta);
+                        batch.push_thinking(delta);
                     }
                     "response.output_item.done" => {
                         batch.flush();
@@ -426,8 +438,19 @@ impl ResponsesProvider {
                 provider_state.as_mut().unwrap()["items"].as_array_mut().unwrap().push(json!({"type":"message","role":"assistant","content":[{"type":"output_text","text":final_text}]}));
             }
         }
+        if thinking.is_empty() {
+            // No summary deltas streamed: read the summaries of the finished reasoning items.
+            let summaries = provider_state.as_ref().unwrap()["items"].as_array().into_iter().flatten()
+                .filter(|item| item["type"] == "reasoning")
+                .flat_map(|item| item["summary"].as_array().into_iter().flatten())
+                .filter_map(|part| part["text"].as_str().filter(|text| !text.is_empty()));
+            thinking = summaries.collect::<Vec<_>>().join(stream::THINKING_BREAK);
+            if !thinking.is_empty() {
+                on_text(StreamEvent::ThinkingDelta(&thinking));
+            }
+        }
         if !published && !final_text.is_empty() {
-            on_text(&final_text);
+            on_text(StreamEvent::TextDelta(&final_text));
         }
         if published && final_text != text {
             return Err(classify(
@@ -438,6 +461,7 @@ impl ResponsesProvider {
         Ok((
             ModelResponse {
                 text: final_text,
+                thinking,
                 tool_calls: calls,
                 last_request_usage: Some(bubblepaw_core::LastRequestUsage {
                     input_tokens: response["usage"]["input_tokens"].as_u64(),
@@ -464,54 +488,6 @@ impl ResponsesProvider {
     }
 }
 
-/// Whether a Responses object stopped on the output limit (a partial reply).
-fn is_length_stop(response: &Value) -> bool {
-    response["status"] == "incomplete"
-        && response["incomplete_details"]["reason"] == "max_output_tokens"
-}
-
-/// Joins the rounds of one reply. A single round is returned unchanged. For
-/// several rounds, the stored items keep reasoning from every round and carry
-/// one assistant message with the joined text, so replay does not repeat text.
-fn join_rounds(mut rounds: Vec<ModelResponse>) -> ModelResponse {
-    if rounds.len() == 1 {
-        return rounds.remove(0);
-    }
-    let mut text = String::new();
-    let mut total = Usage::default();
-    let mut any_usage = false;
-    let mut items = Vec::new();
-    let mut tool_calls = Vec::new();
-    let mut last_request_usage = None;
-    let mut quota = Vec::new();
-    for round in rounds {
-        text.push_str(&round.text);
-        if let Some(part) = &round.usage {
-            total.add(part);
-            any_usage = true;
-        }
-        if let Some(list) = round
-            .provider_state
-            .as_ref()
-            .and_then(|state| state["items"].as_array())
-        {
-            // Preserve native ordering, IDs and opaque metadata across ALL
-            // rounds. Slim references remove the canonical text duplication.
-            items.extend(list.iter().cloned());
-        }
-        tool_calls = round.tool_calls;
-        last_request_usage = round.last_request_usage;
-        quota.extend(round.quota);
-    }
-    ModelResponse {
-        text,
-        tool_calls,
-        usage: any_usage.then_some(total),
-        last_request_usage,
-        quota,
-        provider_state: Some(json!({"adapter":"responses","items":items})),
-    }
-}
 #[async_trait]
 impl Provider for ResponsesProvider {
     fn models(&self) -> Vec<ModelInfo> {
@@ -536,7 +512,7 @@ impl Provider for ResponsesProvider {
     async fn generate_decision(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.generate_body(request, true, on_text, cancellation)
@@ -545,7 +521,7 @@ impl Provider for ResponsesProvider {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.generate_body(request, false, on_text, cancellation)
@@ -591,7 +567,7 @@ impl ResponsesProvider {
         &self,
         request: ModelRequest,
         decision: bool,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let (on_text, published) = track_text_publication(on_text);
@@ -669,7 +645,7 @@ impl ResponsesProvider {
     async fn send_round(
         &self,
         body: &Value,
-        on_text: &TextCallback,
+        on_text: &StreamCallback,
         cancellation: &CancellationToken,
         published: &AtomicBool,
         session: Option<&str>,
@@ -690,14 +666,14 @@ impl ResponsesProvider {
 }
 
 /// Publication follows listener delivery, including prior continuation rounds.
-fn track_text_publication(on_text: TextCallback) -> (TextCallback, Arc<AtomicBool>) {
+fn track_text_publication(on_text: StreamCallback) -> (StreamCallback, Arc<AtomicBool>) {
     let published = Arc::new(AtomicBool::new(false));
     let signal = published.clone();
-    let listener: TextCallback = Arc::new(move |text| {
-        if !text.is_empty() {
+    let listener: StreamCallback = Arc::new(move |event| {
+        if matches!(event, StreamEvent::TextDelta(text) if !text.is_empty()) {
             signal.store(true, Ordering::Release);
         }
-        on_text(text);
+        on_text(event);
     });
     (listener, published)
 }

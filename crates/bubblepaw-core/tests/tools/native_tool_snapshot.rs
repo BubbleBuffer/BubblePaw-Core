@@ -3,7 +3,7 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use bubblepaw_core::{
     CancellationToken, ContextPreparation, ExecutionMode, Harness, HarnessConfig, ModelRequest,
-    ModelResponse, PrepareCall, PreparedContext, Provider, Role, RunOptions, Store, TextCallback,
+    ModelResponse, PrepareCall, PreparedContext, Provider, Role, RunOptions, Store, StreamCallback,
     Tool, ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use serde_json::{Value, json};
@@ -24,7 +24,7 @@ impl Provider for Script {
     async fn generate(
         &self,
         request: ModelRequest,
-        _: TextCallback,
+        _: StreamCallback,
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         self.requests.lock().unwrap().push(request);

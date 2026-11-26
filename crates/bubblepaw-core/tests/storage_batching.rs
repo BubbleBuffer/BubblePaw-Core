@@ -110,7 +110,7 @@ impl bubblepaw_core::Provider for Reuse {
     async fn generate(
         &self,
         request: bubblepaw_core::ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         assert!(request.messages[0].text().ends_with("call\n</harness>"));
@@ -182,7 +182,7 @@ impl bubblepaw_core::Provider for PlainModel {
     async fn generate(
         &self,
         _: bubblepaw_core::ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         Ok(bubblepaw_core::ModelResponse {
@@ -367,7 +367,7 @@ impl bubblepaw_core::Provider for NativeModel {
     async fn generate(
         &self,
         request: bubblepaw_core::ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         Ok(
@@ -542,7 +542,7 @@ impl bubblepaw_core::Provider for PendingModel {
     async fn generate(
         &self,
         _: bubblepaw_core::ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         std::future::pending().await
@@ -554,7 +554,7 @@ impl bubblepaw_core::Provider for FinalModel {
     async fn generate(
         &self,
         _: bubblepaw_core::ModelRequest,
-        _: bubblepaw_core::TextCallback,
+        _: bubblepaw_core::StreamCallback,
         _: bubblepaw_core::CancellationToken,
     ) -> Result<bubblepaw_core::ModelResponse> {
         Ok(bubblepaw_core::ModelResponse {

@@ -3,8 +3,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
     Approval, CancellationToken, Harness, HarnessConfig, MessageOrigin, ModelRequest,
-    ModelResponse, Provider, Role, RunOptions, Store, TextCallback, Tool, ToolCall, ToolContext,
-    ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    ModelResponse, Provider, Role, RunOptions, Store, StreamCallback, StreamEvent, Tool, ToolCall,
+    ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
     agents::{AgentProfile, AgentRegistry, AgentTools},
@@ -33,7 +33,7 @@ impl Provider for Probe {
     async fn generate(
         &self,
         request: ModelRequest,
-        on_text: TextCallback,
+        on_text: StreamCallback,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         let input = request
@@ -51,7 +51,7 @@ impl Provider for Probe {
             anyhow::bail!("synthetic failure");
         }
         if input == "stream-timeout" {
-            on_text("transient unfinished child fragment");
+            on_text(StreamEvent::TextDelta("transient child fragment"));
             self.entered.send(request.session_id.clone())?;
             cancellation.cancelled().await;
             anyhow::bail!("synthetic streaming cancellation");
@@ -621,7 +621,7 @@ async fn streaming_timeout_keeps_partial_result_out_of_durable_parent_notice() -
     fixture.root.wait_for_idle(&fixture.parent).await?;
     let notices = fixture.notices(&fixture.parent);
     assert!(notices[0].contains("status timed_out"));
-    assert!(!notices[0].contains("transient unfinished child fragment"));
+    assert!(!notices[0].contains("transient child fragment"));
     let live = fixture
         .agents
         .wait(
@@ -631,15 +631,13 @@ async fn streaming_timeout_keeps_partial_result_out_of_durable_parent_notice() -
         )
         .await?;
     assert_eq!(live["status"], "timed_out");
-    assert_eq!(live["text"], "transient unfinished child fragment");
+    assert_eq!(live["text"], "transient child fragment");
     assert!(
         fixture
             .store
             .messages(child["sessionId"].as_str().unwrap())?
             .iter()
-            .all(|message| !message
-                .text()
-                .contains("transient unfinished child fragment"))
+            .all(|message| !message.text().contains("transient child fragment"))
     );
     Ok(())
 }

@@ -209,7 +209,7 @@ async fn transient_retry_keeps_native_optional_tools_and_normalizes_calls() {
     let result = registry
         .generate(
             request(),
-            Arc::new(move |delta| sink.lock().unwrap().push_str(delta)),
+            bubblepaw_core::text_callback(move |delta| sink.lock().unwrap().push_str(delta)),
             CancellationToken::new(),
         )
         .await
@@ -497,7 +497,7 @@ async fn published_stream_failure_does_not_retry() {
     let error = provider
         .generate(
             request(),
-            Arc::new(move |s| sink.lock().unwrap().push_str(s)),
+            bubblepaw_core::text_callback(move |s| sink.lock().unwrap().push_str(s)),
             CancellationToken::new(),
         )
         .await
@@ -1007,7 +1007,7 @@ async fn failed_and_error_sse_events_are_typed_and_never_retried() {
                 let error = provider
                     .generate(
                         request(),
-                        Arc::new(move |delta| sink.lock().unwrap().push_str(delta)),
+                        bubblepaw_core::text_callback(move |d| sink.lock().unwrap().push_str(d)),
                         CancellationToken::new(),
                     )
                     .await
@@ -1067,7 +1067,7 @@ async fn continuation_failure_after_delivery_is_marked_and_never_retried() {
         let error = provider
             .generate(
                 request(),
-                Arc::new(move |delta| sink.lock().unwrap().push_str(delta)),
+                bubblepaw_core::text_callback(move |delta| sink.lock().unwrap().push_str(delta)),
                 CancellationToken::new(),
             )
             .await
