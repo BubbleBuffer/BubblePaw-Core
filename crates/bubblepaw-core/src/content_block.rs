@@ -54,14 +54,18 @@ thread_local! {
     static PLAIN_CONTENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Runs `f` with every `Message.content` serialized as the plain string older
+/// Runs `f` (a synchronous closure, so no await can run inside) with every `Message.content` serialized as the plain string older
 /// readers expect. Size accounting and the formats read by programs outside this
 /// repository use it, so their bytes do not depend on the list form.
 pub fn plain_content<R>(f: impl FnOnce() -> R) -> R {
-    let before = PLAIN_CONTENT.with(|flag| flag.replace(true));
-    let result = f();
-    PLAIN_CONTENT.with(|flag| flag.set(before));
-    result
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            PLAIN_CONTENT.with(|flag| flag.set(self.0));
+        }
+    }
+    let _restore = Restore(PLAIN_CONTENT.with(|flag| flag.replace(true)));
+    f()
 }
 
 /// serde `with` module for `Message.content`.
@@ -81,7 +85,10 @@ pub(crate) mod wire {
         }
         Ok(match Form::deserialize(deserializer)? {
             Form::Text(text) => text_blocks(text),
-            Form::Blocks(blocks) => blocks,
+            Form::Blocks(mut blocks) => {
+                blocks.retain(|ContentBlock::Text { text }| !text.is_empty());
+                blocks
+            }
         })
     }
 

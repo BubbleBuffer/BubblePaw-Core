@@ -71,5 +71,13 @@ fn rows_are_written_as_block_lists_and_old_string_rows_still_read_back() -> Resu
     drop(conn);
     let store = Store::open(directory.path().join("chat.db"))?;
     assert_eq!(read(&store)?, texts);
+    // An empty text block reads as no block, so it equals an emptied row.
+    let mut empty = serde_json::to_value(stored_message(sid, "e", Role::User, ""))?;
+    empty["content"] = json!([{"type":"text","text":""}]);
+    assert!(
+        serde_json::from_value::<bubblepaw_core::Message>(empty)?
+            .content
+            .is_empty()
+    );
     Ok(())
 }
