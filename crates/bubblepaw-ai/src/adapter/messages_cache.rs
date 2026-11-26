@@ -358,6 +358,13 @@ mod tests {
         let marks = breakpoints(&body);
         assert_eq!(marks, ["system.1", "messages.0.0", "messages.2.1"]);
         let response = report(ModelResponse::default(), Some(marks.clone()));
+        assert_eq!(
+            response
+                .provider_state
+                .as_ref()
+                .and_then(|state| state.get(crate::BREAKPOINTS_KEY)),
+            Some(&json!(marks)),
+        );
         assert_eq!(response.reported_cache_breakpoints(), Some(marks));
     }
 }

@@ -541,7 +541,7 @@ be tested; a server cache hit is still best effort and must be measured.
 Source: [runtime](../crates/bubblepaw-core/src/runtime.rs),
 [Chat](../crates/bubblepaw-ai/src/adapter/chat.rs),
 [Messages](../crates/bubblepaw-ai/src/adapter/messages.rs),
-[Responses](../crates/bubblepaw-runner/src/provider.rs),
+[Responses](../crates/bubblepaw-ai/src/adapter/responses.rs),
 [memory](../crates/bubblepaw-runner/src/memory_files.rs),
 [skills](../crates/bubblepaw-runner/src/skills.rs),
 [live capabilities](../crates/bubblepaw-runner/src/live_config.rs), and

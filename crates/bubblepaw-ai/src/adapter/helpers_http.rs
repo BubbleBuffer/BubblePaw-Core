@@ -59,7 +59,6 @@ pub fn mark_published(error: anyhow::Error, published: bool) -> anyhow::Error {
 }
 
 /// Parse Retry-After delta-seconds or an HTTP date. Past dates mean no delay.
-
 pub fn parse_retry_after(value: &str) -> Option<Duration> {
     let value = value.trim();
     if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -130,7 +129,6 @@ pub(super) fn read_codex(path: &Path) -> Result<(String, String)> {
 }
 
 /// Provider URLs are HTTP(S) without credentials, query or fragment.
-
 pub fn validate_url(url: &str) -> Result<()> {
     let parsed = reqwest::Url::parse(url).map_err(|_| anyhow!("Invalid provider URL"))?;
     anyhow::ensure!(
