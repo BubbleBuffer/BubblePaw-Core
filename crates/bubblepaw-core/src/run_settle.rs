@@ -2,6 +2,7 @@
 //! dispatch and the steering that follows.
 use super::run_inputs::{RunInputs, RunLoop};
 use super::*;
+use crate::run_journal::{Consumed, InputScope};
 
 /// Loop state that outlives one round and is shared with the settling step.
 #[derive(Default)]

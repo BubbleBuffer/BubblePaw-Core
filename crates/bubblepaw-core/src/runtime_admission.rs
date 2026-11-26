@@ -101,7 +101,7 @@ impl Harness {
             run.model = "tool".into();
         }
         let initial_surface = self.initial_chat_surface(session_id, &options)?;
-        self.journal.run_admitted(RunAdmission {
+        self.journals.session.run_admitted(RunAdmission {
             run: &run,
             content: text.map(MessageInput::into_blocks),
             origin: options.origin,

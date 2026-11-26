@@ -3,13 +3,15 @@ use std::fs;
 use std::path::PathBuf;
 
 /// The loop holds seams and plain values: none of the harness's own vocabulary.
-/// The dispatcher it drives knows no approval type either.
+/// The run-side journal trait the loop and dispatcher share is held to the same list;
+/// the dispatcher knows no approval type either.
 #[test]
 fn run_loop_files_hold_no_harness_vocabulary() {
     const LOOP_WORDS: [&str; 6] = ["harness", "approval", "sqlite", "store.", "quota", "child"];
-    const FILES: [(&str, &[&str]); 4] = [
+    const FILES: [(&str, &[&str]); 5] = [
         ("run_loop.rs", &LOOP_WORDS),
         ("run_settle.rs", &LOOP_WORDS),
+        ("run_journal.rs", &LOOP_WORDS),
         ("dispatch.rs", &["approval"]),
         ("dispatch/calls.rs", &["approval"]),
     ];

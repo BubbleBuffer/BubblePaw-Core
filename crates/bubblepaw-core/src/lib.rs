@@ -42,6 +42,7 @@ mod quota;
 mod request_metering;
 mod request_seam;
 mod request_usage;
+mod run_journal;
 mod runtime;
 mod script;
 mod store;

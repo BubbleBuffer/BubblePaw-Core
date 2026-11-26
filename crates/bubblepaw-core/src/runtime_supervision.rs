@@ -51,7 +51,7 @@ impl Harness {
         run.status = "failed".into();
         run.ended_at = Some(now());
         run.error = Some(format!("run panicked: {}", panic_text(join)));
-        if let Err(storage_error) = self.journal.run_closed(&run.session_id, &run.id) {
+        if let Err(storage_error) = self.journals.run.run_closed(&run.session_id, &run.id) {
             let error = run.error.take().unwrap_or_default();
             run.error = Some(format!("{error}; recovery failed: {storage_error}"));
         }
@@ -71,7 +71,7 @@ impl Harness {
         // The same durable boundary an ordinary run error commits. A failure here
         // still reaches the waiters through the error text below.
         // A running run has neither text nor usage, so the event carries none.
-        let settlement = self.journal.run_finished(RunFinish {
+        let settlement = self.journals.session.run_finished(RunFinish {
             run: &run,
             result_message_id: None,
             final_message: None,

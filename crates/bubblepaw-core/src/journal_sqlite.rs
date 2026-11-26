@@ -1,8 +1,9 @@
 //! The journal over the SQLite store and the event log: what the run loop wrote
 //! directly before the seam, with the same transactions and events.
 use crate::event_log::{ContentRef, Log};
-use crate::journal::{Consumed, InputScope, Journal, RunFinish};
+use crate::journal::{RunFinish, SessionJournal};
 use crate::journal_admission::RunAdmission;
+use crate::run_journal::{Consumed, InputScope, RunJournal};
 use crate::{
     ClientInfo, EventKind, Harness, InputKind, Message, OutputRecord, QueuedInput, Run, Store,
     ToolCall, ToolResult,
@@ -17,6 +18,23 @@ pub(crate) struct SqliteJournal {
     state: Arc<crate::runtime::RuntimeState>,
 }
 
+/// The one journal seen from the shell's two sides.
+#[derive(Clone)]
+pub(crate) struct Journals {
+    pub(crate) session: Arc<dyn SessionJournal>,
+    pub(crate) run: Arc<dyn RunJournal>,
+}
+
+impl Journals {
+    pub(crate) fn new(store: Store, log: Arc<Log>) -> Self {
+        let journal = Arc::new(SqliteJournal::new(store, log));
+        Self {
+            session: journal.clone(),
+            run: journal,
+        }
+    }
+}
+
 impl SqliteJournal {
     pub(crate) fn new(store: Store, log: Arc<Log>) -> Self {
         let state = store.runtime();
@@ -24,7 +42,7 @@ impl SqliteJournal {
     }
 }
 
-impl Journal for SqliteJournal {
+impl SessionJournal for SqliteJournal {
     fn run_admitted(&self, admission: RunAdmission<'_>) -> Result<()> {
         let RunAdmission {
             run,
@@ -102,6 +120,71 @@ impl Journal for SqliteJournal {
             },
         )
     }
+    fn run_finished(&self, finish: RunFinish<'_>) -> Result<()> {
+        let RunFinish {
+            run,
+            result_message_id,
+            final_message,
+            origin,
+            settles_session,
+        } = finish;
+        // The run ends here: what it waited to write goes in this commit or nowhere.
+        let (usage, request_ids) = self.state.usage.take(&run.id);
+        let (usage, request_ids) = (usage.as_slice(), request_ids.as_slice());
+        self.log
+            .commit(&self.store, &run.session_id, &run.id, origin, |tx| {
+                if let Some(message) = final_message {
+                    Store::insert_message(tx, message)?;
+                    Store::insert_message_request_usage_tx(tx, message, usage, request_ids)?;
+                } else {
+                    Store::insert_request_usage_tx(tx, usage)?;
+                }
+                Store::finish_run_tx(tx, run, result_message_id)?;
+                let mut events = vec![(
+                    EventKind::RunFinished {
+                        status: run.status.clone(),
+                        text: run.text.clone(),
+                        error: run.error.clone(),
+                        usage: run.usage.clone(),
+                    },
+                    Some(ContentRef::Run {
+                        run_id: run.id.clone(),
+                    }),
+                )];
+                if settles_session {
+                    events.push((EventKind::SessionSettled {}, None));
+                }
+                Ok(((), events))
+            })
+    }
+    fn run_continued(&self, next: &Run) -> Result<()> {
+        self.log
+            .commit(&self.store, &next.session_id, &next.id, None, |tx| {
+                Store::start_run_tx(tx, next)?;
+                Store::consume_tx(tx, &next.session_id, false, true)?;
+                Ok((
+                    (),
+                    vec![(
+                        EventKind::RunStarted {
+                            model: next.model.clone(),
+                        },
+                        None,
+                    )],
+                ))
+            })
+    }
+    fn session_settled(&self, session_id: &str, run_id: &str) {
+        self.log.emit(
+            &self.store,
+            session_id,
+            run_id,
+            EventKind::SessionSettled {},
+            None,
+        );
+    }
+}
+
+impl RunJournal for SqliteJournal {
     fn input_pending(&self, session_id: &str, scope: InputScope) -> Result<bool> {
         match scope {
             InputScope::Any => self.store.has_pending(session_id),
@@ -249,68 +332,6 @@ impl Journal for SqliteJournal {
                 ))
             },
         )
-    }
-    fn run_finished(&self, finish: RunFinish<'_>) -> Result<()> {
-        let RunFinish {
-            run,
-            result_message_id,
-            final_message,
-            origin,
-            settles_session,
-        } = finish;
-        // The run ends here: what it waited to write goes in this commit or nowhere.
-        let (usage, request_ids) = self.state.usage.take(&run.id);
-        let (usage, request_ids) = (usage.as_slice(), request_ids.as_slice());
-        self.log
-            .commit(&self.store, &run.session_id, &run.id, origin, |tx| {
-                if let Some(message) = final_message {
-                    Store::insert_message(tx, message)?;
-                    Store::insert_message_request_usage_tx(tx, message, usage, request_ids)?;
-                } else {
-                    Store::insert_request_usage_tx(tx, usage)?;
-                }
-                Store::finish_run_tx(tx, run, result_message_id)?;
-                let mut events = vec![(
-                    EventKind::RunFinished {
-                        status: run.status.clone(),
-                        text: run.text.clone(),
-                        error: run.error.clone(),
-                        usage: run.usage.clone(),
-                    },
-                    Some(ContentRef::Run {
-                        run_id: run.id.clone(),
-                    }),
-                )];
-                if settles_session {
-                    events.push((EventKind::SessionSettled {}, None));
-                }
-                Ok(((), events))
-            })
-    }
-    fn run_continued(&self, next: &Run) -> Result<()> {
-        self.log
-            .commit(&self.store, &next.session_id, &next.id, None, |tx| {
-                Store::start_run_tx(tx, next)?;
-                Store::consume_tx(tx, &next.session_id, false, true)?;
-                Ok((
-                    (),
-                    vec![(
-                        EventKind::RunStarted {
-                            model: next.model.clone(),
-                        },
-                        None,
-                    )],
-                ))
-            })
-    }
-    fn session_settled(&self, session_id: &str, run_id: &str) {
-        self.log.emit(
-            &self.store,
-            session_id,
-            run_id,
-            EventKind::SessionSettled {},
-            None,
-        );
     }
     fn partial_reply_kept(&self, message: &Message) -> Result<()> {
         self.log.settle_text(&message.session_id, || {

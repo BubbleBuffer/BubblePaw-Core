@@ -3,6 +3,7 @@
 use super::tool_source::ToolSource;
 use super::*;
 use crate::live_events::LiveEvents;
+use crate::run_journal::RunJournal;
 
 /// The plain config values the loop reads.
 #[derive(Clone)]
@@ -16,7 +17,7 @@ pub(super) struct LoopLimits {
 
 /// The loop for one session shell: the seams it writes and asks through, and its limits.
 pub(super) struct RunLoop {
-    pub(super) journal: Arc<dyn Journal>,
+    pub(super) journal: Arc<dyn RunJournal>,
     pub(super) live: Arc<dyn LiveEvents>,
     pub(super) request_context: Arc<dyn RequestContext>,
     /// The default model and the request provider, asked afresh each round.
@@ -62,7 +63,7 @@ impl Harness {
             Arc::new(move || (model.clone(), provider.clone()))
         });
         RunLoop {
-            journal: self.journal.clone(),
+            journal: self.journals.run.clone(),
             live: self.live.clone(),
             request_context: self.request_context.clone(),
             provider,
@@ -82,7 +83,11 @@ impl Harness {
         options: &RunOptions,
         single_tool: bool,
     ) -> Box<NewDispatcher> {
-        let (journal, live, gate) = (self.journal.clone(), self.live.clone(), self.stock_gate());
+        let (journal, live, gate) = (
+            self.journals.run.clone(),
+            self.live.clone(),
+            self.stock_gate(),
+        );
         let observation = self.config.observation.clone();
         let max_result_bytes = self.config.max_tool_result_bytes;
         let setup = crate::ApprovalPolicy::context_setup(

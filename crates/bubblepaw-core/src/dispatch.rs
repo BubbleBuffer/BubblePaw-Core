@@ -22,7 +22,7 @@ pub(crate) type ContextSetup = Arc<dyn Fn(&mut ToolContext) + Send + Sync>;
 #[derive(Clone)]
 pub struct ToolDispatcher {
     tools: ToolRegistry,
-    journal: Arc<dyn crate::journal::Journal>,
+    journal: Arc<dyn crate::run_journal::RunJournal>,
     gate: Arc<dyn ToolGate>,
     live: Arc<dyn LiveEvents>,
     max_result_bytes: usize,
@@ -45,7 +45,7 @@ impl ToolDispatcher {
         tools: ToolRegistry,
         max_result_bytes: usize,
         observation: Option<Observation>,
-        journal: Arc<dyn crate::journal::Journal>,
+        journal: Arc<dyn crate::run_journal::RunJournal>,
         gate: Arc<dyn ToolGate>,
         live: Arc<dyn LiveEvents>,
         context_setup: ContextSetup,

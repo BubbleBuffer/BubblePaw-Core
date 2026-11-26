@@ -1,4 +1,3 @@
-use crate::journal::{Consumed, InputScope, Journal, RunFinish};
 use crate::request_seam::{Built, Draft, Note, Release, RequestContext};
 use crate::{
     CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
@@ -6,6 +5,7 @@ use crate::{
     RunOptions, Store, ToolCall, ToolDispatcher, ToolRegistry, ToolResult, Usage, id, now,
     stream::Paragraphs,
 };
+use crate::{journal::RunFinish, journal_sqlite::Journals};
 use anyhow::{Context, Result, anyhow, ensure};
 use async_trait::async_trait;
 use std::{
@@ -264,7 +264,7 @@ pub struct Harness {
     selection: runtime_mode::ToolSelection,
     config: HarnessConfig,
     state: Arc<RuntimeState>,
-    journal: Arc<dyn Journal>,
+    journals: Journals,
     live: Arc<dyn crate::live_events::LiveEvents>,
     request_context: Arc<dyn RequestContext>,
 }
@@ -277,10 +277,7 @@ impl Harness {
     ) -> Self {
         let state = store.runtime();
         state.log.init(config.event_capacity);
-        let journal = Arc::new(crate::journal_sqlite::SqliteJournal::new(
-            store.clone(),
-            state.log.clone(),
-        ));
+        let journals = Journals::new(store.clone(), state.log.clone());
         let live: Arc<dyn crate::live_events::LiveEvents> = state.log.clone();
         let selection = runtime_mode::ToolSelection::new(
             store.clone(),
@@ -303,7 +300,7 @@ impl Harness {
             selection,
             config,
             state,
-            journal,
+            journals,
             live,
             request_context,
         };
@@ -730,10 +727,11 @@ impl Harness {
                 && !cancellation.is_cancelled()
                 && !self.state.stopping.load(Ordering::Relaxed)
                 && self
-                    .journal
-                    .input_pending(&run.session_id, InputScope::Any)
+                    .journals
+                    .run
+                    .input_pending(&run.session_id, crate::run_journal::InputScope::Any)
                     .unwrap_or(false);
-            let checkpoint = self.journal.run_finished(RunFinish {
+            let checkpoint = self.journals.session.run_finished(RunFinish {
                 run: &run,
                 result_message_id: result_message_id.as_deref(),
                 final_message: final_message.as_ref(),
@@ -748,7 +746,7 @@ impl Harness {
                 // Input queued during a script run is answered by a model run.
                 options.script = None;
                 let next = self.new_run(&run.session_id, &options);
-                if self.journal.run_continued(&next).is_ok() {
+                if self.journals.session.run_continued(&next).is_ok() {
                     if let Some(value) = active.get_mut(&run.session_id) {
                         value.run_id = next.id.clone();
                     }
@@ -756,7 +754,9 @@ impl Harness {
                     drop(active);
                     continue;
                 }
-                self.journal.session_settled(&run.session_id, &run.id);
+                self.journals
+                    .session
+                    .session_settled(&run.session_id, &run.id);
             }
             // Admission waits for this final phase without holding the active
             // lock, allowing archival to inspect other roots. Idle notification
