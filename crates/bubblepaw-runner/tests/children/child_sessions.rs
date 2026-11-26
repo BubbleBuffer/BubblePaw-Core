@@ -447,7 +447,7 @@ async fn running_send_steers_same_run_without_a_second_effect() -> Result<()> {
     assert_eq!(sent["status"], "running");
     let accepted = event_matching(&mut events, |event| {
         event.session_id == child["sessionId"]
-            && matches!(&event.kind, EventKind::SteeringAccepted { text } if text == "steered")
+            && matches!(&event.kind, EventKind::SteeringAccepted { text, .. } if text == "steered")
     })
     .await?;
     assert_eq!(accepted.session_id, child["sessionId"]);

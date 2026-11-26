@@ -1,7 +1,7 @@
 use crate::support;
 
 use anyhow::Result;
-use bubblepaw_core::{ContextView, Message, Role, Store};
+use bubblepaw_core::{ContextView, InputFileRef, Message, Role, Store};
 use rusqlite::{Connection, params};
 use serde_json::json;
 use support::stored_message;
@@ -141,6 +141,43 @@ fn canonical_prefix_ids_preserve_clipped_content_and_provider_bytes() -> Result<
         serde_json::to_vec(&captured)?
     );
     assert!(!stored_view(dir.path())?.contains("assistant text with enough words"));
+
+    // A rendered user message with a file block reads back as the same blocks and model text.
+    let mut upload = stored_message(
+        &session.id,
+        "upload",
+        Role::User,
+        "Canonical user text with enough words to use byte references.",
+    );
+    upload
+        .content
+        .push(bubblepaw_core::ContentBlock::file(InputFileRef {
+            id: "f1".into(),
+            name: "a.txt".into(),
+            size: 2,
+            path: "p".into(),
+            url: "u".into(),
+            text: true,
+            inline: Some("hi".into()),
+            omitted: None,
+        }));
+    store.append_batch(&[upload.clone()])?;
+    let mut clipped = upload.clone();
+    clipped.set_text(format!("Clipped: {}", &upload.body_text()[10..]));
+    clipped.content.extend(upload.content[1..].iter().cloned());
+    let captured = view(&session.id, vec![clipped.clone()]);
+    store.save_context_view(&captured)?;
+    store.flush_serving()?;
+    let read = store.context_view(&session.id)?.unwrap();
+    assert_eq!(read.prefix[0].content, clipped.content);
+    assert_eq!(read.prefix[0].text(), clipped.text());
+    assert_eq!(
+        read.prefix[0]
+            .text()
+            .matches("BubblePawAttachments")
+            .count(),
+        2
+    );
     Ok(())
 }
 

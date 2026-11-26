@@ -186,7 +186,7 @@ impl Harness {
     ) -> Result<Run> {
         self.admit_execution(
             session,
-            Some(text.into()),
+            Some(MessageInput::from(text.into())),
             options,
             false,
             None,
@@ -218,7 +218,7 @@ impl Harness {
                 id: id(),
                 session_id: session.into(),
                 kind: InputKind::Followup,
-                text: reminder.text.clone(),
+                content: crate::text_blocks(reminder.text.clone()),
                 state: "pending".into(),
                 origin: Some(crate::MessageOrigin::Generated),
             };

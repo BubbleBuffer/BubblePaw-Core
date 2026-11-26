@@ -183,6 +183,7 @@ fn rebuild_reconciles_an_interrupted_root_delete_and_invalidates_replay() -> Res
             "doomed-run",
             crate::EventKind::FollowupQueued {
                 text: "synthetic deleted content".into(),
+                content: Vec::new(),
             },
             None,
         );
@@ -192,6 +193,7 @@ fn rebuild_reconciles_an_interrupted_root_delete_and_invalidates_replay() -> Res
             "kept-run",
             crate::EventKind::FollowupQueued {
                 text: "synthetic retained content".into(),
+                content: Vec::new(),
             },
             None,
         );

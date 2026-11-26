@@ -12,7 +12,7 @@ impl Store {
         for message in prefix {
             let value = serde_json::to_value(message)?;
             for text in [
-                message.text().into_owned(),
+                message.body_text().into_owned(),
                 serde_json::to_string(&value["tool_calls"])?,
                 serde_json::to_string(&value["provider_state"])?,
             ] {
@@ -105,7 +105,7 @@ impl Store {
         let mut selected: std::collections::BTreeSet<String> = Default::default();
         for message in prefix {
             selected.insert(message.id.clone());
-            for candidate in message.text().split('[').skip(1) {
+            for candidate in message.body_text().split('[').skip(1) {
                 if let Some((header, _)) = candidate.split_once(']') {
                     let id = header.split_once(" | ").map_or(header, |(id, _)| id);
                     if !id.is_empty() {
@@ -127,7 +127,13 @@ impl Store {
             };
             let original = Self::message_from_data(conn, &data)?;
             let id = seq.to_string();
-            Self::match_view_source(&mut sources, "messages", &id, "content", &original.text());
+            Self::match_view_source(
+                &mut sources,
+                "messages",
+                &id,
+                "content",
+                &original.body_text(),
+            );
             let value = serde_json::to_value(original)?;
             for field in ["tool_calls", "provider_state"] {
                 if let Some(value) = value.get(field) {

@@ -32,7 +32,7 @@ impl Store {
             id: id(),
             session_id: session.into(),
             kind,
-            text: reminder.text.clone(),
+            content: crate::text_blocks(reminder.text.clone()),
             state: "pending".into(),
             origin: Some(MessageOrigin::Generated),
         };

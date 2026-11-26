@@ -125,15 +125,83 @@ impl Store {
         Ok(Some(parts))
     }
 
+    /// Moves the text snapshot of every file block longer than 4096 bytes out of
+    /// `blocks` (a JSON list of content blocks) into a blob the block names.
+    pub(super) fn blob_file_inline(
+        conn: &Connection,
+        blocks: &mut serde_json::Value,
+    ) -> Result<()> {
+        for block in blocks.as_array_mut().into_iter().flatten() {
+            let inline = block["file"]["inline"]
+                .as_str()
+                .filter(|text| text.len() > 4096);
+            if let Some(inline) = inline {
+                let hash = Self::blob_put(conn, inline.as_bytes())?;
+                block["file"].as_object_mut().unwrap().remove("inline");
+                block["_inline_blob"] = serde_json::Value::String(hash);
+            }
+        }
+        Ok(())
+    }
+
+    /// The inverse of `blob_file_inline`.
+    fn restore_file_inline(conn: &Connection, blocks: &mut serde_json::Value) -> Result<()> {
+        for block in blocks.as_array_mut().into_iter().flatten() {
+            let Some(hash) = block
+                .as_object_mut()
+                .and_then(|block| block.remove("_inline_blob"))
+            else {
+                continue;
+            };
+            let hash = hash.as_str().context("Invalid file inline blob")?;
+            let inline = String::from_utf8(Self::blob_get(conn, hash)?)?;
+            block["file"]["inline"] = serde_json::Value::String(inline);
+        }
+        Ok(())
+    }
+
+    /// Stores an accepted input's body: its blocks when it has any besides text, its text otherwise.
     pub(super) fn input_content_ref(
         conn: &Connection,
-        text: &str,
+        content: &[crate::ContentBlock],
     ) -> Result<(String, &'static str)> {
-        if let Some(parts) = Self::attachment_content_parts(conn, text)? {
+        if content
+            .iter()
+            .any(|block| !matches!(block, crate::ContentBlock::Text { .. }))
+        {
+            let mut value = serde_json::to_value(content)?;
+            Self::blob_file_inline(conn, &mut value)?;
+            return Ok((
+                Self::blob_put(conn, &serde_json::to_vec(&value)?)?,
+                "blocks",
+            ));
+        }
+        let text = crate::content_body_text(content);
+        if let Some(parts) = Self::attachment_content_parts(conn, &text)? {
             Ok((Self::blob_put(conn, &serde_json::to_vec(&parts)?)?, "parts"))
         } else {
             Ok((Self::blob_put(conn, text.as_bytes())?, "text"))
         }
+    }
+
+    /// An accepted input's blocks. Rows written as text (any version before file blocks) are read
+    /// as a user message: a file envelope at the end of the text becomes file blocks.
+    pub(crate) fn input_content(
+        conn: &Connection,
+        text: &str,
+        content_blob: Option<&str>,
+        content_format: Option<&str>,
+    ) -> Result<Vec<crate::ContentBlock>> {
+        if let (Some(hash), Some("blocks")) = (content_blob, content_format) {
+            let mut value: serde_json::Value =
+                serde_json::from_slice(&Self::blob_get(conn, hash)?)?;
+            Self::restore_file_inline(conn, &mut value)?;
+            return Ok(serde_json::from_value(value)?);
+        }
+        let text = Self::input_text(conn, text, content_blob, content_format)?;
+        Ok(crate::content_block::upgrade_user_content(
+            crate::text_blocks(text),
+        ))
     }
 
     pub(crate) fn input_text(
@@ -149,6 +217,14 @@ impl Store {
         match content_format.unwrap_or("text") {
             "text" => Ok(String::from_utf8(bytes)?),
             "parts" => Self::render_content_parts(conn, serde_json::from_slice(&bytes)?),
+            // The model text, files included, as a text-format row would hold it.
+            "blocks" => Ok(crate::content_text(&Self::input_content(
+                conn,
+                text,
+                content_blob,
+                content_format,
+            )?)
+            .into_owned()),
             _ => bail!("Unknown accepted input content encoding"),
         }
     }
@@ -215,6 +291,9 @@ impl Store {
         } else if let Some(parts) = value.get("_content_parts") {
             let text = Self::render_content_parts(conn, serde_json::from_value(parts.clone())?)?;
             value["content"] = Self::content_with_text(&value["content"], text);
+        }
+        if let Some(content) = value.get_mut("content") {
+            Self::restore_file_inline(conn, content)?;
         }
         Ok(serde_json::from_value::<Message>(value)?.upgraded())
     }

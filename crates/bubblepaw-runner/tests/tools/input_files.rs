@@ -30,14 +30,14 @@ fn record_backed_large_attachments_share_blobs_with_inline_history_and_survive_c
             std::slice::from_ref(&inline.id),
         )
         .unwrap();
-    assert_eq!(files(&content)["files"][0]["inline"], text);
+    assert_eq!(files(&content.text())["files"][0]["inline"], text);
     store
         .append_batch(&[Message {
             id: "attachment-message".into(),
             session_id: session.id.clone(),
             role: Role::User,
             origin: None,
-            content: bubblepaw_core::text_blocks(content.clone()),
+            content: content.clone().into_blocks(),
             tool_calls: vec![],
             tool_call_id: None,
             provider_state: None,
@@ -52,15 +52,15 @@ fn record_backed_large_attachments_share_blobs_with_inline_history_and_survive_c
         .query_row("SELECT COUNT(*) FROM blobs", [], |r| r.get(0))
         .unwrap();
     assert_eq!(
-        count, 3,
-        "Two original payloads and one envelope descriptor"
+        count, 2,
+        "Two original payloads; the file block names the inline text by its original's blob"
     );
     let raw_bytes: i64 = connection
         .query_row("SELECT SUM(raw_bytes) FROM blobs", [], |r| r.get(0))
         .unwrap();
     assert!(
         raw_bytes < (binary.len() + text.len() + 4096) as i64,
-        "Envelope references original text rather than copying its escaped bytes"
+        "The file block references original text rather than copying its bytes"
     );
     for file in [&first, &second, &inline] {
         std::fs::remove_file(workspace.path().join(&file.path)).unwrap();
@@ -92,7 +92,10 @@ fn record_backed_large_attachments_share_blobs_with_inline_history_and_survive_c
         std::fs::read(workspace.path().join(&inline.path)).unwrap(),
         text.as_bytes()
     );
-    assert_eq!(reopened.messages(&session.id).unwrap()[0].text(), content);
+    assert_eq!(
+        reopened.messages(&session.id).unwrap()[0].text(),
+        content.text()
+    );
 }
 fn files(text: &str) -> Value {
     let json = text
@@ -113,7 +116,7 @@ fn unicode_prompt_counts_characters_and_plain_input_is_unchanged() {
     let workspace = tempfile::tempdir().unwrap();
     let storage = InputFiles::new(workspace.path(), limits).unwrap();
     let plain = "Literal <BubblePawAttachments> not trusted </BubblePawAttachments>";
-    assert_eq!(storage.prepare(&id(), plain, &[]).unwrap(), plain);
+    assert_eq!(storage.prepare(&id(), plain, &[]).unwrap().text(), plain);
 }
 
 #[test]
@@ -155,7 +158,11 @@ fn ownership_ids_count_duplicates_and_combined_budget_precede_admission() {
     );
     assert!(storage.read(&session, "../outside").is_err());
     assert!(storage.read(&session, &a.id.to_uppercase()).is_err());
-    let message = storage.prepare(&session, "", &[a.id]).unwrap();
+    let message = storage
+        .prepare(&session, "", &[a.id])
+        .unwrap()
+        .text()
+        .into_owned();
     assert!(message.starts_with("Attached files.\n"));
     assert_eq!(files(&message)["files"][0]["inline"], "1234567");
 }
@@ -177,7 +184,9 @@ fn entire_envelope_is_bounded_and_omission_never_truncates_originals() {
             "Original\r\nprompt",
             &[first.id.clone(), second.id.clone()],
         )
-        .unwrap();
+        .unwrap()
+        .text()
+        .into_owned();
     let limits = InputLimits {
         inline_tokens: tiktoken_rs::o200k_base_singleton()
             .encode_ordinary(&full["Original\r\nprompt".len()..])
@@ -192,7 +201,9 @@ fn entire_envelope_is_bounded_and_omission_never_truncates_originals() {
             "Original\r\nprompt",
             &[first.id.clone(), second.id.clone()],
         )
-        .unwrap();
+        .unwrap()
+        .text()
+        .into_owned();
     assert!(message.starts_with("Original\r\nprompt\n\n<BubblePawAttachments>"));
     let envelope = &message["Original\r\nprompt".len()..];
     assert!(
@@ -234,7 +245,9 @@ fn large_full_file_and_binary_survive_reopening_with_safe_names() {
     let restarted = InputFiles::new(workspace.path(), InputLimits::default()).unwrap();
     let message = restarted
         .prepare(&session, "inspect", &[text.id.clone(), binary.id.clone()])
-        .unwrap();
+        .unwrap()
+        .text()
+        .into_owned();
     let refs = files(&message);
     assert_eq!(refs["files"][0]["omitted"], true);
     assert!(refs["files"][0].get("inline").is_none());

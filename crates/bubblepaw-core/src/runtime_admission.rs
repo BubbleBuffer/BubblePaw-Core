@@ -4,7 +4,7 @@ impl Harness {
     pub(super) fn admit(
         &self,
         session_id: &str,
-        text: Option<String>,
+        text: Option<MessageInput>,
         options: RunOptions,
         active_storage_only: bool,
     ) -> Result<Run> {
@@ -23,7 +23,7 @@ impl Harness {
     pub(super) fn admit_execution(
         &self,
         session_id: &str,
-        text: Option<String>,
+        text: Option<MessageInput>,
         mut options: RunOptions,
         active_storage_only: bool,
         single_tool: Option<SingleToolRun>,
@@ -85,7 +85,7 @@ impl Harness {
         );
         if let Some(value) = &text {
             ensure!(
-                value.len() <= self.config.max_request_bytes,
+                value.text().len() <= self.config.max_request_bytes,
                 "Input exceeds request size limit"
             );
         }
@@ -117,7 +117,12 @@ impl Harness {
                     // A tool-only run answers no queued conversational input.
                     Store::start_run_tx(tx, &run)?;
                 } else {
-                    Store::admit_tx(tx, &run, text.as_deref(), options.origin)?;
+                    Store::admit_tx(
+                        tx,
+                        &run,
+                        text.clone().map(MessageInput::into_blocks),
+                        options.origin,
+                    )?;
                 }
                 Self::admit_reminders_tx(tx, session_id, &reminders)?;
                 Ok((

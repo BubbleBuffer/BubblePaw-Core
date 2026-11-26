@@ -504,7 +504,7 @@ async fn attachment_envelope_preserves_generated_or_typed_submission_origin() {
             .upload(&session.id, "note.txt", b"attached text")
             .unwrap();
         let envelope = input_files.prepare(&session.id, "", &[file.id]).unwrap();
-        assert!(envelope.starts_with("Attached files."));
+        assert!(envelope.text().starts_with("Attached files."));
         harness
             .prompt(
                 &session.id,

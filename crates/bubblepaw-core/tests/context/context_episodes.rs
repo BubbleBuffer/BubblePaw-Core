@@ -277,7 +277,7 @@ async fn origin_round_trips_admission_queue_restart_and_consumption() -> Result<
     assert!(!is_typed_user(users[2]));
     for queued in store.queued_inputs(&session.id)? {
         assert_eq!(queued.state, "consumed");
-        assert!(queued.text.is_empty());
+        assert!(queued.text().is_empty());
         assert!(queued.origin.is_some());
     }
     agent

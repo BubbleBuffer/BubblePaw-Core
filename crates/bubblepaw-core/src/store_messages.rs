@@ -72,7 +72,7 @@ impl Store {
             )?
             .map(|row| {
                 let (id, kind, text, state, origin, content_blob, content_format) = row?;
-                let text = Self::input_text(
+                let content = Self::input_content(
                     &conn,
                     &text,
                     content_blob.as_deref(),
@@ -82,7 +82,7 @@ impl Store {
                     id,
                     session_id: session_id.into(),
                     kind: serde_json::from_value(serde_json::Value::String(kind))?,
-                    text,
+                    content,
                     state,
                     origin: origin
                         .map(|value| serde_json::from_str(&value))

@@ -33,16 +33,16 @@ fn accepted_reminder_text_and_metadata_share_one_write_and_survive_reopen() -> R
         reminder("memory", "original raw reminder"),
     )?;
     assert_eq!(store.storage_stats()?.chat_transaction_count, before + 1);
-    assert_eq!(input.text, "original raw reminder");
+    assert_eq!(input.text(), "original raw reminder");
     assert_eq!(input.origin, Some(MessageOrigin::Generated));
-    assert_eq!(store.queued_inputs(&session.id)?[0].text, input.text);
+    assert_eq!(store.queued_inputs(&session.id)?[0].text(), input.text());
     let metadata = store.reminder_metadata(&session.id, &input.id)?.unwrap();
     assert_eq!(metadata.version, 1);
     assert_eq!(metadata.request_kind, "root");
     assert_eq!(metadata.reminders[0].kind, "memory");
     assert_eq!(
         metadata.reminders[0].text_sha256,
-        bubblepaw_core::fingerprint(input.text.as_bytes())
+        bubblepaw_core::fingerprint(input.text().as_bytes())
     );
     assert!(store.reminder_metadata(&other.id, &input.id)?.is_none());
     assert!(store.last_reminders(&session.id, "root")?.is_empty());
@@ -52,7 +52,7 @@ fn accepted_reminder_text_and_metadata_share_one_write_and_survive_reopen() -> R
         serde_json::to_value(reopened.reminder_metadata(&session.id, &input.id)?)?,
         serde_json::to_value(Some(metadata))?
     );
-    assert_eq!(reopened.queued_inputs(&session.id)?[0].text, input.text);
+    assert_eq!(reopened.queued_inputs(&session.id)?[0].text(), input.text());
     Ok(())
 }
 

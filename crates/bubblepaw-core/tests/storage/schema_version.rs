@@ -43,7 +43,7 @@ fn populated(dir: &Path) -> Result<(String, [StoreFile; 3])> {
     Ok((
         session.id,
         [
-            ("chat", chat, 14),
+            ("chat", chat, 15),
             ("catalog", dir.join("catalog.db"), 2),
             ("serving", dir.join("serving.db"), 2),
         ],
@@ -97,8 +97,8 @@ fn a_fresh_store_reopens_with_its_data_and_the_same_versions() -> Result<()> {
 #[test]
 fn a_store_at_another_version_fails_with_a_typed_error_and_is_not_modified() -> Result<()> {
     for (index, name) in ["chat", "catalog", "serving"].into_iter().enumerate() {
-        // The chat store has upgrade steps from 12 and 13, so its older case is 11.
-        for shift in [if name == "chat" { -3_i64 } else { -1 }, 1] {
+        // The chat store has upgrade steps from 12 to 14, so its older case is 11.
+        for shift in [if name == "chat" { -4_i64 } else { -1 }, 1] {
             let dir = tempfile::tempdir()?;
             let (session, files) = populated(dir.path())?;
             let (_, path, expected) = &files[index];
@@ -147,8 +147,8 @@ fn a_foreign_database_is_still_refused_as_foreign() -> Result<()> {
 }
 
 #[test]
-fn chat_stores_before_14_open_at_14_and_keep_their_messages() -> Result<()> {
-    for from in [12, 13] {
+fn chat_stores_before_15_open_at_15_and_keep_their_messages() -> Result<()> {
+    for from in [12, 13, 14] {
         let dir = tempfile::tempdir()?;
         let (session, files) = populated(dir.path())?;
         let chat = &files[0].1;
@@ -163,7 +163,7 @@ fn chat_stores_before_14_open_at_14_and_keep_their_messages() -> Result<()> {
         let store = Store::open_data_dir(dir.path())?;
         assert_eq!(store.messages(&session)?[0].text(), "kept across restart");
         drop(store);
-        assert_eq!(pragma(chat, "user_version")?, 14, "from {from}");
+        assert_eq!(pragma(chat, "user_version")?, 15, "from {from}");
     }
     Ok(())
 }

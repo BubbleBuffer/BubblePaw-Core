@@ -516,7 +516,7 @@ async fn bounded_snapshots_preserve_counts_and_never_write() -> Result<()> {
     );
     assert_eq!(snapshot.runs.len(), 1);
     assert_eq!(snapshot.runs[0].status, "completed");
-    assert_eq!(snapshot.pending_inputs[0].text, "later");
+    assert_eq!(snapshot.pending_inputs[0].text(), "later");
     let empty = store.snapshot(&session.id, 0, 0, 0)?;
     assert!(empty.messages.is_empty() && empty.runs.is_empty() && empty.pending_inputs.is_empty());
     assert_eq!(empty.message_count, 6);
@@ -693,7 +693,7 @@ async fn native_tool_loop_persists_provider_state_and_bound_result_after_reopen(
         reopened
             .queued_inputs(&session.id)?
             .iter()
-            .all(|i| i.text.is_empty())
+            .all(|i| i.text().is_empty())
     );
     Ok(())
 }
@@ -1894,7 +1894,7 @@ fn legacy_session_and_checkpoint_default_without_rewriting_archive() -> Result<(
     assert_eq!(after, originals);
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-        14
+        15
     );
     Ok(())
 }

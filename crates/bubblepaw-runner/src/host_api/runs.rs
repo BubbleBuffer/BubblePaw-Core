@@ -24,7 +24,7 @@ async fn prepare(
     id: &str,
     text: String,
     attachments: Vec<String>,
-) -> Result<String, HostError> {
+) -> Result<bubblepaw_core::MessageInput, HostError> {
     if let Some(files) = ctx.input_files.clone() {
         let id = id.to_owned();
         return tokio::task::spawn_blocking(move || files.prepare(&id, &text, &attachments))
@@ -38,7 +38,7 @@ async fn prepare(
     ctx.input_limits
         .validate_prompt(&text)
         .map_err(|e| HostError::invalid(e.to_string()))?;
-    Ok(text)
+    Ok(text.into())
 }
 fn wake(ctx: &HostCtx, id: &str) {
     if let Some(wake) = ctx.wake_coordinator() {

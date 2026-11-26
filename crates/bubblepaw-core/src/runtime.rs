@@ -1,9 +1,9 @@
 use crate::event_log::ContentRef;
 use crate::{
-    CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, ModelRequest,
-    ModelResponse, Observation, ObservationScope, Provider, QueuedInput, RequestUsage, Role, Run,
-    RunOptions, Store, TextCallback, ToolCall, ToolContext, ToolDispatcher, ToolRegistry,
-    ToolResult, Usage, id, now, stream::Paragraphs,
+    CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
+    ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput,
+    RequestUsage, Role, Run, RunOptions, Store, TextCallback, ToolCall, ToolContext,
+    ToolDispatcher, ToolRegistry, ToolResult, Usage, id, now, stream::Paragraphs,
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use async_trait::async_trait;
@@ -35,6 +35,8 @@ mod runtime_preparation;
 pub use runtime_preparation::{
     ContextBudgetExceeded, ContextPreparation, PrepareCall, PrepareMode, PreparedContext,
 };
+#[path = "runtime_input.rs"]
+mod runtime_input;
 #[path = "runtime_reminders.rs"]
 mod runtime_reminders;
 #[path = "runtime_result.rs"]
@@ -426,7 +428,7 @@ impl Harness {
     pub fn start(
         &self,
         session_id: &str,
-        text: impl Into<String>,
+        text: impl Into<MessageInput>,
         options: RunOptions,
     ) -> Result<Run> {
         self.admit(session_id, Some(text.into()), options, false)
@@ -437,7 +439,7 @@ impl Harness {
     pub fn start_if_active(
         &self,
         session_id: &str,
-        text: impl Into<String>,
+        text: impl Into<MessageInput>,
         options: RunOptions,
     ) -> Result<Run> {
         self.admit(session_id, Some(text.into()), options, true)
@@ -467,7 +469,7 @@ impl Harness {
     pub async fn prompt(
         &self,
         session_id: &str,
-        text: impl Into<String>,
+        text: impl Into<MessageInput>,
         options: RunOptions,
     ) -> Result<Run> {
         self.start(session_id, text, options)?;
@@ -667,92 +669,6 @@ impl Harness {
         cancelled_quota.is_ok_and(|quota| {
             cancelled_run || cancelled_background || cancelled_compaction || quota
         })
-    }
-    pub fn steer(&self, session_id: &str, text: impl Into<String>) -> Result<QueuedInput> {
-        self.steer_from(session_id, text, None)
-    }
-    pub fn followup(&self, session_id: &str, text: impl Into<String>) -> Result<QueuedInput> {
-        self.followup_from(session_id, text, None)
-    }
-    /// Steer, recording the client on SteeringAccepted.
-    pub fn steer_from(
-        &self,
-        session_id: &str,
-        text: impl Into<String>,
-        client: Option<ClientInfo>,
-    ) -> Result<QueuedInput> {
-        self.accept(session_id, InputKind::Steer, text.into(), client)
-    }
-    /// Queue a followup, recording the client on FollowupQueued.
-    pub fn followup_from(
-        &self,
-        session_id: &str,
-        text: impl Into<String>,
-        client: Option<ClientInfo>,
-    ) -> Result<QueuedInput> {
-        self.accept(session_id, InputKind::Followup, text.into(), client)
-    }
-    fn accept(
-        &self,
-        session_id: &str,
-        kind: InputKind,
-        text: String,
-        client: Option<ClientInfo>,
-    ) -> Result<QueuedInput> {
-        let active = self.state.admission_guard(session_id);
-        ensure!(
-            !self.state.stopping.load(Ordering::Relaxed),
-            "Harness is shutting down"
-        );
-        ensure!(
-            text.len() <= self.config.max_request_bytes,
-            "Input exceeds request size limit"
-        );
-        let run_id = active
-            .get(session_id)
-            .filter(|a| a.finished.is_none())
-            .map(|a| a.run_id.clone());
-        self.store.session(session_id)?;
-        let input = QueuedInput {
-            id: id(),
-            session_id: session_id.into(),
-            kind: kind.clone(),
-            text: text.clone(),
-            state: "pending".into(),
-            origin: Some(crate::MessageOrigin::Typed),
-        };
-        self.state.log.commit(
-            &self.store,
-            session_id,
-            run_id.as_deref().unwrap_or_default(),
-            client,
-            |tx| {
-                Store::queue_tx(tx, &input)?;
-                let events = run_id
-                    .as_ref()
-                    .map(|_| {
-                        let kind = if kind == InputKind::Steer {
-                            EventKind::SteeringAccepted { text: text.clone() }
-                        } else {
-                            EventKind::FollowupQueued { text: text.clone() }
-                        };
-                        vec![(
-                            kind,
-                            Some(ContentRef::Input {
-                                input_id: input.id.clone(),
-                            }),
-                        )]
-                    })
-                    .unwrap_or_default();
-                Ok(((), events))
-            },
-        )?;
-        // Admission only queues input. Releasing foreground waits is an
-        // explicit host action, independent of accepting ordinary steering.
-        if let Some(observer) = &self.config.observation {
-            observer.emit(ObservationScope { session_id:session_id.into(),run_id:run_id.clone().unwrap_or_default(),..Default::default() }, "input_accepted", serde_json::json!({"input_id":input.id,"input_kind":kind,"text_bytes":text.len(),"fingerprint":crate::fingerprint(text.as_bytes())}), Some(serde_json::json!({"text":text})));
-        }
-        Ok(input)
     }
     pub async fn shutdown(&self, timeout: Duration) -> Result<()> {
         self.state.stopping.store(true, Ordering::Relaxed);
