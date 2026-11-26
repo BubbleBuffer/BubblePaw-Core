@@ -6,26 +6,17 @@ use bubblepaw_runner::tools::{ProcessTools, WorkspaceTools};
 use serde_json::Value;
 use std::sync::Arc;
 
-/// The one store these helpers and the registries under test share: the
-/// native tools hold their store from registration, so a registry and the
-/// harness that runs it must use the same one.
-pub fn store() -> Store {
-    static STORE: std::sync::OnceLock<Store> = std::sync::OnceLock::new();
-    STORE
-        .get_or_init(|| Store::in_memory().expect("in-memory store"))
-        .clone()
-}
-
-/// The native pack over the shared store, with processes that run for sessions
+/// The native pack over `store`, with processes that run for sessions
 /// the store does not know; the fixtures here call `exec` with made-up owners.
 pub fn native_pack(
     registry: &mut ToolRegistry,
     root: &std::path::Path,
     read_only: bool,
+    store: &Store,
 ) -> Result<Arc<ProcessTools>> {
     registry.show_always(bubblepaw_runner::tools::ALWAYS_SHOWN_TOOLS.iter().copied());
     let workspace = WorkspaceTools::new(root)?;
-    workspace.register(registry, read_only, &store())?;
+    workspace.register(registry, read_only, store)?;
     let processes = Arc::new(ProcessTools::new(workspace));
     processes.register_wait(registry)?;
     if !read_only {
@@ -34,8 +25,13 @@ pub fn native_pack(
     Ok(processes)
 }
 
-pub async fn invoke(registry: &ToolRegistry, name: &str, input: Value) -> Result<Value> {
-    let store = store();
+/// `store` is the one the registry's native tools were registered with.
+pub async fn invoke(
+    store: &Store,
+    registry: &ToolRegistry,
+    name: &str,
+    input: Value,
+) -> Result<Value> {
     let session = store.create_session("workspace mutation contract")?;
     let root = tempfile::tempdir()?;
     let artifacts = Arc::new(bubblepaw_runner::artifacts::ArtifactStore::new(
@@ -47,7 +43,7 @@ pub async fn invoke(registry: &ToolRegistry, name: &str, input: Value) -> Result
         root.path().to_owned(),
         artifacts,
     )?)
-    .register(&mut tools)?;
+    .register(&mut tools, store)?;
     let provider = ScriptedProvider::with_steps(
         vec![ScriptedStep::Calls {
             calls: vec![ToolCall {

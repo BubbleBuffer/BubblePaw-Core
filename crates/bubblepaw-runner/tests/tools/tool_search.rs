@@ -93,7 +93,8 @@ fn registry(mode: &Arc<CodeMode>) -> ToolRegistry {
             json!({"type":"object"}),
         )))
         .unwrap();
-    mode.register(&mut tools).unwrap();
+    mode.register(&mut tools, &bubblepaw_core::Store::in_memory().unwrap())
+        .unwrap();
     // Registered after js: must still appear in its description.
     tools
         .register_host(Arc::new(Schemed(

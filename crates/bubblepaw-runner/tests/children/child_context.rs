@@ -157,7 +157,7 @@ impl Host {
         )?;
         agents.register(&mut tools)?;
         register_agent_handles(&mut tools, agents.clone())?;
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         live.bind(tools, &agents)?;
         Ok(Self {
             store,

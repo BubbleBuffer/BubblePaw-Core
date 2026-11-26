@@ -139,7 +139,7 @@ async fn child_question_case(optional_wakes: bool, parent_waits: bool) -> Result
     });
     let mut child_tools = ToolRegistry::new();
     questions.register(&mut child_tools)?;
-    repl.register(&mut child_tools)?;
+    repl.register(&mut child_tools, &store)?;
     let child = Harness::new(
         store.clone(),
         provider.clone(),
@@ -169,7 +169,7 @@ async fn child_question_case(optional_wakes: bool, parent_waits: bool) -> Result
     agents.register(&mut tools)?;
     register_agent_handles(&mut tools, agents.clone())?;
     questions.register(&mut tools)?;
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let root = Arc::new(Harness::new(
         store.clone(),
         provider.clone(),
@@ -407,7 +407,7 @@ async fn live_answer_notice_survives_pruned_run_metadata_without_reinjection() -
         });
         let mut tools = ToolRegistry::new();
         questions.register(&mut tools)?;
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         let root = Arc::new(Harness::new(
             store.clone(),
             provider.clone(),

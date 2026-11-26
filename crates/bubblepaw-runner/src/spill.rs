@@ -152,9 +152,10 @@ impl SpillStore {
             Arc::new(move |session| spills.delete_session(session)),
         );
     }
-    /// Install the large-result limiter. The cleanup hooks come from
-    /// [`SpillStore::attach`], which startup calls with the store.
-    pub fn register(&self, registry: &mut ToolRegistry) {
+    /// Install the large-result limiter and attach the cleanup hooks to
+    /// `store`, so the two cannot be separated by a caller.
+    pub fn register(&self, registry: &mut ToolRegistry, store: &Store) {
+        self.attach(store);
         let spills = self.clone();
         registry.set_result_limiter(Arc::new(move |context, result, limit| {
             spills.limit(context, result, limit)

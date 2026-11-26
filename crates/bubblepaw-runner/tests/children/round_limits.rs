@@ -179,7 +179,7 @@ async fn child_paths_inherit_optional_limits_without_a_twelve_round_ceiling() ->
 
         // The compatibility native-child entry point derives its profile from the harness.
         let mut native_tools = ToolRegistry::new();
-        repl.register(&mut native_tools)?;
+        repl.register(&mut native_tools, &store)?;
         let native = AgentTools::new(
             store.clone(),
             Harness::new(store.clone(), provider.clone(), native_tools, config),

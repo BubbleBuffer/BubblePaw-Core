@@ -59,7 +59,7 @@ async fn every_builtin_tool_input_schema_is_an_object() {
         .register(&mut host)
         .unwrap();
     // Registers the environment tools and `js`.
-    mode.register(&mut host).unwrap();
+    mode.register(&mut host, &store).unwrap();
     let child = Harness::new(
         store.clone(),
         Arc::new(ScriptedProvider::new("done")),

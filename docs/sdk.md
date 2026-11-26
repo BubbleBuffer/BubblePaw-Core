@@ -512,10 +512,17 @@ trait are unchanged. Changed public items:
   `register_native_tools_with_exec(.., data_dir)` is
   `register_native_tools_with_exec(.., data_dir, &Store)`; the latter also
   registers the spill and scratchpad cleanup hooks.
-- New: `CodeMode::attach_spills(&Store)` registers the same cleanup hooks for a
-  `CodeMode` whose registry you assemble yourself. The large-result hook no longer
-  registers them lazily, so call it, or `host_config::prepare_store`, or use
-  `HostBuilder::code_mode`, before any output can spill.
+- `CodeMode::register(registry)` is `register(registry, &Store)`, and
+  `environments::register(mode, registry)` is `register(mode, registry, &Store)`.
+  Installing the large-result limiter now also registers the spill and scratchpad
+  cleanup hooks on that store, so the two cannot be separated; the hook no longer
+  registers lazily on the first JS call. `SpillStore::register(registry)` is
+  `register(registry, &Store)` for the same reason. `CodeMode::register_js` is
+  unchanged. `HostBuilder::code_mode` does this for you.
+- New: `ProcessTools::register_without_store(registry)` registers exec, poll,
+  cancel and jobs for a registry that has no store. Such a process tool has no
+  scratchpad working directories and persists no completion notices. It exists for
+  tests (it is `#[doc(hidden)]`); a host should call `register`.
 
 The constructors `WorkspaceTools::new` and `ProcessTools::new` are unchanged: a
 workspace view for prompts, rewind or paths needs no store. Only registering its

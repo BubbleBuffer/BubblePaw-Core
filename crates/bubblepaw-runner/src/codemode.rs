@@ -13,8 +13,9 @@ use crate::artifacts::ArtifactStore;
 use anyhow::{Context as _, Result, anyhow, bail, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
-    search_tool_definitions_with_servers, tool_definition_summary, track_approval_waits,
+    CancellationToken, Store, Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry,
+    ToolResult, search_tool_definitions_with_servers, tool_definition_summary,
+    track_approval_waits,
 };
 use rquickjs::{Context, Ctx, Function, Object, Persistent, Promise, Runtime, Value as JsValue};
 use serde_json::{Value, json};
@@ -643,12 +644,11 @@ impl CodeMode {
         self.idle_limit = limit;
         self
     }
-    pub fn register(self: &Arc<Self>, registry: &mut ToolRegistry) -> Result<()> {
-        crate::environments::register(self, registry)?;
+    pub fn register(self: &Arc<Self>, registry: &mut ToolRegistry, store: &Store) -> Result<()> {
+        crate::environments::register(self, registry, store)?;
         self.register_js(registry)
     }
-    /// Register only the JavaScript model entrypoint. Hosts can register
-    /// environment controls independently with [`crate::environments::register`].
+    /// Register only the JS model entrypoint; see [`crate::environments::register`].
     pub fn register_js(self: &Arc<Self>, registry: &mut ToolRegistry) -> Result<()> {
         registry.register(Arc::new(JsTool { mode: self.clone() }))
     }

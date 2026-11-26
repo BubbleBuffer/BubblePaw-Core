@@ -93,7 +93,7 @@ impl Fixture {
         let artifacts =
             Arc::new(ArtifactStore::new(workspace.path(), data.path().join("artifacts")).unwrap());
         let mode = Arc::new(CodeMode::new(workspace.path().to_owned(), artifacts).unwrap());
-        mode.register(&mut registry).unwrap();
+        mode.register(&mut registry, &store).unwrap();
         let harness = Harness::new(
             store.clone(),
             Arc::new(Cells),
@@ -433,9 +433,10 @@ fn startup_registration_attaches_spill_cleanup_before_any_tool_call() {
             .unwrap();
         if through_code_mode {
             let artifacts = ArtifactStore::new(root.path(), data.path().join("artifacts"));
-            CodeMode::new(root.path().to_owned(), Arc::new(artifacts.unwrap()))
-                .unwrap()
-                .attach_spills(&store);
+            let mode = Arc::new(
+                CodeMode::new(root.path().to_owned(), Arc::new(artifacts.unwrap())).unwrap(),
+            );
+            mode.register(&mut ToolRegistry::new(), &store).unwrap();
         } else {
             let exec = ExecConfig::default();
             let mut tools = ToolRegistry::new();

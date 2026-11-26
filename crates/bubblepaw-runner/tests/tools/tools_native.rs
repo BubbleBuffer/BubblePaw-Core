@@ -18,9 +18,14 @@ fn context() -> ToolContext {
         approval: Default::default(),
     }
 }
-async fn call(registry: &ToolRegistry, name: &str, input: Value) -> Value {
+async fn call(
+    store: &bubblepaw_core::Store,
+    registry: &ToolRegistry,
+    name: &str,
+    input: Value,
+) -> Value {
     if matches!(name, "edit" | "write") {
-        return checkpoint_write::invoke(registry, name, input)
+        return checkpoint_write::invoke(store, registry, name, input)
             .await
             .unwrap();
     }
@@ -36,9 +41,12 @@ async fn call(registry: &ToolRegistry, name: &str, input: Value) -> Value {
 async fn root_and_exact_edit_contract() {
     let directory = tempfile::tempdir().unwrap();
     let outside = tempfile::NamedTempFile::new().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, directory.path(), false, &store).unwrap();
     call(
+        &store,
         &registry,
         "write",
         json!({"path":"file.txt","content":"before\n"}),
@@ -54,6 +62,7 @@ async fn root_and_exact_edit_contract() {
     );
     assert!(
         checkpoint_write::invoke(
+            &store,
             &registry,
             "write",
             json!({"path":"../escape.txt","content":"oops\n"})
@@ -62,6 +71,7 @@ async fn root_and_exact_edit_contract() {
         .is_err()
     );
     call(
+        &store,
         &registry,
         "edit",
         json!({"path":"file.txt","old_string":"before","new_string":"after"}),
@@ -69,6 +79,7 @@ async fn root_and_exact_edit_contract() {
     .await;
     assert!(
         checkpoint_write::invoke(
+            &store,
             &registry,
             "edit",
             json!({"path":"file.txt","old_string":"before","new_string":"stale"})
@@ -90,12 +101,17 @@ fn command(script: impl Into<Value>) -> Value {
     script.into()
 }
 
-async fn finished(registry: &ToolRegistry, mut output: Value) -> Value {
+async fn finished(
+    store: &bubblepaw_core::Store,
+    registry: &ToolRegistry,
+    mut output: Value,
+) -> Value {
     for _ in 0..20 {
         if output["status"] != "running" {
             return output;
         }
         output = call(
+            store,
             registry,
             "poll",
             json!({"handle":output["handle"],"yieldMs":500,"cursor":{"stdout":0,"stderr":0}}),
@@ -108,8 +124,10 @@ async fn finished(registry: &ToolRegistry, mut output: Value) -> Value {
 #[tokio::test]
 async fn processes_are_real_owned_bounded_and_cancelled() {
     let root = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, root.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, root.path(), false, &store).unwrap();
     #[cfg(windows)]
     let script = windows_command::powershell_file(
         root.path(),
@@ -119,12 +137,13 @@ async fn processes_are_real_owned_bounded_and_cancelled() {
     #[cfg(not(windows))]
     let script = json!("head -c 180000 /dev/zero | tr '\\000' x; echo SUCCESS");
     let result = call(
+        &store,
         &registry,
         "exec",
         json!({"command":command(script),"yieldMs":1000}),
     )
     .await;
-    let result = finished(&registry, result).await;
+    let result = finished(&store, &registry, result).await;
     assert_eq!(result["exitCode"], 0);
     assert!(
         !result["capture"]["stdout"]["gaps"]
@@ -140,6 +159,7 @@ async fn processes_are_real_owned_bounded_and_cancelled() {
     #[cfg(not(windows))]
     let sleep = json!("sleep 30");
     let running = call(
+        &store,
         &registry,
         "exec",
         json!({"command":command(sleep),"yieldMs":0}),
@@ -155,7 +175,13 @@ async fn processes_are_real_owned_bounded_and_cancelled() {
             .await
             .is_err()
     );
-    let cancelled = call(&registry, "cancel", json!({"handle":running["handle"]})).await;
+    let cancelled = call(
+        &store,
+        &registry,
+        "cancel",
+        json!({"handle":running["handle"]}),
+    )
+    .await;
     assert_eq!(cancelled["status"], "cancelled");
     processes.shutdown().await;
 }
@@ -163,20 +189,23 @@ async fn processes_are_real_owned_bounded_and_cancelled() {
 #[tokio::test]
 async fn process_deadline_and_run_token_kill_children() {
     let root = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, root.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, root.path(), false, &store).unwrap();
     #[cfg(windows)]
     let script =
         windows_command::powershell_file(root.path(), "sleep.ps1", "Start-Sleep -Seconds 30");
     #[cfg(not(windows))]
     let script = json!("sleep 30");
     let result = call(
+        &store,
         &registry,
         "exec",
         json!({"command":command(script.clone()),"timeoutMs":50,"yieldMs":1000}),
     )
     .await;
-    let result = finished(&registry, result).await;
+    let result = finished(&store, &registry, result).await;
     assert_eq!(result["status"], "timed_out");
     let run = context();
     let token = run.cancellation.clone();
@@ -188,7 +217,7 @@ async fn process_deadline_and_run_token_kill_children() {
         .unwrap();
     let result: Value = serde_json::from_str(&result.body()).unwrap();
     token.cancel();
-    let result = tokio::time::timeout(Duration::from_secs(8), finished(&registry, result))
+    let result = tokio::time::timeout(Duration::from_secs(8), finished(&store, &registry, result))
         .await
         .unwrap();
     assert_eq!(result["status"], "cancelled");
@@ -198,10 +227,9 @@ async fn process_deadline_and_run_token_kill_children() {
 #[tokio::test]
 async fn readonly_registration_has_no_mutation_or_processes() {
     let root = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes =
-        register_native_tools(&mut registry, root.path(), true, &checkpoint_write::store())
-            .unwrap();
+    let processes = register_native_tools(&mut registry, root.path(), true, &store).unwrap();
     assert!(registry.definitions().is_empty());
     assert_eq!(registry.capabilities().len(), 4);
     assert!(registry.get("edit").is_none());
@@ -214,8 +242,10 @@ async fn readonly_registration_has_no_mutation_or_processes() {
 #[tokio::test]
 async fn windows_cancel_terminates_a_spawned_descendant() {
     let root = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, root.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, root.path(), false, &store).unwrap();
     std::fs::write(
         root.path().join("descendant-child.ps1"),
         "Start-Sleep -Seconds 30",
@@ -227,6 +257,7 @@ async fn windows_cancel_terminates_a_spawned_descendant() {
         r#"$childScript = Join-Path $PSScriptRoot 'descendant-child.ps1'; $child = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -WindowStyle Hidden -ArgumentList ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $childScript) -PassThru; [Console]::Out.WriteLine($child.Id); Start-Sleep -Seconds 30"#,
     );
     let mut running = call(
+        &store,
         &registry,
         "exec",
         json!({"command":command(script),"yieldMs":1000}),
@@ -237,6 +268,7 @@ async fn windows_cancel_terminates_a_spawned_descendant() {
             break;
         }
         running = call(
+            &store,
             &registry,
             "poll",
             json!({"handle":running["handle"],"yieldMs":500}),
@@ -244,7 +276,13 @@ async fn windows_cancel_terminates_a_spawned_descendant() {
         .await;
     }
     let child_pid: u32 = running["stdout"].as_str().unwrap().trim().parse().unwrap();
-    call(&registry, "cancel", json!({"handle":running["handle"]})).await;
+    call(
+        &store,
+        &registry,
+        "cancel",
+        json!({"handle":running["handle"]}),
+    )
+    .await;
     let child_status = tokio::process::Command::new("tasklist.exe")
         .args(["/FI", &format!("PID eq {child_pid}"), "/FO", "CSV", "/NH"])
         .creation_flags(0x08000000)

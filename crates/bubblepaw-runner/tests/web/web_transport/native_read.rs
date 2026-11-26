@@ -29,7 +29,7 @@ async fn actual_http_runs_native_tool_and_projects_history_without_archive_write
                 ArtifactStore::new(workspace.path(), workspace.path().join("artifacts")).unwrap(),
             );
             let repl = Arc::new(CodeMode::new(workspace.path().to_path_buf(), artifacts).unwrap());
-            repl.register(&mut tools).unwrap();
+            repl.register(&mut tools, store).unwrap();
             native = Some((processes, repl));
             tools
         },

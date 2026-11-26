@@ -173,7 +173,7 @@ impl Fixture {
         .unwrap();
         agents.register(&mut tools).unwrap();
         register_agent_handles(&mut tools, agents.clone()).unwrap();
-        repl.register(&mut tools).unwrap();
+        repl.register(&mut tools, &store).unwrap();
         live.bind(tools, &agents).unwrap();
         let harness = Arc::new(Harness::new(
             store.clone(),

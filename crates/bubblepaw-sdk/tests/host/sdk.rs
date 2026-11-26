@@ -206,7 +206,7 @@ async fn sdk_builder_wraps_support_tools() -> Result<()> {
         reference.path().join("artifacts"),
     )?);
     let scratch = Arc::new(CodeMode::new(reference.path().to_path_buf(), artifacts)?);
-    scratch.register(&mut expected_registry)?;
+    scratch.register(&mut expected_registry, &store)?;
     let mut expected: Vec<String> = expected_registry
         .capabilities()
         .into_iter()

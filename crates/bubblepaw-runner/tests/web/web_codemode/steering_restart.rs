@@ -45,7 +45,7 @@ async fn http_steer_then_explicit_interrupt_preserves_wait_and_captured_outputs_
         directory.path().join("artifacts"),
     )?);
     let repl = Arc::new(CodeMode::new(root.clone(), artifacts.clone())?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Arc::new(Harness::new(
         store.clone(),
         provider.clone(),

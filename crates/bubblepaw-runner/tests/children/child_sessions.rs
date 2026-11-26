@@ -1451,7 +1451,7 @@ async fn production_host_tree_runs_at_once_and_root_cancel_cleans_every_js_envir
     let mut root_tools = ToolRegistry::new();
     manager.register(&mut root_tools)?;
     register_agent_handles(&mut root_tools, manager.clone())?;
-    repl.register(&mut root_tools)?;
+    repl.register(&mut root_tools, &store)?;
     let parent = Harness::new(store.clone(), provider.clone(), root_tools, config.clone());
     let root = store.create_session("tree root")?;
     parent.start(&root.id, "tree:3", RunOptions::default())?;

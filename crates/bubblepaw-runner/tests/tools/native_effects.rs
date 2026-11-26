@@ -50,7 +50,7 @@ async fn shared_dispatch_preserves_json_cursors_and_escaped_reads() {
         )
         .unwrap(),
     );
-    repl.register(&mut tools).unwrap();
+    repl.register(&mut tools, &store).unwrap();
     #[cfg(windows)]
     let command = windows_command::powershell_file(
         root.path(),
@@ -129,7 +129,7 @@ async fn js_exec_keeps_full_host_object_and_returns_only_exit_code() {
         )
         .unwrap(),
     );
-    repl.register(&mut tools).unwrap();
+    repl.register(&mut tools, &store).unwrap();
     #[cfg(windows)]
     let command = "type stdout.txt& type stderr.txt>&2";
     #[cfg(not(windows))]
@@ -176,7 +176,7 @@ async fn js_running_process_keeps_boundary_and_blocks_fork_until_terminal() {
         )
         .unwrap(),
     );
-    repl.register(&mut tools).unwrap();
+    repl.register(&mut tools, &store).unwrap();
     let harness = Harness::new(
         store.clone(),
         provider("exec", json!({"command":SLEEP,"yieldMs":0})),
@@ -230,7 +230,7 @@ fn pending_completed_run_recovers_unknown_without_replaying_process() {
             )
             .unwrap(),
         );
-        repl.register(&mut tools).unwrap();
+        repl.register(&mut tools, &store).unwrap();
         let harness = Harness::new(
             store.clone(),
             provider("exec", json!({"command":SLEEP,"yieldMs":0})),

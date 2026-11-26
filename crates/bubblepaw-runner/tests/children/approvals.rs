@@ -93,8 +93,8 @@ impl Fixture {
         tools
             .register_host(Arc::new(Effect(calls.clone())))
             .unwrap();
-        manager.register(&mut tools).unwrap();
         let store = Store::in_memory().unwrap();
+        manager.register(&mut tools, &store).unwrap();
         let session = store.create_session("approvals").unwrap().id;
         let harness = Harness::new(
             store.clone(),

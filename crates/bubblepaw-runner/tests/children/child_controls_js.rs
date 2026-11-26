@@ -223,7 +223,7 @@ impl Fixture {
             )?),
         )?);
         let mut child_tools = tools.read_only();
-        repl.register(&mut child_tools)?;
+        repl.register(&mut child_tools, &store)?;
         let child = Harness::new(
             store.clone(),
             provider.clone(),
@@ -236,7 +236,7 @@ impl Fixture {
         let agents = Arc::new(AgentTools::new(store.clone(), child, None).with_repl(repl.clone()));
         agents.register(&mut tools)?;
         register_agent_handles(&mut tools, agents.clone())?;
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         let harness = Harness::new(
             store.clone(),
             provider.clone(),

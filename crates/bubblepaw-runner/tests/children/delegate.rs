@@ -85,7 +85,7 @@ fn fixture_with_provider(root: &Path, provider: Arc<dyn Provider>) -> Fixture {
         )
         .unwrap(),
     );
-    repl.register(&mut tools).unwrap();
+    repl.register(&mut tools, &store).unwrap();
     let collector = Collector::new(None);
     let harness = Arc::new(Harness::new(
         store.clone(),

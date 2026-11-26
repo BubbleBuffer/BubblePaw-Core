@@ -83,7 +83,7 @@ fn tools(
         workspace.to_owned(),
         Arc::new(ArtifactStore::new(workspace, workspace.join("artifacts"))?),
     )?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, store)?;
     Ok((tools, repl, processes))
 }
 fn harness(store: Store, tools: ToolRegistry, script: Arc<Script>, mode: ExecutionMode) -> Harness {

@@ -111,7 +111,7 @@ impl Fixture {
                 .unwrap()
                 .with_idle_limit(IDLE),
         );
-        mode.register(&mut registry).unwrap();
+        mode.register(&mut registry, &store).unwrap();
         let provider = Arc::new(ScriptedProvider::with_steps(
             vec![ScriptedStep::Calls {
                 calls: vec![ToolCall {

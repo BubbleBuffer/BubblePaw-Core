@@ -57,7 +57,7 @@ async fn user_answer_resumes_child_neutrally_and_rejects_late_parent_answer() ->
     });
     let mut child_tools = ToolRegistry::new();
     questions.register(&mut child_tools)?;
-    repl.register(&mut child_tools)?;
+    repl.register(&mut child_tools, &store)?;
     let child_harness = Arc::new(Harness::new(
         store.clone(),
         script.clone(),

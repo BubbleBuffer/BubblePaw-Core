@@ -102,7 +102,7 @@ impl Fixture {
             ArtifactStore::new(workspace.path(), workspace.path().join("artifacts")).unwrap(),
         );
         let manager = Arc::new(CodeMode::new(workspace.path().to_owned(), artifacts).unwrap());
-        manager.register(&mut registry).unwrap();
+        manager.register(&mut registry, &store).unwrap();
         let session = store.create_session("exec steering").unwrap().id;
         let provider = Arc::new(Scripted {
             requests: Mutex::default(),

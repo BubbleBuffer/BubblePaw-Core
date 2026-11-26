@@ -97,9 +97,11 @@ async fn native_name_lookup_does_not_fall_back_to_a_batch_script() {
         "@echo started > escaped.txt\r\n",
     )
     .unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
     let processes =
-        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false, &store)
+            .unwrap();
     let error = registry
         .get("exec")
         .unwrap()
@@ -134,9 +136,11 @@ fn argv_probe(root: &std::path::Path) -> String {
 async fn native_arguments_roundtrip_adversarial_values_without_shell_effects() {
     let directory = tempfile::tempdir().unwrap();
     let name = argv_probe(directory.path());
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
     let processes =
-        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false, &store)
+            .unwrap();
     let values = vec![
         "space value",
         "O'Brien",
@@ -193,9 +197,11 @@ async fn native_arguments_roundtrip_adversarial_values_without_shell_effects() {
 #[tokio::test]
 async fn invalid_template_cannot_start_a_literal_prefix_effect() {
     let directory = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
     let processes =
-        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false, &store)
+            .unwrap();
     let invalid =
         json!({"command":{"parts":["echo started > escaped.txt; rg --glob=", ""],"values":["x"]}});
     assert!(

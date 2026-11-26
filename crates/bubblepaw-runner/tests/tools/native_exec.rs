@@ -17,9 +17,14 @@ fn context() -> ToolContext {
         approval: Default::default(),
     }
 }
-async fn call(registry: &ToolRegistry, name: &str, input: Value) -> Value {
+async fn call(
+    store: &bubblepaw_core::Store,
+    registry: &ToolRegistry,
+    name: &str,
+    input: Value,
+) -> Value {
     if matches!(name, "edit" | "write") {
-        return checkpoint_write::invoke(registry, name, input)
+        return checkpoint_write::invoke(store, registry, name, input)
             .await
             .unwrap();
     }
@@ -43,14 +48,28 @@ const SLEEP: &str = "sleep 30";
 #[tokio::test]
 async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
     let directory = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, directory.path(), false, &store).unwrap();
     #[cfg(windows)]
     let nonzero = "<nul set /p=unknown option --bogus>&2& exit 7";
     #[cfg(not(windows))]
     let nonzero = "printf 'unknown option --bogus' >&2; exit 7";
-    let started = call(&registry, "exec", json!({"command":nonzero,"yieldMs":0})).await;
-    let done = call(&registry, "wait", json!({"handle":started["handle"]})).await;
+    let started = call(
+        &store,
+        &registry,
+        "exec",
+        json!({"command":nonzero,"yieldMs":0}),
+    )
+    .await;
+    let done = call(
+        &store,
+        &registry,
+        "wait",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
     assert_eq!(done["exitCode"], 7);
     assert!(
         done["diagnostic"]
@@ -71,12 +90,19 @@ async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
     let result: Value = serde_json::from_str(&result.body()).unwrap();
     assert!(result["diagnostic"].as_str().unwrap().contains("code 7"));
     let started = call(
+        &store,
         &registry,
         "exec",
         json!({"command":SLEEP,"yieldMs":0,"timeoutMs":20}),
     )
     .await;
-    let done = call(&registry, "wait", json!({"handle":started["handle"]})).await;
+    let done = call(
+        &store,
+        &registry,
+        "wait",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
     assert_eq!(done["status"], "timed_out");
     assert!(done["diagnostic"].as_str().unwrap().contains("terminated"));
     #[cfg(windows)]
@@ -87,9 +113,27 @@ async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
     );
     #[cfg(not(windows))]
     let invalid = json!("printf '\\377\\376'");
-    let started = call(&registry, "exec", json!({"command":invalid,"yieldMs":0})).await;
-    call(&registry, "wait", json!({"handle":started["handle"]})).await;
-    let out = call(&registry, "poll", json!({"handle":started["handle"]})).await;
+    let started = call(
+        &store,
+        &registry,
+        "exec",
+        json!({"command":invalid,"yieldMs":0}),
+    )
+    .await;
+    call(
+        &store,
+        &registry,
+        "wait",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
+    let out = call(
+        &store,
+        &registry,
+        "poll",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
     assert_eq!(out["exitCode"], 0);
     assert_eq!(out["capture"]["stdout"]["lossyUtf8"], true);
     assert_eq!(out["capture"]["stdout"]["gaps"], json!([]));
@@ -103,24 +147,35 @@ async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
 #[tokio::test]
 async fn native_shell_cursors_replay_without_consumption() {
     let directory = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, directory.path(), false, &store).unwrap();
     let started = call(
+        &store,
         &registry,
         "exec",
         json!({"command":ECHO,"yieldMs":0,"timeoutMs":600001}),
     )
     .await;
-    let done = call(&registry, "wait", json!({"handle":started["handle"]})).await;
+    let done = call(
+        &store,
+        &registry,
+        "wait",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
     assert_eq!(done["status"], "exited");
     assert_eq!(done["exitCode"], 0);
     let first = call(
+        &store,
         &registry,
         "poll",
         json!({"handle":started["handle"],"cursor":{"stdout":0,"stderr":0}}),
     )
     .await;
     let replay = call(
+        &store,
         &registry,
         "poll",
         json!({"handle":started["handle"],"cursor":{"stdout":0,"stderr":0}}),
@@ -131,6 +186,7 @@ async fn native_shell_cursors_replay_without_consumption() {
     assert_eq!(first["stderr"], "problem");
     assert!(first.get("diagnostic").is_none());
     let next = call(
+        &store,
         &registry,
         "poll",
         json!({"handle":started["handle"],"cursor":first["cursor"]}),
@@ -165,10 +221,19 @@ async fn native_shell_cursors_replay_without_consumption() {
 #[tokio::test]
 async fn native_wait_timeout_keeps_process_alive_and_session_isolation() {
     let directory = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
-    let started = call(&registry, "exec", json!({"command":SLEEP,"yieldMs":0})).await;
+    let processes =
+        checkpoint_write::native_pack(&mut registry, directory.path(), false, &store).unwrap();
+    let started = call(
+        &store,
+        &registry,
+        "exec",
+        json!({"command":SLEEP,"yieldMs":0}),
+    )
+    .await;
     let timeout = call(
+        &store,
         &registry,
         "wait",
         json!({"handle":started["handle"],"timeoutMs":5}),
@@ -182,7 +247,13 @@ async fn native_wait_timeout_keeps_process_alive_and_session_isolation() {
             .contains("command is still running")
     );
     assert_eq!(
-        call(&registry, "poll", json!({"handle":started["handle"]})).await["status"],
+        call(
+            &store,
+            &registry,
+            "poll",
+            json!({"handle":started["handle"]})
+        )
+        .await["status"],
         "running"
     );
     let mut alien = context();
@@ -205,10 +276,22 @@ async fn native_wait_timeout_keeps_process_alive_and_session_isolation() {
             .to_string()
             .contains("unsupported handle")
     );
-    let cancelled = call(&registry, "cancel", json!({"handle":started["handle"]})).await;
+    let cancelled = call(
+        &store,
+        &registry,
+        "cancel",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
     assert_eq!(cancelled["status"], "cancelled");
     assert_eq!(
-        call(&registry, "wait", json!({"handle":started["handle"]})).await["status"],
+        call(
+            &store,
+            &registry,
+            "wait",
+            json!({"handle":started["handle"]})
+        )
+        .await["status"],
         "cancelled"
     );
     processes.shutdown().await;
@@ -217,8 +300,10 @@ async fn native_wait_timeout_keeps_process_alive_and_session_isolation() {
 #[tokio::test]
 async fn native_gaps_are_explicit_and_bounded() {
     let directory = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, directory.path(), false, &store).unwrap();
     #[cfg(windows)]
     let script = windows_command::powershell_file(
         directory.path(),
@@ -227,9 +312,27 @@ async fn native_gaps_are_explicit_and_bounded() {
     );
     #[cfg(not(windows))]
     let script = json!("head -c 180000 /dev/zero | tr '\\000' x; printf END");
-    let started = call(&registry, "exec", json!({"command":script,"yieldMs":0})).await;
-    call(&registry, "wait", json!({"handle":started["handle"]})).await;
-    let out = call(&registry, "poll", json!({"handle":started["handle"]})).await;
+    let started = call(
+        &store,
+        &registry,
+        "exec",
+        json!({"command":script,"yieldMs":0}),
+    )
+    .await;
+    call(
+        &store,
+        &registry,
+        "wait",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
+    let out = call(
+        &store,
+        &registry,
+        "poll",
+        json!({"handle":started["handle"]}),
+    )
+    .await;
     assert_eq!(out["cursor"]["stdout"], 180003);
     assert!(
         out["diagnostic"]
@@ -251,6 +354,7 @@ async fn native_gaps_are_explicit_and_bounded() {
         json!([{"from":8064,"to":171939}])
     );
     let middle = call(
+        &store,
         &registry,
         "poll",
         json!({"handle":started["handle"],"cursor":{"stdout":40000,"stderr":0}}),
@@ -266,6 +370,7 @@ async fn native_gaps_are_explicit_and_bounded() {
     assert_eq!(
         out,
         call(
+            &store,
             &registry,
             "poll",
             json!({"handle":started["handle"],"cursor":{"stdout":0,"stderr":0}})
@@ -273,6 +378,7 @@ async fn native_gaps_are_explicit_and_bounded() {
         .await
     );
     let consumed = call(
+        &store,
         &registry,
         "poll",
         json!({"handle":started["handle"],"cursor":out["cursor"]}),
@@ -286,8 +392,10 @@ async fn native_gaps_are_explicit_and_bounded() {
 #[tokio::test]
 async fn long_timer_cancels_and_bad_types_are_errors() {
     let directory = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, directory.path(), false, &store).unwrap();
     let run = context();
     let token = run.cancellation.clone();
     let waiter = registry.get("wait").unwrap();
@@ -321,84 +429,11 @@ async fn long_timer_cancels_and_bad_types_are_errors() {
         );
     }
     assert_eq!(
-        call(&registry, "wait", json!({"ms":0})).await["status"],
+        call(&store, &registry, "wait", json!({"ms":0})).await["status"],
         "completed"
     );
     processes.shutdown().await;
 }
 
-#[tokio::test]
-async fn native_read_edit_and_sorted_list_contract() {
-    let directory = tempfile::tempdir().unwrap();
-    let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
-    for name in ["z.txt", "b.txt", "a.txt"] {
-        call(
-            &registry,
-            "write",
-            json!({"path":name,"content":"one\ntwo\nthree\n"}),
-        )
-        .await;
-    }
-    assert_eq!(
-        call(&registry, "list", json!({"limit":1})).await["entries"][0]["name"],
-        "a.txt"
-    );
-    let read = call(
-        &registry,
-        "read",
-        json!({"path":"a.txt","startLine":2,"lineCount":1}),
-    )
-    .await;
-    assert_eq!(read["content"], "two\n");
-    assert_eq!(read["totalLines"], 3);
-    assert_eq!(read["returnedLines"], 1);
-    call(
-        &registry,
-        "edit",
-        json!({"path":"a.txt","old_string":"two","new_string":"changed"}),
-    )
-    .await;
-    let error = checkpoint_write::invoke(
-        &registry,
-        "edit",
-        json!({"path":"a.txt","old_string":"two","new_string":"stale"}),
-    )
-    .await
-    .unwrap_err();
-    assert!(error.to_string().contains("no exact match"), "{error}");
-    processes.shutdown().await;
-}
-
-#[tokio::test]
-async fn native_explicit_deadline_is_terminal() {
-    let directory = tempfile::tempdir().unwrap();
-    let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
-    let started = call(
-        &registry,
-        "exec",
-        json!({"command":SLEEP,"timeoutMs":10,"yieldMs":0}),
-    )
-    .await;
-    assert_eq!(
-        call(&registry, "wait", json!({"handle":started["handle"]})).await["status"],
-        "timed_out"
-    );
-    processes.shutdown().await;
-}
-
-#[tokio::test]
-async fn session_cancel_hook_stops_detached_processes_once() {
-    let directory = tempfile::tempdir().unwrap();
-    let mut registry = ToolRegistry::new();
-    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
-    let started = call(&registry, "exec", json!({"command":SLEEP,"yieldMs":0})).await;
-    assert!(registry.get("process_run").is_none());
-    assert_eq!(registry.get("exec").unwrap().cancel_session("alien"), 0);
-    assert_eq!(registry.get("exec").unwrap().cancel_session("owner"), 1);
-    assert_eq!(registry.get("exec").unwrap().cancel_session("owner"), 0);
-    let done = call(&registry, "wait", json!({"handle":started["handle"]})).await;
-    assert_eq!(done["status"], "cancelled");
-    processes.shutdown().await;
-}
+#[path = "native_exec/contract.rs"]
+mod contract;

@@ -52,7 +52,7 @@ impl Fixture {
         let artifacts =
             Arc::new(ArtifactStore::new(root.path(), root.path().join("artifacts")).unwrap());
         let manager = Arc::new(CodeMode::new(root.path().to_owned(), artifacts).unwrap());
-        manager.register(&mut tools).unwrap();
+        manager.register(&mut tools, &store).unwrap();
         let harness = Harness::new(
             store.clone(),
             Arc::new(ImageProvider::new(provider, store.clone())),

@@ -113,7 +113,7 @@ impl Fixture {
         register_agent_handles(&mut tools, manager.clone()).unwrap();
         register_fetch_search_tools_with_store(&mut tools, &web, &store).unwrap();
         assert!(tools.get_host("research").is_none());
-        repl.register(&mut tools).unwrap();
+        repl.register(&mut tools, &store).unwrap();
         let parent = Harness::new(store.clone(), provider, tools, config);
         let session = store.create_session("parent").unwrap().id;
         Self {

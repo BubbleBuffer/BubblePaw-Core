@@ -63,7 +63,7 @@ pub(super) async fn run() -> Result<()> {
     let mut parent_tools = ToolRegistry::new();
     agents.register(&mut parent_tools)?;
     register_agent_handles(&mut parent_tools, agents.clone())?;
-    repl.register(&mut parent_tools)?;
+    repl.register(&mut parent_tools, &store)?;
     let parent = Harness::new(store.clone(), provider, parent_tools, config);
     let leaf_task = "CELL:if('agent' in tools) throw Error('depth capability leak'); text('leaf ready'); return await wait({ms:60000});";
     let child_task = format!(

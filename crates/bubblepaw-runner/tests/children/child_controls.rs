@@ -145,7 +145,7 @@ impl Fixture {
                 directory.path().join("artifacts"),
             )?),
         )?);
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         let harness = Harness::new(
             store.clone(),
             probe.clone(),

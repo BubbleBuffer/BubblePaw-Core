@@ -27,7 +27,7 @@ async fn web_snapshot_and_answer_root_question() -> Result<()> {
     let mut tools = ToolRegistry::new();
     todo::register(&mut tools, store.clone())?;
     questions.register(&mut tools)?;
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Arc::new(Harness::new(
         store.clone(),
         Arc::new(ScriptedProvider::new("done")),

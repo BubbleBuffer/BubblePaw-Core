@@ -28,7 +28,7 @@ async fn timeout_awaits_descendant_cleanup_and_all_spawn_effects_settle() -> Res
             let mut tools = ToolRegistry::new();
             manager.register_weak(&mut tools)?;
             register_agent_handles_weak(&mut tools, manager)?;
-            repl.register(&mut tools)?;
+            repl.register(&mut tools, &store)?;
             let harness = Arc::new(Harness::new(
                 store.clone(),
                 provider.clone(),

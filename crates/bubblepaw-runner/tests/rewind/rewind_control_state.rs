@@ -67,7 +67,7 @@ async fn rewind_uses_target_todo_and_omits_an_ended_question_waiter_after_reopen
                 data.path().join("artifacts"),
             )?),
         )?);
-        repl.register(&mut tools)?;
+        repl.register(&mut tools, &store)?;
         let harness = Harness::new(
             store.clone(),
             Arc::new(NoModel),

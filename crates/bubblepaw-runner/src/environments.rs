@@ -9,21 +9,16 @@ use std::sync::Arc;
 
 /// Register host environment controls and large-result preservation without
 /// exposing the JavaScript model entrypoint.
-pub fn register(mode: &Arc<CodeMode>, registry: &mut ToolRegistry) -> Result<()> {
-    mode.spill_store().register(registry);
+pub fn register(
+    mode: &Arc<CodeMode>,
+    registry: &mut ToolRegistry,
+    store: &bubblepaw_core::Store,
+) -> Result<()> {
+    mode.spill_store().register(registry, store);
     if registry.get_host("environments").is_none() {
         registry.register_host(Arc::new(EnvironmentTool(mode.clone())))?;
     }
     Ok(())
-}
-
-impl CodeMode {
-    /// Register the spill and scratchpad cleanup hooks on `store`. Hosts call
-    /// this at startup, before any output can spill, as
-    /// [`crate::host_config::prepare_store`] does.
-    pub fn attach_spills(&self, store: &bubblepaw_core::Store) {
-        self.spill_store().attach(store);
-    }
 }
 
 struct EnvironmentTool(Arc<CodeMode>);

@@ -49,7 +49,7 @@ impl Fixture {
             )
             .unwrap(),
         );
-        mode.register(&mut registry).unwrap();
+        mode.register(&mut registry, &store).unwrap();
         let session = store.create_session("discovery snapshot").unwrap().id;
         let harness = Harness::new(
             store,
@@ -208,7 +208,8 @@ fn host_environment_controls_register_without_js_and_use_native_description() {
         .unwrap(),
     );
     let mut registry = ToolRegistry::new();
-    environments::register(&mode, &mut registry).unwrap();
+    let store = Store::in_memory().unwrap();
+    environments::register(&mode, &mut registry, &store).unwrap();
     assert!(registry.get("js").is_none());
     let definition = registry.get_host("environments").unwrap().definition();
     assert!(!definition.description.contains("JS"));

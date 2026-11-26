@@ -70,7 +70,7 @@ impl Fixture {
         let store = Store::in_memory().unwrap();
         let mut registry = ToolRegistry::new();
         let processes = register_native_tools(&mut registry, root.path(), false, &store).unwrap();
-        repl.register(&mut registry).unwrap();
+        repl.register(&mut registry, &store).unwrap();
         let session = store.create_session("runtime notes").unwrap().id;
         let harness = Harness::new(
             store.clone(),

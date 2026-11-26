@@ -207,7 +207,7 @@ impl Fixture {
         let manager = Arc::new(CodeMode::new(root.path().to_owned(), artifacts)?);
         let mut tools = ToolRegistry::new();
         tools.register_host(Arc::new(BulkyNative))?;
-        manager.register(&mut tools)?;
+        manager.register(&mut tools, &store)?;
         let provider = Arc::new(OfflineActions::default());
         let policy = Arc::new(SummarizingContext::new(
             store.clone(),

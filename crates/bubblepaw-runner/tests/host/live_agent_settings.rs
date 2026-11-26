@@ -191,7 +191,7 @@ impl Fixture {
         )?;
         manager.register(&mut base)?;
         register_agent_handles(&mut base, manager.clone())?;
-        repl.register(&mut base)?;
+        repl.register(&mut base, &store)?;
         *tools.write().unwrap() = base.clone();
         let parent = Harness::new(store.clone(), probe.clone(), base, config);
         let owner = ToolContext {

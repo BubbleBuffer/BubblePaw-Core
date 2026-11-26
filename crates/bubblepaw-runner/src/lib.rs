@@ -208,8 +208,7 @@ pub fn register_native_tools_with_exec(
     registry.show_always(tools::ALWAYS_SHOWN_TOOLS.iter().copied());
     registry.show_always(["jobs"]);
     let spills = spill::SpillStore::new(data_dir.as_ref())?;
-    spills.register(registry);
-    spills.attach(store);
+    spills.register(registry, store);
     let workspace =
         tools::WorkspaceTools::new(root)?.with_spill_data_dir(data_dir.as_ref().canonicalize()?);
     workspace.register(registry, read_only, store)?;

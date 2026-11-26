@@ -15,7 +15,7 @@ async fn extension_wire_tools_match_harness_introspection_in_every_execution_mod
         );
         let mut tools = ToolRegistry::new();
         tools.register_host(Arc::new(Named("echo"))).unwrap();
-        repl.register(&mut tools).unwrap();
+        repl.register(&mut tools, &store).unwrap();
         let provider = Arc::new(fake());
         provider.start().await.unwrap();
         let harness = Harness::new(

@@ -94,7 +94,7 @@ impl Fixture {
             )
             .unwrap(),
         );
-        repl.register(&mut tools).unwrap();
+        repl.register(&mut tools, &store).unwrap();
         let provider = Arc::new(Probe {
             mode,
             requests: Mutex::new(Vec::new()),

@@ -26,7 +26,7 @@ async fn idle_completion_notice_is_durable_once_and_chatty_output_has_no_chunk_t
         )
         .unwrap(),
     );
-    repl.register(&mut registry).unwrap();
+    repl.register(&mut registry, &store).unwrap();
     #[cfg(windows)]
     let command = windows_command::powershell_file(
         fixture._workspace.path(),

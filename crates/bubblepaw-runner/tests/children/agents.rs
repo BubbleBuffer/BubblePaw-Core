@@ -118,7 +118,7 @@ impl Fixture {
             )
             .unwrap(),
         );
-        repl.register(&mut registry).unwrap();
+        repl.register(&mut registry, &store).unwrap();
         let child = Harness::new(
             store.clone(),
             provider.clone(),

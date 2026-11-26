@@ -27,7 +27,7 @@ async fn required_result_uses_real_js_wrapper_and_schema_errors_are_retryable() 
         )
         .unwrap(),
     );
-    repl.register(&mut tools).unwrap();
+    repl.register(&mut tools, &store).unwrap();
     let steps = [
         "await tools.submit_result({answer:3});",
         "await tools.submit_result({answer:'ready'}); await tools.write({path:'after.txt',content:'cell finished'}); try { await tools.submit_result({answer:'duplicate'}); } catch (_) {}",

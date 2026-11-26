@@ -127,7 +127,7 @@ impl Fixture {
         if read_only {
             tools = tools.read_only();
         }
-        manager.register(&mut tools).unwrap();
+        manager.register(&mut tools, &store).unwrap();
         let session = store.create_session("cells").unwrap().id;
         let harness = Harness::new(
             store.clone(),

@@ -76,7 +76,7 @@ async fn returned_read_reaches_next_model_request_without_publishing_a_dump() ->
         directory.path().to_owned(),
         artifacts.clone(),
     )?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Arc::new(Harness::new(
         store.clone(),
         provider.clone(),
@@ -182,7 +182,7 @@ async fn batched_reads_report_state_changes_and_reset_in_model_context() -> Resu
         directory.path().join("artifacts"),
     )?);
     let repl = Arc::new(CodeMode::new(directory.path().to_owned(), artifacts)?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &store)?;
     let harness = Harness::new(
         store.clone(),
         provider.clone(),

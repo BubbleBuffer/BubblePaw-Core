@@ -238,7 +238,7 @@ async fn scripted_provider_calls_mcp_through_js_and_keeps_the_effect_boundary() 
             fixture.path().join("artifacts"),
         )?),
     )?);
-    repl.register(&mut tools)?;
+    repl.register(&mut tools, &bubblepaw_core::Store::in_memory()?)?;
     assert!(tools.definitions()[0].description.contains(TOOL));
     let provider = Arc::new(ScriptedProvider::with_steps(
         vec![ScriptedStep::Calls {
