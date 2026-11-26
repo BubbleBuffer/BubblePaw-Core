@@ -1,7 +1,8 @@
+use crate::live_events::LiveEvents;
 use crate::tool_gate::{GateCall, GateSource, ToolGate};
 use crate::{
-    CancellationToken, EventKind, Observation, ObservationScope, OutputRecord, Store, ToolCall,
-    ToolContext, ToolRegistry, ToolResult, id, now,
+    CancellationToken, Observation, ObservationScope, OutputRecord, ToolCall, ToolContext,
+    ToolRegistry, ToolResult, id, now,
 };
 use anyhow::{Result, anyhow, ensure};
 use serde_json::Value;
@@ -17,11 +18,10 @@ mod calls;
 /// provider tool messages for calls that the provider did not make.
 #[derive(Clone)]
 pub struct ToolDispatcher {
-    store: Store,
     tools: ToolRegistry,
-    log: Arc<crate::event_log::Log>,
     journal: Arc<dyn crate::journal::Journal>,
     gate: Arc<dyn ToolGate>,
+    live: Arc<dyn LiveEvents>,
     max_result_bytes: usize,
     observation: Option<Observation>,
     scope: ObservationScope,
@@ -36,8 +36,11 @@ pub struct ToolDispatcher {
 }
 
 impl ToolDispatcher {
+    /// The stock journal, gate and live sink over one store; the run loop builds
+    /// the same three itself and uses `from_seams`.
+    #[cfg(test)]
     pub(crate) fn new(
-        store: Store,
+        store: crate::Store,
         tools: ToolRegistry,
         max_result_bytes: usize,
         observation: Option<Observation>,
@@ -47,13 +50,24 @@ impl ToolDispatcher {
             store.clone(),
             log.clone(),
         ));
-        let gate = Arc::new(crate::approvals::StockGate::new(store.clone(), None, None));
+        let gate = Arc::new(crate::approvals::StockGate::new(store, None, None));
+        Self::from_seams(tools, max_result_bytes, observation, journal, gate, log)
+    }
+    /// A dispatcher over its three seams: the journal for durable writes, the
+    /// gate for approval and result shaping, and the sink for live events.
+    pub(crate) fn from_seams(
+        tools: ToolRegistry,
+        max_result_bytes: usize,
+        observation: Option<Observation>,
+        journal: Arc<dyn crate::journal::Journal>,
+        gate: Arc<dyn ToolGate>,
+        live: Arc<dyn LiveEvents>,
+    ) -> Self {
         Self {
-            store,
             tools,
-            log,
             journal,
             gate,
+            live,
             max_result_bytes,
             observation,
             scope: ObservationScope::default(),
@@ -71,14 +85,6 @@ impl ToolDispatcher {
     /// nested calls. Tools may pick a result shape for their caller.
     pub fn origin(&self) -> &'static str {
         self.origin
-    }
-    pub(crate) fn with_journal(mut self, journal: Arc<dyn crate::journal::Journal>) -> Self {
-        self.journal = journal;
-        self
-    }
-    pub(crate) fn with_gate(mut self, gate: Arc<dyn ToolGate>) -> Self {
-        self.gate = gate;
-        self
     }
     pub(crate) fn with_tool_budget(mut self, limit: Option<usize>) -> Self {
         self.remaining_calls = limit.map(|limit| Arc::new(AtomicUsize::new(limit)));
@@ -263,11 +269,12 @@ impl ToolDispatcher {
         Ok(output_id)
     }
     pub fn complete_effect(&self, invocation: &str) -> Result<()> {
-        self.store.effect_completed(invocation)
+        self.journal.effect_completed(invocation)
     }
     /// Complete a background effect using its known session without restoring archives.
     pub fn complete_effect_for_session(&self, session: &str, invocation: &str) -> Result<()> {
-        self.store.effect_completed_for_session(session, invocation)
+        self.journal
+            .effect_completed_for_session(session, invocation)
     }
     fn limit_model_result(
         &self,

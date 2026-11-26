@@ -214,6 +214,20 @@ impl Journal for SqliteJournal {
                 ))
             })
     }
+    fn nested_dispatched(&self, session_id: &str, run_id: &str, call: &ToolCall) -> Result<String> {
+        self.store.dispatch_nested(session_id, run_id, call)
+    }
+    fn effect_unknown(&self, session_id: &str, invocation: &str) -> Result<()> {
+        self.store
+            .effect_unknown_for_session(session_id, invocation)
+    }
+    fn effect_completed(&self, invocation: &str) -> Result<()> {
+        self.store.effect_completed(invocation)
+    }
+    fn effect_completed_for_session(&self, session_id: &str, invocation: &str) -> Result<()> {
+        self.store
+            .effect_completed_for_session(session_id, invocation)
+    }
     fn tool_output(&self, record: &OutputRecord) -> Result<()> {
         self.log.commit(
             &self.store,
