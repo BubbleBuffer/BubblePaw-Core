@@ -199,9 +199,7 @@ impl Store {
             return Ok(serde_json::from_value(value)?);
         }
         let text = Self::input_text(conn, text, content_blob, content_format)?;
-        Ok(crate::content_block::upgrade_user_content(
-            crate::text_blocks(text),
-        ))
+        Ok(crate::upgrade_user_content(crate::text_blocks(text)))
     }
 
     pub(crate) fn input_text(

@@ -53,7 +53,7 @@ pub struct RequestLogRow {
 
 impl RequestLogRow {
     /// `provider_state` key an adapter reports its sent cache breakpoints under.
-    pub const BREAKPOINTS_KEY: &'static str = "_bubblepaw_cache_breakpoints";
+    pub const BREAKPOINTS_KEY: &'static str = bubblepaw_ai::BREAKPOINTS_KEY;
     /// The breakpoints an adapter reported on this response.
     pub fn reported_breakpoints(response: &ModelResponse) -> Option<Vec<String>> {
         response.reported_cache_breakpoints()

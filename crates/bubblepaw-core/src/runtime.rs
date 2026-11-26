@@ -178,7 +178,7 @@ impl ParsedHistory {
                 .entry(message.id.clone())
                 .or_insert_with(|| (message.clone(), 0));
             if entry.1 == 0 || !runtime_admission::same_message_wire_size(&entry.0, message) {
-                entry.1 = crate::request_size::prepared_message_bytes(message)?;
+                entry.1 = crate::prepared_message_bytes(message)?;
                 entry.0 = message.clone();
             }
             bytes = bytes.saturating_add(entry.1);
@@ -293,7 +293,7 @@ pub struct Harness {
     tools: ToolRegistry,
     config: HarnessConfig,
     state: Arc<RuntimeState>,
-    cursors: Arc<crate::provider_ext::HistoryTracker>,
+    cursors: Arc<crate::HistoryTracker>,
 }
 impl Harness {
     fn history(&self, session_id: &str) -> Result<Vec<Message>> {

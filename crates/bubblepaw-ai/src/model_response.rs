@@ -4,10 +4,13 @@
 //! that reports nothing leaves them `None` or empty. `provider_state` stays the
 //! adapter's own replay blob. Each fact has one accessor that reads the typed
 //! field first and falls back to the blob for replies that carry only the blob.
-use crate::{LastRequestUsage, QuotaReading, RequestLogRow, ToolCall, Usage};
+use crate::{LastRequestUsage, QuotaReading, ToolCall, Usage};
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// `provider_state` key an adapter reports its sent cache breakpoints under.
+pub const BREAKPOINTS_KEY: &str = "_bubblepaw_cache_breakpoints";
 
 /// Why a model stopped generating, as far as the provider says.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,7 +87,8 @@ impl ModelResponse {
     }
     /// Serialized size of the reply as the storage limit measures it: without the
     /// typed reply facts, each of which adds `,"name":value` when present.
-    pub(crate) fn storage_bytes(&self) -> serde_json::Result<usize> {
+    #[doc(hidden)]
+    pub fn storage_bytes(&self) -> serde_json::Result<usize> {
         fn field<T: Serialize>(name: &str, value: &Option<T>) -> serde_json::Result<usize> {
             match value {
                 Some(value) => Ok(name.len() + 4 + serde_json::to_vec(value)?.len()),
@@ -137,7 +141,7 @@ impl ModelResponse {
         if self.cache_breakpoints.is_some() {
             return self.cache_breakpoints.clone();
         }
-        let marks = self.legacy_state_field(RequestLogRow::BREAKPOINTS_KEY)?;
+        let marks = self.legacy_state_field(BREAKPOINTS_KEY)?;
         serde_json::from_value(marks.clone()).ok()
     }
     /// Legacy: a fact that older replies and extension providers carry only as a key of `provider_state`.

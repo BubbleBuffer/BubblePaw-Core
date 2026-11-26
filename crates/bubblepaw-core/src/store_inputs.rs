@@ -263,7 +263,7 @@ impl Store {
             )?,
         };
         event["text"] = crate::content_body_text(&content).into_owned().into();
-        let extra = crate::content_block::extra_content(&content);
+        let extra = crate::extra_content(&content);
         if !extra.is_empty() {
             event["content"] = serde_json::to_value(extra)?;
         }

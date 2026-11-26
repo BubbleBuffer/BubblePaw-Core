@@ -397,6 +397,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "bubblepaw-ai"
+version = "0.2.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "bubblepaw-client-check"
 version = "0.2.1"
 dependencies = [
@@ -416,6 +430,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.23.1",
+ "bubblepaw-ai",
  "chrono",
  "fs2",
  "jsonschema",

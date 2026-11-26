@@ -7,7 +7,7 @@ use std::sync::Arc;
 pub const MAX_IMAGE_BYTES: usize = 5_000_000;
 pub const MAX_IMAGES_PER_CALL: usize = 4;
 
-/// Names an image whose bytes live in the session's attachments.
+/// Names an image whose bytes live in the conversation's attachments.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageRef {

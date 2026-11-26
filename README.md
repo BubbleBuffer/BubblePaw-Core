@@ -45,6 +45,7 @@ Apps reach the host in one of three ways: BubblePaw Desktop starts it as a child
 
 | Crate | Path | What it does |
 | --- | --- | --- |
+| `bubblepaw-ai` | [crates/bubblepaw-ai](crates/bubblepaw-ai) | The model-facing layer: messages, requests, replies, streaming events and the `Provider` trait. It depends on no other crate of this workspace and knows no store, run or tool. `bubblepaw-core` re-exports it. |
 | `bubblepaw-core` | [crates/bubblepaw-core](crates/bubblepaw-core) | The library: a native agent loop with durable SQLite history and effects, transient presentation, approvals and context preparation. It has no provider, file-tool or product code. |
 | `bubblepaw-runner` | [crates/bubblepaw-runner](crates/bubblepaw-runner) | The `bubblepaw` binary and its library: provider adapters, workspace tools, CodeMode and the optional web host. Features: `web`, `bench`, `test-fixtures`. |
 | `bubblepaw-mcp` | [crates/bubblepaw-mcp](crates/bubblepaw-mcp) | The host-owned MCP client over stdio and Streamable HTTP. |
@@ -105,7 +106,7 @@ and every push to `main`. It installs the stable toolchain with
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings -A deprecated
 cargo clippy -p bubblepaw-runner --features web,bench --all-targets --locked -- -D warnings -A deprecated
-cargo test -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
+cargo test -p bubblepaw-ai -p bubblepaw-core -p bubblepaw-mcp -p bubblepaw-process -p bubblepaw-sdk --locked --no-fail-fast
 cargo test -p bubblepaw-runner --locked --no-fail-fast
 cargo test -p bubblepaw-runner --features web,bench --locked --no-fail-fast
 ```

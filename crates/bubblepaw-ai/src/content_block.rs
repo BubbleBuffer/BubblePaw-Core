@@ -205,7 +205,8 @@ impl Message {
     /// A message read from a store: a tool message's legacy image envelope
     /// becomes image blocks, and a user message's legacy file envelope becomes
     /// file blocks. Other roles keep their text as written.
-    pub(crate) fn upgraded(mut self) -> Self {
+    #[doc(hidden)]
+    pub fn upgraded(mut self) -> Self {
         match self.role {
             crate::Role::Tool => self.content = content_image::upgrade_legacy(self.content),
             crate::Role::User => self.content = upgrade_user_content(self.content),
@@ -227,13 +228,15 @@ impl Message {
 
 /// A user message's blocks as stored rows and queued inputs read them: a legacy
 /// file envelope at the end of the text becomes file blocks.
-pub(crate) fn upgrade_user_content(content: Vec<ContentBlock>) -> Vec<ContentBlock> {
+#[doc(hidden)]
+pub fn upgrade_user_content(content: Vec<ContentBlock>) -> Vec<ContentBlock> {
     content_file::upgrade_legacy(content)
 }
 
 /// `content` when it holds more than text, nothing otherwise: the form events and
 /// queued inputs carry beside their text.
-pub(crate) fn extra_content(content: &[ContentBlock]) -> Vec<ContentBlock> {
+#[doc(hidden)]
+pub fn extra_content(content: &[ContentBlock]) -> Vec<ContentBlock> {
     if content
         .iter()
         .any(|block| !matches!(block, ContentBlock::Text { .. }))
@@ -263,13 +266,14 @@ pub fn plain_content<R>(f: impl FnOnce() -> R) -> R {
 }
 
 /// serde `with` module for `Message.content`.
-pub(crate) mod wire {
+#[doc(hidden)]
+pub mod wire {
     use super::*;
 
     /// Reads the list form, or a plain string (the form older stores and exports
     /// wrote) as one text block. Legacy envelopes are not read here: only tool
     /// content and user messages have them (see `tool` and `Message::upgraded`).
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+    pub fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Vec<ContentBlock>, D::Error> {
         #[derive(Deserialize)]
@@ -291,19 +295,19 @@ pub(crate) mod wire {
 
     /// Tool content: as `wire`, and a legacy image envelope at the end of the
     /// text becomes image blocks.
-    pub(crate) mod tool {
+    pub mod tool {
         use super::*;
-        pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        pub fn deserialize<'de, D: Deserializer<'de>>(
             deserializer: D,
         ) -> Result<Vec<ContentBlock>, D::Error> {
             Ok(content_image::upgrade_legacy(super::deserialize(
                 deserializer,
             )?))
         }
-        pub(crate) use super::serialize;
+        pub use super::serialize;
     }
 
-    pub(crate) fn serialize<S: serde::Serializer>(
+    pub fn serialize<S: serde::Serializer>(
         content: &[ContentBlock],
         serializer: S,
     ) -> Result<S::Ok, S::Error> {

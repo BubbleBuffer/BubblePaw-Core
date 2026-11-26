@@ -62,9 +62,9 @@ fn validate_closed_objects(schema: &Value, path: &str) -> Result<()> {
         "dependentSchemas",
         "dependencies",
     ] {
-        if let Some(children) = schema[keyword].as_object() {
-            for (name, child) in children {
-                validate_closed_objects(child, &format!("{path}/{keyword}/{name}"))?;
+        if let Some(subs) = schema[keyword].as_object() {
+            for (name, sub) in subs {
+                validate_closed_objects(sub, &format!("{path}/{keyword}/{name}"))?;
             }
         }
     }
@@ -82,20 +82,20 @@ fn validate_closed_objects(schema: &Value, path: &str) -> Result<()> {
         "unevaluatedProperties",
         "additionalProperties",
     ] {
-        if let Some(child) = object.get(keyword) {
-            if let Some(children) = child.as_array() {
-                for (index, child) in children.iter().enumerate() {
-                    validate_closed_objects(child, &format!("{path}/{keyword}/{index}"))?;
+        if let Some(sub) = object.get(keyword) {
+            if let Some(subs) = sub.as_array() {
+                for (index, sub) in subs.iter().enumerate() {
+                    validate_closed_objects(sub, &format!("{path}/{keyword}/{index}"))?;
                 }
             } else {
-                validate_closed_objects(child, &format!("{path}/{keyword}"))?;
+                validate_closed_objects(sub, &format!("{path}/{keyword}"))?;
             }
         }
     }
     for keyword in ["allOf", "anyOf", "oneOf", "prefixItems"] {
-        if let Some(children) = schema[keyword].as_array() {
-            for (index, child) in children.iter().enumerate() {
-                validate_closed_objects(child, &format!("{path}/{keyword}/{index}"))?;
+        if let Some(subs) = schema[keyword].as_array() {
+            for (index, sub) in subs.iter().enumerate() {
+                validate_closed_objects(sub, &format!("{path}/{keyword}/{index}"))?;
             }
         }
     }

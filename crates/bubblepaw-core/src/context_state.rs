@@ -18,6 +18,7 @@ mod log;
 mod reminders;
 #[path = "context_writer.rs"]
 mod writer;
+pub use bubblepaw_ai::CacheTiers;
 pub use log::RequestLogRow;
 pub use reminders::{Reminder, ReminderDelivery, ReminderMetadata, ReminderRecord};
 pub use writer::ContextWriter;
@@ -75,15 +76,6 @@ pub struct BuiltContext {
     pub request: ModelRequest,
     pub record: ContextBuild,
     pub tiers: CacheTiers,
-}
-
-/// Tier ends of a built request as message counts, for provider cache
-/// placement. `cold_end` is one past the last cold message. `previous_len` is
-/// the length of this lineage's previous request when this one appends to it.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CacheTiers {
-    pub cold_end: Option<usize>,
-    pub previous_len: Option<usize>,
 }
 
 struct Previous {
