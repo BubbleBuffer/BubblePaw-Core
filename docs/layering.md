@@ -64,6 +64,10 @@ The loop never holds per-request usage records. The request context hands it a p
 
 The run loop and the dispatcher show live events through the `LiveEvents` trait: `transient` for tool starts and finishes, paragraphs and request starts, `progress` and `paragraph` for the streamed text. Live events reach subscribers only and are never stored; durable events stay with the journal. The stock implementation is the event log. A `ToolDispatcher` is built from a journal, a gate and a live sink (`from_seams`); `new` builds the stock three from a store.
 
+## The run loop and its shell
+
+`Harness::drive` is the shell around a run: the active map, cancellation attribution, the stopping flag, the pending-input check, the run checkpoint, continuation into a new run, finalizing, `runtime_idle` and the single-tool completion all live there and take the runtime lock. `run_loop.rs` holds the loop for exactly one run. `run_once` takes a `RunInputs` (the run, its options, the cancellation token and the single-tool record), runs the rounds of `turn`, and returns a `RunOutcome`: status, text, usage, error, result message id and final message. On failure it first keeps the partial reply and closes the run's open records through the journal. `run_settle.rs` holds the second half of a round: the checks on the model reply, its recording, tool dispatch and steering. The loop still reads the config, the tool surface code and the store for the tool gate, the execution mode and the context state; those are the seams still to come. `Message::new` in the ai crate builds the messages the loop writes.
+
 ## Rules
 
 Normal and build dependencies obey these rules; dev-dependencies are exempt:
