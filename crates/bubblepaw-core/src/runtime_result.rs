@@ -106,16 +106,9 @@ impl Harness {
         &self,
         run: &Run,
         message: &Message,
-        request_usage: &mut Vec<RequestUsage>,
-        request_ids: &[String],
         nudged: &mut bool,
     ) -> Result<Option<String>> {
-        self.journal.reply_received(Reply {
-            message,
-            usage: request_usage.as_slice(),
-            request_ids,
-        })?;
-        request_usage.clear();
+        self.journal.reply_received(&run.id, message)?;
         ensure!(
             !*nudged,
             "Required structured result missing: submit_result was not called after one host reminder"
@@ -147,7 +140,6 @@ pub(super) fn outcome(run: &Run, value: serde_json::Value) -> Result<TurnOutcome
         text,
         result_message_id: final_message.id.clone(),
         final_message: Some(final_message),
-        request_ids: Vec::new(),
     })
 }
 
@@ -157,19 +149,13 @@ pub(super) fn terminated(message: &Message) -> TurnOutcome {
         text: message.text().into_owned(),
         result_message_id: message.id.clone(),
         final_message: None,
-        request_ids: Vec::new(),
     }
 }
 
-pub(super) fn text_outcome(
-    message: Message,
-    needs_commit: bool,
-    request_ids: Vec<String>,
-) -> TurnOutcome {
+pub(super) fn text_outcome(message: Message, needs_commit: bool) -> TurnOutcome {
     TurnOutcome {
         text: message.text().into_owned(),
         result_message_id: message.id.clone(),
         final_message: needs_commit.then_some(message),
-        request_ids,
     }
 }

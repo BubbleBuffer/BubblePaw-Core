@@ -60,6 +60,8 @@ The dispatcher in `bubblepaw-core` asks a `ToolGate` trait about each call inste
 
 The run loop asks a `RequestContext` trait what to send to the model: the history for the run, the draft messages with the steering batch and the preview of pending notes, the host preparation of that draft, the final request with its budget check, notes queued for the model, declared prefix changes, and the points where a request starts, is sent, finishes and is answered. It carries messages, requests, responses and the provider as plain data. One implementation holds the host preparation hook, the store and the context state. The overflow retry, the choice of when to remind and what to say, steering, and the tool surface stay in the loop.
 
+The loop never holds per-request usage records. The request context hands it a provider that captures them around `generate`, settles them when the request ends, and keeps them per run; the journal writes whatever a run has waiting in the commit of its reply or of its end, and the records are let go with the run when it ends unwritten.
+
 ## Rules
 
 Normal and build dependencies obey these rules; dev-dependencies are exempt:

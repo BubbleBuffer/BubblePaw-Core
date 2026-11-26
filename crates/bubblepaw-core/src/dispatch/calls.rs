@@ -1,6 +1,5 @@
 //! Shared admission, invocation and effect journaling for every tool route.
 use super::*;
-use crate::journal::Reply;
 use crate::tool_gate::Verdict;
 use anyhow::bail;
 
@@ -106,8 +105,6 @@ impl ToolDispatcher {
     pub(crate) fn commit_reply_dispatch(
         &self,
         message: &crate::Message,
-        usage: &[crate::RequestUsage],
-        request_ids: &[String],
         prepared: &PreparedToolCall,
     ) -> Result<String> {
         ensure!(
@@ -121,11 +118,7 @@ impl ToolDispatcher {
         self.journal.reply_dispatched(
             &prepared.context.session_id,
             &prepared.context.run_id,
-            Reply {
-                message,
-                usage,
-                request_ids,
-            },
+            message,
             &prepared.call,
         )
     }

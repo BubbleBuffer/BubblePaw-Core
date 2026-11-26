@@ -18,7 +18,6 @@ pub(super) struct TurnOutcome {
     pub(super) text: String,
     pub(super) result_message_id: String,
     pub(super) final_message: Option<Message>,
-    pub(super) request_ids: Vec<String>,
 }
 pub(super) struct SingleToolRun {
     pub(super) call: ToolCall,

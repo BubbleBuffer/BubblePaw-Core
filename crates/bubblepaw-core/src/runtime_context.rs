@@ -302,13 +302,35 @@ impl RequestContext for StockRequestContext {
         self.context().observe_tool_generation(session, generation)
     }
 
+    fn run_hold(&self, run: &Run) -> Box<dyn std::any::Any + Send> {
+        Box::new(crate::request_metering::RunHold {
+            state: self.state.clone(),
+            run_id: run.id.clone(),
+        })
+    }
+
+    fn requester(&self, run: &Run, provider: Arc<dyn Provider>) -> Arc<dyn Provider> {
+        Arc::new(crate::request_metering::Metered {
+            inner: provider,
+            store: self.store.clone(),
+            state: self.state.clone(),
+            session_id: run.session_id.clone(),
+            run_id: run.id.clone(),
+        })
+    }
+
     /// Trace a request's start against the host's ledger. The wire shape is only computed when traced.
     fn model_started(
         &self,
+        run: &Run,
         scope: Option<&ObservationScope>,
         request: &ModelRequest,
         provider: &Arc<dyn Provider>,
     ) {
+        self.state.usage.expect(
+            &run.id,
+            crate::request_usage::request_fallback(&request.model, run, scope),
+        );
         if let (Some(observer), Some(scope)) = (&self.observation, scope) {
             observer.model_start(
                 scope.clone(),
@@ -327,13 +349,14 @@ impl RequestContext for StockRequestContext {
     /// the answering attempt's usage and report an unexplained cache miss.
     fn model_finished(
         &self,
-        session: &str,
-        usage: &[crate::RequestUsage],
+        run: &Run,
         scope: Option<&ObservationScope>,
         result: &mut Result<crate::ModelResponse>,
         (elapsed_ms, first_text_ms): (u64, Option<u64>),
         cancelled: bool,
     ) {
+        let session = run.session_id.as_str();
+        let record = self.state.usage.ended(&run.id, result);
         if let (Some(observer), Some(scope)) = (&self.observation, scope) {
             match result {
                 Ok(response) => observer.model_finish(
@@ -361,7 +384,7 @@ impl RequestContext for StockRequestContext {
                 }
             }
         }
-        let Some(record) = usage.iter().rev().find(|r| !r.failed).or(usage.last()) else {
+        let Some(record) = record else {
             return;
         };
         let breakpoints = result

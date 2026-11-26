@@ -4,7 +4,7 @@
 //! The loop decides when to ask and what to do with the answer.
 use crate::{
     CancellationToken, Message, ModelRequest, ModelResponse, ObservationScope, PrepareMode,
-    PreparedContext, Provider, Reminder, RequestUsage,
+    PreparedContext, Provider, Reminder, Run,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -88,20 +88,24 @@ pub(crate) trait RequestContext: Send + Sync {
     fn take_prefix_change(&self, session: &str) -> Option<String>;
     /// Whether the tool inventory generation differs from the one seen last.
     fn tool_generation_observed(&self, session: &str, generation: u64) -> bool;
+    /// What the host keeps for a run is let go when this drops, however the run ends.
+    fn run_hold(&self, run: &Run) -> Box<dyn std::any::Any + Send>;
+    /// The provider as the run's main requests are made through it.
+    fn requester(&self, run: &Run, provider: Arc<dyn Provider>) -> Arc<dyn Provider>;
     /// A model request is about to start.
     fn model_started(
         &self,
+        run: &Run,
         scope: Option<&ObservationScope>,
         request: &ModelRequest,
         provider: &Arc<dyn Provider>,
     );
     /// The final request, immediately before it is dispatched.
     fn request_sent(&self, session: &str, request: &ModelRequest, provider: Arc<dyn Provider>);
-    /// A model request ended with this result; the usage is what it was billed.
+    /// A model request ended with this result.
     fn model_finished(
         &self,
-        session: &str,
-        usage: &[RequestUsage],
+        run: &Run,
         scope: Option<&ObservationScope>,
         result: &mut Result<ModelResponse>,
         timing: (u64, Option<u64>),

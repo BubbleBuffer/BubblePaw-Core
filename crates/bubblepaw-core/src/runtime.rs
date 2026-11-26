@@ -1,10 +1,10 @@
-use crate::journal::{Consumed, InputScope, Journal, Reply, RunFinish};
+use crate::journal::{Consumed, InputScope, Journal, RunFinish};
 use crate::request_seam::{Built, Draft, Note, Release, RequestContext};
 use crate::{
     CancellationToken, ClientInfo, EventKind, HarnessEvent, InputKind, Message, MessageInput,
-    ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput,
-    RequestUsage, Role, Run, RunOptions, Store, ToolCall, ToolContext, ToolDispatcher,
-    ToolRegistry, ToolResult, Usage, id, now, stream::Paragraphs,
+    ModelRequest, ModelResponse, Observation, ObservationScope, Provider, QueuedInput, Role, Run,
+    RunOptions, Store, ToolCall, ToolContext, ToolDispatcher, ToolRegistry, ToolResult, Usage, id,
+    now, stream::Paragraphs,
 };
 use anyhow::{Context, Result, anyhow, ensure};
 use async_trait::async_trait;
@@ -143,6 +143,8 @@ pub(crate) struct RuntimeState {
     /// The one prompt-cache ledger of this store; its `context` is the root lineage.
     pub(crate) cache: Arc<crate::CacheAccounting>,
     pub(crate) session_cleanups: Mutex<HashMap<String, crate::store::SessionCleanup>>,
+    /// Request usage the runs have made and no commit has written yet.
+    pub(crate) usage: crate::request_metering::UsageLedger,
 }
 /// Existing inventory body header, retained as frozen text. Reminder identity
 /// and restart deduplication use structured runtime_inventory metadata.
@@ -677,8 +679,9 @@ impl Harness {
                     None,
                 );
             }
+            // What the host keeps for the run is let go with the iteration, however it ends.
+            let _hold = self.request_context.run_hold(&run);
             let mut usage = None;
-            let mut request_usage = Vec::new();
             let partial = runtime_stream::SharedPartial::default();
             let result = crate::quota::with_quota_wait_context(
                 &self.store,
@@ -689,7 +692,6 @@ impl Harness {
                     &options,
                     &cancellation,
                     &mut usage,
-                    &mut request_usage,
                     &partial,
                     single_tool.as_ref(),
                 ),
@@ -697,7 +699,6 @@ impl Harness {
             .await;
             let mut result_message_id = None;
             let mut final_message = None;
-            let mut request_ids = Vec::new();
             match result {
                 Ok(outcome) => {
                     run.status = "completed".into();
@@ -705,7 +706,6 @@ impl Harness {
                     run.usage = Some(usage.unwrap_or_default());
                     result_message_id = Some(outcome.result_message_id);
                     final_message = outcome.final_message;
-                    request_ids = outcome.request_ids;
                 }
                 Err(error) => {
                     run.usage = usage;
@@ -769,8 +769,6 @@ impl Harness {
                 run: &run,
                 result_message_id: result_message_id.as_deref(),
                 final_message: final_message.as_ref(),
-                usage: &request_usage,
-                request_ids: &request_ids,
                 origin,
                 settles_session: !continue_run,
             });
@@ -822,7 +820,6 @@ impl Harness {
         options: &RunOptions,
         cancellation: &CancellationToken,
         usage: &mut Option<Usage>,
-        request_usage: &mut Vec<RequestUsage>,
         partial: &runtime_stream::SharedPartial,
         single_tool: Option<&SingleToolRun>,
     ) -> Result<TurnOutcome> {
@@ -905,21 +902,16 @@ impl Harness {
             let mut dispatcher = dispatcher.clone().with_user_request(user_request.clone());
             let mut tools_round = runtime_reminders::ToolsRound::Open;
             let mut declarations = None;
-            let (response, dispatcher, request_ids) = if let Some(execution) = single_tool {
+            let (response, dispatcher) = if let Some(execution) = single_tool {
                 (
                     ModelResponse {
                         tool_calls: vec![execution.call.clone()],
                         ..Default::default()
                     },
                     dispatcher.clone(),
-                    Vec::new(),
                 )
             } else if let Some(code) = &options.script {
-                (
-                    crate::script::response(code),
-                    dispatcher.clone(),
-                    Vec::new(),
-                )
+                (crate::script::response(code), dispatcher.clone())
             } else {
                 let (default_model, request_provider) = self.provider_binding();
                 tools_round = self.queue_run_reminders(run, options, &dispatcher, &mut reminders);
@@ -1076,11 +1068,6 @@ impl Harness {
                 // Provider extension history cursor (docs/providers.md).
                 request.session_id = run.session_id.clone();
                 request.history = self.cursors.advance(&run.session_id, &request.messages);
-                let fallback_usage = crate::request_usage::request_fallback(
-                    &request.model,
-                    run,
-                    request_scope.as_ref(),
-                );
                 let request_started = Instant::now();
                 let first_text = self
                     .config
@@ -1088,6 +1075,7 @@ impl Harness {
                     .as_ref()
                     .map(|_| Arc::new(Mutex::new(None::<u64>)));
                 self.request_context.model_started(
+                    run,
                     request_scope.as_ref(),
                     &request,
                     &request_provider,
@@ -1135,21 +1123,14 @@ impl Harness {
                         .collect::<Vec<_>>(),
                 );
                 overflow.sent(&request);
-                let (mut response_result, mut captured_usage, mut request_ids) = crate::request_usage::capture_message_request_usage(
-                    &self.store, &run.session_id, &run.id,
-                    async { tokio::select! {biased; _=cancellation.cancelled()=>Err(anyhow!("Cancelled during provider request")), result=request_provider.generate(request,callback,cancellation.clone())=>result} },
-                ).await;
-                if captured_usage.is_empty() {
-                    captured_usage.push(crate::request_usage::fallback_usage(
-                        fallback_usage,
-                        &response_result,
-                        &mut request_ids,
-                    ));
-                }
+                let mut response_result = self
+                    .request_context
+                    .requester(run, request_provider.clone())
+                    .generate(request, callback, cancellation.clone())
+                    .await;
                 drop(callback_lifetime);
                 self.request_context.model_finished(
-                    &run.session_id,
-                    &captured_usage,
+                    run,
                     request_scope.as_ref(),
                     &mut response_result,
                     (
@@ -1158,7 +1139,6 @@ impl Harness {
                     ),
                     cancellation.is_cancelled(),
                 );
-                request_usage.extend(captured_usage);
                 let response = match response_result {
                     // The select above only sees cancellation it polls after; a reply
                     // that resolves after cancel was signalled is not a successful turn.
@@ -1209,7 +1189,7 @@ impl Harness {
                 if let Some(value) = &response.usage {
                     usage.get_or_insert_with(Usage::default).add(value);
                 }
-                (response, dispatcher, request_ids)
+                (response, dispatcher)
             };
             // Reissuing a durable call ID is never a new invocation, including after
             // an unknown outcome. The host must resolve that effect explicitly.
@@ -1240,13 +1220,7 @@ impl Harness {
             {
                 malformed_replies = 0;
                 user_request = self
-                    .nudge_required_result(
-                        run,
-                        &message,
-                        request_usage,
-                        &request_ids,
-                        &mut result_nudged,
-                    )?
+                    .nudge_required_result(run, &message, &mut result_nudged)?
                     .unwrap_or(user_request);
                 result_retry_pending = true;
                 continue;
@@ -1257,7 +1231,7 @@ impl Harness {
                     .journal
                     .input_pending(&run.session_id, InputScope::Steering)?
             {
-                return Ok(runtime_result::text_outcome(message, true, request_ids));
+                return Ok(runtime_result::text_outcome(message, true));
             }
             // A sole Allow call batches its reply and dispatch marker.
             let prepare = |call: &ToolCall| {
@@ -1282,21 +1256,11 @@ impl Harness {
                 && let Some(prepared) = &mut single_prepared
                 && dispatcher.admit_fast_path(prepared)?
             {
-                Some(dispatcher.commit_reply_dispatch(
-                    &message,
-                    request_usage,
-                    &request_ids,
-                    prepared,
-                )?)
+                Some(dispatcher.commit_reply_dispatch(&message, prepared)?)
             } else {
-                self.journal.reply_received(Reply {
-                    message: &message,
-                    usage: request_usage.as_slice(),
-                    request_ids: &request_ids,
-                })?;
+                self.journal.reply_received(&run.id, &message)?;
                 None
             };
-            request_usage.clear();
             // Native submissions settle last. Calls retain their provider order
             // in history; unrelated effects run before accepting the result.
             let calls = &response.tool_calls;
@@ -1362,7 +1326,6 @@ impl Harness {
                         text,
                         result_message_id,
                         final_message: None,
-                        request_ids: Vec::new(),
                     }
                 });
             }
@@ -1375,7 +1338,7 @@ impl Harness {
                 user_request = self.latest_user_request(&run.session_id)?;
             }
             if options.output_schema.is_none() && response.tool_calls.is_empty() && steered == 0 {
-                return Ok(runtime_result::text_outcome(message, false, request_ids));
+                return Ok(runtime_result::text_outcome(message, false));
             }
         }
     }
