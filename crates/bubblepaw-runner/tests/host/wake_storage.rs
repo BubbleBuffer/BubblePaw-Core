@@ -44,7 +44,7 @@ async fn completion_wake_keeps_exec_output_and_stream_fragments_out_of_sqlite() 
     )?);
     processes.set_store(store.clone());
     let mut tools = ToolRegistry::new();
-    processes.register(&mut tools)?;
+    processes.register(&mut tools, &store)?;
     let exec = tools.get("exec").unwrap();
     let harness = Arc::new(Harness::new(
         store.clone(),

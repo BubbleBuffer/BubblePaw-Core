@@ -71,7 +71,7 @@ impl Fixture {
         let mut tools = ToolRegistry::new();
         WorkspaceTools::new(root.path())
             .unwrap()
-            .register(&mut tools, false)
+            .register(&mut tools, false, &store)
             .unwrap();
         tools.show_always(["read", "list", "search"]);
         let mut research = research_profile_with_tools(
@@ -425,7 +425,7 @@ async fn main_model_uses_ordinary_research_child_and_follows_up_in_its_persisted
     let mut reopened_tools = ToolRegistry::new();
     WorkspaceTools::new(root.path())
         .unwrap()
-        .register(&mut reopened_tools, true)
+        .register(&mut reopened_tools, true, &reopened)
         .unwrap();
     let profile = research_profile_with_tools(
         reopened.clone(),

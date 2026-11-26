@@ -42,7 +42,7 @@ async fn shared_dispatch_preserves_json_cursors_and_escaped_reads() {
     let store = Store::in_memory().unwrap();
     let session = store.create_session("bounded JSON").unwrap();
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, root.path(), false).unwrap();
+    let processes = register_native_tools(&mut tools, root.path(), false, &store).unwrap();
     let repl = Arc::new(
         CodeMode::new(
             root.path().to_owned(),
@@ -121,7 +121,7 @@ async fn js_exec_keeps_full_host_object_and_returns_only_exit_code() {
     let store = Store::in_memory().unwrap();
     let session = store.create_session("small JS reply").unwrap();
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, root.path(), false).unwrap();
+    let processes = register_native_tools(&mut tools, root.path(), false, &store).unwrap();
     let repl = Arc::new(
         CodeMode::new(
             root.path().to_owned(),
@@ -168,7 +168,7 @@ async fn js_running_process_keeps_boundary_and_blocks_fork_until_terminal() {
     let store = Store::in_memory().unwrap();
     let session = store.create_session("active process").unwrap();
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, root.path(), false).unwrap();
+    let processes = register_native_tools(&mut tools, root.path(), false, &store).unwrap();
     let repl = Arc::new(
         CodeMode::new(
             root.path().to_owned(),
@@ -222,7 +222,7 @@ fn pending_completed_run_recovers_unknown_without_replaying_process() {
         let store = Store::open(&path).unwrap();
         let session = store.create_session("crash boundary").unwrap();
         let mut tools = ToolRegistry::new();
-        let _processes = register_native_tools(&mut tools, root.path(), false).unwrap();
+        let _processes = register_native_tools(&mut tools, root.path(), false, &store).unwrap();
         let repl = Arc::new(
             CodeMode::new(
                 root.path().to_owned(),

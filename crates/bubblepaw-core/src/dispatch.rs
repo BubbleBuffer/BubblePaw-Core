@@ -36,10 +36,6 @@ pub struct ToolDispatcher {
 }
 
 impl ToolDispatcher {
-    /// Canonical host storage for immutable tool attachments and metadata.
-    pub fn store(&self) -> &Store {
-        &self.store
-    }
     pub(crate) fn new(
         store: Store,
         tools: ToolRegistry,

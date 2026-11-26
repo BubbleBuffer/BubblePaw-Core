@@ -252,6 +252,7 @@ impl HostBuilder {
                         .context("cannot start the JavaScript adapter")?,
                 );
                 artifact_store = Some(artifacts);
+                code_mode.attach_spills(&store);
                 code_mode
                     .register(&mut support)
                     .context("cannot register the JavaScript adapter")?;

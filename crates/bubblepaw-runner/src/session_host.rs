@@ -91,6 +91,7 @@ pub(super) async fn execute(
         false,
         settings.exec.clone(),
         &data_dir,
+        &store,
     )?;
     processes.set_inherited_env(Some(effective.runtime_environment()));
     processes.set_diagnostics(output.clone());
@@ -290,7 +291,6 @@ pub(super) async fn execute(
     questions.register(&mut tools)?;
     bubblepaw_runner::todo::register(&mut tools, store.clone())?;
     processes.set_wake(wake.clone());
-    processes.set_store(store.clone());
     let registry = Arc::new(
         AgentRegistry::default()
             .with_wake(wake)

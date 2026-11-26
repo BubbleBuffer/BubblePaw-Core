@@ -58,6 +58,7 @@ async fn untrusted_workspace_emits_the_event_and_a_grant_applies_the_config_to_t
         false,
         settings.exec.clone(),
         root.path().join("state"),
+        &store,
     )
     .unwrap();
     let mcp = Arc::new(McpHost::start(&settings.mcp, root.path()).await);

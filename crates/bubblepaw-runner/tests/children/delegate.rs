@@ -77,7 +77,7 @@ fn fixture_with_provider(root: &Path, provider: Arc<dyn Provider>) -> Fixture {
     .unwrap();
     let store = Store::in_memory().unwrap();
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, root, false).unwrap();
+    let processes = register_native_tools(&mut tools, root, false, &store).unwrap();
     let repl = Arc::new(
         CodeMode::new(
             root.to_owned(),

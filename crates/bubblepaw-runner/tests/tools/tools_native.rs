@@ -37,7 +37,7 @@ async fn root_and_exact_edit_contract() {
     let directory = tempfile::tempdir().unwrap();
     let outside = tempfile::NamedTempFile::new().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     call(
         &registry,
         "write",
@@ -109,7 +109,7 @@ async fn finished(registry: &ToolRegistry, mut output: Value) -> Value {
 async fn processes_are_real_owned_bounded_and_cancelled() {
     let root = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, root.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, root.path(), false).unwrap();
     #[cfg(windows)]
     let script = windows_command::powershell_file(
         root.path(),
@@ -164,7 +164,7 @@ async fn processes_are_real_owned_bounded_and_cancelled() {
 async fn process_deadline_and_run_token_kill_children() {
     let root = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, root.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, root.path(), false).unwrap();
     #[cfg(windows)]
     let script =
         windows_command::powershell_file(root.path(), "sleep.ps1", "Start-Sleep -Seconds 30");
@@ -199,7 +199,9 @@ async fn process_deadline_and_run_token_kill_children() {
 async fn readonly_registration_has_no_mutation_or_processes() {
     let root = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, root.path(), true).unwrap();
+    let processes =
+        register_native_tools(&mut registry, root.path(), true, &checkpoint_write::store())
+            .unwrap();
     assert!(registry.definitions().is_empty());
     assert_eq!(registry.capabilities().len(), 4);
     assert!(registry.get("edit").is_none());
@@ -213,7 +215,7 @@ async fn readonly_registration_has_no_mutation_or_processes() {
 async fn windows_cancel_terminates_a_spawned_descendant() {
     let root = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, root.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, root.path(), false).unwrap();
     std::fs::write(
         root.path().join("descendant-child.ps1"),
         "Start-Sleep -Seconds 30",

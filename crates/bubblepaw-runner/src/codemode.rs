@@ -1055,7 +1055,6 @@ impl Tool for JsTool {
         input: Value,
         dispatcher: ToolDispatcher,
     ) -> Result<ToolResult> {
-        self.mode.output_budget.spills.attach(dispatcher.store());
         let tokens = output_tokens(&input).unwrap_or(DEFAULT_OUTPUT_TOKENS);
         let session = context.session_id.clone();
         let images = Arc::new(Mutex::new(crate::images::ImageBatch::default()));
@@ -1871,6 +1870,7 @@ mod js_reference_tests {
             false,
             ExecConfig::default(),
             root.path().join("data"),
+            &bubblepaw_core::Store::in_memory().unwrap(),
         )
         .unwrap();
         let description = js_reference(&registry);

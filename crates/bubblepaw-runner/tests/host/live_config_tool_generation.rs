@@ -94,6 +94,7 @@ impl Fixture {
             false,
             settings.exec.clone(),
             root.path().join("state"),
+            &store,
         )
         .unwrap();
         let mcp = Arc::new(McpHost::start(&settings.mcp, root.path()).await);

@@ -47,7 +47,7 @@ impl Fixture {
         tools.show_always(bubblepaw_runner::tools::ALWAYS_SHOWN_TOOLS.iter().copied());
         WorkspaceTools::new(root.path())
             .unwrap()
-            .register(&mut tools, true)
+            .register(&mut tools, true, &store)
             .unwrap();
         let artifacts =
             Arc::new(ArtifactStore::new(root.path(), root.path().join("artifacts")).unwrap());

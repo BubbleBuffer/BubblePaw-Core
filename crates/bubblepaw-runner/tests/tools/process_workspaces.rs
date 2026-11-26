@@ -29,7 +29,7 @@ fn context(owner: &str) -> ToolContext {
 }
 fn registry(processes: &Arc<ProcessTools>) -> Result<ToolRegistry> {
     let mut tools = ToolRegistry::new();
-    processes.register(&mut tools)?;
+    processes.register_without_store(&mut tools)?;
     processes.register_wait(&mut tools)?;
     Ok(tools)
 }

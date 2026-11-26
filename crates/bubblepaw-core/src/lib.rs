@@ -231,7 +231,7 @@ pub struct ToolRegistry {
 }
 /// Optional host policy for preserving large results before the engine's hard cap.
 pub type ToolResultLimiter =
-    Arc<dyn Fn(&Store, &ToolContext, ToolResult, usize) -> Result<ToolResult> + Send + Sync>;
+    Arc<dyn Fn(&ToolContext, ToolResult, usize) -> Result<ToolResult> + Send + Sync>;
 impl ToolRegistry {
     pub fn new() -> Self {
         Self::default()

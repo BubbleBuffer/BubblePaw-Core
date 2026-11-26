@@ -87,7 +87,7 @@ impl Fixture {
         let session = store.create_session("images").unwrap().id;
         let mut tools = ToolRegistry::new();
         let workspace = WorkspaceTools::new(root.path()).unwrap();
-        workspace.register(&mut tools, true).unwrap();
+        workspace.register(&mut tools, true, &store).unwrap();
         Arc::new(bubblepaw_runner::tools::ProcessTools::new(workspace))
             .register_wait(&mut tools)
             .unwrap();

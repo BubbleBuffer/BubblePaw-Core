@@ -1,8 +1,5 @@
 use bubblepaw_core::{CancellationToken, ToolContext, ToolRegistry};
-use bubblepaw_runner::{
-    command_template::{CommandExecution, prepare},
-    tools::register_native_tools,
-};
+use bubblepaw_runner::command_template::{CommandExecution, prepare};
 use serde_json::{Value, json};
 
 #[allow(unused_imports)]
@@ -101,7 +98,8 @@ async fn native_name_lookup_does_not_fall_back_to_a_batch_script() {
     )
     .unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let error = registry
         .get("exec")
         .unwrap()
@@ -137,7 +135,8 @@ async fn native_arguments_roundtrip_adversarial_values_without_shell_effects() {
     let directory = tempfile::tempdir().unwrap();
     let name = argv_probe(directory.path());
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let values = vec![
         "space value",
         "O'Brien",
@@ -195,7 +194,8 @@ async fn native_arguments_roundtrip_adversarial_values_without_shell_effects() {
 async fn invalid_template_cannot_start_a_literal_prefix_effect() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes =
+        crate::checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let invalid =
         json!({"command":{"parts":["echo started > escaped.txt; rg --glob=", ""],"values":["x"]}});
     assert!(

@@ -231,6 +231,14 @@ async fn sdk_builder_wraps_support_tools() -> Result<()> {
     .config(scripted_config())
     .build()?;
 
+    // Code mode registers the spill cleanup on the store: deleting a chat
+    // removes the files its outputs spilled to.
+    let doomed = store.create_session("spilled")?;
+    let spilled = bubblepaw_sdk::runner::spill::SpillStore::new(workspace.path())?
+        .save(&doomed.id, "spilled output")?;
+    store.delete_session(&doomed.id)?;
+    assert!(!std::path::Path::new(spilled["path"].as_str().unwrap()).exists());
+
     let mut wrapped_names = wrapped.lock().unwrap().clone();
     wrapped_names.sort();
     assert_eq!(
@@ -357,9 +365,10 @@ fn sdk_surface_names_every_public_item() {
         read_only: bool,
         exec: bubblepaw_sdk::runner::config::ExecConfig,
         data_dir: std::path::PathBuf,
+        store: &Store,
     ) -> anyhow::Result<std::sync::Arc<bubblepaw_sdk::tools::ProcessTools>> {
         bubblepaw_sdk::tools::register_native_tools_with_exec(
-            registry, root, read_only, exec, data_dir,
+            registry, root, read_only, exec, data_dir, store,
         )
     }
     let _ = register_native_tools_with_exec;

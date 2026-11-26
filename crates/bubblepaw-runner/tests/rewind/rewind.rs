@@ -90,7 +90,7 @@ impl Fixture {
         let mut tools = ToolRegistry::new();
         WorkspaceTools::new(root.path())
             .unwrap()
-            .register(&mut tools, false)
+            .register(&mut tools, false, &store)
             .unwrap();
         let artifacts =
             Arc::new(ArtifactStore::new(root.path(), data.path().join("artifacts")).unwrap());
@@ -173,7 +173,7 @@ async fn direct_tool_invocation_cannot_bypass_durable_checkpoints() {
     let mut tools = ToolRegistry::new();
     WorkspaceTools::new(root.path())
         .unwrap()
-        .register(&mut tools, false)
+        .register(&mut tools, false, &Store::in_memory().unwrap())
         .unwrap();
     let context = bubblepaw_core::ToolContext {
         session_id: "direct".into(),
@@ -676,7 +676,7 @@ async fn bound_child_worktree_rewind_uses_its_checkout_and_isolates_same_relativ
     let mut tools = ToolRegistry::new();
     WorkspaceTools::new(&binding.path)
         .unwrap()
-        .register(&mut tools, false)
+        .register(&mut tools, false, &f.store)
         .unwrap();
     register_js(&mut tools, &binding.path, f._data.path());
     let child_harness = Harness::new(
@@ -756,7 +756,7 @@ async fn fifty_edits_report_store_cost_and_compressed_preimages() {
     let mut tools = ToolRegistry::new();
     WorkspaceTools::new(f.root.path())
         .unwrap()
-        .register(&mut tools, false)
+        .register(&mut tools, false, &f.store)
         .unwrap();
     register_js(&mut tools, f.root.path(), f._data.path());
     f.harness = Harness::new(

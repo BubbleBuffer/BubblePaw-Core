@@ -107,10 +107,11 @@ impl Fixture {
         let artifacts =
             Arc::new(ArtifactStore::new(root.path(), root.path().join("artifacts")).unwrap());
         let manager = Arc::new(CodeMode::new(root.path().to_owned(), artifacts).unwrap());
+        let store = Store::in_memory().unwrap();
         let mut tools = ToolRegistry::new();
         let calls = Arc::new(AtomicUsize::new(0));
         let processes =
-            native.then(|| register_native_tools(&mut tools, root.path(), false).unwrap());
+            native.then(|| register_native_tools(&mut tools, root.path(), false, &store).unwrap());
         for name in ["echo", "stall", "reject"] {
             tools
                 .register_host(Arc::new(Native(name, calls.clone())))
@@ -127,7 +128,6 @@ impl Fixture {
             tools = tools.read_only();
         }
         manager.register(&mut tools).unwrap();
-        let store = Store::in_memory().unwrap();
         let session = store.create_session("cells").unwrap().id;
         let harness = Harness::new(
             store.clone(),

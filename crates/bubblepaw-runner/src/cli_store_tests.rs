@@ -19,7 +19,7 @@ async fn one_shot_delete_suppresses_wake_and_cancels_only_its_jobs() -> Result<(
     let session = store.create_session_with_workspace("delete", root.path())?;
     let other = store.create_session_with_workspace("other", root.path())?;
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, root.path(), false)?;
+    let processes = register_native_tools(&mut registry, root.path(), false, &store)?;
     let harness = Arc::new(Harness::new(
         store.clone(),
         Arc::new(ScriptedProvider::new("")),

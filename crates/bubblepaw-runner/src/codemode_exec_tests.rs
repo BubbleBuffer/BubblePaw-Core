@@ -300,7 +300,10 @@ async fn sync_exec_backgrounds_at_configured_timeout_after_outlasting_idle_limit
     assert_eq!(jobs["jobs"][0]["status"], "running");
     assert_eq!(jobs["jobs"][0]["backgrounded"], true);
     let mut registry = ToolRegistry::new();
-    fixture.processes.register(&mut registry).unwrap();
+    fixture
+        .processes
+        .register(&mut registry, fixture.harness.store())
+        .unwrap();
     let poll = registry.get("poll").unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {

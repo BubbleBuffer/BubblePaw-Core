@@ -579,14 +579,9 @@ impl ProcessTools {
             .collect::<Vec<_>>();
         json!({"available":true,"entries":entries,"omitted":omitted})
     }
-    pub fn register(self: &Arc<Self>, registry: &mut ToolRegistry) -> Result<()> {
-        for name in ["exec", "poll", "cancel", "jobs"] {
-            registry.register_host(Arc::new(ProcessTool {
-                processes: self.clone(),
-                name,
-            }))?;
-        }
-        Ok(())
+    pub fn register(self: &Arc<Self>, registry: &mut ToolRegistry, store: &Store) -> Result<()> {
+        self.set_store(store.clone());
+        self.register_without_store(registry)
     }
     pub fn register_wait(self: &Arc<Self>, registry: &mut ToolRegistry) -> Result<()> {
         registry.register_host(Arc::new(ProcessTool {
@@ -1537,7 +1532,6 @@ impl Tool for ProcessTool {
         dispatcher: ToolDispatcher,
     ) -> Result<ToolResult> {
         ensure!(!context.cancellation.is_cancelled(), "cancelled");
-        self.processes.set_store(dispatcher.store().clone());
         let value = self
             .processes
             .execute(self.name, context.clone(), input)

@@ -67,10 +67,10 @@ impl Fixture {
         let artifacts =
             Arc::new(ArtifactStore::new(root.path(), root.path().join("artifacts")).unwrap());
         let repl = Arc::new(CodeMode::new(root.path().to_owned(), artifacts).unwrap());
-        let mut registry = ToolRegistry::new();
-        let processes = register_native_tools(&mut registry, root.path(), false).unwrap();
-        repl.register(&mut registry).unwrap();
         let store = Store::in_memory().unwrap();
+        let mut registry = ToolRegistry::new();
+        let processes = register_native_tools(&mut registry, root.path(), false, &store).unwrap();
+        repl.register(&mut registry).unwrap();
         let session = store.create_session("runtime notes").unwrap().id;
         let harness = Harness::new(
             store.clone(),
@@ -193,7 +193,8 @@ async fn current_state_and_owned_command_regenerate_after_reset_and_restart() {
     assert!(!reset.contains("\"saved\""));
     assert!(reset.contains(handle));
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, fixture.root.path(), false).unwrap();
+    let processes =
+        register_native_tools(&mut registry, fixture.root.path(), false, &fixture.store).unwrap();
     let artifacts = Arc::new(
         ArtifactStore::new(
             fixture.root.path(),

@@ -195,25 +195,29 @@ pub mod worktrees;
 
 #[cfg(feature = "host")]
 /// Register the native pack with the runner's process settings and data directory.
+/// `store` backs scratchpads, image attachments, process completion notices and
+/// the spill cleanup hooks.
 pub fn register_native_tools_with_exec(
     registry: &mut bubblepaw_core::ToolRegistry,
     root: impl AsRef<std::path::Path>,
     read_only: bool,
     exec: config::ExecConfig,
     data_dir: impl AsRef<std::path::Path>,
+    store: &bubblepaw_core::Store,
 ) -> anyhow::Result<std::sync::Arc<tools::ProcessTools>> {
     registry.show_always(tools::ALWAYS_SHOWN_TOOLS.iter().copied());
     registry.show_always(["jobs"]);
     let spills = spill::SpillStore::new(data_dir.as_ref())?;
     spills.register(registry);
+    spills.attach(store);
     let workspace =
         tools::WorkspaceTools::new(root)?.with_spill_data_dir(data_dir.as_ref().canonicalize()?);
-    workspace.register(registry, read_only)?;
+    workspace.register(registry, read_only, store)?;
     let processes =
         std::sync::Arc::new(tools::ProcessTools::with_config(workspace, exec, data_dir)?);
     processes.register_wait(registry)?;
     if !read_only {
-        processes.register(registry)?;
+        processes.register(registry, store)?;
     }
     Ok(processes)
 }

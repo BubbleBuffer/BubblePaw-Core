@@ -110,7 +110,7 @@ impl Fixture {
         let store = Store::open(root.path().join("archive.sqlite")).unwrap();
         let provider = Arc::new(Probe::default());
         let mut registry = ToolRegistry::new();
-        register_native_tools(&mut registry, root.path(), true).unwrap();
+        register_native_tools(&mut registry, root.path(), true, &store).unwrap();
         let repl = Arc::new(
             CodeMode::new(
                 root.path().to_owned(),

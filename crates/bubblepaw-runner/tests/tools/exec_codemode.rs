@@ -93,8 +93,9 @@ impl Fixture {
             )
             .unwrap(),
         );
+        let store = Store::in_memory().unwrap();
         let mut registry = ToolRegistry::new();
-        processes.register(&mut registry).unwrap();
+        processes.register(&mut registry, &store).unwrap();
         processes.register_wait(&mut registry).unwrap();
         registry.show_always(["exec", "poll", "wait", "jobs"]);
         let artifacts = Arc::new(
@@ -102,7 +103,6 @@ impl Fixture {
         );
         let manager = Arc::new(CodeMode::new(workspace.path().to_owned(), artifacts).unwrap());
         manager.register(&mut registry).unwrap();
-        let store = Store::in_memory().unwrap();
         let session = store.create_session("exec steering").unwrap().id;
         let provider = Arc::new(Scripted {
             requests: Mutex::default(),

@@ -396,8 +396,10 @@ Only `workspace` is required: it binds the store to the
 workspace and creates the directory when missing. `history_tools`, `todo`, `questions` and
 `code_mode` register host capabilities; `wrap_support_tools` decorates every one
 of them before it enters the registry, and their shown-always status survives.
-`summarize` builds the runner's `SummarizingContext` over the store and the
-provider registry, with the runtime notes when code mode is on. `context` wraps
+`code_mode` also registers the spill and scratchpad cleanup hooks on the store, so
+deleting a chat removes its spilled outputs. `summarize` builds the runner's
+`SummarizingContext` over the store and the provider registry, with the runtime
+notes when code mode is on. `context` wraps
 that summarizing context in your own `ContextPreparation`; it needs
 `summarize`.
 
@@ -486,6 +488,38 @@ directory.
 `providers::extension_provider(config)` builds an `ExtensionProvider` from an
 `ExtensionConfig`; it starts the extension in a process tree that is killed with
 the provider. `ExtensionProvider::new` itself takes a launcher.
+
+## Upgrading: tools hold their store
+
+Tools no longer take the store from the dispatcher. `ToolDispatcher::store()` is
+gone, and the large-result hook no longer receives a `&Store`. The tools that need
+storage (scratchpads, image attachments, edit checkpoints and the process
+completion notice) get it when they are registered, so an upgrade that misses one
+fails to compile instead of losing the capability. `ToolContext` and the `Tool`
+trait are unchanged. Changed public items:
+
+- `ToolDispatcher::store()` is removed.
+- `ToolResultLimiter` is `Fn(&ToolContext, ToolResult, usize) -> Result<ToolResult>`
+  (it was `Fn(&Store, &ToolContext, ToolResult, usize)`); `set_result_limiter`
+  keeps its name.
+- `WorkspaceTools::register(registry, read_only)` is
+  `register(registry, read_only, &Store)`.
+- `ProcessTools::register(registry)` is `register(registry, &Store)`; it
+  keeps the store for the completion notice. `register_wait` is unchanged.
+  `ProcessTools::set_store` still works for a `ProcessTools` that is not registered.
+- `register_native_tools(registry, root, read_only)` is
+  `register_native_tools(registry, root, read_only, &Store)`, and
+  `register_native_tools_with_exec(.., data_dir)` is
+  `register_native_tools_with_exec(.., data_dir, &Store)`; the latter also
+  registers the spill and scratchpad cleanup hooks.
+- New: `CodeMode::attach_spills(&Store)` registers the same cleanup hooks for a
+  `CodeMode` whose registry you assemble yourself. The large-result hook no longer
+  registers them lazily, so call it, or `host_config::prepare_store`, or use
+  `HostBuilder::code_mode`, before any output can spill.
+
+The constructors `WorkspaceTools::new` and `ProcessTools::new` are unchanged: a
+workspace view for prompts, rewind or paths needs no store. Only registering its
+tools does.
 
 ## Stability
 

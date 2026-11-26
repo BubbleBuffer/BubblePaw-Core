@@ -26,7 +26,7 @@ pub(super) async fn run() -> Result<()> {
         )?),
     )?);
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, directory.path(), true)?;
+    let processes = register_native_tools(&mut tools, directory.path(), true, &store)?;
     let leaf_profiles = workspace_profiles_with_agents(
         store.clone(),
         provider.clone(),

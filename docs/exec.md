@@ -142,7 +142,8 @@ writes rather than production performance.
 The runner and `register_native_tools_with_exec` configure this data-directory
 spool and spill store. The legacy `ProcessTools::new` / `register_native_tools`
 constructors have no data directory and retain their bounded RAM-only capture;
-they cannot preserve stream middles already dropped from RAM.
+they cannot preserve stream middles already dropped from RAM. Registering `exec`
+takes the store, which keeps the known completion notice of a finished job.
 
 ## Effects, approvals, lifetime and limits
 

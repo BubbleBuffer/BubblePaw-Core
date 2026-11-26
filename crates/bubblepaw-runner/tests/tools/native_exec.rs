@@ -1,5 +1,4 @@
 use bubblepaw_core::{CancellationToken, ToolContext, ToolRegistry};
-use bubblepaw_runner::tools::register_native_tools;
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -45,7 +44,7 @@ const SLEEP: &str = "sleep 30";
 async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     #[cfg(windows)]
     let nonzero = "<nul set /p=unknown option --bogus>&2& exit 7";
     #[cfg(not(windows))]
@@ -105,7 +104,7 @@ async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
 async fn native_shell_cursors_replay_without_consumption() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let started = call(
         &registry,
         "exec",
@@ -167,7 +166,7 @@ async fn native_shell_cursors_replay_without_consumption() {
 async fn native_wait_timeout_keeps_process_alive_and_session_isolation() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let started = call(&registry, "exec", json!({"command":SLEEP,"yieldMs":0})).await;
     let timeout = call(
         &registry,
@@ -219,7 +218,7 @@ async fn native_wait_timeout_keeps_process_alive_and_session_isolation() {
 async fn native_gaps_are_explicit_and_bounded() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     #[cfg(windows)]
     let script = windows_command::powershell_file(
         directory.path(),
@@ -288,7 +287,7 @@ async fn native_gaps_are_explicit_and_bounded() {
 async fn long_timer_cancels_and_bad_types_are_errors() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let run = context();
     let token = run.cancellation.clone();
     let waiter = registry.get("wait").unwrap();
@@ -332,7 +331,7 @@ async fn long_timer_cancels_and_bad_types_are_errors() {
 async fn native_read_edit_and_sorted_list_contract() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     for name in ["z.txt", "b.txt", "a.txt"] {
         call(
             &registry,
@@ -375,7 +374,7 @@ async fn native_read_edit_and_sorted_list_contract() {
 async fn native_explicit_deadline_is_terminal() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let started = call(
         &registry,
         "exec",
@@ -393,7 +392,7 @@ async fn native_explicit_deadline_is_terminal() {
 async fn session_cancel_hook_stops_detached_processes_once() {
     let directory = tempfile::tempdir().unwrap();
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, directory.path(), false).unwrap();
+    let processes = checkpoint_write::native_pack(&mut registry, directory.path(), false).unwrap();
     let started = call(&registry, "exec", json!({"command":SLEEP,"yieldMs":0})).await;
     assert!(registry.get("process_run").is_none());
     assert_eq!(registry.get("exec").unwrap().cancel_session("alien"), 0);

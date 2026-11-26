@@ -48,6 +48,7 @@ impl Fixture {
             false,
             ExecConfig::default(),
             data.path(),
+            &store,
         )?;
         let workspace = WorkspaceTools::new(root.path())?;
         workspace.prepare_scratchpads(data.path())?;
@@ -207,6 +208,7 @@ async fn independent_process_workspace_views_keep_the_hosts_configured_scratch_d
         false,
         ExecConfig::default(),
         data.path(),
+        &store,
     )?;
     let view = Arc::new(host.for_workspace(WorkspaceTools::new(child_root.path())?));
     let paths = bubblepaw_runner::scratchpads::ScratchpadStore::new(data.path())?.for_session(
@@ -215,7 +217,7 @@ async fn independent_process_workspace_views_keep_the_hosts_configured_scratch_d
         child_root.path(),
     )?;
     let mut tools = ToolRegistry::new();
-    view.register(&mut tools)?;
+    view.register(&mut tools, &store)?;
     let harness = Harness::new(store, Arc::new(NoProvider), tools, HarnessConfig::default());
     let result = harness
         .call_tool(

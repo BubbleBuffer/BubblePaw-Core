@@ -77,7 +77,7 @@ struct Host {
 impl Host {
     fn new(store: &Store, workspace: &Path, provider: Arc<Script>) -> Result<Self> {
         let mut tools = ToolRegistry::new();
-        let processes = register_native_tools(&mut tools, workspace, false)?;
+        let processes = register_native_tools(&mut tools, workspace, false, &store)?;
         let repl = Arc::new(CodeMode::new(
             workspace.to_owned(),
             Arc::new(ArtifactStore::new(

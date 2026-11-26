@@ -67,7 +67,7 @@ async fn returned_read_reaches_next_model_request_without_publishing_a_dump() ->
         requests: Mutex::default(),
     });
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, directory.path(), false)?;
+    let processes = register_native_tools(&mut tools, directory.path(), false, &store)?;
     let artifacts = Arc::new(ArtifactStore::new(
         directory.path(),
         directory.path().join("artifacts"),
@@ -176,7 +176,7 @@ async fn batched_reads_report_state_changes_and_reset_in_model_context() -> Resu
         requests: Mutex::default(),
     });
     let mut tools = ToolRegistry::new();
-    let processes = register_native_tools(&mut tools, directory.path(), false)?;
+    let processes = register_native_tools(&mut tools, directory.path(), false, &store)?;
     let artifacts = Arc::new(ArtifactStore::new(
         directory.path(),
         directory.path().join("artifacts"),

@@ -3,6 +3,7 @@ use super::*;
 pub(super) struct WorkspaceTool {
     pub(super) workspace: WorkspaceTools,
     pub(super) name: &'static str,
+    pub(super) store: Store,
 }
 impl WorkspaceTool {
     async fn invoke_resolved(
@@ -89,7 +90,7 @@ impl Tool for WorkspaceTool {
         if matches!(self.name, "edit" | "write") {
             let name = self.name;
             let mut input = input;
-            let store = dispatcher.store().clone();
+            let store = self.store.clone();
             let pads = self.workspace.scratchpads(&store, &context.session_id)?;
             let requested = string(&input, "path")?;
             let requested_path = self.workspace.root.join(requested);
@@ -135,17 +136,17 @@ impl Tool for WorkspaceTool {
             );
             let pads = self
                 .workspace
-                .scratchpads(dispatcher.store(), &context.session_id)?;
+                .scratchpads(&self.store, &context.session_id)?;
             let read_path = match pads.resolve_from(self.workspace.root(), &relative, false)? {
                 Some(path) => (path, false),
                 None => self.workspace.readable(
                     &relative,
                     &context.session_id,
-                    dispatcher.store().data_dir(),
+                    self.store.data_dir(),
                 )?,
             };
             let path = read_path.0.clone();
-            let store = dispatcher.store().clone();
+            let store = self.store.clone();
             let session = context.session_id.clone();
             let cancellation = context.cancellation.clone();
             if let Some(content) = tokio::task::spawn_blocking(move || {

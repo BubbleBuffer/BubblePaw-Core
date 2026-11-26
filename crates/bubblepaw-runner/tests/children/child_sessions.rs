@@ -1432,7 +1432,7 @@ async fn production_host_tree_runs_at_once_and_root_cancel_cleans_every_js_envir
     // Production order: base child tools, then the host builds the child
     // manager with default, unlimited `Agents`.
     let mut base = ToolRegistry::new();
-    let processes = register_native_tools(&mut base, directory.path(), false)?;
+    let processes = register_native_tools(&mut base, directory.path(), false, &store)?;
     let manager = child_agent_host(
         store.clone(),
         provider.clone(),

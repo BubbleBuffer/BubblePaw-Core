@@ -17,6 +17,15 @@ pub fn register(mode: &Arc<CodeMode>, registry: &mut ToolRegistry) -> Result<()>
     Ok(())
 }
 
+impl CodeMode {
+    /// Register the spill and scratchpad cleanup hooks on `store`. Hosts call
+    /// this at startup, before any output can spill, as
+    /// [`crate::host_config::prepare_store`] does.
+    pub fn attach_spills(&self, store: &bubblepaw_core::Store) {
+        self.spill_store().attach(store);
+    }
+}
+
 struct EnvironmentTool(Arc<CodeMode>);
 #[async_trait]
 impl Tool for EnvironmentTool {

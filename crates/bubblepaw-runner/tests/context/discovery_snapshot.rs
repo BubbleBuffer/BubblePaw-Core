@@ -38,9 +38,10 @@ impl Fixture {
     fn new(read_only: bool) -> Self {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("sample.txt"), "readable").unwrap();
+        let store = Store::in_memory().unwrap();
         let mut registry = ToolRegistry::new();
         let processes =
-            tools::register_native_tools(&mut registry, root.path(), read_only).unwrap();
+            tools::register_native_tools(&mut registry, root.path(), read_only, &store).unwrap();
         let mode = Arc::new(
             CodeMode::new(
                 root.path().to_owned(),
@@ -49,7 +50,6 @@ impl Fixture {
             .unwrap(),
         );
         mode.register(&mut registry).unwrap();
-        let store = Store::in_memory().unwrap();
         let session = store.create_session("discovery snapshot").unwrap().id;
         let harness = Harness::new(
             store,

@@ -58,7 +58,7 @@ async fn rewind_uses_target_todo_and_omits_an_ended_question_waiter_after_reopen
         let mut tools = ToolRegistry::new();
         todo::register(&mut tools, store.clone())?;
         questions.register(&mut tools)?;
-        WorkspaceTools::new(root.path())?.register(&mut tools, false)?;
+        WorkspaceTools::new(root.path())?.register(&mut tools, false, &store)?;
         let question_tool = tools.get("question").unwrap();
         let repl = Arc::new(CodeMode::new(
             root.path().into(),

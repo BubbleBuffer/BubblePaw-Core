@@ -2,8 +2,8 @@
 use anyhow::{Context, Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, ExecutionMode, Harness, HarnessConfig, Role, RunOptions, Store, Tool,
-    ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    CancellationToken, ExecutionMode, Harness, HarnessConfig, Role, RunOptions, Tool, ToolCall,
+    ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
 use bubblepaw_runner::{
     provider::{ScriptedProvider, ScriptedStep},
@@ -39,7 +39,7 @@ impl Tool for Bridge {
 
 fn registry(root: &Path) -> Result<ToolRegistry> {
     let mut registry = ToolRegistry::new();
-    WorkspaceTools::new(root)?.register(&mut registry, false)?;
+    WorkspaceTools::new(root)?.register(&mut registry, false, &crate::checkpoint_write::store())?;
     Ok(registry)
 }
 
@@ -50,7 +50,7 @@ async fn dispatched(
 ) -> Result<ToolResult> {
     let mut tools = registry.clone();
     tools.register(Arc::new(Bridge(target)))?;
-    let store = Store::in_memory()?;
+    let store = crate::checkpoint_write::store();
     let session = store.create_session("tool defaults")?;
     let provider = ScriptedProvider::with_steps(
         vec![ScriptedStep::Calls {
@@ -196,7 +196,12 @@ async fn missing_workspace_paths_name_the_requested_path() -> Result<()> {
 async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<()> {
     let root = tempfile::tempdir()?;
     let mut registry = ToolRegistry::new();
-    let processes = register_native_tools(&mut registry, root.path(), false)?;
+    let processes = register_native_tools(
+        &mut registry,
+        root.path(),
+        false,
+        &crate::checkpoint_write::store(),
+    )?;
     for (target, mut input) in [
         ("read", json!({"path":"missing.txt"})),
         ("list", json!({})),

@@ -19,7 +19,7 @@ async fn required_result_uses_real_js_wrapper_and_schema_errors_are_retryable() 
     let store = Store::in_memory().unwrap();
     let session = store.create_session("structured JS").unwrap().id;
     let mut tools = ToolRegistry::new();
-    let _processes = register_native_tools(&mut tools, root.path(), false).unwrap();
+    let _processes = register_native_tools(&mut tools, root.path(), false, &store).unwrap();
     let repl = Arc::new(
         CodeMode::new(
             root.path().to_owned(),

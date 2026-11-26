@@ -33,7 +33,7 @@ impl Fixture {
         let mut registry = ToolRegistry::new();
         WorkspaceTools::new(self.root.path())
             .unwrap()
-            .register(&mut registry, read_only)
+            .register(&mut registry, read_only, &self.store)
             .unwrap();
         registry
     }

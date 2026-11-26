@@ -58,7 +58,7 @@ impl Fixture {
             .unwrap(),
         );
         let mut registry = ToolRegistry::new();
-        processes.register(&mut registry).unwrap();
+        processes.register(&mut registry, &store).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let config = WebConfig {
