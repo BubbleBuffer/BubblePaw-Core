@@ -63,26 +63,45 @@ fn windows() -> Option<(String, Option<String>)> {
 }
 
 /// The `PRETTY_NAME` of an os-release file, such as `Ubuntu 24.04.1 LTS`.
-fn parse_os_release(_text: &str) -> Option<String> {
-    None
+fn parse_os_release(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("PRETTY_NAME="))
+        .map(|name| name.trim().trim_matches('"').to_owned())
+        .filter(|name| !name.is_empty())
 }
 
 /// The `ProductVersion` of a `SystemVersion.plist`: the first `<string>` after
 /// its key, found by plain text search.
-fn parse_product_version(_plist: &str) -> Option<String> {
-    None
+fn parse_product_version(plist: &str) -> Option<String> {
+    let after_key = plist.split("<key>ProductVersion</key>").nth(1)?;
+    let value = after_key
+        .split("<string>")
+        .nth(1)?
+        .split("</string>")
+        .next()?
+        .trim();
+    (!value.is_empty()).then(|| value.to_owned())
 }
 
 /// The `major.minor.build` in `cmd /c ver` output, such as
 /// `Microsoft Windows [Version 10.0.26100.2033]`.
-fn parse_ver(_output: &str) -> Option<(u32, u32, u32)> {
-    None
+fn parse_ver(output: &str) -> Option<(u32, u32, u32)> {
+    let version = output.split("[Version ").nth(1)?.split(']').next()?;
+    let mut numbers = version
+        .split('.')
+        .take(3)
+        .map(|part| part.parse::<u32>().ok());
+    Some((numbers.next()??, numbers.next()??, numbers.next()??))
 }
 
 /// The product name for a Windows version. Build 22000 and later is Windows 11;
 /// other major versions print as `major.minor`.
-fn windows_name(_major: u32, _minor: u32, _build: u32) -> String {
-    String::new()
+fn windows_name(major: u32, minor: u32, build: u32) -> String {
+    match major {
+        10 if build >= 22000 => "Windows 11".to_owned(),
+        10 => "Windows 10".to_owned(),
+        _ => format!("Windows {major}.{minor}"),
+    }
 }
 
 #[cfg(test)]
