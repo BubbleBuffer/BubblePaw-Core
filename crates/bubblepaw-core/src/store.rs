@@ -27,6 +27,8 @@ pub use chapters::{ChapterSection, ContextSubjectChapter};
 mod cold;
 #[path = "store_context_events.rs"]
 mod context_events;
+#[path = "store_context_tables.rs"]
+mod context_tables;
 #[path = "store_context_view.rs"]
 mod context_view;
 #[path = "store_episodes.rs"]
@@ -91,6 +93,7 @@ mod tx;
 mod view_codec;
 #[path = "store_view_sources.rs"]
 mod view_sources;
+use context_tables::ContextTables;
 pub use context_types::{
     ContextChapter, ContextDecision, ContextEpisode, DecisionKind, EpisodeBatch, RelatedEvidence,
     SubjectChapterStatus,

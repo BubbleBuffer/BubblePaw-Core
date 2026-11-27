@@ -147,26 +147,19 @@ impl Store {
                     chat.delete_session_checkpoints(tx, session)?;
                     tx.execute("UPDATE request_usage SET message_seq=NULL WHERE session_id=?1 AND message_seq IS NOT NULL", [session])?;
                 }
-                for table in [
-                    "reminder_metadata",
-                    "approvals",
-                    "approval_rules",
+                let tables = [
+                    vec![
+                        "reminder_metadata",
+                        "approvals",
+                        "approval_rules",
                         "host_state",
-                    "attachments",
-                    "context_checkpoint_versions",
-                    "context_decisions",
-                    "context_events",
-                    "context_episodes",
-                    "context_subject_chapters",
-                    "context_chapters",
-                    "context_checkpoints",
-                    "outputs",
-                    "effects",
-                    "inputs",
-                    "runs",
-                    "messages",
-                    "sessions",
-                ] {
+                        "attachments",
+                    ],
+                    ContextTables::session_delete(false),
+                    vec!["outputs", "effects", "inputs", "runs", "messages", "sessions"],
+                ]
+                .concat();
+                for table in tables {
                     let column = if table == "sessions" {
                         "id"
                     } else {
@@ -195,7 +188,7 @@ impl Store {
             Self::remove_search_sessions(tx, &removed)?;
             for table in [
                 "events",
-                "context_views",
+                ContextTables::VIEWS,
                 "runs",
                 "inputs",
                 "approvals",
@@ -233,16 +226,21 @@ impl Store {
         #[cfg(test)]
         REFERENCE_SCANS.with(|count| count.set(count.get() + 1));
         let mut references = String::new();
-        for (table, column) in [
-            ("messages", "data"),
-            ("attachments", "blob_hash"),
-            ("inputs", "content_blob"),
-            ("context_checkpoints", "data"),
-            ("context_checkpoint_versions", "summary_hash"),
-            ("approvals", "arguments_ref"),
-            ("effects", "detail"),
-            ("runs", "data"),
-        ] {
+        let columns = [
+            vec![
+                ("messages", "data"),
+                ("attachments", "blob_hash"),
+                ("inputs", "content_blob"),
+            ],
+            ContextTables::blob_references().to_vec(),
+            vec![
+                ("approvals", "arguments_ref"),
+                ("effects", "detail"),
+                ("runs", "data"),
+            ],
+        ]
+        .concat();
+        for (table, column) in columns {
             let mut stmt = conn.prepare(&format!(
                 "SELECT {column} FROM {table} WHERE {column} IS NOT NULL"
             ))?;

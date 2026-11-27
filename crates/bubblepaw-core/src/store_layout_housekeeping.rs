@@ -10,13 +10,7 @@ impl Store {
             return Ok(Vec::new());
         }
         let mut telemetry = Vec::new();
-        for table in [
-            "context_checkpoints",
-            "context_chapters",
-            "context_episodes",
-            "context_subject_chapters",
-            "context_decisions",
-        ] {
+        for table in ContextTables::telemetry_split() {
             let mut stmt = conn.prepare(&format!("SELECT id,session_id,data FROM {table} WHERE json_type(data,'$.usage') NOT IN ('null') OR json_type(data,'$.reasoning') NOT IN ('null')"))?;
             let rows = stmt
                 .query_map([], |row| {
