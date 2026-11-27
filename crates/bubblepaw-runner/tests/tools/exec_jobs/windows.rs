@@ -7,6 +7,9 @@ use windows_sys::Win32::{
     },
 };
 
+#[path = "windows_bash.rs"]
+mod bash;
+
 fn literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }

@@ -158,7 +158,7 @@ jobs:
     timeout-minutes: 90
     env:
       # The shared exec tests assume cmd.exe; the bash tests force bash themselves.
-      BUBBLEPAW_FORCE_SHELL: cmd
+      FORCE_EXEC_SHELL: cmd
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

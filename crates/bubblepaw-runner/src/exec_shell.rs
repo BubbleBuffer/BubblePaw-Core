@@ -1,7 +1,7 @@
 //! Which shell `exec` runs commands in (docs/exec.md). Linux and macOS use
 //! `sh -c`. Windows prefers Git for Windows' bash, so the model's bash habits
 //! (`tail`, `set -e`, `$(...)`) work, and falls back to `cmd.exe` when Git is
-//! not installed. `exec.shell` (or `BUBBLEPAW_FORCE_SHELL` while the setting is
+//! not installed. `exec.shell` (or `FORCE_EXEC_SHELL` while the setting is
 //! `auto`) forces the choice. The WSL launcher `C:\Windows\System32\bash.exe`
 //! is never selected: it would start WSL.
 use anyhow::{Result, bail, ensure};
@@ -65,9 +65,9 @@ pub fn invocation(preference: &str) -> String {
         .invocation()
 }
 
-/// `auto` (or empty) follows `BUBBLEPAW_FORCE_SHELL`, then picks by platform.
+/// `auto` (or empty) follows `FORCE_EXEC_SHELL`, then picks by platform.
 pub fn resolve(preference: &str) -> Result<Shell> {
-    let env = std::env::var("BUBBLEPAW_FORCE_SHELL").ok();
+    let env = std::env::var("FORCE_EXEC_SHELL").ok();
     choose(preference, env.as_deref(), cfg!(windows), git_bash)
 }
 

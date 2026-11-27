@@ -867,9 +867,6 @@ async fn missing_marker_adds_no_note_for_exec_user_trap_or_kill() {
 #[cfg(windows)]
 #[path = "exec_jobs/windows.rs"]
 mod windows;
-#[cfg(windows)]
-#[path = "exec_jobs/windows_bash.rs"]
-mod windows_bash;
 
 #[tokio::test]
 async fn live_exec_config_changes_next_admission_but_preserves_foreground_wait() {

@@ -18,8 +18,8 @@ not installed (2026-11-27). There is no per-call shell option.
 **Choosing the shell.** `exec.shell` is `auto` (default), `bash`, `cmd` or the path of
 a shell executable. Only the user layers (home, custom file, env, CLI) may set it: a
 project config that sets `exec.shell` is ignored with a warning. While the setting is
-`auto`, the environment variable `BUBBLEPAW_FORCE_SHELL` (`bash`, `cmd` or a path)
-chooses instead; CI uses it to run the cmd-semantics tests on runners that have Git.
+`auto`, the environment variable `FORCE_EXEC_SHELL` (`bash`, `cmd` or a path)
+chooses instead (not a `BUBBLEPAW_` name: those are config keys); CI uses it to run the cmd-semantics tests on runners that have Git.
 Git's bash is found through the registry (`HKCU`/`HKLM` `SOFTWARE\GitForWindows`
 `InstallPath`), `git.exe` on PATH and the standard install folders. The WSL launcher
 `C:\Windows\System32\bash.exe` (and the `WindowsApps` alias) is never selected, also not
