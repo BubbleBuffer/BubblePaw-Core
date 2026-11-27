@@ -150,9 +150,7 @@ where
                     published.load(Ordering::Acquire),
                     cancellation,
                 ) else {
-                    if attempt + 1 >= policy.max_attempts
-                        && super::http_error::is_bare_bad_request(&error)
-                    {
+                    if attempt + 1 >= policy.max_attempts && super::is_bare_bad_request(&error) {
                         let mut typed = ProviderError::of(&error)
                             .expect("bare HTTP 400 keeps its typed source")
                             .clone();
@@ -161,7 +159,7 @@ where
                     }
                     return Err(error);
                 };
-                if super::http_error::is_bare_bad_request(&error) {
+                if super::is_bare_bad_request(&error) {
                     tracing::warn!(
                         target: "bubblepaw::provider",
                         provider,

@@ -12,10 +12,10 @@ publish.workspace = true
 default = []
 # The out-of-process extension provider (line-delimited JSON-RPC to a
 # subprocess started through an injected launcher).
-extension = ["dep:regex", "dep:tracing"]
+extension = ["dep:regex"]
 # The HTTP model adapters (chat completions, Anthropic messages, responses) and
 # their transport. Without it the crate keeps only the types and pure helpers.
-http = ["dep:reqwest", "dep:regex", "dep:httpdate", "dep:base64", "dep:tracing"]
+http = ["dep:reqwest", "dep:regex", "dep:httpdate", "dep:base64"]
 
 [dependencies]
 anyhow.workspace = true
@@ -29,7 +29,7 @@ serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.11"
 tokio.workspace = true
-tracing = { version = "0.1", optional = true }
+tracing = "0.1"
 uuid.workspace = true
 
 [dev-dependencies]
