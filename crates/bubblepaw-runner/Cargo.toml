@@ -116,7 +116,7 @@ clap = { version = "4", features = ["derive"], optional = true }
 tiktoken-rs = { version = "0.12", optional = true }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
-qrcode = { version = "0.14", default-features = false, optional = true }
+qrcode = { version = "0.15", default-features = false, optional = true }
 zeroize = "1.9"
 axum = { version = "0.8", optional = true }
 
