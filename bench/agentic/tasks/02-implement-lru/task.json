@@ -1,0 +1,8 @@
+{
+  "id": "02-implement-lru",
+  "title": "Implement TTL-aware LRU cache against spec and tests",
+  "category": "write-against-tests",
+  "expected_steps": "4-7",
+  "timeout_ms": 120000,
+  "description": "Implement LruCache<K, V> in src/lru.ts matching SPEC.md with deterministic clock support."
+}

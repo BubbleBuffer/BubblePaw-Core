@@ -1,0 +1,36 @@
+# Dedicated offline-safe benchmark configuration for BubblePaw.
+# Credentials are inherited from OPENCODE_API_KEY; never store keys here.
+
+[model]
+main = "opencode/deepseek-v4.1-flash"
+fallbacks = []
+
+[agent]
+execution_mode = "native"
+max_rounds = 40
+
+[providers.opencode]
+kind = "chat-completions"
+base_url = "https://opencode.ai/zen/go/v1"
+key_env = "OPENCODE_API_KEY"
+reasoning = { thinking = { type = "enabled" }, reasoning_effort = "low" }
+models = [{ id = "deepseek-v4.1-flash", reasoning_replay = "all" }]
+
+[roles]
+summary = { models = ["main"], repeats = 1, threshold = 0.0, reasoning_effort = "low" }
+chapter = { models = ["summary"], repeats = 1, threshold = 0.0, reasoning_effort = "low" }
+
+[context]
+strategy = "lcm"
+memory_files = false
+compact_threshold_tokens = 200000
+window_tokens = 200000
+
+[skills]
+enabled = false
+
+[web]
+enabled = false
+
+[approvals]
+confirm = "allow"

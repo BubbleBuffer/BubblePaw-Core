@@ -1,0 +1,4 @@
+2026-07-04T11:02:14Z WARN  client.http env=prod timeoutMs=3000 maxRetries=3 backoffBaseMs=200 backoffCapMs=3000
+2026-07-04T11:02:19Z ERROR client.http status=504 msg="504 not in retryableStatuses [429, 502, 503]"
+2026-07-04T11:02:25Z ERROR client.breaker state=OPEN openMs=30000 reason="gateway storm reopened too early"
+2026-07-04T11:05:00Z NOTE  postmortem: schedule ADR-004 to tune backoff, add 408/504, and raise prod breakerOpenMs to 45000

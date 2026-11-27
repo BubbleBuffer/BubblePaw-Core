@@ -1,0 +1,8 @@
+{
+  "timeoutMs": 3000,
+  "maxRetries": 2,
+  "backoffBaseMs": 150,
+  "backoffCapMs": 3000,
+  "breakerOpenMs": 30000,
+  "retryableStatuses": [429, 502, 503]
+}

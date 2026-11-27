@@ -1,0 +1,8 @@
+{
+  "id": "04-read-and-answer",
+  "title": "Trace effective production retry and breaker behavior",
+  "category": "read-answer",
+  "expected_steps": "5-8",
+  "timeout_ms": 120000,
+  "description": "Read docs, ADRs, configs, and source code to produce exact effective production parameters in ANSWER.json without modifying existing files."
+}

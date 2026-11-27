@@ -1,0 +1,8 @@
+{
+  "id": "05-shell-log-forensics",
+  "title": "Aggregate deduplicated JSONL service logs via shell/scripts",
+  "category": "shell-use",
+  "expected_steps": "6-10",
+  "timeout_ms": 120000,
+  "description": "Deduplicate multi-file JSONL service logs, handle malformed lines, and write exact p95/error statistics to report.json."
+}
