@@ -1,0 +1,7 @@
+{
+  "timeoutMs": 4000,
+  "maxRetries": 3,
+  "backoffBaseMs": 100,
+  "backoffCapMs": 2500,
+  "breakerOpenMs": 20000
+}

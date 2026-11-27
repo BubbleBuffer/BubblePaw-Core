@@ -1,0 +1,8 @@
+{
+  "id": "03-rename-across-modules",
+  "title": "Rename LedgerAccountId and amountMinor across modules",
+  "category": "multi-file-refactor",
+  "expected_steps": "6-10",
+  "timeout_ms": 120000,
+  "description": "Rename AccountId and amountCents consistently across source and tests while preserving the v1 wire JSON key."
+}

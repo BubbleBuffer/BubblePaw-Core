@@ -1,0 +1,20 @@
+{
+  "tiers": {
+    "standard": {
+      "discountPercent": 0,
+      "maxDiscountCents": 0
+    },
+    "silver": {
+      "discountPercent": 10,
+      "maxDiscountCents": 1500
+    },
+    "gold": {
+      "discountPercent": 20,
+      "maxDiscountCents": 3000
+    },
+    "enterprise": {
+      "discountPercent": 30,
+      "maxDiscountCents": 10000
+    }
+  }
+}

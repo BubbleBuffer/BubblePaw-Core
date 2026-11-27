@@ -1,0 +1,8 @@
+{
+  "id": "08-multi-step-migration",
+  "title": "Upgrade job queue and CLI with priorities, DAG dependencies, and retries",
+  "category": "long-horizon",
+  "expected_steps": "14-22",
+  "timeout_ms": 240000,
+  "description": "Long-horizon multi-file feature upgrade spanning types, atomic storage, DAG/priority queue, retry worker, CLI, and tests."
+}

@@ -1,0 +1,26 @@
+{"event_id":"ev-001","service":"gateway","status":200,"duration_ms":12,"trace_id":"tr-100"}
+{"event_id":"ev-002","service":"gateway","status":200,"duration_ms":18,"trace_id":"tr-101"}
+{"event_id":"ev-003","service":"payments","status":200,"duration_ms":45,"trace_id":"tr-101"}
+{"event_id":"ev-004","service":"ledger","status":201,"duration_ms":30,"trace_id":"tr-101"}
+{"event_id":"ev-005","service":"gateway","status":502,"duration_ms":140,"trace_id":"tr-102","error_code":"UPSTREAM_BAD_GATEWAY"}
+{bad json line in app-01
+{"event_id":"ev-006","service":"payments","status":504,"duration_ms":310,"trace_id":"tr-102","error_code":"TIMEOUT"}
+{"event_id":"ev-007","service":"notify","status":200,"duration_ms":8,"trace_id":"tr-103"}
+{"event_id":"ev-008","service":"gateway","status":200,"duration_ms":22,"trace_id":"tr-104"}
+{"event_id":"ev-009","service":"payments","status":200,"duration_ms":52,"trace_id":"tr-104"}
+{"event_id":"ev-010","service":"ledger","status":200,"duration_ms":28,"trace_id":"tr-104"}
+{"event_id":"ev-011","service":"notify","status":200,"duration_ms":11,"trace_id":"tr-105"}
+{"event_id":"ev-012","service":"gateway","status":200,"duration_ms":19,"trace_id":"tr-106"}
+{"event_id":"ev-013","service":"payments","status":200,"duration_ms":61,"trace_id":"tr-106"}
+{"event_id":"ev-014","service":"ledger","status":500,"duration_ms":185,"trace_id":"tr-107","error_code":"DB_DEADLOCK"}
+{"event_id":"ev-015","service":"notify","status":200,"duration_ms":14,"trace_id":"tr-108"}
+{"event_id":"ev-002","service":"gateway","status":200,"duration_ms":18,"trace_id":"tr-101"}
+{"event_id":"ev-016","service":"gateway","status":200,"duration_ms":25,"trace_id":"tr-109"}
+{"event_id":"ev-017","service":"payments","status":200,"duration_ms":48,"trace_id":"tr-109"}
+{"event_id":"ev-018","service":"ledger","status":200,"duration_ms":33,"trace_id":"tr-109"}
+{"event_id":"ev-019","service":"notify","status":503,"duration_ms":95,"trace_id":"tr-110","error_code":"SMTP_UNAVAILABLE"}
+{"event_id":"ev-020","service":"gateway","status":404,"duration_ms":15,"trace_id":"tr-111"}
+{"event_id":"ev-021","service":"payments","status":200,"duration_ms":77,"trace_id":"tr-112"}
+{"event_id":"ev-022","service":"ledger","status":200,"duration_ms":41,"trace_id":"tr-112"}
+{"event_id":"ev-023","service":"notify","status":200,"duration_ms":9,"trace_id":"tr-113"}
+{"event_id":"ev-024","service":"gateway","status":200,"duration_ms":34,"trace_id":"tr-114"}

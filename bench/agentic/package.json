@@ -1,0 +1,12 @@
+{
+  "name": "bubblepaw-agentic-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bench": "bun run run.ts",
+    "report": "bun run report.ts",
+    "test": "bun test runner.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

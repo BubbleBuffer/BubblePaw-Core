@@ -1,0 +1,8 @@
+{
+  "id": "07-edit-precision-trap",
+  "title": "Fix AST compiler bugs across repeated switch blocks and noisy test output",
+  "category": "harness-trap",
+  "expected_steps": "8-14",
+  "timeout_ms": 120000,
+  "description": "Tests edit precision with non-unique code blocks, subtle parser associativity/precedence bugs, and long test output before failure diagnostics."
+}

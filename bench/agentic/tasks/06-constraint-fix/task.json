@@ -1,0 +1,8 @@
+{
+  "id": "06-constraint-fix",
+  "title": "Fix pricing rounding and caps without touching frozen files",
+  "category": "constraint-respect",
+  "expected_steps": "5-8",
+  "timeout_ms": 120000,
+  "description": "Fix banker's rounding, promo stacking, and maxDiscountCents enforcement while leaving frozen config and tests untouched and creating no extra files."
+}
