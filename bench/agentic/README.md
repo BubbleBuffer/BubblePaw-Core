@@ -87,6 +87,15 @@ Each line in the output JSONL contains:
 - Timing & usage: `wall_ms`, `first_text_ms`, `requests`, `input_tokens`, `output_tokens`, `cached_tokens`, `cache_creation_tokens`, `reasoning_tokens`, `cost_usd`, `cost_source`
 - Execution & harness diagnostics: `tool_calls`, `tool_errors`, `exit_code`, `error`, `timed_out`, `files_changed`, `cache_hit_ratio`, `unexplained_cache_misses`, `repeated_tool_calls`, `answer_chars`
 
+## Comparing the two agents
+
+- **Token convention.** `input_tokens` is the whole prompt including cache reads and writes, for both agents. BubblePaw reports it that way (`usage.input_tokens` = uncached + cache reads + writes). pi's own `usage.input` excludes cache (pi-ai: `input = prompt_tokens - cacheRead - cacheWrite`), so the pi adapter adds `cacheRead + cacheWrite` back. `cached_tokens` is the cache-read part of `input_tokens` in both.
+- **Cost.** BubblePaw: `bubblepaw usage export` (its price table). pi: its own catalog price (`cost.totalFromProvider: false`), recorded as `cost_source: "catalog"`. Neither is the provider's invoice.
+- **Equal settings.** Model `deepseek-v4.1-flash` on OpenCode Go for both (`opencode/...` in BubblePaw, provider `opencode-go` in pi); reasoning low for both (`reasoning_effort = "low"` in `bubblepaw.toml`, `pi --thinking low`). Tools differ by design: BubblePaw's native set vs pi's `read,bash,edit,write,grep,find,ls`. pi runs with no context files, extensions, skills or prompt templates, and `--offline`.
+- **pi on an older Node.** pi needs Node 22.19+. Run it on a portable Node with `--pi-node <node.exe> --pi-bin <.../pi-coding-agent/dist/bundle/cli.js>` (or `PI_NODE`/`PI_BIN`).
+- **Not reported.** pi has no `unexplained_cache_misses` (null). `first_text_ms` is the first assistant text delta of the run, which can be a narration before tool calls. `requests` is model requests (BubblePaw: usage rows, which also count side calls such as summaries; pi: assistant messages).
+- **`unexplained_cache_misses`** (BubblePaw) counts `cache_miss_unexplained` trace events; the fallback uses BubblePaw's own rule (at least 1024 expected cached tokens and a shortfall over max(128, 10%)), not provider block rounding.
+
 ## Adding a Task
 
 Create `bench/agentic/tasks/<id>/`:

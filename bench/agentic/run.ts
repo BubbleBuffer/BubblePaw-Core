@@ -21,6 +21,8 @@ Options:
   --pi-provider <name>        Provider flag passed to pi (default inferred from --model)
   --pi-model <id>             Model flag passed to pi (default inferred from --model)
   --pi-tools <list>           Tools list passed to pi --tools
+  --pi-node <path>            Node executable that runs --pi-bin (a JS entry); env PI_NODE
+  --pi-thinking <level>       pi --thinking level (default low, matching bubblepaw.toml)
   --pi-extra-args <csv>       Comma-separated extra args passed to pi
   --timeout-ms <ms>           Per-task timeout in milliseconds (default: ${DEFAULT_TIMEOUT_MS})
   --max-rounds <n>            Override agent.max_rounds for bubblepaw
@@ -54,6 +56,8 @@ async function main(): Promise<void> {
   let piProvider: string | undefined;
   let piModel: string | undefined;
   let piTools: string | undefined;
+  let piNode: string | undefined;
+  let piThinking: string | undefined;
   let piExtraArgs: string[] | undefined;
   let timeoutMs = DEFAULT_TIMEOUT_MS;
   let maxRounds: number | undefined;
@@ -114,6 +118,12 @@ async function main(): Promise<void> {
       case "--pi-tools":
         piTools = next();
         break;
+      case "--pi-node":
+        piNode = next();
+        break;
+      case "--pi-thinking":
+        piThinking = next();
+        break;
       case "--pi-extra-args":
         piExtraArgs = splitCsvArg(next());
         break;
@@ -167,6 +177,8 @@ async function main(): Promise<void> {
       piProvider,
       piModel,
       piTools,
+      piNode,
+      piThinking,
       piExtraArgs,
     },
   };

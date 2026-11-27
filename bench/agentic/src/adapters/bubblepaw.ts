@@ -124,9 +124,16 @@ async function parseTraceFile(tracePath: string): Promise<{
       if (firstTextMs === null && typeof metrics.first_text_ms === "number") {
         firstTextMs = metrics.first_text_ms;
       }
+      // Same rule as BubblePaw's own warning (docs/prefix-cache-design.md): a miss counts only if
+      // at least 1024 tokens were expected cached and the shortfall exceeds max(128, 10%).
+      // A bare unexplained_miss_tokens > 0 is provider cache-block rounding (e.g. 64 tokens).
+      const expected = metrics.expected_cacheable_tokens;
+      const measured = metrics.measured_cache_read_tokens;
       if (
-        typeof metrics.unexplained_miss_tokens === "number" &&
-        metrics.unexplained_miss_tokens > 0
+        typeof expected === "number" &&
+        typeof measured === "number" &&
+        expected >= 1024 &&
+        expected - measured > Math.max(128, expected * 0.1)
       ) {
         fallbackMissFromFinished += 1;
       }

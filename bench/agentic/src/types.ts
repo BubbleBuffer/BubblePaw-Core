@@ -110,6 +110,8 @@ export interface AdapterConfig {
   piProvider?: string;
   piModel?: string;
   piTools?: string;
+  piNode?: string;
+  piThinking?: string;
   piExtraArgs?: string[];
   maxRounds?: number;
 }

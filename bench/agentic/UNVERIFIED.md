@@ -1,26 +1,12 @@
-# Unverified Items Requiring Shell or Live Run
+# Unverified Items
 
-No shell commands were executed while creating `bench/agentic/`. Please verify these items directly on the host machine:
+Verified on 2026-11-27 against BubblePaw Core v0.16.1 (Windows, `bubblepaw 0.2.1`) and pi 1.6.1 with `opencode-go/deepseek-v4.1-flash`, using `--help`, the shipped docs and source, and two tiny live probes per agent plus the two-task pilot.
 
-1. **Offline runner tests & TypeScript typecheck**
-   - Run `bun test bench/agentic/runner.test.ts` (verifies all 8 tasks pass under `fake`, all 8 fail under `fake-noop`, `check.ts` is excluded from the workspace, and report formatting works).
-   - Run `bun run --cwd bench/agentic typecheck` (`tsc --noEmit -p tsconfig.json`).
-   - Run `bun run bench/agentic/run.ts --list`.
+Verified: `bubblepaw --version` and `usage export` (`bubblepaw.usage.v1` rows, exit 0), `bubblepaw.toml` with the OpenCode Go key, stream events (`text_delta`, `paragraph`, `model_request_started`, `tool_started`, `result`), trace fields (`first_text_ms`, `model_finished`, `tool_started` fingerprints); pi `--version` (`1.6.1`), flags `-p --no-session -nc -ne --tools --provider --model --thinking`, provider `opencode-go` / model `deepseek-v4.1-flash`, JSON events and usage fields (`input`, `output`, `cacheRead`, `cacheWrite`, `cost.total`, `isError`). pi's `input` excludes cache; the adapter normalises it (see README).
 
-2. **Windows subprocess & ESM dynamic import behavior**
-   - Confirm `src/check-runner.ts` (`import(pathToFileURL(checkPath).href)`) and `tasks/08-multi-step-migration/check.ts` (`bun run src/cli.ts`) behave cleanly on Windows paths and exit codes.
+Still unverified:
 
-3. **`pi` CLI flags and OpenCode Go provider/model naming (`src/adapters/pi.ts`)**
-   - Confirm installed `pi --version` output format.
-   - Confirm exact provider/model flags for DeepSeek V4.1 Flash on OpenCode Go in your local `pi` build (the adapter defaults `opencode/deepseek-v4.1-flash` to `--provider opencode-go --model deepseek-v4.1-flash`, overridable via `--pi-provider` / `--pi-model`).
-   - Confirm whether `-p`, `--no-session`, `-nc`, `-ne`, and `--tools read,bash,edit,write,grep,find,ls` match your installed `pi` version without error.
-
-4. **`pi --mode json` event schema (`src/adapters/pi.ts`)**
-   - Verify on one live `pi` run that `message_update.assistantMessageEvent.type === "text_delta"`, `message_end.message.usage` (`input`, `output`, `cacheRead`, `cacheWrite`, `cost.total`), `tool_execution_start`, and `tool_execution_end` (`isError`) match the fields emitted by your installed `pi` binary.
-   - Verify whether `pi`'s `usage.input` already includes `cacheRead` (as BubblePaw's `input_tokens` does) or reports *uncached* input separately; if `pi` excludes `cacheRead` from `input`, `pi.ts` should normalize `inputTokens = input + cacheRead + cacheWrite` so `cache_hit_ratio` and `estimateCostUsd` match BubblePaw's convention.
-
-5. **BubblePaw live two-task pilot (`src/adapters/bubblepaw.ts` + `bench/agentic/bubblepaw.toml`)**
-   - Confirm `bubblepaw --version` output format.
-   - Confirm `bench/agentic/bubblepaw.toml` works with your release binary and `OPENCODE_API_KEY` on OpenCode Go (`opencode/deepseek-v4.1-flash`), including `reasoning = { thinking = { type = "enabled" }, reasoning_effort = "low" }`.
-   - Confirm `bubblepaw ... usage export` exits 0 and emits `bubblepaw.usage.v1` rows when invoked after `run` with `--data-dir` in `scratchDir`.
-   - Confirm `trace.jsonl` records (`first_text_ms`, `cache_miss_unexplained` / `cache_bust`, `tool_started` fingerprint) populate as expected on a live run.
+1. `bun run --cwd bench/agentic typecheck` needs `typescript` and `@types/bun` installed; neither is in the worktree. `bun test runner.test.ts` passes.
+2. `tool_errors` on a failing tool for either agent (no live run produced a tool error); the event fields come from the docs and source only.
+3. `cache_miss_unexplained` trace events were not seen live (no such miss occurred); only the `model_finished` fallback rule was exercised.
+4. pi's `bash` tool on Windows (needs a shell on PATH) was exercised only through the pilot's tasks, not tested separately.

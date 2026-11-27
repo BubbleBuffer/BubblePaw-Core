@@ -14,7 +14,7 @@ interface PiUsageShape {
   cache_creation_tokens?: number;
   reasoning?: number;
   reasoning_tokens?: number;
-  cost?: { total?: number } | number;
+  cost?: { total?: number; totalFromProvider?: boolean } | number;
   cost_usd?: number;
 }
 
@@ -141,16 +141,24 @@ function resolvePiProviderAndModel(
 export class PiAdapter implements AgentAdapter {
   readonly name = "pi";
   private readonly bin: string;
+  private readonly node: string | undefined;
   private readonly config: AdapterConfig;
 
   constructor(config: AdapterConfig = {}) {
     this.bin = config.bin ?? process.env.PI_BIN ?? "pi";
+    // Optional Node executable that runs `bin` (a JS entry such as pi's dist/bundle/cli.js).
+    // Lets pi run on a portable Node without touching the system Node or PATH.
+    this.node = config.piNode ?? process.env.PI_NODE ?? undefined;
     this.config = config;
+  }
+
+  private command(args: string[]): string[] {
+    return this.node ? [this.node, this.bin, ...args] : [this.bin, ...args];
   }
 
   async version(): Promise<string | null> {
     try {
-      const proc = Bun.spawn([this.bin, "--version"], {
+      const proc = Bun.spawn(this.command(["--version"]), {
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -171,23 +179,29 @@ export class PiAdapter implements AgentAdapter {
   async run(req: AgentRunRequest): Promise<AgentRunResult> {
     const { provider, modelId } = resolvePiProviderAndModel(req.model, this.config);
     const tools = this.config.piTools ?? "read,bash,edit,write,grep,find,ls";
-    const args = [
-      this.bin,
+    // Thinking level matches bubblepaw.toml (reasoning_effort = "low"); pi's own default is "medium".
+    const thinking = this.config.piThinking ?? "low";
+    const args = this.command([
       "--mode",
       "json",
       "-p",
       "--no-session",
       "-nc",
       "-ne",
+      "-ns",
+      "-np",
+      "--offline",
       "--tools",
       tools,
       "--provider",
       provider,
       "--model",
       modelId,
+      "--thinking",
+      thinking,
       ...(this.config.piExtraArgs ?? []),
       req.prompt,
-    ];
+    ]);
 
     const startedAt = performance.now();
     const state: {
@@ -203,6 +217,7 @@ export class PiAdapter implements AgentAdapter {
       reasoningTokens: number | null;
       reportedCostSum: number;
       sawReportedCost: boolean;
+      costFromPiCatalog: boolean;
       lastAssistantText: string;
       lastAssistantError: string | null;
       agentEndMessages: PiMessage[] | null;
@@ -219,6 +234,7 @@ export class PiAdapter implements AgentAdapter {
       reasoningTokens: null,
       reportedCostSum: 0,
       sawReportedCost: false,
+      costFromPiCatalog: false,
       lastAssistantText: "",
       lastAssistantError: null,
       agentEndMessages: null,
@@ -235,7 +251,13 @@ export class PiAdapter implements AgentAdapter {
       const cacheWrite = usage.cacheWrite ?? usage.cache_creation_tokens;
       const reason = usage.reasoning ?? usage.reasoning_tokens;
       if (typeof inp === "number") {
-        state.inputTokens = (state.inputTokens ?? 0) + inp;
+        // pi's `input` EXCLUDES cache reads and writes (pi-ai: input = prompt_tokens - cacheRead -
+        // cacheWrite). Normalise to the whole prompt, as BubblePaw's input_tokens already is.
+        state.inputTokens =
+          (state.inputTokens ?? 0) +
+          inp +
+          (typeof cacheRead === "number" ? cacheRead : 0) +
+          (typeof cacheWrite === "number" ? cacheWrite : 0);
       }
       if (typeof out === "number") {
         state.outputTokens = (state.outputTokens ?? 0) + out;
@@ -248,6 +270,13 @@ export class PiAdapter implements AgentAdapter {
       }
       if (typeof reason === "number") {
         state.reasoningTokens = (state.reasoningTokens ?? 0) + reason;
+      }
+      if (
+        typeof usage.cost === "object" &&
+        usage.cost !== null &&
+        usage.cost.totalFromProvider === false
+      ) {
+        state.costFromPiCatalog = true;
       }
       const c = extractUsageCost(usage);
       if (typeof c === "number") {
@@ -390,7 +419,9 @@ export class PiAdapter implements AgentAdapter {
       state.sawReportedCost && state.reportedCostSum > 0
         ? Number(state.reportedCostSum.toFixed(9))
         : null;
-    let costSource: "agent" | "catalog" | null = costUsd !== null ? "agent" : null;
+    // pi prices tokens from its own model catalog unless the provider reports a cost.
+    let costSource: "agent" | "catalog" | null =
+      costUsd !== null ? (state.costFromPiCatalog ? "catalog" : "agent") : null;
     if (costUsd === null && state.inputTokens !== null && state.outputTokens !== null) {
       const estimated = estimateCostUsd(req.model, {
         inputTokens: state.inputTokens,
