@@ -1,39 +1,25 @@
 //! Hardline floor for `exec` commands (docs/approvals.md). The gate checks it
 //! before configured denies, session allowances, run overrides and every mode,
 //! so no allowance reaches these commands. It is best-effort insurance, not a
-//! sandbox: it folds case, quotes, carets and braces, reads command words per
-//! shell segment, skips common wrappers and follows `cd` within one command.
-//! It does not model every shell.
+//! sandbox: it folds case, quotes, backslash escapes, carets and braces, reads
+//! command words per shell segment (`blocklist_words.rs`), skips common wrappers
+//! and follows `cd` within one command. Places (`blocklist_place.rs`) are read
+//! lexically, with the host's home directory in every spelling. It does not
+//! model every shell.
 
 use crate::ApprovalPolicy;
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::path::PathBuf;
 
-/// Prefixes that run the command after them: privilege and environment
-/// wrappers, and shells that take the command as an argument.
-const WRAPPERS: &[&str] = &[
-    "sudo",
-    "doas",
-    "env",
-    "nohup",
-    "time",
-    "command",
-    "exec",
-    "nice",
-    "timeout",
-    "xargs",
-    "start",
-    "cmd",
-    "powershell",
-    "pwsh",
-    "sh",
-    "bash",
-    "zsh",
-    "dash",
-];
-/// cmd switches before a wrapped command, such as `cmd /c format c:`.
-const SWITCHES: &[&str] = &["/c", "/k", "/s", "/q", "/d"];
+#[path = "blocklist_place.rs"]
+mod place;
+#[path = "blocklist_words.rs"]
+mod words;
+
+use place::{Place, is_drive};
+use words::{command_word, segment_readings};
+
 /// Commands that change the directory for the segments after them.
 const CD_COMMANDS: &[&str] = &[
     "cd",
@@ -135,82 +121,6 @@ fn command_text(command: &Value) -> Option<String> {
         }
     }
     Some(text)
-}
-
-/// Words per segment, read two ways: quote-aware, so a quoted path with spaces
-/// stays one word, and plain, where quotes only vanish. Both readings must pass,
-/// so an unbalanced quote cannot hide a later command.
-fn segment_readings(command: &str) -> [Vec<Vec<String>>; 2] {
-    let folded: String = command
-        .to_lowercase()
-        .chars()
-        .filter(|c| !matches!(c, '`' | '^' | '{' | '}'))
-        .collect();
-    [
-        split_segments(&folded, true),
-        split_segments(&folded, false),
-    ]
-}
-
-/// Newlines and shell operators end a segment; whitespace ends a word.
-fn split_segments(folded: &str, quote_aware: bool) -> Vec<Vec<String>> {
-    let mut segments = Vec::new();
-    let mut words = Vec::new();
-    let mut word = String::new();
-    let mut quote = None;
-    for c in folded.chars() {
-        if let Some(open) = quote {
-            if c == open {
-                quote = None;
-            } else {
-                word.push(c);
-            }
-            continue;
-        }
-        match c {
-            '"' | '\'' if quote_aware => quote = Some(c),
-            '"' | '\'' => {}
-            '\n' | '\r' | ';' | '&' | '|' | '(' | ')' => {
-                end_word(&mut words, &mut word);
-                if !words.is_empty() {
-                    segments.push(std::mem::take(&mut words));
-                }
-            }
-            c if c.is_whitespace() => end_word(&mut words, &mut word),
-            c => word.push(c),
-        }
-    }
-    end_word(&mut words, &mut word);
-    if !words.is_empty() {
-        segments.push(words);
-    }
-    segments
-}
-
-fn end_word(words: &mut Vec<String>, word: &mut String) {
-    if !word.is_empty() {
-        words.push(std::mem::take(word));
-    }
-}
-
-/// The command name and its arguments, after the wrappers, switches, options,
-/// assignments and numeric arguments that stand before the command word.
-fn command_word(words: &[String]) -> Option<(&str, &[String])> {
-    let mut words = words;
-    while let Some((head, args)) = words.split_first() {
-        let first = head.as_str();
-        let name = first.rsplit(['/', '\\']).next()?.trim_end_matches(".exe");
-        let skip = WRAPPERS.contains(&name)
-            || SWITCHES.contains(&first)
-            || first.starts_with('-')
-            || first.contains('=')
-            || first.chars().all(|c| c.is_ascii_digit() || c == '.');
-        if !skip {
-            return Some((name, args));
-        }
-        words = args;
-    }
-    None
 }
 
 fn segment_match(words: &[String], roots: &[Place], cwd: Option<&Place>) -> Option<String> {
@@ -347,138 +257,23 @@ fn target_class(target: &str, roots: &[Place], cwd: Option<&Place>) -> Option<&'
     if contents && base.is_empty() {
         return Some("the filesystem root");
     }
-    if matches!(
-        base.trim_end_matches(['/', '\\']),
-        "~" | "$home" | "$userprofile" | "%userprofile%" | "$env:userprofile"
-    ) {
-        return Some("the home directory");
-    }
-    let place = Place::new(base);
+    let place = Place::under_home(base).unwrap_or_else(|| Place::new(base));
     match resolve(&place, cwd) {
         Some(path) if path.is_root() => Some("the filesystem root"),
         Some(path) if path.is_drive_root() => Some("a drive root"),
+        Some(path) if path.is_home() => Some("the home directory"),
         Some(path) => (!contents && roots.contains(&path)).then_some("the workspace root"),
-        None => (!contents && place.parts.is_empty()).then_some("the workspace root"),
+        None => (!contents && place.is_empty()).then_some("the workspace root"),
     }
 }
 
 /// `target` as a place: absolute targets stand alone, others extend `base`.
 /// None when the relative target has no known base.
 fn resolve(target: &Place, base: Option<&Place>) -> Option<Place> {
-    if target.absolute {
+    if target.is_absolute() {
         return Some(target.clone());
     }
     base.map(|base| base.join(target))
-}
-
-/// A path read lexically: its drive, whether it is rooted and its normal parts.
-/// Nothing touches the filesystem, so a missing path still has a place.
-#[derive(Clone, Debug, PartialEq)]
-struct Place {
-    drive: String,
-    absolute: bool,
-    parts: Vec<String>,
-}
-
-impl Place {
-    /// Lowercased, with `/` separators, a Windows verbatim prefix (`\\?\`) removed,
-    /// and `.` and `..` folded. On Windows the shell may be Git Bash, whose
-    /// drive paths (`/c/users`, `/cygdrive/c/users`) name `c:/users`.
-    fn new(path: &str) -> Self {
-        Self::parse(path, cfg!(windows))
-    }
-
-    fn parse(path: &str, msys: bool) -> Self {
-        let folded = path.to_lowercase().replace('\\', "/");
-        let folded = folded.strip_prefix("//?/").unwrap_or(&folded);
-        let msys_path;
-        let folded = if msys {
-            msys_path = msys_drive(folded);
-            msys_path.as_str()
-        } else {
-            folded
-        };
-        let (drive, rest) = match folded.as_bytes() {
-            [letter, b':', ..] if letter.is_ascii_alphabetic() => folded.split_at(2),
-            _ => ("", folded),
-        };
-        let absolute = !drive.is_empty() || rest.starts_with('/');
-        let mut parts = Vec::new();
-        push_parts(&mut parts, absolute, rest.split('/'));
-        Self {
-            drive: drive.to_owned(),
-            absolute,
-            parts,
-        }
-    }
-
-    fn join(&self, relative: &Place) -> Place {
-        let mut parts = self.parts.clone();
-        push_parts(
-            &mut parts,
-            self.absolute,
-            relative.parts.iter().map(String::as_str),
-        );
-        Place {
-            drive: self.drive.clone(),
-            absolute: self.absolute,
-            parts,
-        }
-    }
-
-    fn is_root(&self) -> bool {
-        self.absolute && self.drive.is_empty() && self.parts.is_empty()
-    }
-
-    fn is_drive_root(&self) -> bool {
-        self.absolute && !self.drive.is_empty() && self.parts.is_empty()
-    }
-}
-
-/// Appends path segments, folding `.` and `..`. A rooted path cannot climb above its root.
-fn push_parts<'a>(
-    parts: &mut Vec<String>,
-    absolute: bool,
-    segments: impl Iterator<Item = &'a str>,
-) {
-    for segment in segments {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                let climb = parts.last().is_some_and(|last| last.as_str() != "..");
-                if climb {
-                    parts.pop();
-                } else if !absolute {
-                    parts.push(segment.to_owned());
-                }
-            }
-            other => parts.push(other.to_owned()),
-        }
-    }
-}
-
-/// Git Bash's spelling of a drive path: `/c/users` and `/cygdrive/c/users` are
-/// `c:/users`. Other paths are returned unchanged.
-fn msys_drive(path: &str) -> String {
-    let path = match path.strip_prefix("/cygdrive/") {
-        Some(rest) => format!("/{rest}"),
-        None => path.to_owned(),
-    };
-    match path.as_bytes() {
-        [b'/', letter, rest @ ..]
-            if letter.is_ascii_alphabetic() && matches!(rest.first(), None | Some(b'/')) =>
-        {
-            format!("{}:{}", *letter as char, &path[2..])
-        }
-        _ => path,
-    }
-}
-
-/// A drive letter with an optional separator, such as `C:` or `d:\`.
-fn is_drive(text: &str) -> bool {
-    let text = text.trim_end_matches(['/', '\\']);
-    let bytes = text.as_bytes();
-    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
 /// A short-option cluster that carries `flag`, such as `-f` or `-fdx`. Never a long option.

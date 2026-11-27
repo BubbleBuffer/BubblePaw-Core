@@ -114,7 +114,10 @@ names):
 Protected places for the two delete patterns:
 - **filesystem root:** `/`, `\`, `/*`, `\*`, `//`, and any path that climbs to it (`../../../..`);
 - **home directory:** `~`, `$HOME`, `${HOME}`, `%USERPROFILE%`, `$env:USERPROFILE`,
-  and their contents (`~/*`, `$HOME/*`);
+  and their contents (`~/*`, `$HOME/*`). The host's real home directory (read once
+  from the host process) counts in every spelling: native, forward slashes, Git Bash
+  `/c/...` and `/cygdrive/c/...`, any case. Dot segments, repeated separators and
+  `..` fold first, so `~/.`, `~//`, `$HOME/.` and `~/x/..` are the home directory;
 - **drive root:** `C:`, `C:\`, `c:/`, `C:\*`;
 - **workspace root:** the session's exec directory root, as an absolute path, a
   relative path that resolves to it (`.` from the root, `..` from `child/`), or a
@@ -139,7 +142,12 @@ other commands' arguments do not match, so `echo "rm -rf /"` and
 Normalisation is best effort. The matcher lowercases the text, removes carets,
 backticks and braces, and splits segments at newlines and `; & | ( )`. Quotes are
 read two ways, and both readings must pass: one where a quoted path with spaces is
-one word, and one where quotes only vanish.
+one word, and one where quotes only vanish. Each is read twice more with a backslash
+as an sh escape (`r\m`, `\rm`) instead of a path separator, so `r\m -rf /` is `rm`
+while `C:\tools\rm.exe` still is too; a command is refused when any of the four
+readings is refused. `$PWD`, `${PWD}`, `$(pwd)`, `` `pwd` `` and `%CD%` read as `.`,
+so they get exactly what `rm -rf .` gets (the workspace root is refused), while
+`"$PWD/dist"` and `./build` stay allowed.
 Before each command word it skips wrappers (`sudo`, `doas`, `env`, `nohup`,
 `time`, `timeout 5`, `xargs`, `cmd /c`, `sh -c`, `powershell -Command`, and
 similar) and `NAME=value` assignments. It ignores the directory part and a
