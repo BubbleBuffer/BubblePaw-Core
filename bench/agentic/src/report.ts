@@ -301,6 +301,23 @@ export function formatMarkdownReport(
     lines.push("");
   }
 
+  // Additive fields of the long-context task (absent in older records).
+  const longRuns = candidateRecords.filter(
+    (r) => (r.context_window ?? null) !== null || (r.compactions ?? 0) > 0,
+  );
+  if (longRuns.length > 0) {
+    lines.push("## Context Window And Compactions");
+    lines.push("");
+    lines.push("| Task | Agent | Rep | Window | Compactions | Peak Request Input | Requests | Passed |");
+    lines.push("| --- | --- | ---: | ---: | ---: | ---: | ---: | :---: |");
+    for (const r of longRuns) {
+      lines.push(
+        `| ${r.task} | ${r.agent} | ${r.rep} | ${fmtInt(r.context_window ?? null)} | ${fmtInt(r.compactions ?? null)} | ${fmtInt(r.peak_request_input_tokens ?? null)} | ${fmtInt(r.requests)} | ${r.passed ? "yes" : "no"} |`,
+      );
+    }
+    lines.push("");
+  }
+
   const failures = candidateRecords.filter(
     (r) =>
       !r.passed ||

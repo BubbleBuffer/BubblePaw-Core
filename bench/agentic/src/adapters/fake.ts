@@ -38,6 +38,8 @@ export class FakeAdapter implements AgentAdapter {
         timedOut: false,
         unexplainedCacheMisses: 0,
         repeatedToolCalls: 0,
+        compactions: 0,
+        peakRequestInputTokens: 120,
       };
     }
 
@@ -62,6 +64,8 @@ export class FakeAdapter implements AgentAdapter {
       timedOut: false,
       unexplainedCacheMisses: 0,
       repeatedToolCalls: 0,
+      compactions: 0,
+      peakRequestInputTokens: 400,
     };
   }
 }

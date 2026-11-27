@@ -24,8 +24,9 @@ Options:
   --pi-node <path>            Node executable that runs --pi-bin (a JS entry); env PI_NODE
   --pi-thinking <level>       pi --thinking level (default low, matching bubblepaw.toml)
   --pi-extra-args <csv>       Comma-separated extra args passed to pi
-  --timeout-ms <ms>           Per-task timeout in milliseconds (default: ${DEFAULT_TIMEOUT_MS})
+  --timeout-ms <ms>           Timeout per run in milliseconds; overrides the task's own (default: the task's, else ${DEFAULT_TIMEOUT_MS})
   --max-rounds <n>            Override agent.max_rounds for bubblepaw
+  --context-window <tokens>   Limit every agent to this context window (compaction follows from it)
   --out <path>                JSONL output file (default: bench/agentic/results/<timestamp>.jsonl)
   --baseline <path>           Optional baseline JSONL file to compare against in the report
   --no-interleave             Run each agent sequentially instead of alternating per task/rep
@@ -59,8 +60,9 @@ async function main(): Promise<void> {
   let piNode: string | undefined;
   let piThinking: string | undefined;
   let piExtraArgs: string[] | undefined;
-  let timeoutMs = DEFAULT_TIMEOUT_MS;
+  let timeoutMs: number | undefined;
   let maxRounds: number | undefined;
+  let contextWindow: number | undefined;
   let outFile: string | undefined;
   let baselineFile: string | undefined;
   let interleave = true;
@@ -133,6 +135,12 @@ async function main(): Promise<void> {
       case "--max-rounds":
         maxRounds = Number(next());
         break;
+      case "--context-window":
+        contextWindow = Number(next());
+        if (!Number.isInteger(contextWindow) || contextWindow < 20_000) {
+          throw new Error("--context-window must be an integer of at least 20000 tokens");
+        }
+        break;
       case "--out":
         outFile = resolve(next());
         break;
@@ -154,9 +162,10 @@ async function main(): Promise<void> {
   }
 
   if (listOnly) {
-    const discovered = await discoverTasks(defaultTasksDir());
+    const discovered = await discoverTasks(defaultTasksDir(), undefined, true);
     for (const t of discovered) {
-      console.log(`${t.meta.id}\t[${t.meta.category}]\t(${t.meta.expected_steps} steps)\t${t.meta.title}`);
+      const optIn = t.meta.opt_in ? "\t(opt-in: name it with --task)" : "";
+      console.log(`${t.meta.id}\t[${t.meta.category}]\t(${t.meta.expected_steps} steps)\t${t.meta.title}${optIn}`);
     }
     return;
   }
@@ -190,6 +199,7 @@ async function main(): Promise<void> {
     reps,
     timeoutMs,
     maxRounds,
+    contextWindow,
     outFile: resolvedOut,
     interleave,
     seedOrder,
