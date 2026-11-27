@@ -106,6 +106,8 @@ pub mod net;
 pub mod no_provider;
 #[cfg(feature = "host")]
 pub mod opencode_console;
+#[cfg(feature = "host")]
+mod os_label;
 pub mod plain_path;
 #[cfg(feature = "host")]
 pub mod pricing;

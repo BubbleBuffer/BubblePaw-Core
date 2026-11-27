@@ -1,6 +1,15 @@
 # V0 decisions
 
-Status: decision log, dated; current through 2026-11-24.
+Status: decision log, dated; current through 2026-11-27.
+
+## The execution environment line names the OS version (2026-11-27)
+
+The `Execution environment` line of the root and child prompts names the system
+and version, such as `Windows 11 (10.0.26100, x86_64)`, `Ubuntu 24.04.1 LTS (Linux 6.8.0-45-generic, x86_64)`
+or `macOS 15.1 (aarch64)`. Windows 11 starts at build 22000. It is read once per process from local
+files, or from `cmd /c ver` on Windows, and any failure falls back to the OS constant and the
+architecture, so the prompt prefix stays byte-stable for caching. The `platform` field of the
+session host API keeps the plain OS constant.
 
 ## Fork depth and effect routing (2026-11-23)
 
