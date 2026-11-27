@@ -1,5 +1,6 @@
 //! Physical output accounting and rejection boundaries.
 use super::*;
+use bubblepaw_core::{LastRequestUsage, Usage};
 
 /// Native adapters meter each round before joining responses or doing final postprocessing.
 struct MeteredRounds {
