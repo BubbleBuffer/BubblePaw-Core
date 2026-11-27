@@ -18,7 +18,7 @@ const MCP_CATEGORY: &str = "mcp:";
 /// The built-in categories in display order. An MCP server's tools form the category
 /// `mcp:<server>`; a tool outside every list belongs to `other`.
 pub const CATEGORIES: &[(&str, &[&str])] = &[
-    ("files", &["list", "read", "search", "edit", "write"]),
+    ("files", &["read", "search", "edit", "write"]),
     ("commands", &["exec", "poll", "wait", "cancel", "jobs"]),
     ("web", &["web_search", "web_fetch"]),
     ("agents", &["agent", "agent_send", "agent_status"]),

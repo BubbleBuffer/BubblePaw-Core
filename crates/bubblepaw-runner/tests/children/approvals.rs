@@ -301,7 +301,7 @@ async fn stdio_lists_and_decides_approvals() {
         .arg(temp.path())
         .arg("--db")
         .arg(temp.path().join("archive.sqlite"))
-        .args(["--read-only", "--confirm", "list", "stdio"])
+        .args(["--read-only", "--confirm", "search", "stdio"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -323,7 +323,7 @@ async fn stdio_lists_and_decides_approvals() {
     )
     .await;
     let requested = event(&mut stdout, "approval_requested").await;
-    assert_eq!(requested["approval"]["tool"], "list");
+    assert_eq!(requested["approval"]["tool"], "search");
     assert_eq!(requested["approval"]["state"], "pending");
     send(
         &mut stdin,
@@ -383,7 +383,7 @@ fn one_shot_run_denies_what_would_wait() {
         .arg(temp.path())
         .arg("--db")
         .arg(temp.path().join("archive.sqlite"))
-        .args(["--read-only", "--confirm", "list", "run", "Run the demo"])
+        .args(["--read-only", "--confirm", "search", "run", "Run the demo"])
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);

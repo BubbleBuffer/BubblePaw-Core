@@ -30,7 +30,7 @@ fn native_demo_persists_and_reopens_a_session() {
             .count(),
         0
     );
-    for name in ["list", "write", "read", "exec"] {
+    for name in ["search", "write", "read", "exec"] {
         assert!(
             records
                 .iter()
@@ -114,7 +114,8 @@ fn native_demo_persists_and_reopens_a_session() {
         messages
             .iter()
             .flat_map(|m| m["tool_calls"].as_array().into_iter().flatten())
-            .all(|call| ["list", "write", "read", "exec"].contains(&call["name"].as_str().unwrap()))
+            .all(|call| ["search", "write", "read", "exec"]
+                .contains(&call["name"].as_str().unwrap()))
     );
     let stats = cli(&workspace, &db).arg("stats").output().unwrap();
     assert!(stats.status.success());

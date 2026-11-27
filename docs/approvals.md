@@ -93,7 +93,8 @@ error naming the rule:
 
 ### Fixed list
 
-Only the `exec` tool is checked. Its `command` is a string, or a `{parts, values}`
+Only the `exec` tool is checked. Its `command` is a string (the form the model sees
+since 2026-11-27, read exactly like an `sh -c` script), or a `{parts, values}`
 template whose parts and values are joined with spaces. Patterns (the `<pattern>`
 names):
 

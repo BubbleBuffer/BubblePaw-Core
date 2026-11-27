@@ -73,7 +73,7 @@ impl Fixture {
             .unwrap()
             .register(&mut tools, false, &store)
             .unwrap();
-        tools.show_always(["read", "list", "search"]);
+        tools.show_always(["read", "search"]);
         let mut research = research_profile_with_tools(
             store.clone(),
             provider.clone(),

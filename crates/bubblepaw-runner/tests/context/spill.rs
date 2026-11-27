@@ -213,7 +213,7 @@ async fn js_returned_native_text_spills_all_bytes_and_reads_own_files_only() {
         .cell_for(
             &fixture.session,
             &format!(
-                "return await tools.list({{path:{}}});",
+                "return await tools.search({{path:{}}});",
                 json!(Path::new(path).parent().unwrap())
             ),
         )

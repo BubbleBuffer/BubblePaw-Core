@@ -199,9 +199,7 @@ async fn native_shell_cursors_replay_without_consumption() {
         .into_iter()
         .map(|d| d.name)
         .collect::<Vec<_>>();
-    for name in [
-        "exec", "poll", "cancel", "read", "list", "search", "edit", "write",
-    ] {
+    for name in ["exec", "poll", "cancel", "read", "search", "edit", "write"] {
         assert!(names.iter().any(|n| n == name));
     }
     assert!(
@@ -414,7 +412,7 @@ async fn long_timer_cancels_and_bad_types_are_errors() {
         ("exec", json!({"command":ECHO,"timeoutMs":0})),
         ("wait", json!({"ms":-1})),
         ("wait", json!({"ms":0,"handle":"process:x"})),
-        ("list", json!({"limit":"bad"})),
+        ("search", json!({"maxResults":"bad"})),
         ("read", json!({"path":"x","startLine":null})),
         ("search", json!({"query":"x","regex":"bad"})),
     ] {

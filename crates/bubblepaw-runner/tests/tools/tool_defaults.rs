@@ -2,8 +2,9 @@
 use anyhow::{Context, Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, ExecutionMode, Harness, HarnessConfig, Role, RunOptions, Store, Tool,
-    ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
+    ApprovalMode, ApprovalPolicy, CancellationToken, ExecutionMode, Harness, HarnessConfig, Role,
+    RunOptions, Store, Tool, ToolCall, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry,
+    ToolResult,
 };
 use bubblepaw_runner::{
     provider::{ScriptedProvider, ScriptedStep},
@@ -49,6 +50,16 @@ async fn dispatched(
     target: &'static str,
     input: Value,
 ) -> Result<ToolResult> {
+    dispatched_with(store, registry, target, input, HarnessConfig::default()).await
+}
+
+async fn dispatched_with(
+    store: &Store,
+    registry: &ToolRegistry,
+    target: &'static str,
+    input: Value,
+    config: HarnessConfig,
+) -> Result<ToolResult> {
     let mut tools = registry.clone();
     tools.register(Arc::new(Bridge(target)))?;
     let session = store.create_session("tool defaults")?;
@@ -62,12 +73,7 @@ async fn dispatched(
         }],
         "done",
     );
-    let harness = Harness::new(
-        store.clone(),
-        Arc::new(provider),
-        tools,
-        HarnessConfig::default(),
-    );
+    let harness = Harness::new(store.clone(), Arc::new(provider), tools, config);
     let run = harness
         .prompt(&session.id, "run the fixture", RunOptions::default())
         .await?;
@@ -180,7 +186,7 @@ async fn missing_workspace_paths_name_the_requested_path() -> Result<()> {
     let registry = registry(root.path(), &store)?;
     for (target, input) in [
         ("read", json!({"path":"missing/named-file.txt"})),
-        ("list", json!({"path":"missing/named-directory"})),
+        ("search", json!({"path":"missing/named-directory"})),
         (
             "search",
             json!({"path":"missing/named-search-root","query":"needle"}),
@@ -202,7 +208,7 @@ async fn unknown_host_arguments_list_valid_names_before_invocation() -> Result<(
     let processes = register_native_tools(&mut registry, root.path(), false, &store)?;
     for (target, mut input) in [
         ("read", json!({"path":"missing.txt"})),
-        ("list", json!({})),
+        ("search", json!({})),
         ("search", json!({"query":"needle"})),
         (
             "edit",
@@ -291,5 +297,141 @@ async fn direct_workspace_invocation_names_valid_arguments() -> Result<()> {
         "{error}"
     );
     assert!(!error.contains("private-value"));
+    Ok(())
+}
+
+const GITIGNORE: &str = "ignored/\n*.log\n";
+const LIB: &str = "fn needle() {}\n// two\n";
+
+#[tokio::test]
+async fn search_lists_and_finds_through_one_tool_and_notes_what_the_cap_left_out() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    fs::create_dir_all(root.path().join("src"))?;
+    fs::create_dir_all(root.path().join("ignored"))?;
+    for (name, body) in [
+        (".gitignore", GITIGNORE),
+        ("src/lib.rs", LIB),
+        ("src/notes.txt", "plain\n"),
+        ("ignored/hidden.rs", "fn needle() {}\n"),
+        ("build.log", "needle\n"),
+    ] {
+        fs::write(root.path().join(name), body)?;
+    }
+    let store = Store::in_memory()?;
+    let registry = registry(root.path(), &store)?;
+    let gitignore = format!(".gitignore ({} B)\n", GITIGNORE.len());
+    let lib = format!("src/lib.rs ({} B)\n", LIB.len());
+    let notes = "src/notes.txt (6 B)\n";
+    let more = "[2 more files not shown; narrow with path, glob or query, or raise maxResults]";
+    for (input, expected) in [
+        (json!({}), format!("{gitignore}{lib}{notes}")),
+        (json!({"glob":"*.rs"}), lib.clone()),
+        (json!({"glob":["*.rs","*.txt"]}), format!("{lib}{notes}")),
+        (json!({"glob":"!*.txt"}), format!("{gitignore}{lib}")),
+        (json!({"path":"src"}), format!("{lib}{notes}")),
+        (json!({"maxResults":1}), format!("{gitignore}{more}")),
+        (
+            json!({"query":"needle"}),
+            "src/lib.rs:1: fn needle() {}\n".to_owned(),
+        ),
+        (
+            json!({"query":"needle","context":1}),
+            "src/lib.rs:1: fn needle() {}\nsrc/lib.rs-2- // two\n".to_owned(),
+        ),
+        (
+            json!({"query":"n.edle","regex":true,"filesOnly":true}),
+            lib.clone(),
+        ),
+        (json!({"query":"absent"}), "[no matches]".to_owned()),
+    ] {
+        let result = dispatched(&store, &registry, "search", input.clone()).await?;
+        assert!(!result.is_error, "{input}: {}", result.body());
+        assert_eq!(result.body(), expected, "{input}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn read_takes_several_paths_and_names_what_the_size_cap_cut() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let wide: String = (1..=200)
+        .map(|line| format!("{line:04} {}\n", "x".repeat(595)))
+        .collect();
+    for (name, body) in [
+        ("small.txt", "one\ntwo\n"),
+        ("other.txt", "a\nb\nc\n"),
+        ("wide.txt", wide.as_str()),
+    ] {
+        fs::write(root.path().join(name), body)?;
+    }
+    let store = Store::in_memory()?;
+    let registry = registry(root.path(), &store)?;
+    let read = |input: Value| dispatched(&store, &registry, "read", input);
+    let result = read(json!({"paths":["small.txt",{"path":"other.txt","startLine":2}]})).await?;
+    assert_eq!(
+        result.body(),
+        "=== small.txt ===\none\ntwo\n=== other.txt ===\nb\nc\n[lines 2-3 of 3]\n"
+    );
+    let result = read(json!({"paths":["small.txt","missing.txt"]})).await?;
+    assert!(!result.is_error);
+    let text = result.body();
+    assert!(text.starts_with("=== small.txt ===\none\ntwo\n=== missing.txt ===\n[error: "));
+    assert!(text.contains("missing.txt"), "{text}");
+    let result = read(json!({"paths":["wide.txt","small.txt","other.txt"]})).await?;
+    let text = result.body();
+    assert!(text.len() < 60 * 1024, "{}", text.len());
+    assert!(text.starts_with("=== wide.txt ===\n0001 "));
+    assert!(text.contains("[cut at the total size cap; read this file alone with startLine="));
+    assert!(text.contains("Cut: wide.txt."));
+    assert!(text.contains("Not read: small.txt, other.txt."));
+    Ok(())
+}
+
+#[tokio::test]
+async fn exec_string_command_reports_its_exit_code_and_keeps_the_hardline() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let store = Store::in_memory()?;
+    let mut registry = ToolRegistry::new();
+    let processes = register_native_tools(&mut registry, root.path(), false, &store)?;
+    let run = |command: &str| {
+        let config = HarnessConfig {
+            approval: ApprovalPolicy {
+                confirm: ApprovalMode::Allow,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        dispatched_with(
+            &store,
+            &registry,
+            "exec",
+            json!({"command":command}),
+            config,
+        )
+    };
+    let ok = run("exit 0").await?;
+    assert!(!ok.is_error, "{}", ok.body());
+    assert_eq!(serde_json::from_str::<Value>(&ok.body())?["exitCode"], 0);
+    let failed = run("exit 7").await?;
+    assert!(failed.is_error, "{}", failed.body());
+    assert_eq!(
+        serde_json::from_str::<Value>(&failed.body())?["exitCode"],
+        7
+    );
+    assert!(failed.text_has("code 7"), "{}", failed.body());
+    // A string command passes the same hardline floor as its `sh -c` form.
+    for command in [
+        "mkfs.bubblepaw-fixture /fictional/device",
+        r#"/bin/sh -c "mkfs.bubblepaw-fixture /fictional/device""#,
+    ] {
+        let blocked = run(command).await?;
+        assert!(blocked.is_error, "{command}");
+        assert!(
+            blocked.text_has("Blocked by hardline rule mkfs"),
+            "{}",
+            blocked.body()
+        );
+    }
+    processes.shutdown().await;
     Ok(())
 }

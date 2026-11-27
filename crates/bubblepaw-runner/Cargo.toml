@@ -29,6 +29,7 @@ host = [
     "dep:reqwest",
     "dep:sha2",
     "dep:regex",
+    "dep:ignore",
     "dep:html2text",
     "dep:rquickjs",
     "dep:clap",
@@ -108,6 +109,7 @@ httpdate = { version = "1", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"], optional = true }
 sha2 = { version = "0.11", optional = true }
 regex = { version = "1", optional = true }
+ignore = { version = "0.4", optional = true }
 html2text = { version = "=0.17.4", optional = true }
 rquickjs = { version = "0.14", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }

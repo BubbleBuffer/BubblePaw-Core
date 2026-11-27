@@ -12,12 +12,12 @@ use bubblepaw_core::{Store, ToolRegistry};
 use std::{path::Path, sync::Arc};
 
 /// The host retains this handle and calls shutdown before exiting. Read-only
-/// registration exposes only listing, reading and searching; processes can write
+/// registration exposes only reading and searching; processes can write
 /// arbitrary files and therefore are never classified as read-only.
 /// Host tools whose full signatures the `js` description always shows; all
 /// others are listed by name and discovered with `tools.$search`.
 pub const ALWAYS_SHOWN_TOOLS: &[&str] = &[
-    "read", "edit", "write", "search", "list", "exec", "poll", "wait", "cancel", "agent",
+    "read", "edit", "write", "search", "exec", "poll", "wait", "cancel", "agent",
 ];
 
 /// Registers the native tools and marks the runner's always-shown set.

@@ -36,7 +36,7 @@ impl ScriptedProvider {
     }
     fn demo_steps(writable: bool, js: bool) -> Vec<ScriptedStep> {
         let mut code = String::from(
-            "const listing = await tools.list({path:'.',limit:20}); text(listing.entries.map(entry=>entry.name).join('\\n'));\n",
+            "const listing = await tools.search({path:'.',maxResults:20}); text(listing.files.map(file=>file.path).join('\\n'));\n",
         );
         if writable {
             let path = format!("bubblepaw-demo-{}.txt", uuid::Uuid::new_v4());
@@ -69,7 +69,10 @@ impl ScriptedProvider {
             name: name.into(),
             arguments,
         };
-        let mut calls = vec![call("list", serde_json::json!({"path":".","limit":20}))];
+        let mut calls = vec![call(
+            "search",
+            serde_json::json!({"path":".","maxResults":20}),
+        )];
         if writable {
             let path = format!("bubblepaw-demo-{}.txt", uuid::Uuid::new_v4());
             #[cfg(windows)]
@@ -132,9 +135,9 @@ impl Provider for ScriptedProvider {
                     ensure!(request.tools.len() == 1, "offline JS demo expects only js");
                 } else {
                     for name in if writable {
-                        &["list", "write", "read", "exec"][..]
+                        &["search", "write", "read", "exec"][..]
                     } else {
-                        &["list"][..]
+                        &["search"][..]
                     } {
                         ensure!(
                             request.tools.iter().any(|tool| tool.name == *name),

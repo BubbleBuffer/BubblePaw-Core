@@ -3,10 +3,9 @@ use async_trait::async_trait;
 use bubblepaw_core::{
     Store, Tool, ToolContext, ToolDefinition, ToolDispatcher, ToolRegistry, ToolResult,
 };
-use regex::Regex;
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs,
     io::Read,
     path::{Path, PathBuf},
@@ -23,6 +22,8 @@ mod paths;
 mod read_text;
 #[path = "scratch_access.rs"]
 mod scratch_access;
+#[path = "search.rs"]
+mod search;
 #[path = "workspace_tool.rs"]
 mod tool;
 use tool::WorkspaceTool;
@@ -121,7 +122,7 @@ impl WorkspaceTools {
         read_only: bool,
         store: &Store,
     ) -> Result<()> {
-        for name in ["list", "read", "search", "edit", "write"] {
+        for name in ["read", "search", "edit", "write"] {
             if read_only && matches!(name, "edit" | "write") {
                 continue;
             }
@@ -142,9 +143,8 @@ impl WorkspaceTools {
         read_path: Option<(PathBuf, bool)>,
     ) -> Result<Value> {
         let fields: &[&str] = match name {
-            "list" => &["path", "limit"],
             "read" => &["path", "startLine", "lineCount"],
-            "search" => &["path", "query", "regex", "maxResults"],
+            "search" => search::FIELDS,
             "edit" => &["path", "old_string", "new_string", "replace_all", "edits"],
             "write" => &["path", "content"],
             _ => bail!("unknown workspace tool"),
@@ -155,38 +155,6 @@ impl WorkspaceTools {
             string(&input, "path")?;
         }
         match name {
-            "list" => {
-                let directory = self.existing(relative)?;
-                ensure!(directory.is_dir(), "path is not a directory");
-                let limit = count(&input, "limit", 200)?.min(1000);
-                ensure!(limit > 0, "limit must be positive");
-                let mut entries = Vec::new();
-                let mut truncated = false;
-                for entry in fs::read_dir(&directory)? {
-                    ensure!(!cancellation.is_cancelled(), "cancelled");
-                    let entry = entry?;
-                    let metadata = entry.path().symlink_metadata()?;
-                    let value = json!({"name":entry.file_name().to_string_lossy(),"kind":if metadata.file_type().is_symlink(){"symlink"}else if metadata.is_dir(){"directory"}else{"file"},"bytes":metadata.len()});
-                    let index = entries
-                        .binary_search_by(|v: &Value| {
-                            v["name"]
-                                .as_str()
-                                .unwrap()
-                                .cmp(value["name"].as_str().unwrap())
-                        })
-                        .unwrap_or_else(|index| index);
-                    if index < limit {
-                        entries.insert(index, value);
-                    }
-                    if entries.len() > limit {
-                        entries.pop();
-                        truncated = true;
-                    } else if index >= limit {
-                        truncated = true;
-                    }
-                }
-                Ok(json!({"path":relative,"entries":entries,"truncated":truncated}))
-            }
             "read" => {
                 let (path, spill) = match read_path {
                     Some(path) => path,
@@ -211,80 +179,7 @@ impl WorkspaceTools {
                     &cancellation,
                 )
             }
-            "search" => {
-                let root = self.existing(relative)?;
-                let query = string(&input, "query")?;
-                let regex_mode = match input.get("regex") {
-                    None => false,
-                    Some(value) => value
-                        .as_bool()
-                        .ok_or_else(|| anyhow!("regex must be a boolean"))?,
-                };
-                let pattern = if regex_mode {
-                    query.to_owned()
-                } else {
-                    regex::escape(query)
-                };
-                let regex = Regex::new(&pattern).context("invalid search pattern")?;
-                let limit = count(&input, "maxResults", 100)?.min(1000);
-                ensure!(limit > 0, "maxResults must be positive");
-                let mut pending = vec![root];
-                let mut matches = Vec::new();
-                let mut visited = 0usize;
-                let mut truncated = false;
-                while let Some(path) = pending.pop() {
-                    ensure!(!cancellation.is_cancelled(), "cancelled");
-                    visited += 1;
-                    if visited > 20_000 || matches.len() >= limit {
-                        truncated = true;
-                        break;
-                    }
-                    let metadata = path.symlink_metadata()?;
-                    if metadata.file_type().is_symlink() {
-                        continue;
-                    }
-                    if metadata.is_dir() {
-                        if path.file_name().is_some_and(|n| {
-                            [".git", "node_modules", "target"]
-                                .iter()
-                                .any(|skip| n == *skip)
-                        }) {
-                            continue;
-                        }
-                        let remaining = 20_000usize.saturating_sub(pending.len() + visited);
-                        let mut children = BTreeSet::new();
-                        for entry in fs::read_dir(path)? {
-                            ensure!(!cancellation.is_cancelled(), "cancelled");
-                            children.insert(entry?.path());
-                            if children.len() > remaining {
-                                children.pop_last();
-                                truncated = true;
-                            }
-                        }
-                        pending.extend(children.into_iter().rev());
-                    } else if metadata.is_file() && metadata.len() <= 2 * 1024 * 1024 {
-                        let Ok(bytes) = read_bounded(&path) else {
-                            continue;
-                        };
-                        if bytes.len() > 2 * 1024 * 1024 {
-                            continue;
-                        }
-                        let Ok(text) = std::str::from_utf8(&bytes) else {
-                            continue;
-                        };
-                        for (index, line) in text.lines().enumerate() {
-                            if regex.is_match(line) {
-                                matches.push(json!({"path":path.strip_prefix(&self.root)?.to_string_lossy(),"line":index+1,"text":clip(line,2000).0}));
-                                if matches.len() >= limit {
-                                    truncated = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(json!({"matches":matches,"truncated":truncated,"visitedPaths":visited}))
-            }
+            "search" => self.search(&input, &cancellation, relative),
             "edit" | "write" => {
                 bail!("{name} requires the tool dispatcher to persist file checkpoints")
             }

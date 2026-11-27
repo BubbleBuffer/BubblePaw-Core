@@ -1179,7 +1179,6 @@ async fn native_file_mutations_are_discoverable_only_inside_js() {
             "environments",
             "exec",
             "jobs",
-            "list",
             "poll",
             "read",
             "reject",

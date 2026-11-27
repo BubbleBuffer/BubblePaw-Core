@@ -34,9 +34,8 @@ fn prompts_show_granted_absolute_paths_and_child_subfolder_in_both_modes() -> Re
         let prompt = resolve(&parent.id, &config.system_prompt)?;
         assert!(prompt.contains(&parent_paths.chat.display().to_string()));
         assert!(prompt.contains(&parent_paths.workspace.display().to_string()));
-        assert!(prompt.contains("parts:[\"python \",\"\"]"));
-        assert!(prompt.contains("no python -c, node -e or inline PowerShell"));
-        assert!(prompt.contains("-NoProfile -File"));
+        assert!(prompt.contains("exec({command:\"python script.py\"})"));
+        assert!(!prompt.contains("python -c"));
         assert!(prompt.contains(bubblepaw_runner::command_template::shell_name()));
         let prompt = resolve(&child.id, "Custom child instructions.")?;
         assert!(prompt.contains("Custom child instructions."));

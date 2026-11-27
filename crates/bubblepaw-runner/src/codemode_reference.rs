@@ -20,7 +20,7 @@ Working well:
         description.push_str("- Results over the reply budget include fullOutput.path; read that path with tools.read.\n");
     }
     if has("exec") {
-        description.push_str("- Use argv for single programs; cmd`prog ${value}` builds literal arguments. Check exitCode. Use strings only for pipes, redirects and && chains. Write code to a scratchpad file, then run it in the same batch: no python -c, node -e or inline PowerShell. PowerShell uses -NoProfile -File.\n");
+        description.push_str("- Use argv for single programs; cmd`prog ${value}` builds literal arguments. Check exitCode. Use strings only for pipes, redirects and && chains. Write longer code to a scratchpad file, then run it in the same batch: no node -e or inline PowerShell. PowerShell uses -NoProfile -File.\n");
         if has("wait") {
             description.push_str("- After starting background work, keep working and then call wait({handle}). Don't poll in a loop.\n");
         }

@@ -97,6 +97,23 @@ pub fn files_touched(previous: &[String], messages: &[Message]) -> Vec<String> {
         {
             files.insert(path.into());
         }
+        // A multi-file read names its files in `paths`, as strings or objects.
+        if capability == Some("read") {
+            for entry in arguments
+                .get("paths")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(path) = entry
+                    .as_str()
+                    .or_else(|| entry.get("path").and_then(Value::as_str))
+                    && !path.is_empty()
+                {
+                    files.insert(path.into());
+                }
+            }
+        }
         fn nested(value: &Value, files: &mut BTreeSet<String>) {
             match value {
                 Value::Array(values) => {
@@ -245,11 +262,21 @@ mod tests {
                 ("tools.read", json!({ "path": "src/lib.rs" })),
                 ("mcp__filesystem/write", json!({ "path": "out/report.md" })),
                 ("edit", json!({ "path": "notes.md" })),
+                (
+                    "read",
+                    json!({ "paths": ["docs/a.md", { "path": "docs/b.md", "startLine": 2 }] }),
+                ),
             ],
         )];
         assert_eq!(
             files_touched(&[], &history),
-            ["notes.md", "out/report.md", "src/lib.rs"]
+            [
+                "docs/a.md",
+                "docs/b.md",
+                "notes.md",
+                "out/report.md",
+                "src/lib.rs"
+            ]
         );
     }
 
@@ -258,8 +285,8 @@ mod tests {
         let history = [message(
             0,
             vec![
-                ("tools.list", json!({ "path": "crates" })),
-                ("list", json!({ "path": "crates" })),
+                ("tools.search", json!({ "path": "crates" })),
+                ("search", json!({ "path": "crates" })),
                 ("read", json!({ "path": "" })),
                 ("tools.write", json!({})),
                 ("tools.edit", json!({ "path": null })),

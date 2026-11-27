@@ -11,7 +11,7 @@ included in this version.
 ## Execution modes
 
 Native mode is the default for new chats. It advertises
-the registered native capabilities (`read`, `list`, `search`, `edit`, `write`,
+the registered native capabilities (`read`, `search`, `edit`, `write`,
 `exec`, process waits and host additions) as top-level model tools. It reuses
 their existing Rust implementations, schemas and dispatch boundaries.
 
@@ -242,7 +242,7 @@ suffix. The reference remains usable after the next cell or an environment reset
 
 Use existing `tools.read` with `startLine` and `lineCount` to inspect the saved
 text. A chat may read only its own spill folder through this exception outside
-the workspace; `list`, `search` and patch permissions stay workspace-only. For a
+the workspace; `search` and patch permissions stay workspace-only. For a
 single long serialized JSON line, use `tools.exec` to process the saved file
 locally and return a selected result. Native read/process previews retain their
 own bounds. For example, when a saved reply fits `tools.read`:
@@ -299,10 +299,10 @@ data. If user-defined non-configurable properties prevent clearing, reset fails
 before deleting any keys; the normal failed-cell heap reset is then reported.
 
 The native JS methods are `tools.agent`, `tools.exec`, `tools.poll`, `tools.cancel`, `tools.read`,
-`tools.list`, `tools.search`, `tools.edit`, `tools.write`, `tools.environments`,
+`tools.search`, `tools.edit`, `tools.write`, `tools.environments`,
 `tools.history_chapters`, `tools.history_search` and `tools.history_read`.
 
-The five workspace file tools are `read`, `list`, `search`, `edit` and `write`.
+The four workspace file tools are `read`, `search`, `edit` and `write`.
 `edit({path, old_string, new_string, replace_all?})` performs exact literal
 replacement, unique unless `replace_all` is selected; it returns
 `{path, replacements}`. `write({path, content})` creates or overwrites a UTF-8
@@ -471,8 +471,8 @@ This v0 tag accepts a literal executable, plain literal words, and complete
 unquoted substitutions. Static quotes, embedded-word substitutions, newlines,
 shell expansion, pipes, redirects and comments are rejected. Use ordinary strings
 for pipes, redirects and `&&` chains. Put script source in a scratchpad file,
-then run it with argv in the same cell or native batch; no `python -c`, `node -e`
-or inline PowerShell. PowerShell runs only as `powershell -NoProfile -File <file>`. Put a spaced literal argument in a substitution.
+then run it with argv in the same cell or native batch; no `node -e`
+or inline PowerShell (`python -c` is not refused, 2026-11-27). PowerShell runs only as `powershell -NoProfile -File <file>`. Put a spaced literal argument in a substitution.
 Arrays, objects, null, nonfinite numbers and NUL are rejected. Windows shell
 builtins/aliases and batch scripts require ordinary shell strings. The guarantee
 is argument boundaries, not the semantics of a program's flags or regex syntax.

@@ -7,24 +7,33 @@ Commands are the native capability `tools.exec` in `crates/bubblepaw-runner/src/
 exposed directly in native mode or through the optional `js` model tool. A "job" is the existing `process:<uuid>` handle, routed by
 `tools.poll`, `tools.jobs`, `tools.cancel` and the `wait` helper. There is no second job system.
 
-## Direct programs and shell commands
+## The command is a string
 
-Use argv for a single program. The command object spawns the executable directly,
-without a shell. Literal parts contain the program and plain arguments; values
-occupy complete arguments, including paths with spaces.
+`exec` is a terminal (2026-11-27): the schema the model sees is `command` as a plain
+string, and the tool description names the shell it runs in. Every Windows embedder
+runs it as `cmd.exe /d /s /c <command>`; Unix uses `sh -c`. There is no per-call
+shell option. Shell parsing applies, including cmd's early `%VAR%` expansion within
+a command line. No delayed expansion is enabled.
 
 ```json
-{"command":{"parts":["python ",""],"values":["script.py"]},"workdir":"<absolute chat scratchpad>"}
+{"command":"python script.py","workdir":"<absolute chat scratchpad>"}
 ```
 
-Use string commands for pipes, redirects and `&&` chains. Every Windows embedder
-runs them as `cmd.exe /d /s /c <command>`; Unix uses `sh -c`. There is no per-call
-shell option. Shell parsing applies to string commands, including cmd's early
-`%VAR%` expansion within a command line. No delayed expansion is enabled.
+The result always carries `exitCode`. For a model call, a non-zero exit, a timeout or
+a launch failure is an error result (`is_error`) that states the exit code in its
+`diagnostic` and stderr preview, so the model fixes the command rather than repeating
+it. A script (`js`) still receives an ordinary result and checks `exitCode` itself.
+A malformed argument is an error as before. Approval rules and the hardline floor
+read the string exactly as they read an `sh -c` script (see [approvals](approvals.md)).
 
-Use the file tools to read, search and edit. Write code to a scratchpad file and
-run it in the same batch. Do not use `python -c`, `node -e` or inline PowerShell.
-Run PowerShell as an ordinary argv program: `powershell -NoProfile -File <file>`.
+The old argv object `{parts, values}` is still accepted by the tool (stored sessions
+and `js` code use it, `cmd` tagged templates build it) and spawns the program without a
+shell. It is no longer in the schema the model sees. A JSON-encoded string of that
+object is an ordinary shell command, not an argv template.
+
+Use the file tools to read, search and edit. `python -c` and similar one-liners go through
+the normal approval rules like any command; since 2026-11-27 no default text refuses
+them. Run PowerShell scripts as `powershell -NoProfile -File <file>`.
 
 The prompt gives absolute chat and project scratchpad paths. Both are accepted
 as `cwd`/`workdir`; paths through a scratchpad cannot escape it using `..`, a

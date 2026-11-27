@@ -481,7 +481,6 @@ async fn external_listed_folders_allow_only_canonical_reads_and_only_for_the_ses
         assert!(result.is_err() || result.unwrap().is_error);
     }
     for (name, input) in [
-        ("list", json!({"path":external.join("listed")})),
         (
             "search",
             json!({"path":external.join("listed"),"query":"HELPER"}),
