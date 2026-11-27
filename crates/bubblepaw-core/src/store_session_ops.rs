@@ -160,28 +160,20 @@ impl Store {
                 self.delete_session_checkpoints(tx, session)?;
                 tx.execute("UPDATE request_usage SET message_seq=NULL WHERE session_id=?1 AND message_seq IS NOT NULL", [session])?;
             }
-            for table in [
-                "reminder_metadata",
-                "host_state",
-                "approvals",
-                "approval_rules",
-                "events",
-                "attachments",
-                "context_views",
-                "context_checkpoint_versions",
-                "context_decisions",
-                "context_events",
-                "context_episodes",
-                "context_subject_chapters",
-                "context_chapters",
-                "context_checkpoints",
-                "outputs",
-                "effects",
-                "inputs",
-                "runs",
-                "messages",
-                "sessions",
-            ] {
+            let tables = [
+                vec![
+                    "reminder_metadata",
+                    "host_state",
+                    "approvals",
+                    "approval_rules",
+                    "events",
+                    "attachments",
+                ],
+                ContextTables::session_delete(true),
+                vec!["outputs", "effects", "inputs", "runs", "messages", "sessions"],
+            ]
+            .concat();
+            for table in tables {
                 let column = if table == "sessions" {
                     "id"
                 } else {

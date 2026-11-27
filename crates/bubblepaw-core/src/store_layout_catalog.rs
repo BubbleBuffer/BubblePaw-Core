@@ -239,7 +239,7 @@ impl Store {
             };
             Self::remove_search_sessions(tx,&orphaned_search)?;
             let removed: Option<i64> = tx.query_row("SELECT MAX(seq) FROM events WHERE NOT EXISTS(SELECT 1 FROM sessions WHERE sessions.id=events.session_id)", [], |row| row.get(0))?;
-            for table in ["events", "context_views", "runs", "inputs", "approvals", "telemetry"] {
+            for table in ["events", ContextTables::VIEWS, "runs", "inputs", "approvals", "telemetry"] {
                 tx.execute(&format!("DELETE FROM {table} WHERE session_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM sessions WHERE sessions.id={table}.session_id)"), [])?;
             }
             if let Some(removed) = removed {

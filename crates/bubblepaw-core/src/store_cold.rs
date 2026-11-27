@@ -88,7 +88,7 @@ pub(super) fn initialize(conn: &Connection) -> Result<()> {
     Ok(())
 }
 fn latest_frontier(conn: &Connection, session: &str) -> Result<Option<i64>> {
-    let mut frontier:Option<i64>=conn.query_row("SELECT MAX(boundary) FROM (SELECT through_message_seq AS boundary FROM context_checkpoints WHERE session_id=?1 UNION ALL SELECT last_message_seq FROM context_chapters WHERE session_id=?1 UNION ALL SELECT last_message_seq FROM context_episodes WHERE session_id=?1)",[session],|row|row.get(0))?;
+    let mut frontier = ContextTables::latest_boundary(conn, session)?;
     let boundary = Store::imported_history_seed_at(conn, session)?.0;
     frontier = frontier.into_iter().chain(boundary).max();
     Ok(frontier)
@@ -111,11 +111,7 @@ fn compression_policy_signature(
     options: StoreOptions,
 ) -> Result<String> {
     let mut versions = Vec::new();
-    for (table, boundary) in [
-        ("context_checkpoints", "through_message_seq"),
-        ("context_chapters", "last_message_seq"),
-        ("context_episodes", "last_message_seq"),
-    ] {
+    for (table, boundary) in ContextTables::frontier_boundaries() {
         let version:Option<(String,i64)>=conn.query_row(&format!("SELECT id,{boundary} FROM {table} WHERE session_id=?1 ORDER BY rowid DESC LIMIT 1"),[session],|row|Ok((row.get(0)?,row.get(1)?))).optional()?;
         if let Some((id, boundary)) = version {
             versions.push((table.to_owned(), id, boundary));
@@ -366,15 +362,7 @@ impl Store {
     }
 
     fn cold_view_data(&self, session: &str) -> Result<Option<String>> {
-        self.read(|conn| {
-            Ok(conn
-                .query_row(
-                    "SELECT data FROM context_views WHERE session_id=?1",
-                    [session],
-                    |row| row.get(0),
-                )
-                .optional()?)
-        })
+        self.read(|conn| ContextTables::view_data(conn, session))
     }
 
     fn compress_cold_rows(
