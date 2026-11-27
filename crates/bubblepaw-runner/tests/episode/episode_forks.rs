@@ -23,9 +23,30 @@ use std::sync::{Arc, Mutex};
 #[derive(Default)]
 struct Recorded(Mutex<Vec<ModelRequest>>);
 #[async_trait]
+impl bubblepaw_core::Branch for Recorded {
+    fn view(
+        &self,
+        _: &ModelRequest,
+        _: &dyn Fn(&serde_json::Value) -> usize,
+    ) -> bubblepaw_core::BranchView {
+        bubblepaw_core::BranchView {
+            mapping: Ok(None),
+            estimate: Ok(None),
+        }
+    }
+    async fn generate_branch(
+        &self,
+        _: ModelRequest,
+        _: CancellationToken,
+    ) -> Result<ModelResponse> {
+        anyhow::bail!("Provider does not support isolated summary forks")
+    }
+}
+
+#[async_trait]
 impl Provider for Recorded {
-    fn supports_summary_fork(&self, _: &str) -> bool {
-        true
+    fn branch(&self, _: &str) -> Option<&dyn bubblepaw_core::Branch> {
+        Some(self)
     }
     async fn generate(
         &self,

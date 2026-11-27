@@ -5,9 +5,9 @@ use super::{
     with_error_quota,
 };
 use crate::{
-    CacheMode, CancellationToken, Capabilities, ModelRequest, ModelResponse, Provider,
-    ProviderError, ProviderErrorKind, Role, StreamCallback, StreamEvent, ToolCall, ToolSurface,
-    Usage,
+    Branch, BranchView, CacheMode, CancellationToken, Capabilities, ModelRequest, ModelResponse,
+    Provider, ProviderError, ProviderErrorKind, Role, StreamCallback, StreamEvent, ToolCall,
+    ToolSurface, Usage,
 };
 use anyhow::{Result, anyhow, ensure};
 use async_trait::async_trait;
@@ -579,19 +579,26 @@ fn messages_context_overflow(bytes: &[u8]) -> bool {
 }
 
 #[async_trait]
-impl Provider for MessagesProvider {
-    fn supports_summary_fork(&self, _model: &str) -> bool {
-        true
+impl Branch for MessagesProvider {
+    fn view(&self, request: &ModelRequest, count: &dyn Fn(&Value) -> usize) -> BranchView {
+        BranchView {
+            mapping: Self::fork_mapping(request).map(Some),
+            estimate: Provider::estimate_input_tokens(self, request, count),
+        }
     }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        Self::fork_mapping(request).map(Some)
-    }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         request: ModelRequest,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         super::tool_wire::generate_summary_fork(self, request, cancellation).await
+    }
+}
+
+#[async_trait]
+impl Provider for MessagesProvider {
+    fn branch(&self, _model: &str) -> Option<&dyn Branch> {
+        Some(self)
     }
     fn estimate_input_tokens(
         &self,

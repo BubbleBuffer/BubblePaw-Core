@@ -8,9 +8,9 @@ use crate::{
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, Capabilities, CursorResets, DecisionProvider, DecisionRequest,
-    DecisionResponse, ModelInfo, ModelRequest, ModelResponse, Provider, ProviderError,
-    ProviderErrorKind, Store, StreamCallback,
+    Branch, BranchView, CancellationToken, Capabilities, CursorResets, DecisionProvider,
+    DecisionRequest, DecisionResponse, ModelInfo, ModelRequest, ModelResponse, Provider,
+    ProviderError, ProviderErrorKind, Store, StreamCallback,
 };
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -268,30 +268,30 @@ struct BoundProvider {
     generation: Arc<ProviderGeneration>,
 }
 #[async_trait]
-impl Provider for BoundProvider {
-    fn summary_fork_routes(&self, model: &str) -> Vec<String> {
-        self.generation.registry.summary_fork_routes(model)
+impl Branch for BoundProvider {
+    fn routes(&self, model: &str) -> Vec<String> {
+        self.generation.registry.routes(model)
     }
-    fn estimate_summary_fork_tokens(
+    fn view(
         &self,
         request: &ModelRequest,
         count: &dyn Fn(&serde_json::Value) -> usize,
-    ) -> Result<Option<usize>> {
-        let mut request = request.clone();
-        self.live.prepare_images(&self.generation, &mut request)?;
-        self.generation
-            .registry
-            .estimate_summary_fork_tokens(&request, count)
+    ) -> BranchView {
+        let prepared = || {
+            let mut request = request.clone();
+            self.live
+                .prepare_images(&self.generation, &mut request)
+                .map(|()| request)
+        };
+        match prepared() {
+            Ok(request) => self.generation.registry.view(&request, count),
+            Err(error) => BranchView {
+                mapping: Err(error),
+                estimate: prepared().map(|_| None),
+            },
+        }
     }
-    fn supports_summary_fork(&self, model: &str) -> bool {
-        self.generation.registry.supports_summary_fork(model)
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<serde_json::Value>> {
-        let mut request = request.clone();
-        self.live.prepare_images(&self.generation, &mut request)?;
-        self.generation.registry.summary_fork_mapping(&request)
-    }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         mut request: ModelRequest,
         cancellation: CancellationToken,
@@ -300,8 +300,17 @@ impl Provider for BoundProvider {
         self.live.prepare_images(&self.generation, &mut request)?;
         self.generation
             .registry
-            .generate_summary_fork(request, cancellation)
+            .generate_branch(request, cancellation)
             .await
+    }
+}
+#[async_trait]
+impl Provider for BoundProvider {
+    fn branch(&self, model: &str) -> Option<&dyn Branch> {
+        self.generation
+            .registry
+            .branch(model)
+            .map(|_| self as &dyn Branch)
     }
     fn estimate_input_tokens(
         &self,
@@ -365,32 +374,30 @@ impl Provider for BoundProvider {
 }
 
 #[async_trait]
-impl Provider for LiveProviderConfig {
-    fn summary_fork_routes(&self, model: &str) -> Vec<String> {
-        self.snapshot().registry.summary_fork_routes(model)
+impl Branch for LiveProviderConfig {
+    fn routes(&self, model: &str) -> Vec<String> {
+        self.snapshot().registry.routes(model)
     }
-    fn estimate_summary_fork_tokens(
+    fn view(
         &self,
         request: &ModelRequest,
         count: &dyn Fn(&serde_json::Value) -> usize,
-    ) -> Result<Option<usize>> {
+    ) -> BranchView {
         let generation = self.snapshot();
-        let mut request = request.clone();
-        self.prepare_images(&generation, &mut request)?;
-        generation
-            .registry
-            .estimate_summary_fork_tokens(&request, count)
+        let prepared = || {
+            let mut request = request.clone();
+            self.prepare_images(&generation, &mut request)
+                .map(|()| request)
+        };
+        match prepared() {
+            Ok(request) => generation.registry.view(&request, count),
+            Err(error) => BranchView {
+                mapping: Err(error),
+                estimate: prepared().map(|_| None),
+            },
+        }
     }
-    fn supports_summary_fork(&self, model: &str) -> bool {
-        self.snapshot().registry.supports_summary_fork(model)
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<serde_json::Value>> {
-        let generation = self.snapshot();
-        let mut request = request.clone();
-        self.prepare_images(&generation, &mut request)?;
-        generation.registry.summary_fork_mapping(&request)
-    }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         mut request: ModelRequest,
         cancellation: CancellationToken,
@@ -399,8 +406,18 @@ impl Provider for LiveProviderConfig {
         self.prepare_images(&generation, &mut request)?;
         generation
             .registry
-            .generate_summary_fork(request, cancellation)
+            .generate_branch(request, cancellation)
             .await
+    }
+}
+
+#[async_trait]
+impl Provider for LiveProviderConfig {
+    fn branch(&self, model: &str) -> Option<&dyn Branch> {
+        self.snapshot()
+            .registry
+            .branch(model)
+            .map(|_| self as &dyn Branch)
     }
     fn estimate_input_tokens(
         &self,

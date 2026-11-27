@@ -21,7 +21,7 @@ impl EpisodeWorker {
                 // an explicit `fork` keeps the strict error from the summary call.
                 Ok(Some((fork, _)))
                     if input == EpisodeSummaryInput::Auto
-                        && !fork.provider.supports_summary_fork(&fork.request.model) =>
+                        && fork.provider.branch(&fork.request.model).is_none() =>
                 {
                     None
                 }

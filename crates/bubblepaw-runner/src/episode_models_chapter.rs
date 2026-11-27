@@ -218,9 +218,7 @@ async fn chapter_fork(
         && role
             .max_output_tokens
             .is_none_or(|max| Some(max) == parent.max_output_tokens);
-    if *candidate != parent.model
-        || !same_settings
-        || !fork.provider.supports_summary_fork(&parent.model)
+    if *candidate != parent.model || !same_settings || fork.provider.branch(&parent.model).is_none()
     {
         return Ok(None);
     }

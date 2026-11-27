@@ -37,22 +37,19 @@ fn reply(text: &str) -> ModelResponse {
 }
 
 #[async_trait]
-impl Provider for Script {
-    fn supports_summary_fork(&self, _: &str) -> bool {
-        true
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        Ok(Some(json!({"sources":request.messages.iter()
-            .map(|message| json!({"source_id":message.id})).collect::<Vec<_>>()})))
-    }
-    fn estimate_summary_fork_tokens(
+impl bubblepaw_core::Branch for Script {
+    fn view(
         &self,
-        _: &ModelRequest,
+        request: &ModelRequest,
         _: &dyn Fn(&Value) -> usize,
-    ) -> Result<Option<usize>> {
-        Ok(Some(10))
+    ) -> bubblepaw_core::BranchView {
+        bubblepaw_core::BranchView {
+            mapping: Ok(Some(json!({"sources":request.messages.iter()
+                .map(|message| json!({"source_id":message.id})).collect::<Vec<_>>()}))),
+            estimate: Ok(Some(10)),
+        }
     }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         request: ModelRequest,
         _: CancellationToken,
@@ -61,6 +58,13 @@ impl Provider for Script {
         Ok(reply(
             "# Recorded memory\nThe source evidence remains unchanged.\nRelated: none",
         ))
+    }
+}
+
+#[async_trait]
+impl Provider for Script {
+    fn branch(&self, _: &str) -> Option<&dyn bubblepaw_core::Branch> {
+        Some(self)
     }
     async fn generate(
         &self,

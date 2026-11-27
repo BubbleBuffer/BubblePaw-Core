@@ -10,38 +10,42 @@ pub(super) struct Script {
     pub(super) requests: Mutex<Vec<ModelRequest>>,
 }
 #[async_trait]
-impl Provider for Script {
-    fn supports_summary_fork(&self, _: &str) -> bool {
-        true
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        Ok(Some(
-            json!({"sources": request.messages.iter().map(|message| {
-            json!({"source_id": message.id})
-        }).collect::<Vec<_>>()}),
-        ))
-    }
-    fn estimate_summary_fork_tokens(
+impl bubblepaw_core::Branch for Script {
+    fn view(
         &self,
         request: &ModelRequest,
         _: &dyn Fn(&Value) -> usize,
-    ) -> Result<Option<usize>> {
-        // A deterministic synthetic physical size makes the retry's admission
-        // observable without depending on a tokenizer implementation.
-        Ok(Some(
-            if request.messages.iter().any(|m| m.text().starts_with(RETRY)) {
-                101
-            } else {
-                100
-            },
-        ))
+    ) -> bubblepaw_core::BranchView {
+        bubblepaw_core::BranchView {
+            mapping: Ok(Some(
+                json!({"sources": request.messages.iter().map(|message| {
+                json!({"source_id": message.id})
+            }).collect::<Vec<_>>()}),
+            )),
+            // A deterministic synthetic physical size makes the retry's admission
+            // observable without depending on a tokenizer implementation.
+            estimate: Ok(Some(
+                if request.messages.iter().any(|m| m.text().starts_with(RETRY)) {
+                    101
+                } else {
+                    100
+                },
+            )),
+        }
     }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         request: ModelRequest,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         self.generate(request, Arc::new(|_| {}), cancellation).await
+    }
+}
+
+#[async_trait]
+impl Provider for Script {
+    fn branch(&self, _: &str) -> Option<&dyn bubblepaw_core::Branch> {
+        Some(self)
     }
     async fn generate(
         &self,

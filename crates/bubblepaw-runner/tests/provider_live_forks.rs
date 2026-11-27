@@ -137,7 +137,9 @@ async fn fork_reads_the_cache(
         previous_len: Some(cut),
     });
     let reply = provider
-        .generate_summary_fork(fork, CancellationToken::new())
+        .branch(&fork.model)
+        .expect("fork support")
+        .generate_branch(fork, CancellationToken::new())
         .await?;
     report("fork", model, reply.usage.as_ref());
     let usage = reply.usage.expect("fork usage");

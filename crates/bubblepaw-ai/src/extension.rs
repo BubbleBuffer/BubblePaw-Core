@@ -5,8 +5,8 @@
 //! fresh cursor so a stateful mirror rebuilds.
 use crate::adapter::{PhysicalRequest, TextBatch, mark_published, track_text_publication};
 use crate::{
-    CancellationToken, Capabilities, CursorResets, ModelInfo, ModelRequest, ModelResponse,
-    Provider, ProviderError, ProviderErrorKind, StreamCallback, StreamEvent, Usage,
+    Branch, BranchView, CancellationToken, Capabilities, CursorResets, ModelInfo, ModelRequest,
+    ModelResponse, Provider, ProviderError, ProviderErrorKind, StreamCallback, StreamEvent, Usage,
 };
 use anyhow::{Context as _, Result};
 use async_trait::async_trait;
@@ -479,6 +479,31 @@ impl ExtensionProvider {
     }
 }
 #[async_trait]
+impl Branch for ExtensionProvider {
+    fn view(&self, request: &ModelRequest, count: &dyn Fn(&Value) -> usize) -> BranchView {
+        let overhead = self
+            .info
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map_or(0, |info| info.capabilities.input_overhead_tokens);
+        BranchView {
+            mapping: Ok(Some(fork::mapping(request))),
+            estimate: Ok(Some(count(&fork::projection(request)) + overhead)),
+        }
+    }
+    async fn generate_branch(
+        &self,
+        request: ModelRequest,
+        cancellation: CancellationToken,
+    ) -> Result<ModelResponse> {
+        let request = fork::request(request)?;
+        self.call("summary_fork", request, Arc::new(|_| {}), cancellation)
+            .await
+    }
+}
+
+#[async_trait]
 impl Provider for ExtensionProvider {
     /// Known after the extension has been started (first step or `start`).
     fn models(&self) -> Vec<ModelInfo> {
@@ -516,37 +541,13 @@ impl Provider for ExtensionProvider {
     ) -> Result<ModelResponse> {
         self.call("step", request, on_text, cancellation).await
     }
-    fn supports_summary_fork(&self, _model: &str) -> bool {
+    fn branch(&self, _model: &str) -> Option<&dyn Branch> {
         self.info
             .lock()
             .unwrap()
             .as_ref()
             .is_some_and(|info| info.capabilities.summary_fork)
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        Ok(Some(fork::mapping(request)))
-    }
-    async fn generate_summary_fork(
-        &self,
-        request: ModelRequest,
-        cancellation: CancellationToken,
-    ) -> Result<ModelResponse> {
-        let request = fork::request(request)?;
-        self.call("summary_fork", request, Arc::new(|_| {}), cancellation)
-            .await
-    }
-    fn estimate_summary_fork_tokens(
-        &self,
-        request: &ModelRequest,
-        count: &dyn Fn(&Value) -> usize,
-    ) -> Result<Option<usize>> {
-        let overhead = self
-            .info
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map_or(0, |info| info.capabilities.input_overhead_tokens);
-        Ok(Some(count(&fork::projection(request)) + overhead))
+            .then_some(self as &dyn Branch)
     }
     async fn close_session(&self, session_id: &str) -> Result<()> {
         self.resets.forget(session_id);

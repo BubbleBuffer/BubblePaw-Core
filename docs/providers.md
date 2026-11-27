@@ -645,7 +645,7 @@ After a restart the host sends the next step with `rewritten_from: None`, so a s
 
 ### Summary fork over the extension protocol
 
-An extension that sets `summary_fork: true` in its `initialize` capabilities answers a `summary_fork` request (same params and result as `step`) and is forked by episode summaries under `summary_input = auto|fork`. Capability `input_overhead_tokens` (the extension's own fixed prompt, for the Claude Code extension 4000, measured about 3.4k) is added to the host's fork size estimate (`estimate_summary_fork_tokens`; main-path estimates are unchanged).
+An extension that sets `summary_fork: true` in its `initialize` capabilities answers a `summary_fork` request (same params and result as `step`) and is forked by episode summaries under `summary_input = auto|fork`. Capability `input_overhead_tokens` (the extension's own fixed prompt, for the Claude Code extension 4000, measured about 3.4k) is added to the host's fork size estimate (`Branch::view`; main-path estimates are unchanged).
 
 - Request: the captured main conversation up to the cut (the episode's last message), then ONE user message with no id carrying both controls (the branch instruction, then the return control, joined by a blank line); `session_id` names the session being branched. The host derives this for extensions only; other providers keep the two controls.
 - Mapping: `protocol: "claude-code"`; per source the usual fields, positions are the message ordinal among non-ephemeral messages (`position_unit` says so; ephemeral runtime notes have none).

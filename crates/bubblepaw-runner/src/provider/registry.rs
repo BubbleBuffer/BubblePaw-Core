@@ -2,13 +2,13 @@
 //! Explicit missing prefixes fail at dispatch instead of falling back.
 use super::registry_stream;
 use super::{RetryPolicy, add_usage, metering::record_model_result, with_retry};
-use anyhow::{Result, ensure};
+use anyhow::{Context as _, Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    CancellationToken, Capabilities, CursorResets, DecisionProvider, DecisionRequest,
-    DecisionResponse, DecisionUsage, LastRequestUsage, ModelInfo, ModelRequest, ModelResponse,
-    Provider, ProviderError, ProviderErrorKind, QuotaReading, RequestKind, RequestUsage, Store,
-    StreamCallback, Usage,
+    Branch, BranchView, CancellationToken, Capabilities, CursorResets, DecisionProvider,
+    DecisionRequest, DecisionResponse, DecisionUsage, LastRequestUsage, ModelInfo, ModelRequest,
+    ModelResponse, Provider, ProviderError, ProviderErrorKind, QuotaReading, RequestKind,
+    RequestUsage, Store, StreamCallback, Usage,
 };
 use std::{
     collections::{BTreeSet, HashMap},
@@ -819,8 +819,8 @@ impl DecisionProvider for ProviderRegistry {
     }
 }
 #[async_trait]
-impl Provider for ProviderRegistry {
-    fn summary_fork_routes(&self, model: &str) -> Vec<String> {
+impl Branch for ProviderRegistry {
+    fn routes(&self, model: &str) -> Vec<String> {
         let primary = self
             .checked_route(model)
             .map(|(id, _, model)| format!("{id}/{model}"))
@@ -829,29 +829,29 @@ impl Provider for ProviderRegistry {
         routes.extend(self.fallbacks.get(&primary).into_iter().flatten().cloned());
         routes
     }
-    fn estimate_summary_fork_tokens(
+    fn view(
         &self,
         request: &ModelRequest,
         count: &dyn Fn(&serde_json::Value) -> usize,
-    ) -> Result<Option<usize>> {
-        let (id, provider, model) = self.checked_route(&request.model)?;
-        let mut routed = request.clone();
-        routed.model = model;
-        self.prepare_replay(&id, &mut routed);
-        provider.estimate_summary_fork_tokens(&routed, count)
+    ) -> BranchView {
+        let routed = || {
+            let (id, provider, model) = self.checked_route(&request.model)?;
+            let mut routed = request.clone();
+            routed.model = model;
+            self.prepare_replay(&id, &mut routed);
+            Ok::<_, anyhow::Error>((provider, routed))
+        };
+        match routed() {
+            Ok((provider, routed)) => BranchView::of(provider.as_ref(), &routed, count),
+            Err(error) => BranchView {
+                mapping: Err(error),
+                estimate: Err(routed()
+                    .err()
+                    .unwrap_or_else(|| anyhow::anyhow!("route changed"))),
+            },
+        }
     }
-    fn supports_summary_fork(&self, model: &str) -> bool {
-        self.checked_route(model)
-            .is_ok_and(|(_, provider, model)| provider.supports_summary_fork(&model))
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<serde_json::Value>> {
-        let (id, provider, model) = self.checked_route(&request.model)?;
-        let mut routed = request.clone();
-        routed.model = model;
-        self.prepare_replay(&id, &mut routed);
-        provider.summary_fork_mapping(&routed)
-    }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         mut request: ModelRequest,
         cancellation: CancellationToken,
@@ -868,7 +868,7 @@ impl Provider for ProviderRegistry {
             // bypass fallback/sticky-route bookkeeping and all main-session mirrors.
             let (id, provider, model) = self.checked_route(&request.model)?;
             ensure!(
-                provider.supports_summary_fork(&model),
+                provider.branch(&model).is_some(),
                 "Unsupported summary fork route"
             );
             request.model = model;
@@ -898,11 +898,15 @@ impl Provider for ProviderRegistry {
                                 async move {
                                     let record = RequestUsage::new(&id, &model);
                                     let before = bubblepaw_core::request_usage_count();
-                                    let response = bubblepaw_core::with_request_usage_provider(
-                                        &id,
-                                        provider.generate_summary_fork(request, cancellation),
-                                    )
-                                    .await;
+                                    let response =
+                                        bubblepaw_core::with_request_usage_provider(&id, async {
+                                            provider
+                                                .branch(&model)
+                                                .context("Unsupported summary fork route")?
+                                                .generate_branch(request, cancellation)
+                                                .await
+                                        })
+                                        .await;
                                     if bubblepaw_core::request_usage_count() == before {
                                         record_model_result(record, &response);
                                     }
@@ -963,6 +967,14 @@ impl Provider for ProviderRegistry {
             Ok(response)
         })
         .await
+    }
+}
+#[async_trait]
+impl Provider for ProviderRegistry {
+    fn branch(&self, model: &str) -> Option<&dyn Branch> {
+        self.checked_route(model)
+            .is_ok_and(|(_, provider, model)| provider.branch(&model).is_some())
+            .then_some(self as &dyn Branch)
     }
     fn estimate_input_tokens(
         &self,

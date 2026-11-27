@@ -372,12 +372,33 @@ struct PhysicalWindow {
     window: usize,
 }
 #[async_trait]
-impl Provider for PhysicalWindow {
-    fn supports_summary_fork(&self, model: &str) -> bool {
-        self.inner.supports_summary_fork(model)
+impl bubblepaw_core::Branch for PhysicalWindow {
+    fn view(
+        &self,
+        request: &ModelRequest,
+        count: &dyn Fn(&Value) -> usize,
+    ) -> bubblepaw_core::BranchView {
+        bubblepaw_core::BranchView::of(self.inner.as_ref(), request, count)
     }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        self.inner.summary_fork_mapping(request)
+    async fn generate_branch(
+        &self,
+        request: ModelRequest,
+        cancellation: CancellationToken,
+    ) -> Result<ModelResponse> {
+        self.inner
+            .branch(&request.model)
+            .expect("fork support")
+            .generate_branch(request, cancellation)
+            .await
+    }
+}
+
+#[async_trait]
+impl Provider for PhysicalWindow {
+    fn branch(&self, model: &str) -> Option<&dyn bubblepaw_core::Branch> {
+        self.inner
+            .branch(model)
+            .map(|_| self as &dyn bubblepaw_core::Branch)
     }
     fn estimate_input_tokens(
         &self,
@@ -390,15 +411,6 @@ impl Provider for PhysicalWindow {
         let mut caps = self.inner.capabilities(model);
         caps.context_window = Some(self.window);
         caps
-    }
-    async fn generate_summary_fork(
-        &self,
-        request: ModelRequest,
-        cancellation: CancellationToken,
-    ) -> Result<ModelResponse> {
-        self.inner
-            .generate_summary_fork(request, cancellation)
-            .await
     }
     async fn generate(
         &self,
