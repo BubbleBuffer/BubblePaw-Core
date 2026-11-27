@@ -137,6 +137,7 @@ async fn responses_server_delay_above_max_delay_is_not_retried_inline() {
         max_attempts: 3,
         initial_delay: Duration::from_millis(1),
         max_delay: Duration::from_millis(1),
+        yield_rate_limits: false,
     });
     let error = tokio::time::timeout(
         Duration::from_secs(2),
@@ -212,6 +213,7 @@ async fn worker_server_wait_above_max_backoff_fails_without_another_attempt() {
             max_attempts: 3,
             initial_delay: Duration::from_millis(1),
             max_delay: Duration::from_millis(1),
+            yield_rate_limits: false,
         });
     let fixture =
         worker_jobs::Fixture::new(Arc::new(registry), ToolRegistry::new(), &request().model);

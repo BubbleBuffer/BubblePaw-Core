@@ -136,8 +136,7 @@ async fn codex_changing_balances_update_latest_without_history_rows() {
     let history = store.quota_history().unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].window, "credits");
-    // The one change row keeps the balance it was written with; later
-    // balance-only changes stay in host memory.
+    // The one change row keeps its written balance; later balance-only changes stay in memory.
     assert_eq!(history[0].balance.as_deref(), Some("100.00"));
     assert_eq!(
         store.storage_stats().unwrap().catalog_transaction_count - before.catalog_transaction_count,
@@ -323,6 +322,7 @@ async fn cancellation_during_responses_backoff_keeps_completed_attempt_readings(
         max_attempts: 3,
         initial_delay: Duration::from_millis(1),
         max_delay: Duration::from_secs(120),
+        yield_rate_limits: false,
     });
     let cancellation = CancellationToken::new();
     let work = bubblepaw_core::capture_request_usage(

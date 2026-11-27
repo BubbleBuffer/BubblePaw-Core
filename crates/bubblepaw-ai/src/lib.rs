@@ -49,7 +49,7 @@ pub use provider_ext::{
     ProviderError, ProviderErrorKind, ToolSurface, is_ephemeral, provider_error_retryable,
 };
 pub use quota::{QuotaReading, QuotaSource, QuotaWait};
-pub use quota_host::{QuotaStop, SHORT_WAIT, host_policy_active, is_quota_stop, with_host_policy};
+pub use quota_host::{QuotaStop, SHORT_WAIT, is_quota_stop};
 pub use reasoning::{
     PROVIDER_STATE_ORIGIN_FIELD, ReasoningReplay, provider_state_replay_compatible,
     with_provider_state_origin,

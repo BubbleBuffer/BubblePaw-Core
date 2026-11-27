@@ -32,7 +32,7 @@ crates/bubblepaw-runner/src/opencode_console.rs 676
 crates/bubblepaw-runner/src/probes.rs 1433
 crates/bubblepaw-runner/src/provider/decisions.rs 714
 crates/bubblepaw-runner/src/provider/live_provider.rs 621
-crates/bubblepaw-runner/src/provider/registry.rs 1097
+crates/bubblepaw-runner/src/provider/registry.rs 1107
 crates/bubblepaw-runner/src/quota.rs 618
 crates/bubblepaw-runner/src/quota_sources.rs 514
 crates/bubblepaw-runner/src/session_host.rs 644

@@ -140,6 +140,7 @@ async fn an_abandoned_attempt_discards_its_thinking_and_only_the_retry_is_stored
         max_attempts: 2,
         initial_delay: std::time::Duration::ZERO,
         max_delay: std::time::Duration::ZERO,
+        yield_rate_limits: false,
     };
     let registry = bubblepaw_runner::provider::ProviderRegistry::new(
         "p",

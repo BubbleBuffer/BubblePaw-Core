@@ -26,8 +26,8 @@ runner's `host` feature enables it, so a client-only build links no HTTP client.
 retry loop (`with_retry`, `RetryPolicy`, `add_usage`) and the error helpers around it
 (`mark_published`, `retain_prior_quota`, `is_terminal_quota_error`, `QuotaStop`) build
 without the `http` feature. The adapters reach the host through injected seams: a `ModelEgress` trait for proxied
-egress, a `UsageSink` that the core capture scope installs, and a host-policy flag for
-quota stops. `bubblepaw-runner` re-exports every moved name at its old path.
+egress, a `UsageSink` that the core capture scope installs, and a `RetryPolicy::yield_rate_limits`
+flag for quota stops. `bubblepaw-runner` re-exports every moved name at its old path.
 
 The extension provider, which speaks line-delimited JSON-RPC to a subprocess,
 lives in `bubblepaw-ai/src/extension`, behind the `extension` feature; the runner's

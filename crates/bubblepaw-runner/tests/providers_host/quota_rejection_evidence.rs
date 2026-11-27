@@ -105,6 +105,7 @@ async fn retry_readings_do_not_name_a_later_429() {
             max_attempts: 2,
             initial_delay: Duration::ZERO,
             max_delay: Duration::ZERO,
+            yield_rate_limits: false,
         });
         let error = registry
             .generate(request(), Arc::new(|_| {}), CancellationToken::new())

@@ -197,12 +197,12 @@ async fn transient_retry_keeps_native_optional_tools_and_normalizes_calls() {
     );
     let (base, server) = serve(app).await;
     let provider = ResponsesProvider::api_key("synthetic-key", base).unwrap();
-    // The registry owns transport retries for every adapter.
     let mut registry = ProviderRegistry::new("responses", Arc::new(provider));
     registry.set_retry_policy(RetryPolicy {
         max_attempts: 3,
         initial_delay: Duration::from_millis(1),
         max_delay: Duration::from_millis(5),
+        yield_rate_limits: false,
     });
     let text = Arc::new(Mutex::new(String::new()));
     let sink = text.clone();
