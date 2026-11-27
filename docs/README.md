@@ -48,7 +48,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 
 ## Approvals and tools
 
-- [file-tools](file-tools.md) — Five workspace tools: read/list/search, literal edit and whole-file write; atomic writes, checkpoints and concurrent-write protection; 2026-10-20 read defaults (1000 lines) and argument/path diagnostics.
+- [file-tools](file-tools.md) — Four workspace tools: read (several files per call), search (recursive files and content, `.gitignore`-aware; replaced `list`), literal edit and whole-file write; atomic writes, checkpoints and concurrent-write protection; 2026-10-20 read defaults (1000 lines) and argument/path diagnostics.
 - [approvals](approvals.md) — Built 2026-10-08: tool-call approval gate with ask, allow, deny and auto modes.
 - [execution modes](codemode.md) — Native default (2026-10-22), persisted chat modes and opt-in JS wrapper; shared dispatch, core/deferred tools, tool_search/call_tool, frozen declarations, server anchors and reload notices.
 - [mcp](mcp.md) — Built 2026-10-14: MCP client tools over stdio and Streamable HTTP (2026-07-28 with session-era fallback), env-only headers, approval by default, unknown outcomes never replayed. OAuth sign-in for HTTP servers (built 2026-10-31).

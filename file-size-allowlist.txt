@@ -37,7 +37,7 @@ crates/bubblepaw-runner/src/quota.rs 618
 crates/bubblepaw-runner/src/quota_sources.rs 514
 crates/bubblepaw-runner/src/session_host.rs 644
 crates/bubblepaw-runner/src/summarization.rs 1634
-crates/bubblepaw-runner/src/tools/process.rs 1683
+crates/bubblepaw-runner/src/tools/process.rs 1627
 crates/bubblepaw-runner/src/trace.rs 833
 crates/bubblepaw-runner/src/usage_report.rs 601
 crates/bubblepaw-runner/src/web.rs 722
@@ -85,10 +85,10 @@ crates/bubblepaw-runner/tests/providers_wire/reasoning_storage.rs 626
 crates/bubblepaw-runner/tests/providers_wire/reasoning_tool_loops.rs 593
 crates/bubblepaw-runner/tests/quota_scheduling.rs 868
 crates/bubblepaw-runner/tests/rewind/rewind.rs 985
-crates/bubblepaw-runner/tests/tools/codemode_runtime.rs 1386
+crates/bubblepaw-runner/tests/tools/codemode_runtime.rs 1385
 crates/bubblepaw-runner/tests/tools/exec_jobs.rs 915
 crates/bubblepaw-runner/tests/tools/history_tools.rs 825
-crates/bubblepaw-runner/tests/tools/skills.rs 533
+crates/bubblepaw-runner/tests/tools/skills.rs 532
 crates/bubblepaw-runner/tests/tools/workspace_edit.rs 514
 crates/bubblepaw-runner/tests/web/session_lifecycle.rs 599
 crates/bubblepaw-runner/tests/web/web_input_files.rs 519

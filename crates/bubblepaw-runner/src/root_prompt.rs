@@ -22,11 +22,9 @@ pub fn root_system_prompt(
 ",
             "- Put independent reads, searches and checks together as multiple tool calls in one message. Take another turn only when a result decides the next step.
 ",
-            "- Use the file tools to read, search and edit. Search for exact identifiers first, then read the relevant files in large ranges.
+            "- Use the file tools to read, search and edit. search without a pattern lists every file under a path recursively; with a pattern it finds matching lines. Search for exact identifiers first, then read the relevant files in one read call with paths, in large ranges.
 ",
-            "- Use argv for single programs: exec({command:{parts:[\"python \",\"\"],values:[\"script.py\"]}}). Use command strings for pipes, redirects and && chains.
-",
-            "- Write code to a scratchpad file and run it in the same batch; no python -c, node -e or inline PowerShell. Run PowerShell only as powershell -NoProfile -File <file> through argv.
+            "- exec runs a command string in the shell named above, like a terminal: exec({command:\"python script.py\"}). Write the command for that shell, put pipes, redirects and && chains in it, and read the exit code in the result. For several steps that need no decision between them, write the code to a scratchpad file and run it.
 ",
             "- Make changes with edit (write for new files), then run the relevant tests or checks with exec and read their exit codes. Use wait for long commands.
 ",
@@ -46,7 +44,7 @@ pub fn root_system_prompt(
 ",
         "- Use argv for single programs: await tools.exec({command:{parts:[\"python \",\"\"],values:[\"script.py\"]}}). Use command strings for pipes, redirects and && chains.
 ",
-        "- Write code to a scratchpad file and run it in the same batch; no python -c, node -e or inline PowerShell. Run PowerShell only as powershell -NoProfile -File <file> through argv.
+        "- Write longer code to a scratchpad file and run it in the same batch; no node -e or inline PowerShell. Run PowerShell only as powershell -NoProfile -File <file> through argv.
 ",
         "- Make changes with tools.edit, then run the relevant tests or checks and read their exit codes.
 ",

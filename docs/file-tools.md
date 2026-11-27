@@ -4,18 +4,46 @@
 former patch tool. Current checks and earlier dated acceptance are recorded
 separately in [verification](verification.md); no live acceptance is claimed here.
 
-The runner exposes five file tools in native mode and through optional `js`:
-`read`, `list`, `search`, `edit`, and `write`. Read/write/edit accept the canonical
+The runner exposes four file tools in native mode and through optional `js`:
+`read`, `search`, `edit`, and `write`. Read/write/edit accept the canonical
 workspace root and the chat/project scratchpads, with read-only exceptions for
 this chat's spill output and its listed skill folders.
 These checks are tool boundaries, not an OS sandbox for commands. No prior read
 or read hash is required. In JS mode, call them as `tools.NAME(...)`.
 
-`tools.list({path?, limit?})` lists a directory in name order. The path defaults
-to `.`, and the limit defaults to 200, with a maximum of 1000. Entries identify
-files, directories and symlinks; truncation is explicit.
+`search` is the one tool for finding things (2026-11-27; it replaced `list` and the
+old text-only `search`). `tools.search({path?, pattern?, glob?, regex?, context?,
+filesOnly?, maxResults?})` walks `path` (default `.`) recursively in path order and honours
+`.gitignore` (also outside a git repository); it skips symlinks and `.git`,
+`node_modules` and `target`.
 
-When the model calls `read` directly, the result is the file text for the range,
+- **Files mode** (no `pattern`, or an empty one; `query` is accepted as an older name of `pattern`): the files under `path` with their sizes, so one
+  call answers "what is in this repo". Default 500 files, maximum 5000.
+- **Content mode** (`pattern`, literal text, or a regex with `regex:true`): the
+  matching lines as `path:line: text`; `context:N` (maximum 10) adds `path-line- text`
+  lines around each match, `filesOnly:true` returns only the files that contain
+  a match. Default 100 matches, maximum 1000. Files over 2 MiB and non-UTF-8 files
+  are skipped.
+- `glob` is a `.gitignore`-style pattern or an array of them (`"*.rs"`,
+  `["src/**/*.ts","!*.test.ts"]`); a leading `!` excludes. A file must match an
+  include (when there is one) and no exclude. A `.gitignore`d file is never shown,
+  whatever the glob says.
+- A capped result ends with `[N more files not shown; ...]`; walks stop after
+  100,000 paths and say so. The model sees plain text; `tools.search` in JS returns
+  `{files:[{path,bytes}]|matches:[{path,line,text,context?}], more, truncated}`.
+
+`read` takes several files in one call (2026-11-27): `paths` is an array of paths or
+`{path,startLine,lineCount}` objects (a top-level `startLine`/`lineCount` is the
+default for each). Each file comes back under a `=== path ===` header, in one
+plain-text result under a single total cap (60 KiB less room for notes). A file that
+does not fit is cut at a line boundary with a note giving the `startLine` to continue
+from, files after it are skipped, and a closing `[total size cap reached. Cut: ...
+Not read: ...]` line names both. A file that cannot be read (missing, outside the
+grant) shows `[error: ...]` under its header without failing the others. Images
+are read one at a time with `path`; at most 50 paths per call. `paths` and `path` are
+exclusive.
+
+When the model calls `read` with one `path`, the result is the file text for the range,
 exactly as in the file. If it does not cover the whole file, a final line such as
 `[lines 1-1000 of 2200; continue with startLine=1001]` says what was returned. An
 empty file returns `[empty file]`; a `startLine` past the end returns
@@ -36,7 +64,7 @@ symlinks escaping the grant. Spill reads support the same line ranges up to the
 256 MiB spill retention ceiling, scanning with bounded buffers so a large file
 does not enter a JS heap or a SQLite blob. The retained reference can become
 unavailable after oldest-first eviction. The read exception does not grant
-external `list`, `search`, `edit` or `write` access. See [CodeMode](codemode.md) for returned
+external `search`, `edit` or `write` access. See [CodeMode](codemode.md) for returned
 output references and limits.
 
 Through the host dispatcher, `read` recognizes PNG, JPEG, GIF and WebP by their
@@ -46,7 +74,7 @@ four distinct images; duplicate reads attach the same image once. Oversized
 images return an explanatory note. See [providers](providers.md) for model input
 behavior and [storage](storage-model.md) for image blobs.
 
-`tools.search({query, path?, regex?, maxResults?})` searches workspace text.
+`tools.search({pattern, path?, regex?, maxResults?})` searches workspace text.
 Queries are literal unless `regex` is true. The default maximum is 100 results,
 capped at 1000. Search skips symlinks, `.git`, `node_modules`, `target`, binary
 files and files over 2 MiB. Match text and traversal are bounded; truncation is
@@ -73,8 +101,8 @@ Scratch `write` and `edit` retain ordinary tool policies, atomic replacement and
 mutation locking. Their disposable files are excluded from workspace rewind
 checkpoints. Root-chat deletion removes the chat scratchpad; project retention
 is described in [storage](storage-model.md#scratchpads-2026-10-28).
-No new approval or configuration setting is needed. `list` and `search` keep
-their workspace boundary.
+No new approval or configuration setting is needed. `search` keeps
+its workspace boundary.
 
 ## File mutations
 
@@ -150,7 +178,7 @@ containment. Read-only hosts omit both, and approval waits or denials occur befo
 mutation work. Per-tool approval rules must name `edit` and `write` to cover both
 mutation capabilities. Both signatures are always shown in the JS tool description when
 available. Child workspaces rebind both tools to the effective child checkout,
-alongside `read`, `list` and `search`.
+alongside `read` and `search`.
 See [approvals](approvals.md), [child worktrees](child-worktrees.md) and
 [CodeMode](codemode.md).
 

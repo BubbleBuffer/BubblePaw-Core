@@ -90,7 +90,7 @@ Read grants are per session and restricted to canonical descendants of folders
 listed initially or announced later. A frozen or previously announced folder
 remains authorized after its removal from the live catalog. A different session
 does not inherit that grant. Canonical resolution denies symlink escapes and
-unrelated sibling folders. `list`, `search`, `edit` and `write` retain their normal
+unrelated sibling folders. `search`, `edit` and `write` retain their normal
 workspace boundary; skills add only ordinary `read` access.
 
 Even initial absence or disabled skills produce an empty frozen attachment, so

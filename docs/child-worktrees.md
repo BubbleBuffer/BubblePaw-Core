@@ -11,7 +11,7 @@ without a git repository or commits returns a clear admission error.
 
 The default is `worktree: false`, sharing the parent's workspace. A descendant
 inherits an isolated parent's workspace unless it requests another worktree;
-that worktree branches from the isolated parent's HEAD. All five file tools (`read`, `list`, `search`, `edit`, `write`), exec, JS
+that worktree branches from the isolated parent's HEAD. All four file tools (`read`, `search`, `edit`, `write`), exec, JS
 artifact captures and memory-file discovery use the effective child workspace.
 The receipt and child status include `workspace`, `branch` and `worktree.path`.
 Tree listings preserve those fields and add `parentSessionId`.

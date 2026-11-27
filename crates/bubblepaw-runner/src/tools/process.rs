@@ -44,86 +44,9 @@ fn process_wait_ms(input: &Value) -> Result<u64> {
     Ok(unsigned(input, "timeoutMs", Some(DEFAULT_WAIT_MS))?.unwrap())
 }
 
-/// A bounded explanation shared by exec/poll/wait. Raw stdout stays in its
-/// existing capture fields; only exceptional outcomes need this extra context.
-fn process_diagnostic(value: &Value) -> Option<String> {
-    let status = value["status"].as_str().unwrap_or("exited");
-    let exit = value["exitCode"].as_i64();
-    let failed = matches!(status, "timed_out" | "cancelled" | "timeout")
-        || (status == "exited" && exit != Some(0));
-    let mut capture_notes = Vec::new();
-    let mut decoding_notes = Vec::new();
-    let complete_spill = value.get("fullOutput").is_some();
-    for stream in ["stdout", "stderr"] {
-        let capture = &value["capture"][stream];
-        let omitted: u64 = capture["gaps"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|gap| {
-                gap["to"]
-                    .as_u64()
-                    .unwrap_or(0)
-                    .saturating_sub(gap["from"].as_u64().unwrap_or(0))
-            })
-            .sum();
-        if capture["lossyUtf8"] == true {
-            decoding_notes.push(format!("{stream}: decoding is lossy (invalid UTF-8)"));
-        }
-        if (omitted > 0 && !complete_spill) || capture["captureError"] == true {
-            capture_notes.push(format!(
-                "{stream}: {} total bytes, {omitted} omitted bytes{}",
-                capture["totalBytes"].as_u64().unwrap_or(0),
-                if capture["captureError"] == true {
-                    "; pipe capture error"
-                } else {
-                    ""
-                }
-            ));
-        }
-    }
-    if !failed && capture_notes.is_empty() && decoding_notes.is_empty() && !complete_spill {
-        return None;
-    }
-    let mut explanation = match status {
-        "exited" if exit == Some(0) => "Command succeeded (exit code 0).".to_owned(),
-        "exited" => match exit {
-            Some(code) => format!("Command exited with code {code}. Check the command and its arguments; nonzero exits can also mean no matches."),
-            None => "Command terminated without an exit code.".to_owned(),
-        },
-        "timed_out" => "Command timed out and was terminated; increase timeoutMs only if appropriate.".to_owned(),
-        "cancelled" => "Command was cancelled and terminated.".to_owned(),
-        "timeout" => "Wait timed out; the command is still running. Poll or wait again using the same handle.".to_owned(),
-        _ => "Command is still running.".to_owned(),
-    };
-    if complete_spill {
-        explanation.push_str(" Displayed output is a head/tail preview; complete decoded output is saved at fullOutput.path. Use read with line ranges.");
-    }
-    if !capture_notes.is_empty() {
-        explanation.push_str(&format!(" Capture is incomplete ({}). Omitted output does not indicate command failure. Request smaller output or batches, or redirect full output to a file and use file({{path}}).", capture_notes.join("; ")));
-    }
-    if !decoding_notes.is_empty() {
-        explanation.push_str(&format!(" {}. The decoded text is altered; do not treat it as exact output or complete JSON. Redirect raw output to a file to preserve the bytes.", decoding_notes.join("; ")));
-    }
-    if failed {
-        let stderr = value["stderr"].as_str().unwrap_or("");
-        if !stderr.trim().is_empty() {
-            let preview: String = stderr.chars().take(768).collect();
-            explanation.push_str(&format!(" stderr: {preview}"));
-            if stderr.chars().count() > 768 {
-                explanation.push_str(" [stderr preview shortened]");
-            }
-        }
-    }
-    Some(explanation)
-}
-
-fn with_process_diagnostic(mut value: Value) -> Value {
-    if let Some(diagnostic) = process_diagnostic(&value) {
-        value["diagnostic"] = json!(diagnostic);
-    }
-    value
-}
+#[path = "process_diagnostic.rs"]
+mod diagnostic;
+use diagnostic::{failed_exit, process_diagnostic, with_process_diagnostic};
 
 #[path = "process_reminders.rs"]
 mod reminder_notices;
@@ -1478,11 +1401,29 @@ impl Tool for ProcessTool {
         }
         stopped
     }
+    /// The model is shown `command` as a string only; the argv object form
+    /// stays valid for older callers and scripts (`cmd` tagged templates).
+    fn validation_schema(&self) -> Option<Value> {
+        if self.name != "exec" {
+            return None;
+        }
+        let mut schema = self.definition().input_schema;
+        schema["properties"]["command"] = json!({"oneOf":[{"type":"string"},{"type":"object","properties":{"parts":{"type":"array","items":{"type":"string"}},"values":{"type":"array","items":{"type":"string"}}},"required":["parts","values"],"additionalProperties":false}]});
+        Some(schema)
+    }
     fn definition(&self) -> ToolDefinition {
-        let (description, properties, required) = match self.name {
+        let exec_description = format!(
+            "Run a command in the shell and return its output and exit code. command is a plain string, run with stdin closed by {}: write it for that shell; pipes, redirects, && chains and shell builtins work. The result always carries exitCode. A non-zero exit, a timeout or a launch failure is an error result stating the exit code; read stderr and fix the command instead of repeating it. cwd/workdir defaults to workspace and accepts the chat and project scratchpads named in the prompt. Sync by default, up to exec.sync_timeout_secs (default 300); returns status:backgrounded with reason:sync_timeout without killing. User backgrounding returns reason:user; explicit host wait release retains reason:steer. Ordinary steering does not release foreground waits. background:true returns immediately with a running handle. Explicit yieldMs collects foreground output up to the sync timeout. timeoutMs is a hard deadline that kills. Output uses byte cursors and 4 KiB-per-stream head/tail previews. Completed output over 64 KiB returns a fullOutput absolute text path when its spool is complete, or fullOutputError when capture was incomplete. Read saved output with read line ranges. Use the file tools to read, search and edit files. The process may access files outside workspace.",
+            if cfg!(windows) {
+                "cmd.exe (cmd /d /s /c)"
+            } else {
+                "sh (sh -c)"
+            }
+        );
+        let (description, properties, required): (&str, _, _) = match self.name {
             "exec" => (
-                "Run a single program directly with argv {parts,values}, closed stdin and pipes. Example: {command:{parts:[\"python \",\"\"],values:[\"script.py\"]}}. Values occupy complete unquoted arguments. Use strings only for pipes, redirects and && chains: cmd.exe /d /s /c on Windows, sh -c on Unix. Use file tools to read, search and edit. Write code to a scratchpad file and run it in the same batch; no python -c, node -e or inline PowerShell. PowerShell runs only through argv as powershell -NoProfile -File <file>. cwd/workdir defaults to workspace and accepts the chat and project scratchpads named in the prompt. Sync by default, up to exec.sync_timeout_secs (default 300); returns status:backgrounded with reason:sync_timeout without killing. User backgrounding returns reason:user; explicit host wait release retains reason:steer. Ordinary steering does not release foreground waits. background:true returns immediately with a running handle. Explicit yieldMs collects foreground output up to the sync timeout. timeoutMs is a hard deadline that kills. Output uses byte cursors and 4 KiB-per-stream head/tail previews. Completed output over 64 KiB returns a fullOutput absolute text path when its spool is complete, or fullOutputError when capture was incomplete. Read saved output with read line ranges. The process may access files outside workspace.",
-                json!({"command":{"oneOf":[{"type":"string"},{"type":"object","properties":{"parts":{"type":"array","items":{"type":"string"}},"values":{"type":"array","items":{"type":"string"}}},"required":["parts","values"],"additionalProperties":false}]},"cwd":{"type":"string"},"workdir":{"type":"string"},"yieldMs":{"type":"integer","minimum":0},"timeoutMs":{"type":"integer","minimum":1},"background":{"type":"boolean"}}),
+                exec_description.as_str(),
+                json!({"command":{"type":"string"},"cwd":{"type":"string"},"workdir":{"type":"string"},"yieldMs":{"type":"integer","minimum":0},"timeoutMs":{"type":"integer","minimum":1},"background":{"type":"boolean"}}),
                 vec!["command"],
             ),
             "poll" => (
@@ -1559,6 +1500,9 @@ impl Tool for ProcessTool {
                 }
             });
             Ok(ToolResult::pending(content))
+        } else if starting && dispatcher.origin() != "js" && failed_exit(&value) {
+            // The model, unlike a script, reads is_error as "this call failed".
+            Ok(ToolResult::error(content))
         } else {
             Ok(ToolResult::text(content))
         }

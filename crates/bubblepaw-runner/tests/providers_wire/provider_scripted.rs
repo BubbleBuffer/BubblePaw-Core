@@ -45,7 +45,7 @@ async fn scripted_json_text_does_not_implicitly_submit_a_required_result() {
 
 #[tokio::test]
 async fn demo_validates_only_results_for_calls_it_emitted() {
-    for tool_name in ["list", "js"] {
+    for tool_name in ["search", "js"] {
         let provider = ScriptedProvider::demo(false);
         let mut request = ModelRequest {
             model: "scripted".into(),

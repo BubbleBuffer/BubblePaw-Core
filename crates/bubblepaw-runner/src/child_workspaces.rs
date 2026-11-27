@@ -36,7 +36,6 @@ fn rebind(current: ToolRegistry, native: &ToolRegistry) -> ToolRegistry {
             !matches!(
                 tool.name.as_str(),
                 "read"
-                    | "list"
                     | "search"
                     | "edit"
                     | "write"

@@ -325,7 +325,7 @@ async fn read_only_registration_omits_mutators_and_direct_invocation_cannot_bypa
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>(),
-        ["edit", "list", "read", "search", "write"]
+        ["edit", "read", "search", "write"]
     );
     assert!(f.registry(false).definitions().is_empty());
     assert!(!f.root.path().join("a.txt").exists());

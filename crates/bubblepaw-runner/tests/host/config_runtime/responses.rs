@@ -52,7 +52,6 @@ async fn qualified_main_routes_to_configured_responses_provider_without_codex_cr
         "read",
         "write",
         "edit",
-        "list",
         "search",
         "exec",
         "tool_search",

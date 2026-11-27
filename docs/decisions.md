@@ -74,7 +74,7 @@ effect outcomes are never replayed. See [execution modes and embedder APIs](code
 
 ## Literal edit and whole-file write (2026-10-20)
 
-The workspace surface is `read`, `list`, `search`, `edit` and `write`, registered
+The workspace surface (since 2026-11-27 `list` is folded into `search`, see the last entry) is `read`, `list`, `search`, `edit` and `write`, registered
 host tools exposed directly in native mode or through `js` when enabled.
 Literal `edit` takes `path`, `old_string`, `new_string` and
 optional `replace_all`, returning `{path, replacements}`; whole-file `write`
@@ -857,3 +857,28 @@ shells and either directory spelling receive the same checks. See [approvals](ap
 Antigravity (`agy`) support is dropped and `extensions/antigravity` was removed. Google is strict about ACP, the experience was mostly poor, and there is no hope of a consistently good experience with `agy` without risking locked accounts. v0.15.0 is the only release whose source tree contains the extension.
 
 2026-11-25 (user decision): `run.start` approval options can only tighten inherited rules. The strictest mode wins, and the run inherits configured denies and the hardline setting. See [Tool-call approvals](approvals.md#tool-metadata-and-policy).
+
+## Fewer rounds: one `search`, multi-file `read`, `exec` as a terminal (2026-11-27)
+
+A benchmark against the pi agent on the same model showed BubblePaw needing about
+twice the requests, mostly from walking the tree one non-recursive `list` and one
+`read` at a time, and from `exec` calls whose `command` the model sent as a
+JSON-encoded string of the argv object (cmd.exe answered 9009, flagged as success,
+and the call was repeated). Decisions (the user, 2026-11-27):
+
+1. One `search` tool replaces `list` and the text-only `search`: recursive, `.gitignore`-aware,
+   files mode without a pattern and content mode with one (`pattern`, as in grep and ripgrep; `query` stays an alias, an empty pattern is files mode); a model gets "what is in this
+   repo" or "where is X" in one call. It uses the `ignore` crate; no external ripgrep.
+2. `read` takes `paths` for several files in one call, under one total size cap that names
+   what was cut or skipped.
+3. `exec`'s model schema is `command` as a plain string run by the shell the tool already
+   used (cmd.exe on Windows, sh on Unix), named in the description. The argv object is still
+   accepted. A non-zero exit, a timeout or a launch failure is an error result stating the exit
+   code. Approvals and the hardline floor already read strings as shell scripts; nothing changed there.
+4. `python -c` is not refused by default. It was only prompt text ("no python -c, node -e or
+   inline PowerShell"), added with scratchpads on 2026-10-28 to spare the model cmd.exe quoting
+   trouble with inline code; no hardline rule or configurable setting ever refused it, so the
+   text is gone from the native prompt, the `exec` description and the JS reference, and
+   `python -c ...` goes through the normal approval rules. `node -e` and inline PowerShell
+   remain discouraged in the JS-mode prompt only. See [file tools](file-tools.md) and
+   [exec](exec.md).

@@ -43,7 +43,10 @@ impl ToolRegistry {
         let definition = tool.definition();
         let name = definition.name;
         anyhow::ensure!(self.get(&name).is_none(), "Duplicate tool name: {name}");
-        let validator = jsonschema::validator_for(&definition.input_schema)
+        let schema = tool
+            .validation_schema()
+            .unwrap_or_else(|| definition.input_schema.clone());
+        let validator = jsonschema::validator_for(&schema)
             .map_err(|e| anyhow::anyhow!("Invalid tool schema for {name}: {e}"))?;
         self.unavailable.remove(&name);
         self.validators.insert(name.clone(), Arc::new(validator));

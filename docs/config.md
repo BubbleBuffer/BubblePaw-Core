@@ -117,7 +117,7 @@ tools = ["category:files", "web_fetch", "category:mcp:github"]
 ```
 
 A toolset lists tool names and `category:<id>` entries. The categories are `files`
-(`list`, `read`, `search`, `edit`, `write`), `commands` (`exec`, `poll`, `wait`,
+(`read`, `search`, `edit`, `write`), `commands` (`exec`, `poll`, `wait`,
 `cancel`, `jobs`), `web`, `agents`, `history`, `other` and `mcp:<server>` for one MCP
 server's tools. A category entry matches at every publication, so a tool added by a
 reload or a new server joins a toolset that names its category. `all` and `read-only`

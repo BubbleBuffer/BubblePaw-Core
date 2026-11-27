@@ -2,7 +2,7 @@
 use super::*;
 
 #[tokio::test]
-async fn native_read_edit_and_sorted_list_contract() {
+async fn native_read_edit_and_sorted_search_contract() {
     let directory = tempfile::tempdir().unwrap();
     let store = bubblepaw_core::Store::in_memory().unwrap();
     let mut registry = ToolRegistry::new();
@@ -18,7 +18,7 @@ async fn native_read_edit_and_sorted_list_contract() {
         .await;
     }
     assert_eq!(
-        call(&store, &registry, "list", json!({"limit":1})).await["entries"][0]["name"],
+        call(&store, &registry, "search", json!({"maxResults":1})).await["files"][0]["path"],
         "a.txt"
     );
     let read = call(

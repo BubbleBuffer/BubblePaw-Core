@@ -86,7 +86,7 @@ fn research_profile_with_tools_impl(
     nested: Option<&Arc<AgentTools>>,
 ) -> Result<AgentProfile> {
     let mut tools = ToolRegistry::new();
-    for name in ["list", "read", "search", "reload", "question", "todo"] {
+    for name in ["read", "search", "reload", "question", "todo"] {
         if let Some(tool) = host_tools.get_host(name)
             && tool.definition().read_only
         {
@@ -112,7 +112,7 @@ fn research_profile_with_tools_impl(
         let research_tools = tools.clone();
         child_config.registry_resolver = Some(derived_registry_resolver(source, move |current| {
             let mut tools = ToolRegistry::new();
-            for name in ["list", "read", "search", "reload", "question", "todo"] {
+            for name in ["read", "search", "reload", "question", "todo"] {
                 if let Some(tool) = current.get_host(name)
                     && tool.definition().read_only
                 {

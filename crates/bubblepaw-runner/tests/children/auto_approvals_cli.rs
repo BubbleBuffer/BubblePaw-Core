@@ -32,7 +32,7 @@ async fn one_shot_auto_approves_or_falls_through_to_unattended_denial() -> anyho
                 "--read-only",
                 "--no-auto-summarize",
                 "--confirm-auto",
-                "list",
+                "search",
                 "--approver",
                 "llm/opencode/mock",
                 "--episode-summary-base-url",
@@ -77,7 +77,7 @@ async fn one_shot_auto_approves_or_falls_through_to_unattended_denial() -> anyho
         // The default approval prompt, rendered with this call's fields.
         let input = requests[0]["messages"][1]["content"].as_str().unwrap();
         assert!(input.contains("User request:\nRun the demo"), "{input}");
-        assert!(input.contains("Tool: list"), "{input}");
+        assert!(input.contains("Tool: search"), "{input}");
         assert!(!input.contains("{description}"), "{input}");
         assert!(!input.contains("{working_directory}"), "{input}");
     }

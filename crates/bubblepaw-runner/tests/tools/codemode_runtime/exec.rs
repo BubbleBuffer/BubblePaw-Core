@@ -86,10 +86,7 @@ async fn failed_command_has_exit_stderr_and_can_be_corrected_without_stale_evide
     let schema = f.cell_error("await tools.exec({command:123});").await;
     assert!(schema.contains("exec"), "{schema}");
     assert!(schema.contains("/command"), "{schema}");
-    assert!(
-        schema.contains("string") || schema.contains("object"),
-        "{schema}"
-    );
+    assert!(schema.contains("123"), "{schema}");
     let launch = f
         .cell_error("await tools.exec({command:cmd`bubblepaw_missing_executable_92`});")
         .await;
