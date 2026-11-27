@@ -98,7 +98,7 @@ fn root_prompt_override_replaces_instructions_and_keeps_execution_metadata() {
         ExecutionMode::Js,
     );
     assert!(custom.contains(&format!("workspace={}", root.path().display())));
-    let shell = crate::command_template::shell_name();
+    let shell = bubblepaw_runner::command_template::shell_name();
     assert!(custom.contains(&format!(
         "raw command shell={shell}. Only inspect the assigned files.\n\n{HARNESS_SENTENCE}"
     )));
