@@ -3,6 +3,7 @@
 #[path = "../support/mod.rs"]
 mod support;
 
+mod hardline_spellings;
 mod hardline_workspace;
 mod native_tool_snapshot;
 mod provider_binding;
