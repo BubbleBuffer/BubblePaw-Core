@@ -2,9 +2,9 @@
 use anyhow::{Result, anyhow, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
-    AnswerKind, CancellationToken, ContextSubjectChapter, DecisionChoice, DecisionRequest, Message,
-    MessageOrigin, ModelRequest, Provider, Question, QuestionKind, RelatedEvidence, RequestKind,
-    Role, Usage,
+    AnswerKind, BranchView, CancellationToken, ContextSubjectChapter, DecisionChoice,
+    DecisionRequest, Message, MessageOrigin, ModelRequest, Provider, Question, QuestionKind,
+    RelatedEvidence, RequestKind, Role, Usage,
 };
 use serde_json::{Value, json};
 use std::{
@@ -476,7 +476,10 @@ impl EpisodeModels for HttpEpisodeModels {
         let mut total = Usage::default();
         let mut last_error = None;
         let mut attempt = 0;
-        let routes = fork.provider.summary_fork_routes(&fork.request.model);
+        let routes = fork.provider.branch(&fork.request.model).map_or_else(
+            || vec![fork.request.model.clone()],
+            |branch| branch.routes(&fork.request.model),
+        );
         for (route_index, route) in routes.iter().enumerate() {
             let mut output_attempt = 1;
             loop {

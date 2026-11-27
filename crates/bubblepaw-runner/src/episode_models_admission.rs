@@ -22,16 +22,15 @@ pub(super) fn admit_fork(
     }
     let tokenizer = tiktoken_rs::bpe_for_tokenizer(tiktoken_rs::tokenizer::Tokenizer::O200kBase)?;
     let native_bytes = std::cell::Cell::new(0_usize);
-    let estimate = fork
-        .provider
-        .estimate_summary_fork_tokens(request, &|value| {
-            let serialized = value.to_string();
-            native_bytes.set(native_bytes.get().max(serialized.len()));
-            tokenizer
-                .encode_ordinary(&serialized)
-                .len()
-                .saturating_add(8)
-        });
+    let estimate = BranchView::of(fork.provider.as_ref(), request, &|value| {
+        let serialized = value.to_string();
+        native_bytes.set(native_bytes.get().max(serialized.len()));
+        tokenizer
+            .encode_ordinary(&serialized)
+            .len()
+            .saturating_add(8)
+    })
+    .estimate;
     let tokens = match estimate {
         Ok(Some(tokens)) => tokens,
         _ => {

@@ -9,9 +9,26 @@ struct ForkOnly {
     requests: Mutex<Vec<ModelRequest>>,
 }
 #[async_trait]
+impl Branch for ForkOnly {
+    fn view(&self, _: &ModelRequest, _: &dyn Fn(&serde_json::Value) -> usize) -> BranchView {
+        BranchView {
+            mapping: Ok(None),
+            estimate: Ok(None),
+        }
+    }
+    async fn generate_branch(
+        &self,
+        request: ModelRequest,
+        _: CancellationToken,
+    ) -> Result<ModelResponse> {
+        self.requests.lock().unwrap().push(request);
+        Err(ProviderError::new(ProviderErrorKind::Auth, "branch rejected").into())
+    }
+}
+#[async_trait]
 impl Provider for ForkOnly {
-    fn supports_summary_fork(&self, _: &str) -> bool {
-        true
+    fn branch(&self, _: &str) -> Option<&dyn Branch> {
+        Some(self)
     }
     async fn generate(
         &self,
@@ -20,14 +37,6 @@ impl Provider for ForkOnly {
         _: CancellationToken,
     ) -> Result<ModelResponse> {
         panic!("fork must use its isolated dispatch boundary");
-    }
-    async fn generate_summary_fork(
-        &self,
-        request: ModelRequest,
-        _: CancellationToken,
-    ) -> Result<ModelResponse> {
-        self.requests.lock().unwrap().push(request);
-        Err(ProviderError::new(ProviderErrorKind::Auth, "branch rejected").into())
     }
 }
 #[tokio::test]
@@ -54,11 +63,11 @@ async fn fork_error_does_not_touch_main_route_or_mirror_bookkeeping_or_try_fallb
     let before_last = registry.last.lock().unwrap().clone();
     let before_selected = registry.selected.lock().unwrap().clone();
     assert_eq!(
-        registry.summary_fork_routes("free/flash-free"),
+        registry.routes("free/flash-free"),
         vec!["free/flash-free", "go/flash"]
     );
     // An already successful paid main route must not restart the free route.
-    assert_eq!(registry.summary_fork_routes("go/flash"), vec!["go/flash"]);
+    assert_eq!(registry.routes("go/flash"), vec!["go/flash"]);
     assert!(exact.requests.lock().unwrap().is_empty());
     assert!(other.requests.lock().unwrap().is_empty());
     assert_eq!(*registry.last.lock().unwrap(), before_last);
@@ -68,7 +77,7 @@ async fn fork_error_does_not_touch_main_route_or_mirror_bookkeeping_or_try_fallb
     req.history = bubblepaw_core::HistoryCursor::fresh();
     assert!(
         registry
-            .generate_summary_fork(req, CancellationToken::new())
+            .generate_branch(req, CancellationToken::new())
             .await
             .is_err()
     );
@@ -122,16 +131,10 @@ fn cold_resume_estimate_covers_go_reasoning_even_before_free_falls_back() -> Res
     direct.model = "flash-free".into();
     let free_tokens = free.estimate_input_tokens(&direct, &count)?.unwrap();
     assert!(free_tokens < paid);
-    assert_eq!(
-        registry.estimate_summary_fork_tokens(&req, &count)?,
-        Some(free_tokens)
-    );
+    assert_eq!(registry.view(&req, &count).estimate?, Some(free_tokens));
     let mut paid_fork = req.clone();
     paid_fork.model = "opencode/flash".into();
-    assert_eq!(
-        registry.estimate_summary_fork_tokens(&paid_fork, &count)?,
-        Some(paid)
-    );
+    assert_eq!(registry.view(&paid_fork, &count).estimate?, Some(paid));
     assert_eq!(registry.estimate_input_tokens(&req, &count)?, Some(paid));
     assert!(
         registry.selected.lock().unwrap().is_empty(),

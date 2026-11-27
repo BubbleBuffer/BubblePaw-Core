@@ -1,8 +1,8 @@
 //! Image bytes live in canonical attachments; messages carry small immutable references.
 use anyhow::{Context, Result, ensure};
 use bubblepaw_core::{
-    CancellationToken, Capabilities, ContentBlock, ModelInfo, ModelRequest, ModelResponse,
-    Provider, Role, Store, StreamCallback, text_blocks,
+    Branch, BranchView, CancellationToken, Capabilities, ContentBlock, ModelInfo, ModelRequest,
+    ModelResponse, Provider, Role, Store, StreamCallback, text_blocks,
 };
 pub use bubblepaw_core::{ImageRef, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL};
 use serde_json::{Value, json};
@@ -181,30 +181,27 @@ impl ImageProvider {
     }
 }
 #[async_trait::async_trait]
-impl Provider for ImageProvider {
-    fn summary_fork_routes(&self, model: &str) -> Vec<String> {
-        self.inner.summary_fork_routes(model)
+impl Branch for ImageProvider {
+    fn routes(&self, model: &str) -> Vec<String> {
+        self.inner
+            .branch(model)
+            .map_or_else(|| vec![model.to_owned()], |branch| branch.routes(model))
     }
-    fn estimate_summary_fork_tokens(
-        &self,
-        request: &ModelRequest,
-        count: &dyn Fn(&Value) -> usize,
-    ) -> Result<Option<usize>> {
-        let mut request = request.clone();
+    fn view(&self, request: &ModelRequest, count: &dyn Fn(&Value) -> usize) -> BranchView {
         let image_input = self.inner.capabilities(&request.model).image_input;
-        hydrate_request(&mut request, &self.store, image_input)?;
-        self.inner.estimate_summary_fork_tokens(&request, count)
+        let hydrated = || {
+            let mut request = request.clone();
+            hydrate_request(&mut request, &self.store, image_input).map(|()| request)
+        };
+        match hydrated() {
+            Ok(request) => BranchView::of(self.inner.as_ref(), &request, count),
+            Err(error) => BranchView {
+                mapping: Err(error),
+                estimate: hydrated().map(|_| None),
+            },
+        }
     }
-    fn supports_summary_fork(&self, model: &str) -> bool {
-        self.inner.supports_summary_fork(model)
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        let mut request = request.clone();
-        let image_input = self.inner.capabilities(&request.model).image_input;
-        hydrate_request(&mut request, &self.store, image_input)?;
-        self.inner.summary_fork_mapping(&request)
-    }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         mut request: ModelRequest,
         cancellation: CancellationToken,
@@ -212,8 +209,17 @@ impl Provider for ImageProvider {
         let image_input = self.inner.capabilities(&request.model).image_input;
         hydrate_request(&mut request, &self.store, image_input)?;
         self.inner
-            .generate_summary_fork(request, cancellation)
+            .branch(&request.model)
+            .context("Provider does not support isolated summary forks")?
+            .generate_branch(request, cancellation)
             .await
+    }
+}
+
+#[async_trait::async_trait]
+impl Provider for ImageProvider {
+    fn branch(&self, model: &str) -> Option<&dyn Branch> {
+        self.inner.branch(model).map(|_| self as &dyn Branch)
     }
     fn estimate_input_tokens(
         &self,

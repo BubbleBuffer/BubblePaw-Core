@@ -1,5 +1,23 @@
 //! The Responses adapter's `Provider` implementation and its round loop.
 use super::*;
+use crate::{Branch, BranchView};
+
+#[async_trait]
+impl Branch for ResponsesProvider {
+    fn view(&self, request: &ModelRequest, count: &dyn Fn(&Value) -> usize) -> BranchView {
+        BranchView {
+            mapping: self.fork_mapping(request).map(Some),
+            estimate: Provider::estimate_input_tokens(self, request, count),
+        }
+    }
+    async fn generate_branch(
+        &self,
+        request: ModelRequest,
+        cancellation: CancellationToken,
+    ) -> Result<ModelResponse> {
+        tool_wire::generate_summary_fork(self, request, cancellation).await
+    }
+}
 
 #[async_trait]
 impl Provider for ResponsesProvider {
@@ -40,18 +58,8 @@ impl Provider for ResponsesProvider {
         self.generate_body(request, false, on_text, cancellation)
             .await
     }
-    fn supports_summary_fork(&self, _model: &str) -> bool {
-        true
-    }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        self.fork_mapping(request).map(Some)
-    }
-    async fn generate_summary_fork(
-        &self,
-        request: ModelRequest,
-        cancellation: CancellationToken,
-    ) -> Result<ModelResponse> {
-        tool_wire::generate_summary_fork(self, request, cancellation).await
+    fn branch(&self, _model: &str) -> Option<&dyn Branch> {
+        Some(self)
     }
     fn estimate_input_tokens(
         &self,

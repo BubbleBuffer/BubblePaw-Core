@@ -59,10 +59,10 @@ pub(crate) use bubblepaw_agent::{
 };
 pub use bubblepaw_ai::DEFAULT_CACHE_BLOCK_TOKENS;
 pub use bubblepaw_ai::{
-    CacheMode, CancellationToken, Capabilities, ContentBlock, CursorResets, EPHEMERAL_ID_PREFIX,
-    HistoryCursor, ImageRef, IncompleteReason, InputFileRef, JsonSchema, LastRequestUsage,
-    MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL, Message, MessageInput, MessageOrigin, ModelInfo,
-    ModelRequest, ModelResponse, PROVIDER_STATE_ORIGIN_FIELD, Provider, ProviderError,
+    Branch, BranchView, CacheMode, CancellationToken, Capabilities, ContentBlock, CursorResets,
+    EPHEMERAL_ID_PREFIX, HistoryCursor, ImageRef, IncompleteReason, InputFileRef, JsonSchema,
+    LastRequestUsage, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL, Message, MessageInput, MessageOrigin,
+    ModelInfo, ModelRequest, ModelResponse, PROVIDER_STATE_ORIGIN_FIELD, Provider, ProviderError,
     ProviderErrorKind, QuotaReading, QuotaSource, QuotaWait, ReasoningEffort, ReasoningReplay,
     RequestKind, Role, ServedRoute, StopReason, StreamCallback, StreamEvent, ToolCall,
     ToolDefinition, ToolSurface, Usage, WireShape, content_body_text, content_files,

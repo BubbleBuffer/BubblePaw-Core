@@ -2,9 +2,9 @@
 use super::stream::{self, SseReader, TextBatch};
 use super::{cancelled, classify, continuation, tool_wire, wire_images};
 use crate::{
-    CacheMode, CancellationToken, Capabilities, ModelRequest, ModelResponse, Provider,
-    ProviderError, ProviderErrorKind, ReasoningReplay, Role, StreamCallback, StreamEvent, ToolCall,
-    ToolSurface, Usage,
+    Branch, BranchView, CacheMode, CancellationToken, Capabilities, ModelRequest, ModelResponse,
+    Provider, ProviderError, ProviderErrorKind, ReasoningReplay, Role, StreamCallback, StreamEvent,
+    ToolCall, ToolSurface, Usage,
 };
 use anyhow::{Result, anyhow, ensure};
 use async_trait::async_trait;
@@ -817,21 +817,28 @@ impl ChatCompletionsProvider {
 }
 
 #[async_trait]
-impl Provider for ChatCompletionsProvider {
-    fn supports_summary_fork(&self, _model: &str) -> bool {
-        true
+impl Branch for ChatCompletionsProvider {
+    fn view(&self, request: &ModelRequest, count: &dyn Fn(&Value) -> usize) -> BranchView {
+        BranchView {
+            mapping: self.wire_messages_mapped(request, true).map(|(_, mapping)| Some(json!({
+                "protocol":"chat-completions", "position_unit":"zero-based messages array index (opening system is 0)", "sources":mapping,
+            }))),
+            estimate: Provider::estimate_input_tokens(self, request, count),
+        }
     }
-    fn summary_fork_mapping(&self, request: &ModelRequest) -> Result<Option<Value>> {
-        self.wire_messages_mapped(request, true).map(|(_, mapping)| Some(json!({
-            "protocol":"chat-completions", "position_unit":"zero-based messages array index (opening system is 0)", "sources":mapping,
-        })))
-    }
-    async fn generate_summary_fork(
+    async fn generate_branch(
         &self,
         request: ModelRequest,
         cancellation: CancellationToken,
     ) -> Result<ModelResponse> {
         tool_wire::generate_summary_fork(self, request, cancellation).await
+    }
+}
+
+#[async_trait]
+impl Provider for ChatCompletionsProvider {
+    fn branch(&self, _model: &str) -> Option<&dyn Branch> {
+        Some(self)
     }
     fn estimate_input_tokens(
         &self,

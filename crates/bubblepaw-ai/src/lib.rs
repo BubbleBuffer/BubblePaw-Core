@@ -5,6 +5,7 @@
 //! model, and the trait a model adapter implements. It depends on no other
 //! workspace crate and knows no store, run or tool registry.
 pub mod adapter;
+mod branch;
 mod cancellation;
 pub mod catalog;
 mod content_block;
@@ -28,6 +29,7 @@ mod usage;
 mod usage_sink;
 mod wire_shape;
 
+pub use branch::{Branch, BranchView};
 pub use cancellation::CancellationToken;
 pub use content_block::{
     ContentBlock, ImageRef, InputFileRef, MAX_IMAGE_BYTES, MAX_IMAGES_PER_CALL, MessageInput,

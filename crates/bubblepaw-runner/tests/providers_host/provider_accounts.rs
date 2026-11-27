@@ -41,6 +41,27 @@ impl Fixture {
     }
 }
 #[async_trait]
+impl bubblepaw_core::Branch for Fixture {
+    fn view(
+        &self,
+        _: &ModelRequest,
+        _: &dyn Fn(&serde_json::Value) -> usize,
+    ) -> bubblepaw_core::BranchView {
+        bubblepaw_core::BranchView {
+            mapping: Ok(None),
+            estimate: Ok(None),
+        }
+    }
+    async fn generate_branch(
+        &self,
+        request: ModelRequest,
+        _: CancellationToken,
+    ) -> Result<ModelResponse> {
+        self.response(&request.model)
+    }
+}
+
+#[async_trait]
 impl Provider for Fixture {
     async fn generate(
         &self,
@@ -50,15 +71,8 @@ impl Provider for Fixture {
     ) -> Result<ModelResponse> {
         self.response(&request.model)
     }
-    fn supports_summary_fork(&self, _: &str) -> bool {
-        true
-    }
-    async fn generate_summary_fork(
-        &self,
-        request: ModelRequest,
-        _: CancellationToken,
-    ) -> Result<ModelResponse> {
-        self.response(&request.model)
+    fn branch(&self, _: &str) -> Option<&dyn bubblepaw_core::Branch> {
+        Some(self)
     }
 }
 #[async_trait]
@@ -140,10 +154,13 @@ async fn account_scopes_cover_main_summary_fork_auxiliary_and_decision_calls() -
                         .map(|_| ())
                     }),
                     3 => Box::pin(async {
-                        registry
-                            .generate_summary_fork(request("alias/model"), CancellationToken::new())
-                            .await
-                            .map(|_| ())
+                        bubblepaw_core::Branch::generate_branch(
+                            &registry,
+                            request("alias/model"),
+                            CancellationToken::new(),
+                        )
+                        .await
+                        .map(|_| ())
                     }),
                     _ => Box::pin(async {
                         registry

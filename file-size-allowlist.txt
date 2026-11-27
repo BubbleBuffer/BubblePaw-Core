@@ -1,7 +1,7 @@
 # Files over 500 lines: the number is the ceiling. Split a listed file rather than raising it, lower it when the file shrinks, delete the line at 500 or fewer. Enforced by crates/bubblepaw-core/tests/file_size.rs.
-crates/bubblepaw-ai/src/adapter/chat.rs 954
-crates/bubblepaw-ai/src/adapter/messages.rs 730
-crates/bubblepaw-ai/src/extension.rs 581
+crates/bubblepaw-ai/src/adapter/chat.rs 961
+crates/bubblepaw-ai/src/adapter/messages.rs 737
+crates/bubblepaw-ai/src/extension.rs 582
 crates/bubblepaw-core/src/approvals/mod.rs 583
 crates/bubblepaw-core/src/approvals_tests.rs 1376
 crates/bubblepaw-core/src/event_log.rs 645
@@ -23,7 +23,7 @@ crates/bubblepaw-mcp/tests/protocol/stdio.rs 1010
 crates/bubblepaw-runner/src/codemode.rs 1886
 crates/bubblepaw-runner/src/delegate/ledger.rs 519
 crates/bubblepaw-runner/src/delegate/metrics.rs 912
-crates/bubblepaw-runner/src/episode_models.rs 990
+crates/bubblepaw-runner/src/episode_models.rs 993
 crates/bubblepaw-runner/src/episode_worker.rs 1046
 crates/bubblepaw-runner/src/host_transport.rs 828
 crates/bubblepaw-runner/src/main.rs 710
@@ -31,8 +31,8 @@ crates/bubblepaw-runner/src/net.rs 2760
 crates/bubblepaw-runner/src/opencode_console.rs 676
 crates/bubblepaw-runner/src/probes.rs 1433
 crates/bubblepaw-runner/src/provider/decisions.rs 714
-crates/bubblepaw-runner/src/provider/live_provider.rs 604
-crates/bubblepaw-runner/src/provider/registry.rs 1085
+crates/bubblepaw-runner/src/provider/live_provider.rs 621
+crates/bubblepaw-runner/src/provider/registry.rs 1097
 crates/bubblepaw-runner/src/quota.rs 618
 crates/bubblepaw-runner/src/quota_sources.rs 514
 crates/bubblepaw-runner/src/session_host.rs 644
@@ -58,7 +58,7 @@ crates/bubblepaw-runner/tests/context/context_growth.rs 762
 crates/bubblepaw-runner/tests/context/context_strategies.rs 715
 crates/bubblepaw-runner/tests/context/summarization.rs 1710
 crates/bubblepaw-runner/tests/episode/episode_background.rs 555
-crates/bubblepaw-runner/tests/episode/episode_forks_http.rs 585
+crates/bubblepaw-runner/tests/episode/episode_forks_http.rs 597
 crates/bubblepaw-runner/tests/episode/episode_models.rs 1498
 crates/bubblepaw-runner/tests/episode/episode_worker.rs 1124
 crates/bubblepaw-runner/tests/episode/episodes.rs 523

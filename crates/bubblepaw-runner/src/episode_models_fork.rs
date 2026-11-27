@@ -18,7 +18,7 @@ pub(super) async fn summarize_fork_attempt(
     request.output_schema = None;
     request.model = route.to_owned();
     let unavailable = |reason: &str| models.fork_unavailable(&input.session_id, route, reason);
-    if !fork.provider.supports_summary_fork(&request.model) {
+    if fork.provider.branch(&request.model).is_none() {
         // An explicit `fork` on a provider that cannot fork never summarizes; say so
         // once per session instead of leaving only a suppressed retry.
         models.context_route.warn_once(
@@ -52,7 +52,7 @@ pub(super) async fn summarize_fork_attempt(
     // earlier episode, even when a caller supplies a later capture.
     request.messages.truncate(last + 1);
     let fork_point = request.messages.len();
-    let mut mapping = match fork.provider.summary_fork_mapping(&request) {
+    let mut mapping = match BranchView::of(fork.provider.as_ref(), &request, &|_| 0).mapping {
         Ok(Some(mapping)) => mapping,
         _ => {
             return Err(unavailable("source_mapping_unavailable"));
@@ -263,10 +263,10 @@ pub(super) async fn dispatch_fork(
         });
         request = sent.clone();
         let started = Instant::now();
-        let response = fork
-            .provider
-            .generate_summary_fork(sent, CancellationToken::new())
-            .await;
+        let response = match fork.provider.branch(&sent.model) {
+            Some(branch) => branch.generate_branch(sent, CancellationToken::new()).await,
+            None => Err(anyhow!("Provider does not support isolated summary forks")),
+        };
         let observed_usage = response
             .as_ref()
             .ok()
