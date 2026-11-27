@@ -37,7 +37,7 @@ crates/bubblepaw-runner/src/quota.rs 618
 crates/bubblepaw-runner/src/quota_sources.rs 514
 crates/bubblepaw-runner/src/session_host.rs 644
 crates/bubblepaw-runner/src/summarization.rs 1634
-crates/bubblepaw-runner/src/tools/process.rs 1617
+crates/bubblepaw-runner/src/tools/process.rs 1627
 crates/bubblepaw-runner/src/trace.rs 833
 crates/bubblepaw-runner/src/usage_report.rs 601
 crates/bubblepaw-runner/src/web.rs 722

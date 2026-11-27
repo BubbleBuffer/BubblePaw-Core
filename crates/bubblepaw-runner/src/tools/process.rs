@@ -1401,6 +1401,16 @@ impl Tool for ProcessTool {
         }
         stopped
     }
+    /// The model is shown `command` as a string only; the argv object form
+    /// stays valid for older callers and scripts (`cmd` tagged templates).
+    fn validation_schema(&self) -> Option<Value> {
+        if self.name != "exec" {
+            return None;
+        }
+        let mut schema = self.definition().input_schema;
+        schema["properties"]["command"] = json!({"oneOf":[{"type":"string"},{"type":"object","properties":{"parts":{"type":"array","items":{"type":"string"}},"values":{"type":"array","items":{"type":"string"}}},"required":["parts","values"],"additionalProperties":false}]});
+        Some(schema)
+    }
     fn definition(&self) -> ToolDefinition {
         let exec_description = format!(
             "Run a command in the shell and return its output and exit code. command is a plain string, run with stdin closed by {}: write it for that shell; pipes, redirects, && chains and shell builtins work. The result always carries exitCode. A non-zero exit, a timeout or a launch failure is an error result stating the exit code; read stderr and fix the command instead of repeating it. cwd/workdir defaults to workspace and accepts the chat and project scratchpads named in the prompt. Sync by default, up to exec.sync_timeout_secs (default 300); returns status:backgrounded with reason:sync_timeout without killing. User backgrounding returns reason:user; explicit host wait release retains reason:steer. Ordinary steering does not release foreground waits. background:true returns immediately with a running handle. Explicit yieldMs collects foreground output up to the sync timeout. timeoutMs is a hard deadline that kills. Output uses byte cursors and 4 KiB-per-stream head/tail previews. Completed output over 64 KiB returns a fullOutput absolute text path when its spool is complete, or fullOutputError when capture was incomplete. Read saved output with read line ranges. Use the file tools to read, search and edit files. The process may access files outside workspace.",
@@ -1413,7 +1423,7 @@ impl Tool for ProcessTool {
         let (description, properties, required): (&str, _, _) = match self.name {
             "exec" => (
                 exec_description.as_str(),
-                json!({"command":{"oneOf":[{"type":"string"},{"type":"object","properties":{"parts":{"type":"array","items":{"type":"string"}},"values":{"type":"array","items":{"type":"string"}}},"required":["parts","values"],"additionalProperties":false}]},"cwd":{"type":"string"},"workdir":{"type":"string"},"yieldMs":{"type":"integer","minimum":0},"timeoutMs":{"type":"integer","minimum":1},"background":{"type":"boolean"}}),
+                json!({"command":{"type":"string"},"cwd":{"type":"string"},"workdir":{"type":"string"},"yieldMs":{"type":"integer","minimum":0},"timeoutMs":{"type":"integer","minimum":1},"background":{"type":"boolean"}}),
                 vec!["command"],
             ),
             "poll" => (

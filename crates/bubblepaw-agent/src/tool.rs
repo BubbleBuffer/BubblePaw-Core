@@ -29,6 +29,12 @@ pub trait Tool: Send + Sync {
     fn definition_in(&self, _registry: &ToolRegistry) -> ToolDefinition {
         self.definition()
     }
+    /// A looser schema to validate calls against, when the advertised one is
+    /// stricter than what the tool still accepts (older callers). `None` means
+    /// the advertised schema validates.
+    fn validation_schema(&self) -> Option<Value> {
+        None
+    }
     async fn invoke(&self, context: ToolContext, input: Value) -> Result<ToolResult>;
     async fn invoke_with_dispatcher(
         &self,
