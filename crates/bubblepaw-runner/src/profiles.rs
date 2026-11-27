@@ -152,7 +152,7 @@ pub fn workspace_profiles_with_agents(
         let prompt = |instructions| {
             format!(
                 "Execution environment: OS={}, workspace={}, raw command shell={}, workspace access={access}. {instructions}",
-                std::env::consts::OS,
+                crate::os_label::os_label(),
                 workspace.display(),
                 crate::command_template::shell_name()
             )

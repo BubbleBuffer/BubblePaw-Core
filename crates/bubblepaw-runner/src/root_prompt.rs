@@ -58,7 +58,7 @@ pub fn root_system_prompt(
     };
     format!(
         "Execution environment: OS={}, workspace={}, raw command shell={}. {instructions}\n\n{RUNTIME_NOTES} User messages may include a BubblePawAttachments block. Its file paths are workspace-relative; read the relevant sections with {read} when inline text is omitted. A binary file reference does not mean you have seen its contents.",
-        std::env::consts::OS,
+        crate::os_label::os_label(),
         workspace.display(),
         crate::command_template::shell_name(),
     )
