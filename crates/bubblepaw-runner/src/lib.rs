@@ -105,6 +105,8 @@ pub mod no_provider;
 #[cfg(feature = "host")]
 pub mod opencode_console;
 #[cfg(feature = "host")]
+mod os_label;
+#[cfg(feature = "host")]
 pub mod pricing;
 #[cfg(feature = "bench")]
 #[cfg(feature = "host")]
