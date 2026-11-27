@@ -8,6 +8,7 @@ use ignore::{
 
 pub(super) const FIELDS: &[&str] = &[
     "path",
+    "pattern",
     "query",
     "glob",
     "regex",
@@ -97,7 +98,7 @@ fn display(root: &Path, path: &Path) -> String {
 }
 
 impl WorkspaceTools {
-    /// Files under `path` (recursive, `.gitignore` honoured), or with `query`
+    /// Files under `path` (recursive, `.gitignore` honoured), or with `pattern`
     /// the lines that match it. The result is capped; `more` counts what the
     /// cap left out.
     pub(super) fn search(
@@ -107,11 +108,12 @@ impl WorkspaceTools {
         relative: &str,
     ) -> Result<Value> {
         let start = self.existing(relative)?;
-        let query = optional_string(input, "query")?;
-        ensure!(
-            query.is_none_or(|q| !q.is_empty()),
-            "query must not be empty"
-        );
+        // `query` is the older name of `pattern`. Empty or missing means files mode.
+        let query = match optional_string(input, "pattern")? {
+            Some(pattern) => Some(pattern),
+            None => optional_string(input, "query")?,
+        }
+        .filter(|pattern| !pattern.is_empty());
         let files_only = flag(input, "filesOnly")?;
         let regex = match query {
             Some(query) => {
@@ -279,7 +281,7 @@ pub(super) fn render(value: &Value) -> String {
         out.push_str(&format!("[no {noun}]"));
     } else if left_out > 0 {
         out.push_str(&format!(
-            "[{left_out} more {noun} not shown; narrow with path, glob or query, or raise maxResults]"
+            "[{left_out} more {noun} not shown; narrow with path, glob or pattern, or raise maxResults]"
         ));
     }
     if value["walkLimitReached"] == true {

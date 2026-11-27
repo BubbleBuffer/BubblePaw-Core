@@ -867,7 +867,7 @@ JSON-encoded string of the argv object (cmd.exe answered 9009, flagged as succes
 and the call was repeated). Decisions (the user, 2026-11-27):
 
 1. One `search` tool replaces `list` and the text-only `search`: recursive, `.gitignore`-aware,
-   files mode without a query and content mode with one; a model gets "what is in this
+   files mode without a pattern and content mode with one (`pattern`, as in grep and ripgrep; `query` stays an alias, an empty pattern is files mode); a model gets "what is in this
    repo" or "where is X" in one call. It uses the `ignore` crate; no external ripgrep.
 2. `read` takes `paths` for several files in one call, under one total size cap that names
    what was cut or skipped.

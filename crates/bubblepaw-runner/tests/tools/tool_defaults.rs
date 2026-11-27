@@ -322,7 +322,7 @@ async fn search_lists_and_finds_through_one_tool_and_notes_what_the_cap_left_out
     let gitignore = format!(".gitignore ({} B)\n", GITIGNORE.len());
     let lib = format!("src/lib.rs ({} B)\n", LIB.len());
     let notes = "src/notes.txt (6 B)\n";
-    let more = "[2 more files not shown; narrow with path, glob or query, or raise maxResults]";
+    let more = "[2 more files not shown; narrow with path, glob or pattern, or raise maxResults]";
     for (input, expected) in [
         (json!({}), format!("{gitignore}{lib}{notes}")),
         (json!({"glob":"*.rs"}), lib.clone()),
@@ -331,18 +331,27 @@ async fn search_lists_and_finds_through_one_tool_and_notes_what_the_cap_left_out
         (json!({"path":"src"}), format!("{lib}{notes}")),
         (json!({"maxResults":1}), format!("{gitignore}{more}")),
         (
-            json!({"query":"needle"}),
+            json!({"pattern":"needle"}),
             "src/lib.rs:1: fn needle() {}\n".to_owned(),
         ),
         (
-            json!({"query":"needle","context":1}),
+            json!({"pattern":"needle","context":1}),
             "src/lib.rs:1: fn needle() {}\nsrc/lib.rs-2- // two\n".to_owned(),
         ),
         (
-            json!({"query":"n.edle","regex":true,"filesOnly":true}),
+            json!({"pattern":"n.edle","regex":true,"filesOnly":true}),
             lib.clone(),
         ),
-        (json!({"query":"absent"}), "[no matches]".to_owned()),
+        (json!({"pattern":"absent"}), "[no matches]".to_owned()),
+        // `query` is the older name of `pattern`; an empty pattern lists files.
+        (
+            json!({"query":"needle"}),
+            "src/lib.rs:1: fn needle() {}
+"
+            .to_owned(),
+        ),
+        (json!({"pattern":""}), format!("{gitignore}{lib}{notes}")),
+        (json!({"query":""}), format!("{gitignore}{lib}{notes}")),
     ] {
         let result = dispatched(&store, &registry, "search", input.clone()).await?;
         assert!(!result.is_error, "{input}: {}", result.body());

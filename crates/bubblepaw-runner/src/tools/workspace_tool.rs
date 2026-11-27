@@ -175,6 +175,15 @@ impl WorkspaceTool {
 }
 #[async_trait]
 impl Tool for WorkspaceTool {
+    /// `search` advertises `pattern`; `query` stays valid as an alias.
+    fn validation_schema(&self) -> Option<Value> {
+        if self.name != "search" {
+            return None;
+        }
+        let mut schema = self.definition().input_schema;
+        schema["properties"]["query"] = json!({"type":"string"});
+        Some(schema)
+    }
     fn definition(&self) -> ToolDefinition {
         let (description, properties, required) = match self.name {
             "read" => (
@@ -183,8 +192,8 @@ impl Tool for WorkspaceTool {
                 vec![],
             ),
             "search" => (
-                "Find files and text in the workspace, recursively; one call answers what is in a folder or repo and where something is. Without query it lists the files under path (default the workspace root) with their sizes. With query it returns the matching lines as path:line: text (literal text, or a regex when regex is true). glob keeps only matching files: a .gitignore-style pattern or an array of them, a leading ! excludes (for example \"*.rs\", [\"src/**/*.ts\",\"!*.test.ts\"]). context adds that many lines around each match (maximum 10); filesOnly returns just the paths of files that contain a match. Honours .gitignore; skips symlinks and .git, node_modules and target. Results stop at maxResults (default 500 files or 100 matches; maximum 5000 and 1000) and end with a note saying how many more there are.",
-                json!({"path":{"type":"string"},"query":{"type":"string"},"glob":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}]},"regex":{"type":"boolean"},"context":{"type":"integer","minimum":0},"filesOnly":{"type":"boolean"},"maxResults":{"type":"integer","minimum":1}}),
+                "Find files and text in the workspace, recursively; one call answers what is in a folder or repo and where something is. Without pattern it lists the files under path (default the workspace root) with their sizes. With pattern it returns the matching lines as path:line: text (literal text, or a regex when regex is true). glob keeps only matching files: a .gitignore-style pattern or an array of them, a leading ! excludes (for example \"*.rs\", [\"src/**/*.ts\",\"!*.test.ts\"]). context adds that many lines around each match (maximum 10); filesOnly returns just the paths of files that contain a match. Honours .gitignore; skips symlinks and .git, node_modules and target. Results stop at maxResults (default 500 files or 100 matches; maximum 5000 and 1000) and end with a note saying how many more there are.",
+                json!({"path":{"type":"string"},"pattern":{"type":"string"},"glob":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"}}]},"regex":{"type":"boolean"},"context":{"type":"integer","minimum":0},"filesOnly":{"type":"boolean"},"maxResults":{"type":"integer","minimum":1}}),
                 vec![],
             ),
             "edit" => (

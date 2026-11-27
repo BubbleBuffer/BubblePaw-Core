@@ -22,7 +22,7 @@ pub fn root_system_prompt(
 ",
             "- Put independent reads, searches and checks together as multiple tool calls in one message. Take another turn only when a result decides the next step.
 ",
-            "- Use the file tools to read, search and edit. search without a query lists every file under a path recursively; with a query it finds matching lines. Search for exact identifiers first, then read the relevant files in one read call with paths, in large ranges.
+            "- Use the file tools to read, search and edit. search without a pattern lists every file under a path recursively; with a pattern it finds matching lines. Search for exact identifiers first, then read the relevant files in one read call with paths, in large ranges.
 ",
             "- exec runs a command string in the shell named above, like a terminal: exec({command:\"python script.py\"}). Write the command for that shell, put pipes, redirects and && chains in it, and read the exit code in the result. For several steps that need no decision between them, write the code to a scratchpad file and run it.
 ",

@@ -12,14 +12,14 @@ These checks are tool boundaries, not an OS sandbox for commands. No prior read
 or read hash is required. In JS mode, call them as `tools.NAME(...)`.
 
 `search` is the one tool for finding things (2026-11-27; it replaced `list` and the
-old text-only `search`). `tools.search({path?, query?, glob?, regex?, context?,
+old text-only `search`). `tools.search({path?, pattern?, glob?, regex?, context?,
 filesOnly?, maxResults?})` walks `path` (default `.`) recursively in path order and honours
 `.gitignore` (also outside a git repository); it skips symlinks and `.git`,
 `node_modules` and `target`.
 
-- **Files mode** (no `query`): the files under `path` with their sizes, so one
+- **Files mode** (no `pattern`, or an empty one; `query` is accepted as an older name of `pattern`): the files under `path` with their sizes, so one
   call answers "what is in this repo". Default 500 files, maximum 5000.
-- **Content mode** (`query`, literal text, or a regex with `regex:true`): the
+- **Content mode** (`pattern`, literal text, or a regex with `regex:true`): the
   matching lines as `path:line: text`; `context:N` (maximum 10) adds `path-line- text`
   lines around each match, `filesOnly:true` returns only the files that contain
   a match. Default 100 matches, maximum 1000. Files over 2 MiB and non-UTF-8 files
@@ -74,7 +74,7 @@ four distinct images; duplicate reads attach the same image once. Oversized
 images return an explanatory note. See [providers](providers.md) for model input
 behavior and [storage](storage-model.md) for image blobs.
 
-`tools.search({query, path?, regex?, maxResults?})` searches workspace text.
+`tools.search({pattern, path?, regex?, maxResults?})` searches workspace text.
 Queries are literal unless `regex` is true. The default maximum is 100 results,
 capped at 1000. Search skips symlinks, `.git`, `node_modules`, `target`, binary
 files and files over 2 MiB. Match text and traversal are bounded; truncation is
