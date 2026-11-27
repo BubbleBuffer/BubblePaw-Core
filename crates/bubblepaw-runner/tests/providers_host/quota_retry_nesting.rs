@@ -43,6 +43,7 @@ async fn rate_limited_main_turn_makes_only_the_quota_hosts_attempts() -> Result<
         max_attempts: 3,
         initial_delay: Duration::from_millis(1),
         max_delay: Duration::from_secs(1),
+        yield_rate_limits: false,
     });
     registry.set_quota_host(Arc::new(QuotaHost::new(store, Duration::ZERO)?));
     let request = ModelRequest {

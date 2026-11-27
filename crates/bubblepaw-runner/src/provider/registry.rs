@@ -134,6 +134,14 @@ impl ProviderRegistry {
     pub fn set_quota_host(&self, host: Arc<crate::quota::QuotaHost>) {
         *self.quota_host.lock().unwrap() = Some(host);
     }
+    /// A per-call copy of `policy` that yields rate limits exactly when a quota
+    /// host will wrap the call.
+    fn hosted(&self, policy: &RetryPolicy) -> RetryPolicy {
+        RetryPolicy {
+            yield_rate_limits: self.quota_host.lock().unwrap().is_some(),
+            ..policy.clone()
+        }
+    }
     async fn quota_request<F, Fut>(
         &self,
         provider: &str,
@@ -676,6 +684,7 @@ impl ProviderRegistry {
                     attempt_state.quota.extend(typed.quota.iter().cloned());
                 }
             };
+            let hosted_policy = self.hosted(&policy);
             let result = bubblepaw_core::with_request_usage_account(
                 &account,
                 bubblepaw_core::with_request_usage_provider(
@@ -683,7 +692,7 @@ impl ProviderRegistry {
                     self.quota_request(&id, &account, &model, cancellation.clone(), || {
                         super::with_retry(
                             &id,
-                            &policy,
+                            &hosted_policy,
                             &cancellation,
                             &published,
                             &call,
@@ -880,13 +889,14 @@ impl Branch for ProviderRegistry {
             let published = AtomicBool::new(false);
             // Usage and quota of the attempts the policy repeated.
             let repeated = Mutex::new(Attempts::default());
+            let hosted_policy = self.hosted(&self.retry);
             let response = bubblepaw_core::with_request_usage_account(&account, async {
                 bubblepaw_core::with_request_usage_provider(
                     &id,
                     self.quota_request(&id, &account, &request.model, cancellation.clone(), || {
                         with_retry(
                             &id,
-                            &self.retry,
+                            &hosted_policy,
                             &cancellation,
                             &published,
                             || {

@@ -22,6 +22,9 @@ pub struct RetryPolicy {
     pub initial_delay: Duration,
     /// Caps local exponential backoff and any inline server-requested wait.
     pub max_delay: Duration,
+    /// Set when a quota host drives the call: a rate limit (429) is returned
+    /// to its policy instead of being retried here.
+    pub yield_rate_limits: bool,
 }
 impl Default for RetryPolicy {
     fn default() -> Self {
@@ -29,6 +32,7 @@ impl Default for RetryPolicy {
             max_attempts: 4,
             initial_delay: Duration::from_millis(500),
             max_delay: crate::SHORT_WAIT,
+            yield_rate_limits: false,
         }
     }
 }
@@ -89,7 +93,7 @@ pub(crate) fn retry_delay(
     let mut server_wait = super::provider_retry_after(error);
     if rate_limited {
         // The quota host owns rate-limit waits when it is driving the call.
-        if crate::host_policy_active() {
+        if policy.yield_rate_limits {
             return None;
         }
         // An exhausted window is the host's, or the caller's, decision.
@@ -191,6 +195,7 @@ mod tests {
             max_attempts: 4,
             initial_delay: Duration::from_millis(100),
             max_delay: Duration::from_secs(15),
+            yield_rate_limits: false,
         }
     }
     fn transient() -> anyhow::Error {
@@ -236,15 +241,16 @@ mod tests {
         assert_eq!(retry_delay(&policy(), 0, &cancelled, false, &live), None);
     }
 
-    #[tokio::test]
-    async fn rate_limits_are_left_to_an_active_quota_host() {
+    #[test]
+    fn rate_limits_are_left_to_a_quota_host() {
         let token = CancellationToken::new();
         let limited = rate_limit(Vec::new());
         assert!(retry_delay(&policy(), 0, &limited, false, &token).is_some());
-        crate::with_host_policy(async {
-            assert_eq!(retry_delay(&policy(), 0, &limited, false, &token), None);
-        })
-        .await;
+        let hosted = RetryPolicy {
+            yield_rate_limits: true,
+            ..policy()
+        };
+        assert_eq!(retry_delay(&hosted, 0, &limited, false, &token), None);
     }
 
     #[test]

@@ -231,6 +231,7 @@ fn quick_registry(adapter: Adapter, base: String) -> ProviderRegistry {
         max_attempts: 3,
         initial_delay: Duration::from_millis(1),
         max_delay: Duration::from_millis(1),
+        yield_rate_limits: false,
     })
 }
 
@@ -403,9 +404,8 @@ async fn bare_400_warns_once_per_retry_with_provider_status_and_attempt() {
         .with_max_level(tracing::Level::WARN)
         .with_writer(move || Logs(capture.clone()))
         .finish();
-    // This binary has one subscriber. A persistent global dispatch keeps
-    // callsite filtering stable while other provider fixtures run concurrently.
-    // Its unique route lets us count only warnings from this request.
+    // One subscriber per binary: a persistent global dispatch keeps callsite filtering stable
+    // while other fixtures run concurrently; the unique route counts only this request's warnings.
     tracing::subscriber::set_global_default(subscriber).unwrap();
     let reply = http_reply("400 Bad Request", "", r#"{"model":"fixture"}"#);
     let (base, calls, server) = raw_server(reply.clone(), reply).await;
@@ -414,6 +414,7 @@ async fn bare_400_warns_once_per_retry_with_provider_status_and_attempt() {
             max_attempts: 3,
             initial_delay: Duration::from_millis(1),
             max_delay: Duration::from_millis(1),
+            yield_rate_limits: false,
         });
     let error = registry
         .generate(request(), Arc::new(|_| {}), CancellationToken::new())

@@ -22,7 +22,7 @@ mod attribution;
 use attribution::normalize_error;
 
 const SHORT_ATTEMPTS: usize = 4;
-pub use bubblepaw_ai::{QuotaStop, SHORT_WAIT, host_policy_active, is_quota_stop};
+pub use bubblepaw_ai::{QuotaStop, SHORT_WAIT, is_quota_stop};
 
 #[derive(Debug, PartialEq)]
 pub enum LimitAction {
@@ -513,7 +513,7 @@ impl QuotaHost {
             }
             let mut record = RequestUsage::new(provider, model);
             let before = bubblepaw_core::request_usage_count();
-            let result = bubblepaw_ai::with_host_policy(call()).await;
+            let result = call().await;
             if before == bubblepaw_core::request_usage_count() {
                 record.failed = result.is_err();
                 record.account = account.to_owned();
