@@ -462,7 +462,7 @@ fn spelling_variants_of_protected_targets_are_refused() {
     ] {
         assert_eq!(matched("exec", command), None, "{command}");
     }
-    assert_eq!(in_dir("rm -rf \"$PWD\"", "child", &[PROJECT]), None);
+    assert_eq!(in_dir("rm -rf \"$PWD\"", "sub", &[PROJECT]), None);
     assert_eq!(
         in_dir("rm -rf \"$PWD\"", ".", &[PROJECT]).as_deref(),
         Some(PROJECT_ROOT)
