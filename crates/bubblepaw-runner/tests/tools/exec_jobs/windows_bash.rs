@@ -39,7 +39,10 @@ async fn forced_bash_runs_bash_only_commands_and_keeps_quotes_and_the_cwd_note()
     let moved = run(&fixture, "mkdir sub && cd sub && pwd -W").await;
     assert!(moved["stdout"].as_str().unwrap().contains("sub"), "{moved}");
     assert!(
-        moved["note"].as_str().unwrap_or_default().contains("sub"),
+        moved["note"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Working directory reset"),
         "{moved}"
     );
     fixture.processes.shutdown().await;

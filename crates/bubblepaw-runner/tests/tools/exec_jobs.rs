@@ -698,7 +698,7 @@ async fn second_host_on_same_data_dir_keeps_live_spool() {
 fn cwd_reset_note(start: &Path) -> String {
     format!(
         "Working directory reset to {}; each exec starts there. Pass `cwd` to run elsewhere.",
-        start.display()
+        bubblepaw_runner::plain_path::plain_path(start)
     )
 }
 #[cfg(unix)]
