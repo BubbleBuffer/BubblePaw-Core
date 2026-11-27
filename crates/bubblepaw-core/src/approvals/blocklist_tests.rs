@@ -388,7 +388,7 @@ fn git_bash_drive_paths_name_the_same_place_as_the_drive_letter() {
 fn home_spellings() -> Vec<String> {
     let home = std::env::home_dir().expect("the test host has a home directory");
     let native = home.to_string_lossy().into_owned();
-    let slashes = native.replace('\', "/");
+    let slashes = native.replace('\\', "/");
     let mut spellings = vec![
         native.clone(),
         format!("\"{native}\""),
