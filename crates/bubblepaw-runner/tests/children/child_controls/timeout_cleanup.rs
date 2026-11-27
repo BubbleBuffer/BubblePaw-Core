@@ -1,4 +1,5 @@
 use super::*;
+use crate::eventually::wait_ms;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn timeout_awaits_descendant_cleanup_and_all_spawn_effects_settle() -> Result<()> {
@@ -55,15 +56,18 @@ async fn timeout_awaits_descendant_cleanup_and_all_spawn_effects_settle() -> Res
         cancellation: CancellationToken::new(),
         extensions: Default::default(),
     };
-    let branch = manager.start(&owner, json!({"task":"branch","timeout":1500}))?;
-    let grandchild = tokio::time::timeout(Duration::from_secs(3), entered.recv())
+    // The branch timeout runs from spawn, so it must outlast the grandchild's
+    // startup, which is slow on a loaded Windows runner.
+    let branch_timeout_ms: u64 = if cfg!(windows) { 8000 } else { 1500 };
+    let branch = manager.start(&owner, json!({"task":"branch","timeout":branch_timeout_ms}))?;
+    let grandchild = tokio::time::timeout(crate::eventually::WAIT_TIMEOUT, entered.recv())
         .await?
         .expect("grandchild provider started");
     let result = manager
         .wait(
             &owner.session_id,
             branch["sessionId"].as_str().unwrap(),
-            Some(5000),
+            Some(wait_ms()),
         )
         .await?;
     assert_eq!(result["status"], "timed_out", "{result}");

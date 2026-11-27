@@ -1,3 +1,4 @@
+use crate::eventually::wait_ms;
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -169,7 +170,7 @@ impl Fixture {
             .wait(
                 &self.owner.session_id,
                 value["handle"].as_str().unwrap(),
-                Some(2000),
+                Some(wait_ms()),
             )
             .await
             .unwrap()

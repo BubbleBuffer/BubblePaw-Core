@@ -1,4 +1,5 @@
 //! Scripted worktree acceptance through the real runner JS/file/process adapters.
+use crate::eventually::wait_ms;
 use anyhow::{Result, ensure};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -127,7 +128,7 @@ impl Host {
         Ok(())
     }
     async fn wait(&self, owner: &str, child: &str) -> Result<()> {
-        let result = self.agents.wait(owner, child, Some(5000)).await?;
+        let result = self.agents.wait(owner, child, Some(wait_ms())).await?;
         ensure!(
             result["status"] == "completed",
             "child did not complete: {result}"

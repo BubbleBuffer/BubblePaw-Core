@@ -1,4 +1,5 @@
 //! Internal workers reuse ordinary child runs. All provider work is scripted.
+use crate::eventually::wait_ms;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -141,7 +142,7 @@ impl Fixture {
             .wait(
                 &self.owner.session_id,
                 worker["sessionId"].as_str().unwrap(),
-                Some(2000),
+                Some(wait_ms()),
             )
             .await?;
         assert_ne!(
@@ -151,7 +152,7 @@ impl Fixture {
         Ok(result)
     }
     async fn entered(&mut self) -> Result<()> {
-        tokio::time::timeout(Duration::from_secs(2), self.entered.recv())
+        tokio::time::timeout(crate::eventually::WAIT_TIMEOUT, self.entered.recv())
             .await?
             .expect("provider entry");
         Ok(())
