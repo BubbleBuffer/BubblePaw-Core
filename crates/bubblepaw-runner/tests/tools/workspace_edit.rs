@@ -483,7 +483,7 @@ async fn diagnostics_and_replacement_growth_are_bounded_before_writing() {
 }
 
 #[tokio::test]
-async fn nearest_region_scans_late_file_lines_and_absolute_inside_paths_are_rejected() {
+async fn nearest_region_scans_late_file_lines() {
     let f = Fixture::new();
     let source = format!("{}  let selected = 42;\nend\n", "unrelated\n".repeat(3000));
     fs::write(f.root.path().join("late.rs"), &source).unwrap();
@@ -496,17 +496,6 @@ async fn nearest_region_scans_late_file_lines_and_absolute_inside_paths_are_reje
         .unwrap_err()
         .to_string();
     assert!(error.contains("3001:   let selected = 42;"), "{error}");
-    let absolute = f.root.path().join("late.rs");
-    for (name, input) in [
-        (
-            "edit",
-            json!({"path":absolute,"old_string":"selected","new_string":"changed"}),
-        ),
-        ("write", json!({"path":absolute,"content":"changed"})),
-    ] {
-        let error = f.call(name, input).await.unwrap_err().to_string();
-        assert!(error.contains("workspace-relative"), "{error}");
-    }
     assert_eq!(
         fs::read_to_string(f.root.path().join("late.rs")).unwrap(),
         source

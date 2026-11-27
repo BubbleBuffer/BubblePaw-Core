@@ -64,12 +64,23 @@ async fn protected_workspace_is_resolved_against_exec_cwd() -> Result<()> {
     let workspace = tempfile::tempdir()?;
     std::fs::create_dir(workspace.path().join("child"))?;
     let root = workspace.path().canonicalize()?.display().to_string();
-    for (command, cwd, blocked) in [
+    #[allow(unused_mut)]
+    let mut cases = vec![
         (format!("rm -rf \"{root}\""), ".", true),
         (format!("Remove-Item -Recurse -Force \"{root}\""), ".", true),
         ("rm -rf ..".into(), "child", true),
         ("rm -rf .".into(), "child", false),
-    ] {
+    ];
+    // Under Git Bash the same directory is `/c/Users/...`, and `cd` takes it too.
+    #[cfg(windows)]
+    {
+        let plain = root.trim_start_matches(r"\\?\").replace('\\', "/");
+        let msys = format!("/{}{}", plain[..1].to_lowercase(), &plain[2..]);
+        cases.push((format!("rm -rf '{msys}'"), ".", true));
+        cases.push((format!("cd '{msys}' && rm -rf ."), "child", true));
+        cases.push((format!("rm -rf '/{}'", &plain[..1]), ".", true));
+    }
+    for (command, cwd, blocked) in cases {
         let store = Store::in_memory()?;
         store.bind_workspace(workspace.path())?;
         let session = store.create_session("workspace checks")?;

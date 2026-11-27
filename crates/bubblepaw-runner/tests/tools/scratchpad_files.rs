@@ -159,6 +159,71 @@ async fn sibling_scratch_and_parent_traversal_do_not_fall_back_to_workspace_acce
         fs::read_to_string(other_paths.chat.join("private.txt"))?,
         "private"
     );
+    // The rejection names the directories that are allowed, so one retry fixes it.
+    let refused = fixture
+        .call(
+            "write",
+            json!({"path":other_paths.chat.join("private.txt"),"content":"x"}),
+        )
+        .await?;
+    for allowed in [&paths.chat, &paths.workspace] {
+        let allowed = bubblepaw_runner::plain_path::plain_path(allowed);
+        assert!(refused.body().contains(&allowed), "{}", refused.body());
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn absolute_workspace_paths_in_any_spelling_act_like_the_relative_path() -> Result<()> {
+    let fixture = Fixture::new()?;
+    let root = fs::canonicalize(fixture.root.path())?;
+    let verbatim = root.to_string_lossy().into_owned();
+    let plain = verbatim.trim_start_matches(r"\\?\").to_owned();
+    let sep = std::path::MAIN_SEPARATOR;
+    let tail = format!("{sep}sub{sep}a.txt");
+    let mut spellings = vec![
+        "sub/a.txt".to_owned(),
+        format!("{plain}{tail}"),
+        format!("{verbatim}{tail}"),
+    ];
+    if cfg!(windows) {
+        let ordinary = format!("{plain}{tail}");
+        spellings.push(ordinary.replace('\\', "/"));
+        spellings.push(ordinary.replacen(&plain[..1], &plain[..1].to_lowercase(), 1));
+    }
+    for (index, path) in spellings.iter().enumerate() {
+        let content = format!("v{index}");
+        let written = fixture
+            .call("write", json!({"path":path,"content":content}))
+            .await?;
+        assert!(!written.is_error, "{path}: {}", written.body());
+        let value: Value = serde_json::from_str(&written.body())?;
+        assert_eq!(value["path"], "sub/a.txt", "{path}");
+        let edited = fixture
+            .call(
+                "edit",
+                json!({"path":path,"old_string":content,"new_string":"edited"}),
+            )
+            .await?;
+        assert!(!edited.is_error, "{path}: {}", edited.body());
+        let read = fixture.call("read", json!({"path":path})).await?;
+        assert_eq!(read.body(), "edited", "{path}");
+        let directory = path.rsplit_once(['/', '\\']).unwrap().0;
+        let listed = fixture.call("search", json!({"path":directory})).await?;
+        assert!(listed.body().contains("a.txt"), "{path}: {}", listed.body());
+        assert_eq!(
+            fs::read_to_string(root.join("sub").join("a.txt"))?,
+            "edited"
+        );
+    }
+    // An absolute path outside the workspace and the scratchpads is still refused.
+    let outside = tempfile::tempdir()?;
+    let target = outside.path().join("outside.txt");
+    let refused = fixture
+        .call("write", json!({"path":target,"content":"x"}))
+        .await?;
+    assert!(refused.is_error, "{}", refused.body());
+    assert!(!target.exists());
     Ok(())
 }
 

@@ -282,7 +282,7 @@ pub(super) async fn execute(
     // event stream (docs/session-api.md), so one subscription sees every request.
     let one_shot = scoped_request;
     live_config.configure_harness(&mut config);
-    prompts::configure(&mut config, &store, &workspace, &data_dir, &settings.agent)?;
+    prompts::configure(&mut config, &store, &workspace, &data_dir, &settings)?;
     let wake = Arc::new(WakeCoordinator::new(
         settings.agents.auto_wake,
         Duration::from_millis(settings.agents.wake_debounce_ms),

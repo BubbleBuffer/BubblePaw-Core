@@ -22,6 +22,7 @@ sync_timeout_secs = 120 # Sync commands move to background after this; 0 backgro
 # max_jobs_per_session = 4 # Optional cap; unset means no limit.
 # max_jobs = 16 # Optional host-wide cap; unset means no limit.
 max_output_bytes = 8388608 # Per-job output spool cap.
+# shell = "auto" # auto | bash | cmd | path of a shell. Auto: Git Bash on Windows when installed, else cmd; sh elsewhere.
 
 [providers.opencode]
 kind = "chat-completions"

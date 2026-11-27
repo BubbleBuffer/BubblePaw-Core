@@ -10,10 +10,29 @@ exposed directly in native mode or through the optional `js` model tool. A "job"
 ## The command is a string
 
 `exec` is a terminal (2026-11-27): the schema the model sees is `command` as a plain
-string, and the tool description names the shell it runs in. Every Windows embedder
-runs it as `cmd.exe /d /s /c <command>`; Unix uses `sh -c`. There is no per-call
-shell option. Shell parsing applies, including cmd's early `%VAR%` expansion within
-a command line. No delayed expansion is enabled.
+string, and the tool description and the prompt name the shell it runs in. Unix uses
+`sh -c`. Windows prefers Git for Windows' `bash.exe` (`bash -c`, POSIX syntax,
+forward slashes in paths) and falls back to `cmd.exe /d /s /c <command>` when Git is
+not installed (2026-11-27). There is no per-call shell option.
+
+**Choosing the shell.** `exec.shell` is `auto` (default), `bash`, `cmd` or the path of
+a shell executable. Only the user layers (home, custom file, env, CLI) may set it: a
+project config that sets `exec.shell` is ignored with a warning. While the setting is
+`auto`, the environment variable `FORCE_EXEC_SHELL` (`bash`, `cmd` or a path)
+chooses instead (not a `BUBBLEPAW_` name: those are config keys); CI uses it to run the cmd-semantics tests on runners that have Git.
+Git's bash is found through the registry (`HKCU`/`HKLM` `SOFTWARE\GitForWindows`
+`InstallPath`), `git.exe` on PATH and the standard install folders. The WSL launcher
+`C:\Windows\System32\bash.exe` (and the `WindowsApps` alias) is never selected, also not
+as an explicit path. Under Git Bash the `-c` argument is always quoted for the
+Windows command line, the start directory is the plain path, Git's `usr\bin` leads
+PATH, and the cwd note uses `pwd -W`. Shell parsing applies: under cmd, early `%VAR%`
+expansion within a command line; no delayed expansion is enabled.
+
+Approvals and the hardline blocklist are shell-agnostic and hold under bash on
+Windows as under `sh -c`; the parser also reads MSYS drive paths (`/c/Users/x`,
+`/cygdrive/c/Users/x`) and `$USERPROFILE` (see [approvals](approvals.md)). A failed
+exec result carries stderr once, in its `stderr` field; `diagnostic` states the exit
+code and cause only.
 
 ```json
 {"command":"python script.py","workdir":"<absolute chat scratchpad>"}

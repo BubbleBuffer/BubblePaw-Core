@@ -370,3 +370,16 @@ fn hardline_is_inherited_from_the_host_and_cannot_be_turned_off() {
         .hardline
     );
 }
+
+#[test]
+fn git_bash_drive_paths_name_the_same_place_as_the_drive_letter() {
+    use super::Place;
+    let drive = Place::parse(r"C:\work\proj", false);
+    for path in ["/c/work/proj/", "/C/Work/Proj", "/cygdrive/c/work/proj"] {
+        assert_eq!(Place::parse(path, true), drive, "{path}");
+    }
+    assert_eq!(Place::parse("/c", true), Place::parse("c:/", false));
+    // Only a one-letter first part is a drive, and only for Git Bash.
+    assert_ne!(Place::parse("/cc/work/proj", true), drive);
+    assert_ne!(Place::parse("/c/work/proj", false), drive);
+}

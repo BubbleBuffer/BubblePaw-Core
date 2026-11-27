@@ -72,6 +72,8 @@ pub mod episodes;
 #[cfg(feature = "host")]
 mod exec_feed;
 #[cfg(feature = "host")]
+pub mod exec_shell;
+#[cfg(feature = "host")]
 pub mod execution_mode;
 #[cfg(feature = "host")]
 mod history_snapshot;
@@ -106,6 +108,7 @@ pub mod no_provider;
 pub mod opencode_console;
 #[cfg(feature = "host")]
 mod os_label;
+pub mod plain_path;
 #[cfg(feature = "host")]
 pub mod pricing;
 #[cfg(feature = "bench")]

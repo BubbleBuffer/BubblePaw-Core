@@ -891,3 +891,12 @@ and the call was repeated). Decisions (the user, 2026-11-27):
    `python -c ...` goes through the normal approval rules. `node -e` and inline PowerShell
    remain discouraged in the JS-mode prompt only. See [file tools](file-tools.md) and
    [exec](exec.md).
+
+## 2026-11-27: Windows exec prefers Git Bash; absolute workspace paths work
+
+Windows `exec` runs Git for Windows' bash when installed (cmd.exe otherwise), set by
+`exec.shell` (user layers only) or `FORCE_EXEC_SHELL`; the WSL launcher is never
+chosen. The prompt shows plain paths without `\\?\` and says file tools take paths
+relative to the workspace; file tools accept any spelling of an absolute path inside the
+workspace; scratch rejections name the allowed directory; a failed exec result carries
+stderr once. See [exec](exec.md) and [file tools](file-tools.md).

@@ -549,6 +549,9 @@ impl ProcessTools {
         ensure!(cwd.is_dir(), "cwd is not a directory");
         let prepared = prepare(&input["command"])?;
         let is_shell = matches!(&prepared.execution, CommandExecution::Shell { .. });
+        let shell = is_shell
+            .then(|| crate::exec_shell::resolve(&config.shell))
+            .transpose()?;
         let display_command = prepared.rendered.chars().take(512).collect::<String>();
         let id = uuid::Uuid::new_v4().to_string();
         // The shell reports its final directory through a private marker,
@@ -576,7 +579,7 @@ impl ProcessTools {
                     c
                 }
                 CommandExecution::Shell { script } => {
-                    shell_command(&script, &cwd, marker.as_deref())
+                    shell_command(&script, &cwd, marker.as_deref(), shell.as_ref().unwrap())
                 }
             };
             command.stdin(Stdio::null());
@@ -589,8 +592,8 @@ impl ProcessTools {
                 // The snapshot replaces the host environment: host-only values stay out.
                 command.env_clear().envs(env.iter().cloned());
             }
-            if is_shell {
-                shell::configure_marker_environment(&mut command, marker.as_deref());
+            if let Some(shell) = &shell {
+                shell::configure_environment(&mut command, marker.as_deref(), shell);
             }
             command
         };
@@ -636,7 +639,7 @@ impl ProcessTools {
             spool_paths.push(marker.clone());
         }
         command
-            .current_dir(&cwd)
+            .current_dir(shell::start_directory(&cwd, shell.as_ref()))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -737,10 +740,11 @@ impl ProcessTools {
             }
             // A killed shell never ran its exit handler, so only a clean exit can
             // report a directory change.
-            let note = match &marker {
-                Some(marker) if !cancelled && !timed_out => cwd_note(marker, &start),
-                _ => None,
-            };
+            let note = marker
+                .as_ref()
+                .zip(shell.as_ref())
+                .filter(|_| !cancelled && !timed_out)
+                .and_then(|(marker, shell)| cwd_note(marker, &start, shell));
             if let Some(marker) = &marker {
                 let _ = fs::remove_file(marker);
             }
@@ -1032,7 +1036,7 @@ impl ProcessTools {
         }
         let mut evidence = self.snapshot(handle, &session, 0, 0, None)?;
         evidence["status"] = result["status"].clone();
-        if let Some(diagnostic) = process_diagnostic(&evidence) {
+        if let Some(diagnostic) = process_diagnostic(&evidence, true) {
             result["diagnostic"] = json!(diagnostic);
         }
         for key in ["fullOutput", "fullOutputError"] {
@@ -1414,11 +1418,7 @@ impl Tool for ProcessTool {
     fn definition(&self) -> ToolDefinition {
         let exec_description = format!(
             "Run a command in the shell and return its output and exit code. command is a plain string, run with stdin closed by {}: write it for that shell; pipes, redirects, && chains and shell builtins work. The result always carries exitCode. A non-zero exit, a timeout or a launch failure is an error result stating the exit code; read stderr and fix the command instead of repeating it. cwd/workdir defaults to workspace and accepts the chat and project scratchpads named in the prompt. Sync by default, up to exec.sync_timeout_secs (default 300); returns status:backgrounded with reason:sync_timeout without killing. User backgrounding returns reason:user; explicit host wait release retains reason:steer. Ordinary steering does not release foreground waits. background:true returns immediately with a running handle. Explicit yieldMs collects foreground output up to the sync timeout. timeoutMs is a hard deadline that kills. Output uses byte cursors and 4 KiB-per-stream head/tail previews. Completed output over 64 KiB returns a fullOutput absolute text path when its spool is complete, or fullOutputError when capture was incomplete. Read saved output with read line ranges. Use the file tools to read, search and edit files. The process may access files outside workspace.",
-            if cfg!(windows) {
-                "cmd.exe (cmd /d /s /c)"
-            } else {
-                "sh (sh -c)"
-            }
+            crate::exec_shell::invocation(&self.processes.config.get().shell)
         );
         let (description, properties, required): (&str, _, _) = match self.name {
             "exec" => (

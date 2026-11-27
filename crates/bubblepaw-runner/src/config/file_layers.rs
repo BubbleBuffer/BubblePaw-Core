@@ -30,6 +30,7 @@ impl EffectiveConfig {
         if layer == "project" {
             ignore_workspace_trust_keys(&mut value);
             ignore_hardline_key(&mut value);
+            ignore_exec_shell_key(&mut value);
             if !self.project_config_applies() {
                 warn_skipped(&self.load_options.workspace, path, &value);
                 return Ok(());
@@ -178,6 +179,25 @@ fn ignore_hardline_key(value: &mut Value) {
     }
     tracing::warn!(
         "Ignoring approvals.hardline in workspace .bubblepaw/config.toml; set it in the user config, the environment or the CLI"
+    );
+}
+
+/// The exec shell is user-only: a project config cannot name a program that runs every command.
+fn ignore_exec_shell_key(value: &mut Value) {
+    let Some(root) = value.as_table_mut() else {
+        return;
+    };
+    let Some(exec) = root.get_mut("exec").and_then(Value::as_table_mut) else {
+        return;
+    };
+    if exec.remove("shell").is_none() {
+        return;
+    }
+    if exec.is_empty() {
+        root.remove("exec");
+    }
+    tracing::warn!(
+        "Ignoring exec.shell in workspace .bubblepaw/config.toml; set it in the user config, the environment or the CLI"
     );
 }
 

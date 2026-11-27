@@ -195,7 +195,13 @@ impl Scratchpads {
         let root = [&self.chat, &self.workspace]
             .into_iter()
             .find(|root| lexical_suffix(path, root).is_some())
-            .ok_or_else(|| anyhow::anyhow!("path is outside this chat's scratchpads"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "path is outside this chat's scratchpads; allowed: {} (chat scratchpad) and {} (project scratchpad)",
+                    crate::plain_path::plain_path(&self.chat),
+                    crate::plain_path::plain_path(&self.workspace)
+                )
+            })?;
         // Pin the granted identity rather than granting a replaced root's target.
         ensure!(
             root.canonicalize()? == *root,

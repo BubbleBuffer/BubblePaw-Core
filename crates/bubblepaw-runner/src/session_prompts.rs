@@ -6,19 +6,20 @@ pub(super) fn configure(
     store: &Store,
     workspace: &std::path::Path,
     data_dir: &std::path::Path,
-    settings: &bubblepaw_runner::config::RootAgentSettings,
+    settings: &bubblepaw_runner::config::Settings,
 ) -> Result<()> {
+    bubblepaw_runner::exec_shell::set_host_preference(&settings.exec.shell);
     bubblepaw_runner::execution_mode::configure_prompts(
         config,
         store.clone(),
         root_system_prompt(
             workspace,
-            settings.system_prompt.as_deref(),
+            settings.agent.system_prompt.as_deref(),
             ExecutionMode::Native,
         ),
         root_system_prompt(
             workspace,
-            settings.system_prompt.as_deref(),
+            settings.agent.system_prompt.as_deref(),
             ExecutionMode::Js,
         ),
     );

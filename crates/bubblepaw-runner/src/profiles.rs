@@ -151,9 +151,9 @@ pub fn workspace_profiles_with_agents(
         let js = "Complete the assigned task using its supplied context and available tools. Batch independent reads/checks in JS. When submit_result is available, finish by calling it through tools.submit_result. Otherwise return your answer in your final response for the parent; presentation is the parent's responsibility. The js description defines the API and limits.";
         let prompt = |instructions| {
             format!(
-                "Execution environment: OS={}, workspace={}, raw command shell={}, workspace access={access}. {instructions}",
+                "Execution environment: OS={}, workspace={} (file tool paths are relative to it), raw command shell={}, workspace access={access}. {instructions}",
                 crate::os_label::os_label(),
-                workspace.display(),
+                crate::plain_path::plain_path(workspace),
                 crate::command_template::shell_name()
             )
         };

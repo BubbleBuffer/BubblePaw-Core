@@ -75,3 +75,26 @@ fn exec_rejects_unknown_keys_bad_types_and_non_positive_caps() {
         );
     }
 }
+
+#[test]
+fn exec_shell_is_auto_by_default_and_only_the_user_layers_set_it() {
+    let root = tempfile::tempdir().unwrap();
+    let mut opts = options(root.path());
+    opts.cli = vec![Override::set("workspace_trust.trust_workspace=true").unwrap()];
+    let project = opts.workspace.join(".bubblepaw/config.toml");
+    std::fs::create_dir_all(project.parent().unwrap()).unwrap();
+    std::fs::write(&project, "[exec]\nshell = \"evil.exe\"\nmax_jobs = 4\n").unwrap();
+    let shell = |opts: &LoadOptions| {
+        let exec = EffectiveConfig::load(opts.clone())
+            .unwrap()
+            .settings()
+            .unwrap()
+            .exec;
+        (exec.shell, exec.max_jobs)
+    };
+    // A project config cannot name the program that runs every command.
+    // Its other keys apply.
+    assert_eq!(shell(&opts), ("auto".to_owned(), Some(4)));
+    opts.cli.push(Override::set("exec.shell=cmd").unwrap());
+    assert_eq!(shell(&opts).0, "cmd");
+}

@@ -95,6 +95,13 @@ link back into the workspace or into the other scratchpad. Other chats'
 scratchpads are not granted even when the data directory is inside the workspace.
 Windows accepts ordinary and verbatim absolute paths. Scratch mutation results
 return absolute paths; workspace mutation results remain workspace-relative.
+A rejected scratch path names the allowed directories.
+
+Workspace paths (2026-11-27): the prompt shows the plain workspace path (never the
+`\\?\` form) and says file tool paths are relative to it. `read`, `edit`, `write`,
+`search` `path` and exec `cwd` also accept an absolute path inside the workspace in any
+spelling (plain, `\\?\`, forward slashes, any drive-letter case) and treat it exactly
+like the relative form; an absolute path outside the workspace is refused.
 
 Write a script with `write`, then run it with argv `exec` in the same batch.
 Scratch `write` and `edit` retain ordinary tool policies, atomic replacement and

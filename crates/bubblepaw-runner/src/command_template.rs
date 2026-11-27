@@ -39,8 +39,9 @@ impl PreparedCommand {
     }
 }
 
-pub fn shell_name() -> &'static str {
-    if cfg!(windows) { "cmd.exe" } else { "sh" }
+/// The shell `exec` runs commands in, as the prompt names it (see `exec_shell`).
+pub fn shell_name() -> String {
+    crate::exec_shell::host_shell().name()
 }
 
 /// Validate before starting any effects. In v0 every interpolation is a whole

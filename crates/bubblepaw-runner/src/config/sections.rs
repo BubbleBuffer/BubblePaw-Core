@@ -95,6 +95,8 @@ config_section! {
         pub max_jobs: Option<usize> => LIVE,
         /// Per-job output spool cap in bytes.
         pub max_output_bytes: usize => LIVE,
+        /// `auto` (Git Bash on Windows when installed, else cmd.exe; sh elsewhere), `bash`, `cmd` or a path to the shell. User config, env and CLI only.
+        pub shell: String => RESTART,
     }
 }
 impl Default for ExecConfig {
@@ -104,6 +106,7 @@ impl Default for ExecConfig {
             max_jobs_per_session: None,
             max_jobs: None,
             max_output_bytes: 8 * 1024 * 1024,
+            shell: "auto".into(),
         }
     }
 }

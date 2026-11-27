@@ -17,6 +17,7 @@ cold_row_min_bytes = 256
 [exec]
 sync_timeout_secs = 300
 max_output_bytes = 8388608
+shell = "auto"
 [quota]
 max_wait_seconds = 21600
 [workspace_trust]
