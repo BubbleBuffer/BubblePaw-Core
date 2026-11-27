@@ -1,6 +1,6 @@
 use crate::loop_options::LoopOptions;
 use crate::loop_records::SingleToolRun;
-use crate::request_seam::{Note, Release, RequestContext};
+use crate::request_seam::{Note, RequestContext};
 use crate::run_inputs::{RunInputs, RunOutcome};
 use crate::{
     CancellationToken, ClientInfo, HarnessEvent, InputKind, Message, MessageInput, ModelRequest,
@@ -252,7 +252,7 @@ pub struct Harness {
     state: Arc<RuntimeState>,
     journals: Journals,
     live: Arc<dyn crate::live_events::LiveEvents>,
-    request_context: Arc<dyn RequestContext>,
+    request_context: Arc<runtime_context::StockRequestContext>,
 }
 impl Harness {
     pub fn new(
@@ -519,7 +519,7 @@ impl Harness {
         );
         self.state.active.lock().unwrap().remove(session_id);
         self.state.log.forget_session(session_id);
-        self.request_context.release(session_id, Release::Deleted);
+        self.request_context.release_deleted(session_id);
         // The history is gone either way; the mirror is dropped best effort.
         self.provider.close_session(session_id).await
     }
@@ -535,7 +535,7 @@ impl Harness {
                 "Session has an active run"
             );
         }
-        self.request_context.release(session_id, Release::Idle);
+        self.request_context.release_idle(session_id);
         self.provider.close_session(session_id).await
     }
     /// Cancel, recording the client; the run's RunFinished carries it as origin.

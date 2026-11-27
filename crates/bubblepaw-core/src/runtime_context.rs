@@ -1,7 +1,7 @@
 //! The stock request context: the run loop's questions about the request,
 //! answered over the host's preparation hook, the store and the context state.
 use super::*;
-use crate::request_seam::{Built, Draft, Note, Release, RequestContext, TooLarge};
+use crate::request_seam::{Built, Draft, Note, RequestContext, TooLarge};
 use crate::{ContextState, ContextWriter};
 
 #[derive(Default)]
@@ -47,6 +47,15 @@ impl ParsedHistory {
         }
         Ok(bytes.saturating_add(request.messages.len().saturating_sub(1)))
     }
+}
+
+/// How much a session's request state is let go.
+#[derive(Clone, Copy)]
+enum Release {
+    /// The session is gone for good.
+    Deleted,
+    /// The session is idle; its history is read again on the next request.
+    Idle,
 }
 
 /// The one implementation: the root lineage of the store's context state.
@@ -189,6 +198,47 @@ impl StockRequestContext {
         request.cache_tiers = Some(built.tiers);
         Ok(request)
     }
+
+    pub(super) fn declare_change(&self, session: &str, reason: &str) {
+        self.state.cache.declare(Some(session), reason);
+    }
+
+    pub(super) fn take_prefix_change(&self, session: &str) -> Option<String> {
+        let reason = self.hook.take_prefix_change(session)?;
+        self.declare_change(session, &reason);
+        Some(reason)
+    }
+
+    pub(super) fn tool_generation_observed(&self, session: &str, generation: u64) -> bool {
+        self.context().observe_tool_generation(session, generation)
+    }
+
+    pub(super) fn run_hold(&self, run: &Run) -> Box<dyn std::any::Any + Send> {
+        Box::new(crate::request_metering::RunHold {
+            state: self.state.clone(),
+            run_id: run.id.clone(),
+        })
+    }
+
+    pub(super) fn release_deleted(&self, session: &str) {
+        self.release(session, Release::Deleted);
+    }
+
+    pub(super) fn release_idle(&self, session: &str) {
+        self.release(session, Release::Idle);
+    }
+
+    fn release(&self, session: &str, how: Release) {
+        self.cursors.forget(session);
+        match how {
+            Release::Deleted => {
+                self.state.histories.lock().unwrap().remove(session);
+                self.context().release_session(session);
+            }
+            Release::Idle => self.state.release_history(session),
+        }
+        self.hook.release_session(session);
+    }
 }
 
 #[async_trait]
@@ -293,33 +343,12 @@ impl RequestContext for StockRequestContext {
         }
     }
 
-    fn declare_change(&self, session: &str, reason: &str) {
-        self.state.cache.declare(Some(session), reason);
-    }
-
-    fn take_prefix_change(&self, session: &str) -> Option<String> {
-        let reason = self.hook.take_prefix_change(session)?;
-        self.declare_change(session, &reason);
-        Some(reason)
-    }
-
     fn context_prefix(&self, session: &str) -> Result<Vec<Message>> {
         Ok(self
             .store
             .context_view(session)?
             .map(|view| view.prefix)
             .unwrap_or_default())
-    }
-
-    fn tool_generation_observed(&self, session: &str, generation: u64) -> bool {
-        self.context().observe_tool_generation(session, generation)
-    }
-
-    fn run_hold(&self, run: &Run) -> Box<dyn std::any::Any + Send> {
-        Box::new(crate::request_metering::RunHold {
-            state: self.state.clone(),
-            run_id: run.id.clone(),
-        })
     }
 
     fn turn_scope(&self, run: &Run) -> Box<dyn std::any::Any + Send> {
@@ -424,17 +453,5 @@ impl RequestContext for StockRequestContext {
 
     fn response_received(&self, session: &str, response: &ModelResponse) {
         self.hook.observe_response(session, response);
-    }
-
-    fn release(&self, session: &str, how: Release) {
-        self.cursors.forget(session);
-        match how {
-            Release::Deleted => {
-                self.state.histories.lock().unwrap().remove(session);
-                self.context().release_session(session);
-            }
-            Release::Idle => self.state.release_history(session),
-        }
-        self.hook.release_session(session);
     }
 }

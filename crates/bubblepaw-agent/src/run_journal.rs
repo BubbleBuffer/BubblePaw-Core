@@ -21,6 +21,9 @@ pub enum Consumed {
     GeneratedSteering,
 }
 
+/// Every method but the four effect methods is required: each writes down what
+/// happened in a run, or reads what the loop needs to decide, and a journal that
+/// skips one loses it.
 pub trait RunJournal: Send + Sync {
     /// Whether input of this scope is pending.
     fn input_pending(&self, session_id: &str, scope: InputScope) -> Result<bool>;
@@ -63,18 +66,36 @@ pub trait RunJournal: Send + Sync {
         result: ToolResult,
         invocation: Option<&str>,
     ) -> Result<()>;
-    /// A nested call of a session dispatched: its effect. Returns the invocation id.
-    fn nested_dispatched(&self, session_id: &str, run_id: &str, call: &ToolCall) -> Result<String>;
-    /// A call's outcome became unknown: its effect, when still dispatched.
-    fn effect_unknown(&self, session_id: &str, invocation: &str) -> Result<()>;
-    /// A background effect completed, wherever its session is stored.
-    fn effect_completed(&self, invocation: &str) -> Result<()>;
-    /// An effect of a known session completed, without restoring archives.
-    fn effect_completed_for_session(&self, session_id: &str, invocation: &str) -> Result<()>;
     /// An output record and its event.
     fn tool_output(&self, record: &OutputRecord) -> Result<()>;
     /// What streamed before a failed or cancelled request, kept as a reply.
     fn partial_reply_kept(&self, message: &Message) -> Result<()>;
     /// Effects of a run that ended unresolved, closed.
     fn run_closed(&self, session_id: &str, run_id: &str) -> Result<()>;
+    /// A nested call of a session dispatched: its effect. Returns the invocation id.
+    /// Override the four effect methods together when tool effects must survive a
+    /// crash; the default records no effects and returns a fresh id.
+    fn nested_dispatched(
+        &self,
+        _session_id: &str,
+        _run_id: &str,
+        _call: &ToolCall,
+    ) -> Result<String> {
+        Ok(crate::ids::id())
+    }
+    /// A call's outcome became unknown: its effect, when still dispatched. The default
+    /// records nothing.
+    fn effect_unknown(&self, _session_id: &str, _invocation: &str) -> Result<()> {
+        Ok(())
+    }
+    /// A background effect completed, wherever its session is stored. The default
+    /// records nothing.
+    fn effect_completed(&self, _invocation: &str) -> Result<()> {
+        Ok(())
+    }
+    /// An effect of a known session completed, without restoring archives. The default
+    /// records nothing.
+    fn effect_completed_for_session(&self, _session_id: &str, _invocation: &str) -> Result<()> {
+        Ok(())
+    }
 }
