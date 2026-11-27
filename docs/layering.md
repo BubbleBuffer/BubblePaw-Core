@@ -23,7 +23,9 @@ The provider adapters (chat completions, Anthropic messages and responses), thei
 HTTP client, stream, retry and error handling, the request dump and the scripted
 model live in `bubblepaw-ai/src/adapter`, behind the `http` feature. Only the
 runner's `host` feature enables it, so a client-only build links no HTTP client. The
-adapters reach the host through injected seams: a `ModelEgress` trait for proxied
+retry loop (`with_retry`, `RetryPolicy`, `add_usage`) and the error helpers around it
+(`mark_published`, `retain_prior_quota`, `is_terminal_quota_error`, `QuotaStop`) build
+without the `http` feature. The adapters reach the host through injected seams: a `ModelEgress` trait for proxied
 egress, a `UsageSink` that the core capture scope installs, and a host-policy flag for
 quota stops. `bubblepaw-runner` re-exports every moved name at its old path.
 

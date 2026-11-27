@@ -71,6 +71,19 @@ pub fn cancelled() -> anyhow::Error {
     ProviderError::new(ProviderErrorKind::Transient, "cancelled").into()
 }
 
+/// An error-chain marker lets the single retry loop report bare 400 retries
+/// without parsing diagnostics, including after usage/publication wrappers.
+#[derive(Debug)]
+pub(super) struct BareBadRequest(pub(super) String);
+impl std::fmt::Display for BareBadRequest {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+pub(super) fn is_bare_bad_request(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<BareBadRequest>().is_some()
+}
+
 /// Hosts must not retry or silently route a terminal account billing failure.
 pub fn is_terminal_quota_error(error: &ProviderError) -> bool {
     matches!(error.kind, ProviderErrorKind::Fatal)
@@ -86,6 +99,26 @@ pub fn terminal_quota_failure(reason: &str, diagnostic: String) -> anyhow::Error
 /// Statuses a transport may retry; Retry-After attachments share this policy.
 pub fn retryable_http_status(code: u16) -> bool {
     matches!(code, 408 | 409 | 429 | 500..=599)
+}
+
+/// Keep all observations, with a stable boundary around the current rejection.
+/// Earlier retry/continuation observations cannot name its rejecting window.
+pub fn retain_prior_quota(error: anyhow::Error, quota: Vec<crate::QuotaReading>) -> anyhow::Error {
+    let current_count = if current_rejection_quota_count(&error).is_none() {
+        ProviderError::of(&error)
+            .filter(|typed| matches!(typed.kind, ProviderErrorKind::RateLimit { .. }))
+            .map(|typed| typed.quota.len())
+    } else {
+        None
+    };
+    let error = with_error_quota(error, quota);
+    match current_count {
+        Some(count) => {
+            let message = error.to_string();
+            error.context(RejectionQuotaBoundary { count, message })
+        }
+        None => error,
+    }
 }
 
 /// Retain quota evidence on any typed failure, including broken streams after

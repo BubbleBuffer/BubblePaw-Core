@@ -29,9 +29,7 @@ mod messages;
 pub use messages::MessagesProvider;
 mod metering;
 pub use metering::{PhysicalRequest, response_output_reported};
-#[cfg(any(feature = "http", feature = "extension"))]
 mod publication;
-#[cfg(any(feature = "http", feature = "extension"))]
 pub use publication::{mark_published, track_text_publication};
 #[cfg(any(feature = "http", feature = "extension"))]
 pub mod quota_events;
@@ -60,9 +58,7 @@ mod responses_rounds;
 pub use responses::ResponsesProvider;
 #[cfg(feature = "http")]
 use responses_rounds::{is_length_stop, join_rounds};
-#[cfg(feature = "http")]
 mod retry;
-#[cfg(feature = "http")]
 pub use retry::{RetryPolicy, add_usage, with_retry};
 mod scripted;
 pub use scripted::{ScriptedProvider, ScriptedStep};

@@ -2,7 +2,7 @@
 //! every provider adapter. Never include request headers or credentials.
 pub use super::redact::redacted_line;
 use super::redact::{REDACTED, redact_text, truncate};
-use super::{cancelled, stream};
+use super::{BareBadRequest, cancelled, stream};
 use crate::{CancellationToken, ProviderErrorKind};
 use anyhow::Result;
 use serde_json::Value;
@@ -87,15 +87,6 @@ fn bare_bad_request(code: u16, body: &[u8]) -> bool {
     !error_message && !error_fields
 }
 
-/// An error-chain marker lets the single retry loop report bare 400 retries
-/// without parsing diagnostics, including after usage/publication wrappers.
-#[derive(Debug)]
-struct BareBadRequest(String);
-impl std::fmt::Display for BareBadRequest {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.0)
-    }
-}
 pub fn mark_bare_bad_request(error: anyhow::Error, code: u16, body: &[u8]) -> anyhow::Error {
     if bare_bad_request(code, body)
         && super::ProviderError::of(&error)
@@ -106,9 +97,6 @@ pub fn mark_bare_bad_request(error: anyhow::Error, code: u16, body: &[u8]) -> an
     } else {
         error
     }
-}
-pub(super) fn is_bare_bad_request(error: &anyhow::Error) -> bool {
-    error.downcast_ref::<BareBadRequest>().is_some()
 }
 
 /// Billing and enforced spend controls are terminal even when a gateway uses

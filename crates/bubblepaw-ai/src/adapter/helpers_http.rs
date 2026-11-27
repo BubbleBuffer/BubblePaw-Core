@@ -1,6 +1,6 @@
 //! Helpers of the HTTP adapters: publication tracking, retained usage and quota
 //! across continuation rounds, Retry-After parsing and the Codex auth file.
-use super::{RejectionQuotaBoundary, classify, current_rejection_quota_count, with_error_quota};
+use super::classify;
 use crate::{ProviderError, ProviderErrorKind, ReasoningEffort, Usage};
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
@@ -32,26 +32,6 @@ pub fn parse_retry_after(value: &str) -> Option<Duration> {
             .duration_since(std::time::SystemTime::now())
             .unwrap_or_default()
     })
-}
-
-/// Keep all observations, with a stable boundary around the current rejection.
-/// Earlier retry/continuation observations cannot name its rejecting window.
-pub fn retain_prior_quota(error: anyhow::Error, quota: Vec<crate::QuotaReading>) -> anyhow::Error {
-    let current_count = if current_rejection_quota_count(&error).is_none() {
-        ProviderError::of(&error)
-            .filter(|typed| matches!(typed.kind, ProviderErrorKind::RateLimit { .. }))
-            .map(|typed| typed.quota.len())
-    } else {
-        None
-    };
-    let error = with_error_quota(error, quota);
-    match current_count {
-        Some(count) => {
-            let message = error.to_string();
-            error.context(RejectionQuotaBoundary { count, message })
-        }
-        None => error,
-    }
 }
 
 pub(super) fn parse_reasoning_effort(effort: &str) -> Result<ReasoningEffort> {
