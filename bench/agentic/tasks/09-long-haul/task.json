@@ -1,0 +1,11 @@
+{
+  "id": "09-long-haul",
+  "title": "Twenty weeks of receiving notes, one job: recall the rules across compaction",
+  "category": "long-context",
+  "expected_steps": "300-800",
+  "timeout_ms": 5400000,
+  "max_rounds": 1500,
+  "opt_in": true,
+  "setup": "setup.ts",
+  "description": "About 1M tokens of history from reading 20 stages of generated notes; six rules given only in the prompt must hold in every stage file; later stages depend on earlier ones. Opt-in: run it with --task 09-long-haul."
+}

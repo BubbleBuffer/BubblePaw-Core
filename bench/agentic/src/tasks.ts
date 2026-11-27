@@ -28,6 +28,7 @@ async function existsFile(path: string): Promise<boolean> {
 export async function discoverTasks(
   tasksDir: string = defaultTasksDir(),
   filterIds?: string[],
+  includeOptIn = false,
 ): Promise<TaskDefinition[]> {
   const entries = await readdir(tasksDir, { withFileTypes: true });
   const taskDirs = entries
@@ -59,6 +60,10 @@ export async function discoverTasks(
     const meta = JSON.parse(await readFile(metaPath, "utf8")) as TaskMeta;
     const prompt = await readFile(promptPath, "utf8");
     const id = meta.id || dirName;
+    const setupPath = meta.setup ? join(dir, meta.setup) : undefined;
+    if (setupPath && !(await existsFile(setupPath))) {
+      throw new Error(`Task ${dirName} names setup ${meta.setup} but the file is missing`);
+    }
     tasksById.set(id, {
       meta: { ...meta, id },
       dir,
@@ -66,11 +71,15 @@ export async function discoverTasks(
       prompt,
       seedDir,
       checkPath,
+      setupPath,
     });
   }
 
   if (!filterIds || filterIds.length === 0) {
-    return [...tasksById.values()].sort((a, b) => a.meta.id.localeCompare(b.meta.id));
+    // Opt-in tasks (long and costly) run only when named with --task.
+    return [...tasksById.values()]
+      .filter((t) => includeOptIn || !t.meta.opt_in)
+      .sort((a, b) => a.meta.id.localeCompare(b.meta.id));
   }
 
   const selected: TaskDefinition[] = [];
@@ -88,9 +97,21 @@ export async function discoverTasks(
 export async function prepareWorkspace(
   seedDir: string,
   workspaceDir: string,
+  setupPath?: string,
 ): Promise<Map<string, string>> {
   // Only the seed directory enters the agent's temporary workspace; check.ts is never copied.
   await cp(seedDir, workspaceDir, { recursive: true, force: true });
+  if (setupPath) {
+    // The task's generator writes its material into the workspace; it lives outside the workspace.
+    const proc = Bun.spawn([process.execPath, "run", setupPath, workspaceDir], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+    if (exitCode !== 0) {
+      throw new Error(`Task setup ${setupPath} failed (exit ${exitCode}): ${stderr.slice(0, 500)}`);
+    }
+  }
   return snapshotHashes(workspaceDir);
 }
 

@@ -28,9 +28,18 @@ export async function applyFakeSolution(
       return solve07EditPrecisionTrap(workspace);
     case "08-multi-step-migration":
       return solve08MultiStepMigration(workspace);
+    case "09-long-haul":
+      return solve09LongHaul(workspace);
     default:
       throw new Error(`No canned fake solution registered for task "${taskId}"`);
   }
+}
+
+async function solve09LongHaul(workspace: string): Promise<FakeSolutionSummary> {
+  // The task's own reference solution, derived from its ground truth.
+  const { writeReference } = await import("../../tasks/09-long-haul/reference.ts");
+  const files = await writeReference(workspace);
+  return { text: `Wrote ${files} files under out/.`, toolCalls: files, requests: files };
 }
 
 async function solve01OneLineBug(workspace: string): Promise<FakeSolutionSummary> {

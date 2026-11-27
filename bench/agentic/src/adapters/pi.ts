@@ -25,6 +25,10 @@ interface PiContentBlock {
   arguments?: unknown;
 }
 
+interface PiCompactionResult {
+  usage?: PiUsageShape;
+}
+
 interface PiMessage {
   role?: string;
   content?: PiContentBlock[] | string;
@@ -42,6 +46,8 @@ interface PiEvent {
   };
   message?: PiMessage;
   messages?: PiMessage[];
+  result?: PiCompactionResult;
+  aborted?: boolean;
   toolName?: string;
   args?: unknown;
   isError?: boolean;
@@ -138,6 +144,28 @@ function resolvePiProviderAndModel(
   };
 }
 
+/**
+ * The files of a per-run pi agent directory (PI_CODING_AGENT_DIR) that give the model a context
+ * window of `tokens`: models.json overrides the built-in model's window, settings.json keeps
+ * automatic compaction on (pi compacts when context > window - compaction.reserveTokens, 16384 by
+ * default). The user's own ~/.pi/agent is never read or written; the API key comes from the
+ * environment (OPENCODE_API_KEY).
+ */
+export function piContextWindowFiles(
+  provider: string,
+  modelId: string,
+  tokens: number,
+): { "settings.json": string; "models.json": string } {
+  return {
+    "settings.json": JSON.stringify({ compaction: { enabled: true } }, null, 2),
+    "models.json": JSON.stringify(
+      { providers: { [provider]: { modelOverrides: { [modelId]: { contextWindow: tokens } } } } },
+      null,
+      2,
+    ),
+  };
+}
+
 export class PiAdapter implements AgentAdapter {
   readonly name = "pi";
   private readonly bin: string;
@@ -208,6 +236,9 @@ export class PiAdapter implements AgentAdapter {
       firstTextMs: number | null;
       turnStarts: number;
       assistantMessages: number;
+      compactions: number;
+      compactionRequests: number;
+      peakInputTokens: number;
       toolStartEvents: number;
       toolErrors: number;
       inputTokens: number | null;
@@ -225,6 +256,9 @@ export class PiAdapter implements AgentAdapter {
       firstTextMs: null,
       turnStarts: 0,
       assistantMessages: 0,
+      compactions: 0,
+      compactionRequests: 0,
+      peakInputTokens: 0,
       toolStartEvents: 0,
       toolErrors: 0,
       inputTokens: null,
@@ -251,6 +285,12 @@ export class PiAdapter implements AgentAdapter {
       const cacheWrite = usage.cacheWrite ?? usage.cache_creation_tokens;
       const reason = usage.reasoning ?? usage.reasoning_tokens;
       if (typeof inp === "number") {
+        state.peakInputTokens = Math.max(
+          state.peakInputTokens,
+          inp +
+            (typeof cacheRead === "number" ? cacheRead : 0) +
+            (typeof cacheWrite === "number" ? cacheWrite : 0),
+        );
         // pi's `input` EXCLUDES cache reads and writes (pi-ai: input = prompt_tokens - cacheRead -
         // cacheWrite). Normalise to the whole prompt, as BubblePaw's input_tokens already is.
         state.inputTokens =
@@ -285,12 +325,25 @@ export class PiAdapter implements AgentAdapter {
       }
     };
 
+    let env: Record<string, string | undefined> = process.env;
+    if (typeof req.contextWindow === "number" && req.contextWindow > 0) {
+      // A per-run agent directory: the context window and compaction settings for this run only.
+      const agentDir = join(req.scratchDir, "pi-agent");
+      await mkdir(agentDir, { recursive: true });
+      const files = piContextWindowFiles(provider, modelId, req.contextWindow);
+      for (const [name, body] of Object.entries(files)) {
+        await writeFile(join(agentDir, name), body, "utf8");
+      }
+      env = { ...process.env, PI_CODING_AGENT_DIR: agentDir };
+    }
+
     let proc: ReturnType<typeof Bun.spawn>;
     try {
       proc = Bun.spawn(args, {
         cwd: req.workspace,
         stdout: "pipe",
         stderr: "pipe",
+        env,
       });
     } catch (err) {
       const wallMs = Math.round(performance.now() - startedAt);
@@ -372,6 +425,13 @@ export class PiAdapter implements AgentAdapter {
           if (ev.message.stopReason === "error" && ev.message.errorMessage) {
             state.lastAssistantError = ev.message.errorMessage;
           }
+        } else if (ev.type === "compaction_end" && ev.result && ev.aborted !== true) {
+          // pi's summary request is a model request too (BubblePaw counts its summary rows).
+          state.compactions += 1;
+          if (ev.result.usage) {
+            state.compactionRequests += 1;
+            accumulateUsage(ev.result.usage);
+          }
         } else if (ev.type === "agent_end" && Array.isArray(ev.messages)) {
           state.agentEndMessages = ev.messages;
         }
@@ -444,7 +504,7 @@ export class PiAdapter implements AgentAdapter {
 
     const requests =
       state.assistantMessages > 0
-        ? state.assistantMessages
+        ? state.assistantMessages + state.compactionRequests
         : state.turnStarts > 0
           ? state.turnStarts
           : null;
@@ -478,6 +538,8 @@ export class PiAdapter implements AgentAdapter {
       timedOut,
       unexplainedCacheMisses: null,
       repeatedToolCalls,
+      compactions: state.compactions,
+      peakRequestInputTokens: state.peakInputTokens > 0 ? state.peakInputTokens : null,
     };
   }
 }

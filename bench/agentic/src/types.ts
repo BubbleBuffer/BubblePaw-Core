@@ -6,7 +6,8 @@ export type TaskCategory =
   | "shell-use"
   | "constraint-respect"
   | "harness-trap"
-  | "long-horizon";
+  | "long-horizon"
+  | "long-context";
 
 export interface RunRecord {
   schema: "bubblepaw.agentic-bench.v1";
@@ -39,6 +40,12 @@ export interface RunRecord {
   unexplained_cache_misses: number | null;
   repeated_tool_calls: number | null;
   answer_chars: number | null;
+  /** Additive (still v1): the --context-window the run was limited to, or null. */
+  context_window: number | null;
+  /** Context compactions the agent performed, from its own events; null when not observable. */
+  compactions: number | null;
+  /** Largest single request prompt (input incl. cache) of the run. */
+  peak_request_input_tokens: number | null;
 }
 
 export interface TaskMeta {
@@ -47,6 +54,12 @@ export interface TaskMeta {
   category: TaskCategory | string;
   expected_steps: string;
   timeout_ms?: number;
+  /** Round limit for BubblePaw when --max-rounds is not given. */
+  max_rounds?: number;
+  /** Only runs when named with --task; left out of the default set. */
+  opt_in?: boolean;
+  /** Script (relative to the task dir) run as `bun <script> <workspace>` after the seed is copied. */
+  setup?: string;
   description?: string;
 }
 
@@ -57,6 +70,7 @@ export interface TaskDefinition {
   prompt: string;
   seedDir: string;
   checkPath: string;
+  setupPath?: string;
 }
 
 export interface CheckContext {
@@ -80,6 +94,8 @@ export interface AgentRunRequest {
   model: string;
   timeoutMs: number;
   maxRounds?: number;
+  /** Context window in tokens the agent must be limited to (through its own configuration). */
+  contextWindow?: number;
   artifactDir?: string;
 }
 
@@ -102,6 +118,8 @@ export interface AgentRunResult {
   timedOut: boolean;
   unexplainedCacheMisses: number | null;
   repeatedToolCalls: number | null;
+  compactions?: number | null;
+  peakRequestInputTokens?: number | null;
 }
 
 export interface AdapterConfig {
@@ -130,6 +148,7 @@ export interface RunnerOptions {
   reps?: number;
   timeoutMs?: number;
   maxRounds?: number;
+  contextWindow?: number;
   outFile: string;
   interleave?: boolean;
   seedOrder?: number;

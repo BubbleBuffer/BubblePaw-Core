@@ -78,12 +78,16 @@ export async function runSingleExecution(params: {
   agentVersion: string | null;
   model: string;
   rep: number;
-  timeoutMs: number;
+  /** Explicit --timeout-ms; wins over the task's own timeout_ms. */
+  timeoutMs?: number;
   maxRounds?: number;
+  contextWindow?: number;
   keepWorkspacesDir?: string;
 }): Promise<RunRecord> {
-  const { task, adapter, agentVersion, model, rep, timeoutMs, maxRounds, keepWorkspacesDir } =
+  const { task, adapter, agentVersion, model, rep, timeoutMs, keepWorkspacesDir, contextWindow } =
     params;
+  // --max-rounds wins over the task's own limit.
+  const maxRounds = params.maxRounds ?? task.meta.max_rounds;
 
   const tempRoot = await mkdtemp(join(tmpdir(), "bp-bench-"));
   const workspaceDir = join(tempRoot, "workspace");
@@ -99,9 +103,9 @@ export async function runSingleExecution(params: {
     : undefined;
 
   try {
-    const beforeHashes = await prepareWorkspace(task.seedDir, workspaceDir);
+    const beforeHashes = await prepareWorkspace(task.seedDir, workspaceDir, task.setupPath);
 
-    const effectiveTimeout = task.meta.timeout_ms ?? timeoutMs;
+    const effectiveTimeout = timeoutMs ?? task.meta.timeout_ms ?? DEFAULT_TIMEOUT_MS;
     const agentRes = await adapter.run({
       taskId: task.meta.id,
       prompt: task.prompt,
@@ -111,6 +115,7 @@ export async function runSingleExecution(params: {
       model,
       timeoutMs: effectiveTimeout,
       maxRounds,
+      contextWindow,
       artifactDir,
     });
 
@@ -161,6 +166,9 @@ export async function runSingleExecution(params: {
       unexplained_cache_misses: agentRes.unexplainedCacheMisses,
       repeated_tool_calls: agentRes.repeatedToolCalls,
       answer_chars: agentRes.finalText.length,
+      context_window: contextWindow ?? null,
+      compactions: agentRes.compactions ?? null,
+      peak_request_input_tokens: agentRes.peakRequestInputTokens ?? null,
     };
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
@@ -183,7 +191,7 @@ export async function runBenchmark(options: RunnerOptions): Promise<BenchmarkRes
   }
 
   const model = options.model ?? DEFAULT_MODEL;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs;
   const interleave = options.interleave ?? true;
 
   const adapters = new Map<string, AgentAdapter>();
@@ -213,6 +221,7 @@ export async function runBenchmark(options: RunnerOptions): Promise<BenchmarkRes
       rep: item.rep,
       timeoutMs,
       maxRounds: options.maxRounds,
+      contextWindow: options.contextWindow,
       keepWorkspacesDir: options.keepWorkspacesDir,
     });
     records.push(record);

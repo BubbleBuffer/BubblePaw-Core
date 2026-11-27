@@ -900,3 +900,7 @@ chosen. The prompt shows plain paths without `\\?\` and says file tools take pat
 relative to the workspace; file tools accept any spelling of an absolute path inside the
 workspace; scratch rejections name the allowed directory; a failed exec result carries
 stderr once. See [exec](exec.md) and [file tools](file-tools.md).
+
+## 2026-11-28: the agentic benchmark gets an opt-in long-context task
+
+To compare how BubblePaw's compaction holds up against pi's, `bench/agentic` has `09-long-haul` (about 1M tokens of history from one job whose rules exist only in the prompt) and a `--context-window` option that limits each agent through its own configuration; no engine or pi change. The task is opt-in so the default suite stays cheap. See [agentic benchmark](agentic-bench.md).

@@ -6,6 +6,7 @@ import type { AdapterConfig, AgentAdapter, AgentRunRequest, AgentRunResult } fro
 
 interface BubblePawEvent {
   type?: string;
+  kind?: string;
   session_id?: string;
   text?: string;
   call?: { id?: string; name?: string };
@@ -32,6 +33,7 @@ interface TraceEnvelope {
 }
 
 interface UsageExportRow {
+  kind?: string;
   input_tokens?: number;
   cache_read_tokens?: number;
   cache_creation_tokens?: number;
@@ -175,6 +177,8 @@ async function queryUsageExport(
   sessionId: string | null,
 ): Promise<{
   requests: number;
+  peakInputTokens: number;
+  summaryRows: number;
   inputTokens: number;
   outputTokens: number;
   cachedTokens: number;
@@ -228,6 +232,8 @@ async function queryUsageExport(
   }
 
   let requests = 0;
+  let peakInputTokens = 0;
+  let summaryRows = 0;
   let inputTokens = 0;
   let outputTokens = 0;
   let cachedTokens = 0;
@@ -248,6 +254,10 @@ async function queryUsageExport(
       continue;
     }
     requests += 1;
+    peakInputTokens = Math.max(peakInputTokens, row.input_tokens ?? 0);
+    if (row.kind === "summary_fork") {
+      summaryRows += 1;
+    }
     inputTokens += row.input_tokens ?? 0;
     outputTokens += row.output_tokens ?? 0;
     cachedTokens += row.cache_read_tokens ?? 0;
@@ -268,6 +278,8 @@ async function queryUsageExport(
 
   return {
     requests,
+    peakInputTokens,
+    summaryRows,
     inputTokens,
     outputTokens,
     cachedTokens,
@@ -275,6 +287,48 @@ async function queryUsageExport(
     reasoningTokens,
     costUsd: hasUnpriced ? null : Number(costSum.toFixed(9)),
   };
+}
+
+/** The command line of one BubblePaw run. */
+export function bubblepawRunArgs(
+  bin: string,
+  configPath: string,
+  dataDir: string,
+  traceFile: string,
+  req: AgentRunRequest,
+  maxRounds: number | undefined,
+): string[] {
+  const args = [
+    bin,
+    "--workspace",
+    req.workspace,
+    "--data-dir",
+    dataDir,
+    "--config",
+    configPath,
+    "--model",
+    req.model,
+    "--trace-file",
+    traceFile,
+    "--trace-mode",
+    "metadata",
+    "--json",
+  ];
+  if (typeof maxRounds === "number" && maxRounds > 0) {
+    args.push("--set", `agent.max_rounds=${maxRounds}`);
+  }
+  if (typeof req.contextWindow === "number" && req.contextWindow > 0) {
+    // The model's context limit and the compaction cap. BubblePaw compacts at the smaller of the
+    // cap and (window - context.lcm.output_reserve_tokens), so both follow the one number.
+    args.push(
+      "--set",
+      `context.window_tokens=${req.contextWindow}`,
+      "--set",
+      `context.compact_threshold_tokens=${req.contextWindow}`,
+    );
+  }
+  args.push("run", "--prompt-file", req.promptFile);
+  return args;
 }
 
 export class BubblePawAdapter implements AgentAdapter {
@@ -315,26 +369,7 @@ export class BubblePawAdapter implements AgentAdapter {
     const traceFile = join(req.scratchDir, "trace.jsonl");
     const maxRounds = req.maxRounds ?? this.maxRounds;
 
-    const args = [
-      this.bin,
-      "--workspace",
-      req.workspace,
-      "--data-dir",
-      dataDir,
-      "--config",
-      this.configPath,
-      "--model",
-      req.model,
-      "--trace-file",
-      traceFile,
-      "--trace-mode",
-      "metadata",
-      "--json",
-    ];
-    if (typeof maxRounds === "number" && maxRounds > 0) {
-      args.push("--set", `agent.max_rounds=${maxRounds}`);
-    }
-    args.push("run", "--prompt-file", req.promptFile);
+    const args = bubblepawRunArgs(this.bin, this.configPath, dataDir, traceFile, req, maxRounds);
 
     const startedAt = performance.now();
     const state: {
@@ -342,6 +377,7 @@ export class BubblePawAdapter implements AgentAdapter {
       streamRequests: number;
       streamToolCalls: number;
       streamToolErrors: number;
+      compactionsApplied: number;
       resultEvent: BubblePawEvent | null;
       paragraphs: string[];
     } = {
@@ -349,6 +385,7 @@ export class BubblePawAdapter implements AgentAdapter {
       streamRequests: 0,
       streamToolCalls: 0,
       streamToolErrors: 0,
+      compactionsApplied: 0,
       resultEvent: null,
       paragraphs: [],
     };
@@ -416,6 +453,9 @@ export class BubblePawAdapter implements AgentAdapter {
           state.streamToolCalls += 1;
         } else if (ev.type === "tool_finished" && ev.result?.is_error === true) {
           state.streamToolErrors += 1;
+        } else if (ev.type === "context_compaction" && ev.kind === "applied") {
+          // A compaction applied to the serving view (docs/session-api.md, context_compaction).
+          state.compactionsApplied += 1;
         } else if (ev.type === "result") {
           state.resultEvent = ev;
         }
@@ -517,6 +557,12 @@ export class BubblePawAdapter implements AgentAdapter {
       timedOut,
       unexplainedCacheMisses: traceSummary.unexplainedCacheMisses,
       repeatedToolCalls: traceSummary.repeatedToolCalls,
+      // Summaries without any applied event means the stream did not carry them: unknown, not 0.
+      compactions:
+        state.compactionsApplied === 0 && (usageExport?.summaryRows ?? 0) > 0
+          ? null
+          : state.compactionsApplied,
+      peakRequestInputTokens: usageExport ? usageExport.peakInputTokens : null,
     };
   }
 }
