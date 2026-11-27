@@ -1,4 +1,5 @@
 use super::*;
+use crate::eventually::wait_ms;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn recursive_deny_rules_union_at_every_generation_with_pinned_override() -> Result<()> {
@@ -136,7 +137,7 @@ async fn recursive_deny_rules_union_at_every_generation_with_pinned_override() -
                 Some(nodes[depth - 1].as_str())
             );
             let result = manager
-                .wait(&nodes[depth - 1], &nodes[depth], Some(5000))
+                .wait(&nodes[depth - 1], &nodes[depth], Some(wait_ms()))
                 .await?;
             assert_eq!(result["status"], "completed", "depth {depth}: {result}");
         }
@@ -367,7 +368,7 @@ async fn real_child_honours_the_host_hardline_floor_in_both_spawn_shapes() -> Re
             serde_json::from_str(&reply.text())?
         };
         let child_id = child["sessionId"].as_str().unwrap();
-        let result = manager.wait(&session.id, child_id, Some(5000)).await?;
+        let result = manager.wait(&session.id, child_id, Some(wait_ms())).await?;
         assert_eq!(result["status"], "completed", "{shape}: {result}");
         assert_eq!(
             *exec.commands.lock().unwrap(),

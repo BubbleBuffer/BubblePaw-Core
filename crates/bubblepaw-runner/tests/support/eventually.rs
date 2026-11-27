@@ -4,8 +4,15 @@
 use std::time::Duration;
 
 /// Generous bound for a condition that normally holds within milliseconds.
+pub const WAIT_TIMEOUT: Duration = Duration::from_secs(if cfg!(windows) { 30 } else { 10 });
+
 pub fn wait_timeout() -> Duration {
-    Duration::from_secs(if cfg!(windows) { 30 } else { 10 })
+    WAIT_TIMEOUT
+}
+
+/// `wait_timeout()` in milliseconds, for the `timeoutMs` of a child `wait`.
+pub fn wait_ms() -> u64 {
+    wait_timeout().as_millis() as u64
 }
 
 /// Poll `ready` every 10 ms until it holds; panic with `what` after `wait_timeout()`.

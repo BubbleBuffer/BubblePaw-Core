@@ -1,4 +1,5 @@
 use super::*;
+use crate::eventually::wait_ms;
 
 pub(super) async fn run() -> Result<()> {
     use bubblepaw_core::EventKind;
@@ -127,7 +128,7 @@ pub(super) async fn run() -> Result<()> {
     )
     .await??;
     // Await the existing observer, rather than shutdown causing the cleanup.
-    let child = agents.wait(&session.id, &child_id, Some(5000)).await?;
+    let child = agents.wait(&session.id, &child_id, Some(wait_ms())).await?;
     assert_eq!(child["status"], "cancelled");
     for id in [&child_id, &leaf_id] {
         assert_eq!(store.runs(id)?[0].status, "cancelled");

@@ -1,4 +1,5 @@
 //! PROBE/SCRIPTED acceptance only. No provider transport or live model calls.
+use crate::eventually::wait_ms;
 use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -26,7 +27,8 @@ use std::{
 };
 use tokio::sync::{Notify, broadcast, mpsc};
 
-const DEADLINE: Duration = Duration::from_secs(5);
+/// Failure watchdog only: the awaited condition ends the wait, Windows CI is slow.
+const DEADLINE: Duration = crate::eventually::WAIT_TIMEOUT;
 
 struct Probe {
     requests: Mutex<Vec<ModelRequest>>,
@@ -248,7 +250,7 @@ impl Fixture {
             .wait(
                 &self.owner.session_id,
                 child["sessionId"].as_str().unwrap(),
-                Some(5000),
+                Some(wait_ms()),
             )
             .await?;
         assert_ne!(
@@ -1004,7 +1006,7 @@ async fn restart_marks_parent_and_child_unknown_reattaches_and_send_never_replay
     );
     let sent = manager.send(&owner, json!({"sessionId":child_id,"text":"resume"}))?;
     assert_eq!(sent["sessionId"], child_id);
-    let result = manager.wait(&parent_id, &child_id, Some(5000)).await?;
+    let result = manager.wait(&parent_id, &child_id, Some(wait_ms())).await?;
     assert_eq!(result["status"], "completed");
     assert_eq!(result["text"], "answer:resume");
     assert_eq!(
@@ -1096,7 +1098,7 @@ async fn reattached_real_child_keeps_original_profile_capabilities() -> Result<(
     let child = manager.start(&owner, json!({"task":"first","profile":"restricted"}))?;
     let child_id = child["sessionId"].as_str().unwrap();
     assert_eq!(
-        manager.wait(&parent.id, child_id, Some(5000)).await?["status"],
+        manager.wait(&parent.id, child_id, Some(wait_ms())).await?["status"],
         "completed"
     );
     drop(manager);
@@ -1114,7 +1116,7 @@ async fn reattached_real_child_keeps_original_profile_capabilities() -> Result<(
     );
     manager.send(&owner, json!({"sessionId":child_id,"text":"effect"}))?;
     assert_eq!(
-        manager.wait(&parent.id, child_id, Some(5000)).await?["status"],
+        manager.wait(&parent.id, child_id, Some(wait_ms())).await?["status"],
         "completed"
     );
     assert_eq!(
@@ -1186,7 +1188,7 @@ async fn cancelled_idle_child_can_continue_after_eviction_or_restart() -> Result
     assert_eq!(
         fixture
             .manager
-            .wait(&fixture.owner.session_id, child_id, Some(5000))
+            .wait(&fixture.owner.session_id, child_id, Some(wait_ms()))
             .await?["status"],
         "completed"
     );
@@ -1205,7 +1207,7 @@ async fn cancelled_idle_child_can_continue_after_eviction_or_restart() -> Result
     )?;
     assert_eq!(
         replacement
-            .wait(&fixture.owner.session_id, child_id, Some(5000))
+            .wait(&fixture.owner.session_id, child_id, Some(wait_ms()))
             .await?["status"],
         "completed"
     );
@@ -1235,7 +1237,10 @@ async fn parent_cancel_covers_idle_descendants_absent_from_retained_handles() ->
         .start(&child_owner, json!({"task":"idle leaf"}))?;
     let leaf_id = leaf["sessionId"].as_str().unwrap();
     assert_eq!(
-        fixture.manager.wait(child_id, leaf_id, Some(5000)).await?["status"],
+        fixture
+            .manager
+            .wait(child_id, leaf_id, Some(wait_ms()))
+            .await?["status"],
         "completed"
     );
     let retainer = fixture.spawn("evicts idle leaf")?;
@@ -1267,7 +1272,7 @@ async fn parent_cancel_covers_idle_descendants_absent_from_retained_handles() ->
     )?;
     assert_eq!(
         replacement
-            .wait(&child_owner.session_id, leaf_id, Some(5000))
+            .wait(&child_owner.session_id, leaf_id, Some(wait_ms()))
             .await?["status"],
         "completed"
     );
@@ -1330,7 +1335,7 @@ async fn registered_send_rejections_settle_without_unknown_effects() -> Result<(
     Ok(())
 }
 
-const TREE_DEADLINE: Duration = Duration::from_secs(10);
+const TREE_DEADLINE: Duration = crate::eventually::WAIT_TIMEOUT;
 
 /// Scripted JS tree node. Task `tree:<levels>` spawns three children in one cell
 /// while levels remain, leaving a persistent environment on each non-leaf.
@@ -1695,7 +1700,7 @@ async fn low_retention_keeps_evicted_children_addressable_and_terminal_states_du
             .wait(
                 &fixture.owner.session_id,
                 victim["sessionId"].as_str().unwrap(),
-                Some(5000)
+                Some(wait_ms())
             )
             .await?["status"],
         "completed"
@@ -1731,7 +1736,7 @@ async fn low_retention_keeps_evicted_children_addressable_and_terminal_states_du
             .wait(
                 &fixture.owner.session_id,
                 broken["sessionId"].as_str().unwrap(),
-                Some(5000)
+                Some(wait_ms())
             )
             .await?["status"],
         "completed"
@@ -1758,7 +1763,7 @@ async fn low_retention_keeps_evicted_children_addressable_and_terminal_states_du
     assert_eq!(
         fixture
             .manager
-            .wait(&branch_id, &leaf_id, Some(5000))
+            .wait(&branch_id, &leaf_id, Some(wait_ms()))
             .await?["status"],
         "completed"
     );
@@ -1784,7 +1789,7 @@ async fn low_retention_keeps_evicted_children_addressable_and_terminal_states_du
     assert_eq!(
         fixture
             .manager
-            .wait(&branch_owner.session_id, &leaf_id, Some(5000))
+            .wait(&branch_owner.session_id, &leaf_id, Some(wait_ms()))
             .await?["status"],
         "completed"
     );

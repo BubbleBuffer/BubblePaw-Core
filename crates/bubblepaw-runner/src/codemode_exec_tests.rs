@@ -277,7 +277,8 @@ async fn ordinary_host_call_still_hits_the_shortened_deadline() {
 
 #[tokio::test]
 async fn sync_exec_backgrounds_at_configured_timeout_after_outlasting_idle_limits() {
-    let command = timed_command(Duration::from_secs(30), "ready", "");
+    // The process must outlive the readiness wait below, which is long on Windows.
+    let command = timed_command(Duration::from_secs(120), "ready", "");
     let fixture = Fixture::with_config(
         format!("await tools.exec({})", json!({"command":command})),
         ExecConfig {
@@ -305,7 +306,9 @@ async fn sync_exec_backgrounds_at_configured_timeout_after_outlasting_idle_limit
         .register(&mut registry, fixture.harness.store())
         .unwrap();
     let poll = registry.get("poll").unwrap();
-    tokio::time::timeout(Duration::from_secs(10), async {
+    // A loaded Windows runner can take many seconds to start PowerShell.
+    let readiness_wait = Duration::from_secs(if cfg!(windows) { 60 } else { 10 });
+    tokio::time::timeout(readiness_wait, async {
         loop {
             let polled = poll
                 .invoke(

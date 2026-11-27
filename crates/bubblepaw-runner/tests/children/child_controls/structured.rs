@@ -1,5 +1,6 @@
 //! Structured child results use the ordinary tool dispatcher, including JS.
 use super::*;
+use crate::eventually::wait_ms;
 
 fn schema() -> Value {
     json!({"name":"answer","schema":{"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"],"additionalProperties":false}})
@@ -207,7 +208,7 @@ async fn reattached_child_restores_schema_and_returns_parsed_json() -> Result<()
             .wait(
                 &fixture.owner.session_id,
                 child["sessionId"].as_str().unwrap(),
-                Some(5000)
+                Some(wait_ms())
             )
             .await?["json"],
         json!({"answer":2})

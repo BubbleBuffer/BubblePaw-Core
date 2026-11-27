@@ -1,4 +1,5 @@
 //! Scripted providers only; no network/model calls.
+use crate::eventually::wait_ms;
 use anyhow::Result;
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -122,7 +123,7 @@ async fn child_paths_inherit_optional_limits_without_a_twelve_round_ceiling() ->
             let address = child["sessionId"].as_str().unwrap();
             assert_eq!(
                 manager
-                    .wait(&context.session_id, address, Some(5000))
+                    .wait(&context.session_id, address, Some(wait_ms()))
                     .await?["status"],
                 expected_status
             );
@@ -136,7 +137,7 @@ async fn child_paths_inherit_optional_limits_without_a_twelve_round_ceiling() ->
             )?;
             assert_eq!(
                 manager
-                    .wait(&context.session_id, address, Some(5000))
+                    .wait(&context.session_id, address, Some(wait_ms()))
                     .await?["status"],
                 expected_status
             );
@@ -189,7 +190,7 @@ async fn child_paths_inherit_optional_limits_without_a_twelve_round_ceiling() ->
         let address = child["sessionId"].as_str().unwrap();
         assert_eq!(
             native
-                .wait(&context.session_id, address, Some(5000))
+                .wait(&context.session_id, address, Some(wait_ms()))
                 .await?["status"],
             expected_status
         );
@@ -244,7 +245,7 @@ async fn reattached_child_refreshes_saved_round_policy_from_the_current_profile(
         let address = child["sessionId"].as_str().unwrap();
         assert_eq!(
             old_host
-                .wait(&context.session_id, address, Some(5000))
+                .wait(&context.session_id, address, Some(wait_ms()))
                 .await?["status"],
             "failed"
         );
@@ -266,7 +267,7 @@ async fn reattached_child_refreshes_saved_round_policy_from_the_current_profile(
             json!({"sessionId":address,"text":"another fourteen rounds"}),
         )?;
         let reply = new_host
-            .wait(&context.session_id, address, Some(5000))
+            .wait(&context.session_id, address, Some(wait_ms()))
             .await?;
         assert_eq!(
             reply["status"],

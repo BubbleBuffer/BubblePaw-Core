@@ -1,4 +1,5 @@
 //! Scripted child API acceptance. No live providers or external web access.
+use crate::eventually::wait_ms;
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use bubblepaw_core::{
@@ -186,14 +187,14 @@ impl Fixture {
             .wait(
                 &self.owner.session_id,
                 child["sessionId"].as_str().unwrap(),
-                Some(5000),
+                Some(wait_ms()),
             )
             .await?;
         assert_ne!(result["status"], "timeout", "{result}");
         Ok(result)
     }
     async fn entered(&mut self) -> Result<()> {
-        tokio::time::timeout(Duration::from_secs(3), self.entered.recv())
+        tokio::time::timeout(crate::eventually::WAIT_TIMEOUT, self.entered.recv())
             .await?
             .expect("provider entry signal");
         Ok(())

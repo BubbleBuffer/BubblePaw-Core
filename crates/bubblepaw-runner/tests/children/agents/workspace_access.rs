@@ -1,4 +1,5 @@
 use super::*;
+use crate::eventually::wait_ms;
 
 #[tokio::test]
 async fn explicit_workspace_access_allows_writes_and_cleanup_awaits_owned_commands() {
@@ -38,7 +39,7 @@ async fn explicit_workspace_access_allows_writes_and_cleanup_awaits_owned_comman
         .wait(
             &fixture.owner.session_id,
             denied["handle"].as_str().unwrap(),
-            Some(2000),
+            Some(wait_ms()),
         )
         .await
         .unwrap();
