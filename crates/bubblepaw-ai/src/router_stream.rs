@@ -1,13 +1,13 @@
-//! The listener the registry hands each attempt, and the thinking it must retract.
+//! The listener the router hands each attempt, and the thinking it must retract.
+use crate::{StreamCallback, StreamEvent};
 use anyhow::Result;
-use bubblepaw_core::{StreamCallback, StreamEvent};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 
 /// `callback` that records whether text (`visible`) or thinking was streamed.
-pub(super) fn guard(
+pub(crate) fn guard(
     callback: StreamCallback,
     visible: Arc<AtomicBool>,
 ) -> (StreamCallback, Arc<AtomicBool>) {
@@ -30,7 +30,7 @@ pub(super) fn guard(
 
 /// A failed attempt that streamed thinking but no text is abandoned for a retry
 /// or a fallback: tell the listener to drop that thinking.
-pub(super) fn discard_abandoned<T>(
+pub(crate) fn discard_abandoned<T>(
     result: &Result<T>,
     published: &AtomicBool,
     thinking: &AtomicBool,

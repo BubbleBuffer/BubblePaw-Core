@@ -7,7 +7,7 @@ mod extension;
 mod live_provider;
 mod metering;
 mod registry;
-mod registry_stream;
+use bubblepaw_ai::adapter::retain_prior_quota;
 pub use bubblepaw_ai::adapter::{
     ChatCompletionsProvider, MessagesProvider, ResponsesProvider, RetryPolicy, ScriptedProvider,
     ScriptedStep, is_terminal_quota_error, parse_retry_after, provider_retry_after,
@@ -18,7 +18,6 @@ pub(crate) use bubblepaw_ai::adapter::{
 };
 use bubblepaw_ai::adapter::{attach_retry_after, classify, terminal_quota_failure, validate_url};
 use bubblepaw_ai::adapter::{http_dump, http_error, stream};
-use bubblepaw_ai::adapter::{mark_published, retain_prior_quota};
 pub use bubblepaw_ai::extension::{
     EXTENSION_ENV_KEYS, ExtensionConfig, ExtensionLauncher, ExtensionProvider, Launched,
     LaunchedProcess,

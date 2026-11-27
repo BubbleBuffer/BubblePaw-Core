@@ -15,28 +15,23 @@ impl ProviderRegistry {
         D: FnMut(&str, Arc<dyn DecisionProvider>) -> Result<Arc<dyn DecisionProvider>>,
     {
         let mut mapped = Self::new(
-            &self.default,
+            self.default_id(),
             provider(
-                &self.default,
-                self.get(&self.default).expect("default provider"),
+                self.default_id(),
+                self.get(self.default_id()).expect("default provider"),
             )?,
         );
-        for (id, original) in &self.providers {
-            if id != &self.default {
+        for (id, original) in self.router.entries() {
+            if id != self.default_id() {
                 mapped.insert(id, provider(id, original.clone())?)?;
             }
         }
         for (id, original) in &self.decisions {
             mapped.insert_decision(id, decision(id, original.clone())?)?;
         }
-        mapped.origins = self.origins.clone();
-        mapped.configured_models = self.configured_models.clone();
-        mapped.removed_models = self.removed_models.clone();
-        mapped.strict_routes = self.strict_routes;
-        mapped.image_input = self.image_input.clone();
+        mapped.router.copy_settings_from(&self.router);
         mapped.accounts = self.accounts.clone();
         mapped.context_route = self.context_route.clone();
-        mapped.retry = self.retry.clone();
         Ok(mapped)
     }
 }
@@ -78,7 +73,8 @@ mod tests {
         source.set_retry_policy(RetryPolicy::once());
         source.set_model_fallbacks("main/current".into(), vec!["secondary/alternate".into()])?;
         source
-            .last
+            .router
+            .last_routes()
             .lock()
             .unwrap()
             .insert("live-session".into(), "main".into());
@@ -100,15 +96,20 @@ mod tests {
         assert!(!mapped.decision_available("choices/removed"));
         assert!(mapped.checked_route("missing/current").is_err());
         assert!(mapped.checked_route("main/current").is_ok());
-        assert_eq!(mapped.origins, source.origins);
-        assert_eq!(mapped.configured_models, source.configured_models);
-        assert_eq!(mapped.image_input, source.image_input);
+        assert!(mapped.router.same_settings(&source.router));
         assert_eq!(mapped.account("main/current"), "account-one");
-        assert_eq!(mapped.retry.max_attempts, 1);
-        assert!(mapped.last.lock().unwrap().is_empty());
-        assert!(mapped.selected.lock().unwrap().is_empty());
-        assert!(mapped.auxiliary_selected.lock().unwrap().is_empty());
-        assert!(mapped.fallbacks.is_empty());
+        assert_eq!(mapped.router.retry_policy().max_attempts, 1);
+        assert!(mapped.router.last_routes().lock().unwrap().is_empty());
+        assert!(mapped.router.selections().lock().unwrap().is_empty());
+        assert!(
+            mapped
+                .router
+                .auxiliary_selections()
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(!mapped.router.has_fallbacks());
         assert!(mapped.quota_host.lock().unwrap().is_none());
         assert!(mapped.usage_store.lock().unwrap().is_none());
         let mut request = ModelRequest {
@@ -123,8 +124,8 @@ mod tests {
             ..Default::default()
         };
         let mut expected = request.clone();
-        source.prepare_replay("main", &mut expected);
-        mapped.prepare_replay("main", &mut request);
+        source.router.prepare_replay("main", &mut expected);
+        mapped.router.prepare_replay("main", &mut request);
         assert_eq!(request.messages, expected.messages);
         assert_eq!(
             request.messages[0].provider_state.as_ref().unwrap()

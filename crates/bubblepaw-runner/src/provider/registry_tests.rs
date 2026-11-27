@@ -1,4 +1,5 @@
 use super::*;
+use bubblepaw_core::Usage;
 
 #[path = "registry_adapter_tests.rs"]
 mod adapters;
@@ -52,16 +53,17 @@ async fn fork_error_does_not_touch_main_route_or_mirror_bookkeeping_or_try_fallb
     registry.insert("go", other.clone())?;
     registry.set_model_fallbacks("free/flash-free".into(), vec!["go/flash".into()])?;
     registry
-        .last
+        .router
+        .last_routes()
         .lock()
         .unwrap()
         .insert("fixture".into(), "go".into());
-    registry.selected.lock().unwrap().insert(
+    registry.router.selections().lock().unwrap().insert(
         ("fixture".into(), "free/flash-free".into()),
         "go/flash".into(),
     );
-    let before_last = registry.last.lock().unwrap().clone();
-    let before_selected = registry.selected.lock().unwrap().clone();
+    let before_last = registry.router.last_routes().lock().unwrap().clone();
+    let before_selected = registry.router.selections().lock().unwrap().clone();
     assert_eq!(
         registry.routes("free/flash-free"),
         vec!["free/flash-free", "go/flash"]
@@ -70,8 +72,11 @@ async fn fork_error_does_not_touch_main_route_or_mirror_bookkeeping_or_try_fallb
     assert_eq!(registry.routes("go/flash"), vec!["go/flash"]);
     assert!(exact.requests.lock().unwrap().is_empty());
     assert!(other.requests.lock().unwrap().is_empty());
-    assert_eq!(*registry.last.lock().unwrap(), before_last);
-    assert_eq!(*registry.selected.lock().unwrap(), before_selected);
+    assert_eq!(*registry.router.last_routes().lock().unwrap(), before_last);
+    assert_eq!(
+        *registry.router.selections().lock().unwrap(),
+        before_selected
+    );
     let mut req = request();
     req.model = "free/flash-free".into();
     req.history = bubblepaw_core::HistoryCursor::fresh();
@@ -81,8 +86,11 @@ async fn fork_error_does_not_touch_main_route_or_mirror_bookkeeping_or_try_fallb
             .await
             .is_err()
     );
-    assert_eq!(*registry.last.lock().unwrap(), before_last);
-    assert_eq!(*registry.selected.lock().unwrap(), before_selected);
+    assert_eq!(*registry.router.last_routes().lock().unwrap(), before_last);
+    assert_eq!(
+        *registry.router.selections().lock().unwrap(),
+        before_selected
+    );
     assert!(other.requests.lock().unwrap().is_empty());
     let requests = exact.requests.lock().unwrap();
     assert_eq!(requests.len(), 1);
@@ -137,11 +145,12 @@ fn cold_resume_estimate_covers_go_reasoning_even_before_free_falls_back() -> Res
     assert_eq!(registry.view(&paid_fork, &count).estimate?, Some(paid));
     assert_eq!(registry.estimate_input_tokens(&req, &count)?, Some(paid));
     assert!(
-        registry.selected.lock().unwrap().is_empty(),
+        registry.router.selections().lock().unwrap().is_empty(),
         "estimation must not select a route"
     );
     registry
-        .selected
+        .router
+        .selections()
         .lock()
         .unwrap()
         .insert(("fixture".into(), req.model.clone()), req.model.clone());
@@ -149,7 +158,8 @@ fn cold_resume_estimate_covers_go_reasoning_even_before_free_falls_back() -> Res
     registry.set_removed_models(BTreeSet::from([req.model.clone()]));
     assert_eq!(registry.estimate_input_tokens(&req, &count)?, Some(paid));
     registry
-        .fallbacks
+        .router
+        .fallbacks_mut()
         .get_mut(&req.model)
         .unwrap()
         .push("removed/model".into());
@@ -282,11 +292,12 @@ async fn auxiliary_retries_go_inside_fallback_once_and_keeps_success_sticky() {
         .unwrap();
     assert_eq!(calls.lock().unwrap().as_slice(), ["free", "go", "go"]);
     assert_eq!(first.usage.as_ref().unwrap().input_tokens, 17);
-    assert!(registry.selected.lock().unwrap().is_empty());
-    assert!(registry.last.lock().unwrap().is_empty());
+    assert!(registry.router.selections().lock().unwrap().is_empty());
+    assert!(registry.router.last_routes().lock().unwrap().is_empty());
     assert_eq!(
         registry
-            .auxiliary_selected
+            .router
+            .auxiliary_selections()
             .lock()
             .unwrap()
             .get(&("fixture".into(), "opencode-free/flash-free".into())),
@@ -309,8 +320,8 @@ async fn auxiliary_retries_go_inside_fallback_once_and_keeps_success_sticky() {
         ["free", "go", "go", "go", "go"]
     );
     assert_eq!(second.usage.as_ref().unwrap().input_tokens, 14);
-    assert!(registry.selected.lock().unwrap().is_empty());
-    assert!(registry.last.lock().unwrap().is_empty());
+    assert!(registry.router.selections().lock().unwrap().is_empty());
+    assert!(registry.router.last_routes().lock().unwrap().is_empty());
 }
 
 #[tokio::test]

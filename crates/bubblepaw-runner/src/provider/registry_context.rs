@@ -106,39 +106,3 @@ fn reasoning_parts<'a>(state: &'a serde_json::Value, parts: &mut Vec<&'a str>) {
         }
     }
 }
-
-/// Name the route that served a reply, and the routes that failed before it, as
-/// typed fields. The replay state keeps the same keys for readers of older replies.
-pub(super) fn stamp_route(
-    response: &mut bubblepaw_core::ModelResponse,
-    selected: &str,
-    failed: &[String],
-    reasons: &[String],
-) {
-    // A nested registry may have stamped the reply already. With nothing failed here,
-    // its fallbacks stay, as its keys do in the replay state.
-    let inner = response.route.take().filter(|_| failed.is_empty());
-    response.route = Some(bubblepaw_core::ServedRoute {
-        selected: selected.to_owned(),
-        fallback_from: inner
-            .as_ref()
-            .map_or(failed.to_vec(), |r| r.fallback_from.clone()),
-        fallback_reasons: inner.map_or(reasons.to_vec(), |r| r.fallback_reasons),
-    });
-    let state = response
-        .provider_state
-        .get_or_insert_with(|| serde_json::json!({}));
-    if let Some(state) = state.as_object_mut() {
-        state.insert(
-            "_bubblepaw_selected_model".into(),
-            serde_json::json!(selected),
-        );
-        if !failed.is_empty() {
-            state.insert("_bubblepaw_fallback_from".into(), serde_json::json!(failed));
-            state.insert(
-                "_bubblepaw_fallback_reasons".into(),
-                serde_json::json!(reasons),
-            );
-        }
-    }
-}

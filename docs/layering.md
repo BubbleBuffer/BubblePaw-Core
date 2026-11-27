@@ -48,7 +48,23 @@ smallest cacheable prefix and the cache block size, and a context-window field t
 model fills yet. Each fact keeps its old matching rule. To update a price, edit
 `models.json` and its `checked` date.
 
-Still to move: the provider registry, which lives in `bubblepaw-runner` today. Some ai types carry a `session_id` that the ai layer
+The provider router (`router.rs`, `router_generate.rs`, `router_observer.rs`,
+`router_reply.rs`, `router_stream.rs`) holds the routing half of the provider
+registry: the provider map, the default id and strict flag, fallbacks, removed models,
+route origins, `image_input` overrides, the sticky selection per session, candidate
+order, `checked_route`, replay preparation, the stream guard, the retry call, the
+usage and quota of failed attempts, and the stop rule. It knows no billing, quota
+host, account or context log. A host attaches those through `RouteObserver`:
+`candidate` wraps one candidate's whole retry loop (the host enters its scopes and
+the quota host there, and `yield_rate_limits` tells the router to set
+`RetryPolicy::yield_rate_limits`), `attempt` wraps each provider call, and
+`route_failed` reports a skipped route. `NoObserver` gives a router with no host.
+`ProviderRegistry` in `bubblepaw-runner` stays the public shell: it owns a `Router`,
+the decision providers, accounts, the usage store and the quota host, and passes the
+router its observer (`provider/registry_hooks.rs`) on every call. The account,
+usage-sink and provider-route task-locals stay as they are; the observer sets them.
+The native decision path and the branch (summary fork) path stay in the runner.
+Some ai types carry a `session_id` that the ai layer
 treats as an opaque key; the adapters add the `x-opencode-session` and Codex
 cache-key plumbing, the replay-state and continuation code that handle that key,
 and the extension provider keeps a cursor reset per `session_id` and sends

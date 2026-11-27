@@ -610,6 +610,14 @@ tried. Local tests: `provider_main_retry.rs` (a main turn retries once; publishe
 output is never retried), `provider_retry.rs` (long waits are not retried
 inline) and the unit tests in `adapter/retry.rs` (bubblepaw-ai).
 
+Routing lives in `bubblepaw-ai`'s `Router` (candidate order, sticky selection,
+replay preparation, usage of failed attempts, the stop rule); `ProviderRegistry`
+is the runner's shell around it. Per candidate the nesting is: the account scope,
+the provider scope, the quota host, `with_retry`, then the attempt. The quota host
+drives the retry loop, so a quota wait sits between attempts of the same route,
+before the next fallback; a quota stop or terminal quota ends the fallback. The
+sticky route is written only after a success. See [layering](layering.md).
+
 The native quota host (2026-10-20) intercepts 429s before the registry's inline
 retry sleeps, persists returned meters and applies the short/exhausted/terminal policy.
 This preserves transport retry behavior for direct adapter consumers while

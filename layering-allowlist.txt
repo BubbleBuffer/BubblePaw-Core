@@ -9,6 +9,6 @@ word bubblepaw-core opencode 1
 word bubblepaw-core quota 172
 word bubblepaw-core "js" 26
 word bubblepaw-agent "js" 6
-word bubblepaw-ai session 94
+word bubblepaw-ai session 134
 word bubblepaw-ai approval 5
 word bubblepaw-ai child 2
