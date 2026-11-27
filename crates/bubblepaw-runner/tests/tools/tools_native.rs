@@ -231,7 +231,7 @@ async fn readonly_registration_has_no_mutation_or_processes() {
     let mut registry = ToolRegistry::new();
     let processes = register_native_tools(&mut registry, root.path(), true, &store).unwrap();
     assert!(registry.definitions().is_empty());
-    assert_eq!(registry.capabilities().len(), 4);
+    assert_eq!(registry.capabilities().len(), 3);
     assert!(registry.get("edit").is_none());
     assert!(registry.get("write").is_none());
     assert!(registry.get("exec").is_none());

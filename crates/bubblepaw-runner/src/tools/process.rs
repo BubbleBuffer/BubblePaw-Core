@@ -1413,7 +1413,7 @@ impl Tool for ProcessTool {
         let (description, properties, required): (&str, _, _) = match self.name {
             "exec" => (
                 exec_description.as_str(),
-                json!({"command":{"type":"string"},"cwd":{"type":"string"},"workdir":{"type":"string"},"yieldMs":{"type":"integer","minimum":0},"timeoutMs":{"type":"integer","minimum":1},"background":{"type":"boolean"}}),
+                json!({"command":{"oneOf":[{"type":"string"},{"type":"object","properties":{"parts":{"type":"array","items":{"type":"string"}},"values":{"type":"array","items":{"type":"string"}}},"required":["parts","values"],"additionalProperties":false}]},"cwd":{"type":"string"},"workdir":{"type":"string"},"yieldMs":{"type":"integer","minimum":0},"timeoutMs":{"type":"integer","minimum":1},"background":{"type":"boolean"}}),
                 vec!["command"],
             ),
             "poll" => (
