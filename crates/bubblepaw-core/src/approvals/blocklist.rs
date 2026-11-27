@@ -349,7 +349,7 @@ fn target_class(target: &str, roots: &[Place], cwd: Option<&Place>) -> Option<&'
     }
     if matches!(
         base.trim_end_matches(['/', '\\']),
-        "~" | "$home" | "%userprofile%" | "$env:userprofile"
+        "~" | "$home" | "$userprofile" | "%userprofile%" | "$env:userprofile"
     ) {
         return Some("the home directory");
     }
@@ -382,10 +382,22 @@ struct Place {
 
 impl Place {
     /// Lowercased, with `/` separators, a Windows verbatim prefix (`\\?\`) removed,
-    /// and `.` and `..` folded.
+    /// and `.` and `..` folded. On Windows the shell may be Git Bash, whose
+    /// drive paths (`/c/users`, `/cygdrive/c/users`) name `c:/users`.
     fn new(path: &str) -> Self {
+        Self::parse(path, cfg!(windows))
+    }
+
+    fn parse(path: &str, msys: bool) -> Self {
         let folded = path.to_lowercase().replace('\\', "/");
         let folded = folded.strip_prefix("//?/").unwrap_or(&folded);
+        let msys_path;
+        let folded = if msys {
+            msys_path = msys_drive(folded);
+            msys_path.as_str()
+        } else {
+            folded
+        };
         let (drive, rest) = match folded.as_bytes() {
             [letter, b':', ..] if letter.is_ascii_alphabetic() => folded.split_at(2),
             _ => ("", folded),
@@ -442,6 +454,23 @@ fn push_parts<'a>(
             }
             other => parts.push(other.to_owned()),
         }
+    }
+}
+
+/// Git Bash's spelling of a drive path: `/c/users` and `/cygdrive/c/users` are
+/// `c:/users`. Other paths are returned unchanged.
+fn msys_drive(path: &str) -> String {
+    let path = match path.strip_prefix("/cygdrive/") {
+        Some(rest) => format!("/{rest}"),
+        None => path.to_owned(),
+    };
+    match path.as_bytes() {
+        [b'/', letter, rest @ ..]
+            if letter.is_ascii_alphabetic() && matches!(rest.first(), None | Some(b'/')) =>
+        {
+            format!("{}:{}", *letter as char, &path[2..])
+        }
+        _ => path,
     }
 }
 

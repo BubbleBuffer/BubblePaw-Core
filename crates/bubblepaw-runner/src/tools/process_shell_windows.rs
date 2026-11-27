@@ -7,8 +7,8 @@ async fn run(
     marker: &Path,
     destination: &Path,
 ) -> std::process::Output {
-    let mut command = shell_command(script, start, Some(marker));
-    configure_marker_environment(&mut command, Some(marker));
+    let mut command = shell_command(script, start, Some(marker), &Shell::Cmd);
+    configure_environment(&mut command, Some(marker), &Shell::Cmd);
     command
         .current_dir(start)
         .env("BUBBLEPAW_TEST_DESTINATION", windows_path_text(destination))
@@ -41,7 +41,10 @@ async fn final_directory_marker_preserves_metacharacters_unicode_and_native_stat
             Some(windows_path_text(&destination).as_str()),
             "marker must contain the actual final directory"
         );
-        assert_eq!(cwd_note(&marker, &start), Some(cwd_reset_note(&start)));
+        assert_eq!(
+            cwd_note(&marker, &start, &Shell::Cmd),
+            Some(cwd_reset_note(&start))
+        );
     }
 }
 
@@ -52,8 +55,8 @@ async fn unchanged_directory_quoted_executable_percent_variable_and_bangs_stay_e
     let marker = start.join(format!("{}.cwd", uuid::Uuid::new_v4()));
     let script =
         r#""%ComSpec%" /d /c exit 0 && <nul set /p="a && b %BUBBLEPAW_TEST_VALUE% !ComSpec!""#;
-    let mut command = shell_command(script, &start, Some(&marker));
-    configure_marker_environment(&mut command, Some(&marker));
+    let mut command = shell_command(script, &start, Some(&marker), &Shell::Cmd);
+    configure_environment(&mut command, Some(&marker), &Shell::Cmd);
     let output = command
         .current_dir(&start)
         .env("BUBBLEPAW_TEST_VALUE", "percent-value")
@@ -69,7 +72,7 @@ async fn unchanged_directory_quoted_executable_percent_variable_and_bangs_stay_e
         read_windows_marker(&fs::read(&marker).unwrap()),
         Some(windows_path_text(&start))
     );
-    assert_eq!(cwd_note(&marker, &start), None);
+    assert_eq!(cwd_note(&marker, &start, &Shell::Cmd), None);
 }
 
 #[tokio::test]
@@ -81,8 +84,9 @@ async fn shadowing_errorlevel_is_visible_to_user_code_but_does_not_replace_exit_
         r#"<nul set /p="%ERRORLEVEL%"&set "ERRORLEVEL=another-shadow"&cmd.exe /d /c exit 37"#,
         &start,
         Some(&marker),
+        &Shell::Cmd,
     );
-    configure_marker_environment(&mut command, Some(&marker));
+    configure_environment(&mut command, Some(&marker), &Shell::Cmd);
     let output = command
         .current_dir(&start)
         .env("ERRORLEVEL", "user-visible")

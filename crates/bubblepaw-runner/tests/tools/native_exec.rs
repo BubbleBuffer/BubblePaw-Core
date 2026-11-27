@@ -46,6 +46,30 @@ const SLEEP: &str = "ping -n 31 127.0.0.1 >nul";
 const SLEEP: &str = "sleep 30";
 
 #[tokio::test]
+async fn a_failed_exec_returns_stderr_once() {
+    let directory = tempfile::tempdir().unwrap();
+    let store = bubblepaw_core::Store::in_memory().unwrap();
+    let mut registry = ToolRegistry::new();
+    let processes =
+        checkpoint_write::native_pack(&mut registry, directory.path(), false, &store).unwrap();
+    #[cfg(windows)]
+    let failing = "<nul set /p=unique-stderr-text>&2& exit 3";
+    #[cfg(not(windows))]
+    let failing = "printf 'unique-stderr-text' >&2; exit 3";
+    let result = call(&store, &registry, "exec", json!({"command":failing})).await;
+    assert_eq!(result["exitCode"], 3, "{result}");
+    assert!(
+        result["stderr"]
+            .as_str()
+            .unwrap()
+            .contains("unique-stderr-text")
+    );
+    assert_eq!(result.to_string().matches("unique-stderr-text").count(), 1);
+    assert!(result["diagnostic"].as_str().unwrap().contains("code 3"));
+    processes.shutdown().await;
+}
+
+#[tokio::test]
 async fn command_diagnostics_distinguish_nonzero_timeout_and_decoding_loss() {
     let directory = tempfile::tempdir().unwrap();
     let store = bubblepaw_core::Store::in_memory().unwrap();

@@ -2,7 +2,6 @@ use super::{MAX_MUTATION_FILE, MAX_RESULT, WorkspaceTools, clip, string, validat
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use bubblepaw_core::{CancellationToken, Store, ToolContext};
 use serde_json::{Value, json};
-use std::path::Path;
 
 impl WorkspaceTools {
     pub(super) fn edit_or_write_checkpointed(
@@ -23,10 +22,6 @@ impl WorkspaceTools {
         )?;
         let path = string(input, "path")?;
         (|| -> Result<Value> {
-            ensure!(
-                Path::new(path).is_relative(),
-                "path must be workspace-relative; use a path relative to the workspace root"
-            );
             let mut change = self.prepare_file_change(path)?;
             let result = if name == "edit" {
                 let previous = change

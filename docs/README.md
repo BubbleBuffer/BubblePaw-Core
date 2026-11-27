@@ -53,7 +53,7 @@ Short rules: specs carry a Status line; results pages are dated; edit in place.
 - [execution modes](codemode.md) — Native default (2026-10-22), persisted chat modes and opt-in JS wrapper; shared dispatch, core/deferred tools, tool_search/call_tool, frozen declarations, server anchors and reload notices.
 - [mcp](mcp.md) — Built 2026-10-14: MCP client tools over stdio and Streamable HTTP (2026-07-28 with session-era fallback), env-only headers, approval by default, unknown outcomes never replayed. OAuth sign-in for HTTP servers (built 2026-10-31).
 - [live-config](live-config.md) — Updated 2026-10-30: live model, read-only and compaction controls with per-key restart notices; turn-start config refresh, shared reload commands, live settings, MCP generation draining and tool-list updates, and one-time durable diffs; hooks and plugins deferred.
-- [exec](exec.md) — Built through 2026-10-20: larger previews, five-minute sync default, ten-minute process waits, aliases, completion wake and process ownership.
+- [exec](exec.md) — Built through 2026-10-20: larger previews, five-minute sync default, ten-minute process waits, aliases, completion wake and process ownership; 2026-11-27 Windows shell selection (Git Bash preferred, `exec.shell`).
 - [web](web.md) — Research update 2026-10-13: visible research children, direct parent search/fetch, root-chat source IDs, numbered passages with BM25 and disposable shared SQLite cache.
 
 ## Verification and experiments

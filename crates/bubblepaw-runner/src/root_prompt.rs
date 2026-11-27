@@ -57,9 +57,9 @@ pub fn root_system_prompt(
         ExecutionMode::Js => "tools.read",
     };
     format!(
-        "Execution environment: OS={}, workspace={}, raw command shell={}. {instructions}\n\n{RUNTIME_NOTES} User messages may include a BubblePawAttachments block. Its file paths are workspace-relative; read the relevant sections with {read} when inline text is omitted. A binary file reference does not mean you have seen its contents.",
+        "Execution environment: OS={}, workspace={} (file tool paths are relative to it), raw command shell={}. {instructions}\n\n{RUNTIME_NOTES} User messages may include a BubblePawAttachments block. Its file paths are workspace-relative; read the relevant sections with {read} when inline text is omitted. A binary file reference does not mean you have seen its contents.",
         std::env::consts::OS,
-        workspace.display(),
+        crate::plain_path::plain_path(workspace),
         crate::command_template::shell_name(),
     )
 }

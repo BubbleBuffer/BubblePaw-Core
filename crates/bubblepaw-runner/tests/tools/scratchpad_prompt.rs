@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bubblepaw_core::{ContextStrategy, ExecutionMode, HarnessConfig, Store};
+use bubblepaw_runner::plain_path::plain_path;
 use bubblepaw_runner::{
     execution_mode::configure_prompts,
     root_prompt::{configure_scratchpads, root_system_prompt},
@@ -11,6 +12,7 @@ fn prompts_show_granted_absolute_paths_and_child_subfolder_in_both_modes() -> Re
     let data = tempfile::tempdir()?;
     let root = tempfile::tempdir()?;
     let other = tempfile::tempdir()?;
+    let canonical = std::fs::canonicalize(root.path())?;
     let store = Store::in_memory()?;
     let parent = store.create_session("parent")?;
     let child =
@@ -26,31 +28,35 @@ fn prompts_show_granted_absolute_paths_and_child_subfolder_in_both_modes() -> Re
         configure_prompts(
             &mut config,
             store.clone(),
-            root_system_prompt(root.path(), None, ExecutionMode::Native),
-            root_system_prompt(root.path(), None, ExecutionMode::Js),
+            root_system_prompt(&canonical, None, ExecutionMode::Native),
+            root_system_prompt(&canonical, None, ExecutionMode::Js),
         );
         configure_scratchpads(&mut config, store.clone(), workspace.clone());
         let resolve = config.system_prompt_resolver.as_ref().unwrap();
         let prompt = resolve(&parent.id, &config.system_prompt)?;
-        assert!(prompt.contains(&parent_paths.chat.display().to_string()));
-        assert!(prompt.contains(&parent_paths.workspace.display().to_string()));
+        assert!(prompt.contains(&plain_path(&parent_paths.chat)));
+        assert!(prompt.contains(&plain_path(&parent_paths.workspace)));
+        // Windows canonical paths carry a verbatim prefix that cmd.exe and the
+        // model's own habits reject; the prompt shows the ordinary form.
+        assert!(!prompt.contains(r"\\?\"), "{prompt}");
+        assert!(prompt.contains("file tool paths are relative to it"));
         if mode == ExecutionMode::Native {
             assert!(prompt.contains("exec({command:\"python script.py\"})"));
         }
         assert!(!prompt.contains("python -c"));
-        assert!(prompt.contains(bubblepaw_runner::command_template::shell_name()));
+        assert!(prompt.contains(&bubblepaw_runner::command_template::shell_name()));
         let prompt = resolve(&child.id, "Custom child instructions.")?;
         assert!(prompt.contains("Custom child instructions."));
-        assert!(prompt.contains(&parent_paths.chat.join(&child.id).display().to_string()));
+        assert!(prompt.contains(&plain_path(&parent_paths.chat.join(&child.id))));
         let child_workspace = WorkspaceTools::new(other.path())?;
         child_workspace.prepare_scratchpads(data.path())?;
         let child_paths = child_workspace.scratchpads(&store, &child.id)?;
         configure_scratchpads(&mut config, store.clone(), child_workspace);
         let prompt = config.system_prompt_resolver.as_ref().unwrap()(&child.id, "Child worktree.")?;
         assert_eq!(prompt.matches("<scratchpads>").count(), 1);
-        assert!(prompt.contains(&parent_paths.chat.display().to_string()));
-        assert!(prompt.contains(&child_paths.workspace.display().to_string()));
-        assert!(!prompt.contains(&parent_paths.workspace.display().to_string()));
+        assert!(prompt.contains(&plain_path(&parent_paths.chat)));
+        assert!(prompt.contains(&plain_path(&child_paths.workspace)));
+        assert!(!prompt.contains(&plain_path(&parent_paths.workspace)));
     }
     Ok(())
 }

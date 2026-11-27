@@ -1214,6 +1214,7 @@ sync_timeout_secs = 300      # sync tools.exec moves to background after this; 0
 # max_jobs_per_session = 4   # optional cap on live jobs per session; unset = no limit
 # max_jobs = 16              # optional host-wide cap; unset = no limit
 max_output_bytes = 8388608   # per-job output spool cap; head and tail are kept
+shell = "auto"               # auto | bash | cmd | path; restart; user layers only
 ```
 
 - A sync call that reaches `sync_timeout_secs` returns `status:"backgrounded"` and the command

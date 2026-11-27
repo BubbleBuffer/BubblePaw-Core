@@ -1,4 +1,4 @@
-use crate::tools::WorkspaceTools;
+use crate::{plain_path::plain_path, tools::WorkspaceTools};
 use bubblepaw_core::{HarnessConfig, Store};
 use std::sync::Arc;
 
@@ -25,12 +25,12 @@ pub fn configure_scratchpads(config: &mut HarnessConfig, store: Store, workspace
         let paths = workspace.scratchpads(&store, session)?;
         prompt.push_str(&format!(
             "{OPEN}Chat scratchpad: {}\nProject scratchpad: {}\nUse these absolute paths with read, write, edit and exec workdir.",
-            paths.chat.display(), paths.workspace.display(),
+            plain_path(&paths.chat), plain_path(&paths.workspace),
         ));
         if store.session_root_id(session)? != session {
             prompt.push_str(&format!(
                 "\nWork in the subfolder named {session} inside the shared chat scratchpad: {}",
-                paths.chat.join(session).display(),
+                plain_path(&paths.chat.join(session)),
             ));
         }
         prompt.push_str(CLOSE);

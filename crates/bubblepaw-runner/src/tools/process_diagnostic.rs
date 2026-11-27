@@ -2,7 +2,9 @@ use serde_json::{Value, json};
 
 /// A bounded explanation shared by exec/poll/wait. Raw stdout stays in its
 /// existing capture fields; only exceptional outcomes need this extra context.
-pub(super) fn process_diagnostic(value: &Value) -> Option<String> {
+/// `with_stderr` quotes stderr for a result that does not carry the field
+/// itself (wait); the others already return it, and it must appear once.
+pub(super) fn process_diagnostic(value: &Value, with_stderr: bool) -> Option<String> {
     let status = value["status"].as_str().unwrap_or("exited");
     let exit = value["exitCode"].as_i64();
     let failed = matches!(status, "timed_out" | "cancelled" | "timeout")
@@ -61,7 +63,7 @@ pub(super) fn process_diagnostic(value: &Value) -> Option<String> {
     if !decoding_notes.is_empty() {
         explanation.push_str(&format!(" {}. The decoded text is altered; do not treat it as exact output or complete JSON. Redirect raw output to a file to preserve the bytes.", decoding_notes.join("; ")));
     }
-    if failed {
+    if failed && with_stderr {
         let stderr = value["stderr"].as_str().unwrap_or("");
         if !stderr.trim().is_empty() {
             let preview: String = stderr.chars().take(768).collect();
@@ -75,7 +77,7 @@ pub(super) fn process_diagnostic(value: &Value) -> Option<String> {
 }
 
 pub(super) fn with_process_diagnostic(mut value: Value) -> Value {
-    if let Some(diagnostic) = process_diagnostic(&value) {
+    if let Some(diagnostic) = process_diagnostic(&value, false) {
         value["diagnostic"] = json!(diagnostic);
     }
     value

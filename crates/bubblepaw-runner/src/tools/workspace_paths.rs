@@ -75,7 +75,8 @@ impl WorkspaceTools {
         let mut parent = fs::canonicalize(ancestor)?;
         ensure!(
             parent.starts_with(&self.root) && parent.is_dir(),
-            "path escapes workspace root"
+            "path escapes workspace root {}; use a path relative to it",
+            crate::plain_path::plain_path(&self.root)
         );
         for component in missing.into_iter().rev() {
             parent.push(component);
