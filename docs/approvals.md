@@ -117,7 +117,11 @@ Protected places for the two delete patterns:
   and their contents (`~/*`, `$HOME/*`). The host's real home directory (read once
   from the host process) counts in every spelling: native, forward slashes, Git Bash
   `/c/...` and `/cygdrive/c/...`, any case. Dot segments, repeated separators and
-  `..` fold first, so `~/.`, `~//`, `$HOME/.` and `~/x/..` are the home directory;
+  `..` fold first, so `~/.`, `~//`, `$HOME/.` and `~/x/..` are the home directory. A
+  home path with spaces is one place when quoted or backslash-escaped
+  (`"C:\Users\John Smith"`, `/home/john\ smith`). Every ancestor of the home directory
+  is protected too (`~/..`, `$HOME/../..`, `/home`, `C:\Users`, `/c/Users`), contents
+  included, because deleting one deletes home;
 - **drive root:** `C:`, `C:\`, `c:/`, `C:\*`;
 - **workspace root:** the session's exec directory root, as an absolute path, a
   relative path that resolves to it (`.` from the root, `..` from `child/`), or a
@@ -159,6 +163,7 @@ catch:
 - a wrapper with a value option before the command (`sudo -u root rm -rf /`);
 - `del /s` or `rd /s` from cmd, or other shell or interpreter forms that hide the command;
 - the contents of the workspace (`rm -rf *`, `rm -rf ./*`) or of its parent;
+- command substitutions that name a place (`$(realpath .)`, `$(dirname ..)`) and another user's home (`~user`);
 - a directory the shell moves into through a variable, `~` or `cd -` (only `.` is still caught);
 - `cd..` or `cd\` written without a space;
 - `+refspec` force pushes;

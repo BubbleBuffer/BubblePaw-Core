@@ -2,7 +2,7 @@
 //! only; command strings are inspected, never executed.
 use bubblepaw_core::ApprovalPolicy;
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn matched(command: &str) -> Option<String> {
     in_dir(command, ".", &[])
@@ -21,6 +21,13 @@ fn in_dir(command: &str, cwd: &str, roots: &[&str]) -> Option<String> {
 /// The host's home directory in every spelling a shell accepts for it.
 fn home_spellings() -> Vec<String> {
     let home = std::env::home_dir().expect("the test host has a home directory");
+    let mut spellings = spellings_of(&home);
+    spellings.extend(home.parent().into_iter().flat_map(spellings_of));
+    spellings
+}
+
+/// One path in the spellings a shell accepts for it.
+fn spellings_of(home: &Path) -> Vec<String> {
     let native = home.to_string_lossy().into_owned();
     let slashes = native.replace('\\', "/");
     let mut spellings = vec![
@@ -63,6 +70,9 @@ fn spelling_variants_of_protected_targets_are_refused() {
         "rm -rf $HOME/.",
         "rm -rf ${HOME}/./",
         "rm -rf ~/x/..",
+        // Every ancestor of the home directory.
+        "rm -rf ~/..",
+        "rm -rf $HOME/../..",
         "rm -rf /.",
         "rm -rf /./",
         "rm -rf /tmp/..",
@@ -93,6 +103,7 @@ fn spelling_variants_of_protected_targets_are_refused() {
         "rm -rf ~/project/target",
         "rm -rf \"$PWD/dist\"",
         "rm -rf $(pwd)/dist",
+        "rm -rf \"$HOME/my project/target\"",
     ] {
         assert_eq!(matched(command), None, "{command}");
     }

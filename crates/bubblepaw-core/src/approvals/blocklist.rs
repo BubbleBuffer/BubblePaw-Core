@@ -17,7 +17,7 @@ mod place;
 #[path = "blocklist_words.rs"]
 mod words;
 
-use place::{Place, is_drive};
+use place::{Place, host_home, is_drive};
 use words::{command_word, segment_readings};
 
 /// Commands that change the directory for the segments after them.
@@ -63,6 +63,18 @@ impl ApprovalPolicy {
         arguments: &Value,
         workspaces: &[PathBuf],
     ) -> Option<String> {
+        self.hardline_match_at(tool, arguments, workspaces, host_home())
+    }
+
+    /// `hardline_match` with the home directory given, so tests need not
+    /// depend on the real one.
+    fn hardline_match_at(
+        &self,
+        tool: &str,
+        arguments: &Value,
+        workspaces: &[PathBuf],
+        home: &Place,
+    ) -> Option<String> {
         if !self.hardline || tool != "exec" {
             return None;
         }
@@ -78,7 +90,7 @@ impl ApprovalPolicy {
         segment_readings(&command).iter().find_map(|segments| {
             let mut cwd = start.clone();
             segments.iter().find_map(|words| {
-                let found = segment_match(words, &roots, cwd.as_ref());
+                let found = segment_match(words, &roots, home, cwd.as_ref());
                 if !roots.is_empty()
                     && let Some(next) = cd_target(words, cwd.as_ref())
                 {
@@ -123,12 +135,17 @@ fn command_text(command: &Value) -> Option<String> {
     Some(text)
 }
 
-fn segment_match(words: &[String], roots: &[Place], cwd: Option<&Place>) -> Option<String> {
+fn segment_match(
+    words: &[String],
+    roots: &[Place],
+    home: &Place,
+    cwd: Option<&Place>,
+) -> Option<String> {
     let (name, args) = command_word(words)?;
     match name {
         "git" => git_match(args),
-        "rm" => delete_match("rm -rf", args, roots, cwd),
-        "remove-item" | "ri" => delete_match("Remove-Item -Recurse -Force", args, roots, cwd),
+        "rm" => delete_match("rm -rf", args, roots, home, cwd),
+        "remove-item" | "ri" => delete_match("Remove-Item -Recurse -Force", args, roots, home, cwd),
         "shutdown" => Some("shutdown".into()),
         "reboot" => Some("reboot".into()),
         "format" | "format.com" => args
@@ -204,6 +221,7 @@ fn delete_match(
     label: &str,
     args: &[String],
     roots: &[Place],
+    home: &Place,
     cwd: Option<&Place>,
 ) -> Option<String> {
     let (mut recursive, mut force) = (false, false);
@@ -225,7 +243,7 @@ fn delete_match(
     }
     let class = targets
         .into_iter()
-        .find_map(|target| target_class(target, roots, cwd))?;
+        .find_map(|target| target_class(target, roots, home, cwd))?;
     Some(format!("{label} of {class}"))
 }
 
@@ -246,7 +264,12 @@ fn switch_flags(switches: &str) -> (bool, bool) {
 /// nor do `*` and `./*`. Without a known directory, a relative target matches
 /// only when it names the current directory itself (`.`), which is the
 /// conservative reading.
-fn target_class(target: &str, roots: &[Place], cwd: Option<&Place>) -> Option<&'static str> {
+fn target_class(
+    target: &str,
+    roots: &[Place],
+    home: &Place,
+    cwd: Option<&Place>,
+) -> Option<&'static str> {
     let (base, contents) = match target
         .strip_suffix("/*")
         .or_else(|| target.strip_suffix("\\*"))
@@ -257,11 +280,12 @@ fn target_class(target: &str, roots: &[Place], cwd: Option<&Place>) -> Option<&'
     if contents && base.is_empty() {
         return Some("the filesystem root");
     }
-    let place = Place::under_home(base).unwrap_or_else(|| Place::new(base));
+    let place = Place::under_home(base, home).unwrap_or_else(|| Place::new(base));
     match resolve(&place, cwd) {
         Some(path) if path.is_root() => Some("the filesystem root"),
         Some(path) if path.is_drive_root() => Some("a drive root"),
-        Some(path) if path.is_home() => Some("the home directory"),
+        Some(path) if path.is_home(home) => Some("the home directory"),
+        Some(path) if path.is_above(home) => Some("a parent of the home directory"),
         Some(path) => (!contents && roots.contains(&path)).then_some("the workspace root"),
         None => (!contents && place.is_empty()).then_some("the workspace root"),
     }

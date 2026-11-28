@@ -55,13 +55,13 @@ impl Place {
 
     /// A target that starts with a home spelling (`~`, `$HOME/x`, `%USERPROFILE%\x`)
     /// as a place under the host's home directory. None for other targets.
-    pub(super) fn under_home(target: &str) -> Option<Self> {
+    pub(super) fn under_home(target: &str, home: &Place) -> Option<Self> {
         let lowered = target.to_lowercase();
         let end = lowered.find(['/', '\\']).unwrap_or(lowered.len());
         let (head, rest) = lowered.split_at(end);
         HOME_WORDS
             .contains(&head)
-            .then(|| host_home().join(&Self::parse(rest, false)))
+            .then(|| home.join(&Self::parse(rest, false)))
     }
 
     pub(super) fn join(&self, relative: &Place) -> Place {
@@ -90,8 +90,16 @@ impl Place {
         self.absolute && !self.drive.is_empty() && self.parts.is_empty()
     }
 
-    pub(super) fn is_home(&self) -> bool {
-        self == host_home()
+    pub(super) fn is_home(&self, home: &Place) -> bool {
+        self == home
+    }
+
+    /// A proper ancestor of `home`: deleting it deletes the home directory.
+    pub(super) fn is_above(&self, home: &Place) -> bool {
+        self.absolute
+            && self.drive == home.drive
+            && self.parts.len() < home.parts.len()
+            && home.parts.starts_with(&self.parts)
     }
 
     /// No parts: for a relative place, the directory itself.
@@ -102,7 +110,7 @@ impl Place {
 
 /// The host's home directory, resolved once from the host process. When the
 /// host reports none, a stand-in place that only home spellings can reach.
-fn host_home() -> &'static Place {
+pub(super) fn host_home() -> &'static Place {
     static HOME: OnceLock<Place> = OnceLock::new();
     HOME.get_or_init(|| {
         std::env::home_dir()

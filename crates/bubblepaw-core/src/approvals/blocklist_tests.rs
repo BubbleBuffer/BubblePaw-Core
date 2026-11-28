@@ -383,3 +383,48 @@ fn git_bash_drive_paths_name_the_same_place_as_the_drive_letter() {
     assert_ne!(Place::parse("/cc/work/proj", true), drive);
     assert_ne!(Place::parse("/c/work/proj", false), drive);
 }
+
+#[test]
+fn home_with_spaces_and_its_ancestors_are_protected() {
+    let policy = ApprovalPolicy::default();
+    let check = |home: &str, command: &str| {
+        let home = super::Place::parse(home, false);
+        policy.hardline_match_at("exec", &json!({ "command": command }), &[], &home)
+    };
+    let posix = "/home/john smith";
+    let windows = r"C:\Users\John Smith";
+    let mut refused = vec![
+        (posix, "rm -rf '/home/john smith'"),
+        (posix, r"rm -rf /home/john\ smith"),
+        (posix, "rm -rf \"/home/john smith/.\""),
+        (posix, "rm -rf ~"),
+        (posix, "rm -rf /home"),
+        (posix, "rm -rf /home/*"),
+        (posix, "rm -rf ~/.."),
+        (posix, "rm -rf $HOME/../.."),
+        (windows, r#"rm -rf "C:\Users\John Smith""#),
+        (
+            windows,
+            r#"Remove-Item -Recurse -Force "C:\Users\John Smith""#,
+        ),
+        (windows, r"rm -rf C:\Users"),
+        (windows, r"rm -rf c:/users/"),
+        (windows, "rm -rf ~/.."),
+    ];
+    if cfg!(windows) {
+        refused.push((windows, r"rm -rf /c/Users/John\ Smith"));
+        refused.push((windows, "rm -rf /c/Users"));
+    }
+    for (home, command) in refused {
+        assert!(check(home, command).is_some(), "{home}: {command}");
+    }
+    for (home, command) in [
+        (posix, "rm -rf \"/home/john smith/my project\""),
+        (posix, "rm -rf \"$HOME/my project/target\""),
+        (posix, "rm -rf /home/other"),
+        (windows, r#"rm -rf "C:\Users\John Smith\my project""#),
+        (windows, r"rm -rf C:\Users\Other"),
+    ] {
+        assert_eq!(check(home, command), None, "{home}: {command}");
+    }
+}
