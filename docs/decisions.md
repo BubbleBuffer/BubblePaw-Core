@@ -1,6 +1,10 @@
 # V0 decisions
 
-Status: decision log, dated; current through 2026-11-27.
+Status: decision log, dated; current through 2026-11-28.
+
+## Hardline blocklist closes spelling gaps (2026-11-28)
+
+The `exec` hardline floor now reads a command four ways (quote-aware or plain, backslash as a path separator or as an sh escape), so `r\m -rf /` is `rm`. Places fold `.` segments, repeated separators and `..` before matching, `$PWD`, `${PWD}`, `$(pwd)`, `` `pwd` `` and `%CD%` mean `.` (the workspace root is refused as before), and the host's real home directory is protected in every spelling (native, forward slashes, `/c/...`, `/cygdrive/c/...`, any case), not only as `~` or `$HOME`. Ordinary commands (`rm -rf ./build`, `rm -rf ~/project/target`, `rm -rf "$PWD/dist"`) still run. The reader moved to `blocklist_words.rs` and the paths to `blocklist_place.rs`. A home path with spaces is one place when quoted or escaped, and every ancestor of the home directory (`~/..`, `/home`, `C:\Users`) is protected too (same day). Known limits: `$(realpath .)`, `$(dirname ..)` and `~user`. See [approvals](approvals.md#hardline-floor).
 
 ## The execution environment line names the OS version (2026-11-27)
 
